@@ -17,7 +17,10 @@
     "minimum_chrome_version": "93",
     "name": "猫抓",
     "homepage_url": "https://github.com/xifangczy/cat-catch",
-    "options_page": "options.html",
+    "options_ui": {
+        "page": "options.html",
+        "open_in_tab": true
+    },
     "permissions": [
         "tabs",
         "webRequest",
