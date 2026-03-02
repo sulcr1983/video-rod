@@ -301,10 +301,15 @@ function save(tabId) {
     clearTimeout(debounce);
     debounceTime = Date.now();
     debounceCount = 0;
-    (chrome.storage.session ?? chrome.storage.local).set({ MediaData: cacheData }, function () {
-        chrome.runtime.lastError && console.log(chrome.runtime.lastError);
-    });
-    cacheData[tabId] && SetIcon({ number: cacheData[tabId].length, tabId: tabId });
+    if (cacheData[tabId]) {
+        // 单个标签数据超过99条 不再保存到storage
+        if (cacheData[tabId]?.length <= 99) {
+            (chrome.storage.session ?? chrome.storage.local).set({ MediaData: cacheData }, function () {
+                chrome.runtime.lastError && console.log(chrome.runtime.lastError);
+            });
+        }
+        SetIcon({ number: cacheData[tabId].length, tabId: tabId });
+    }
 }
 
 /**
