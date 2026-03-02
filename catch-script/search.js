@@ -21,6 +21,7 @@
     const regexVimeo = /^https:\/\/[^\.]*\.vimeocdn\.com\/exp=.*\/playlist\.json\?/i;
     const videoSet = new Set();
     const base64Regex = /^[A-Za-z0-9+/]+={0,2}$/;
+    const hexRegex = /^[A-Fa-f0-9]+$/;
     extractBaseUrl(location.href);
 
     // Worker
@@ -349,7 +350,7 @@
                 return data;
             }
             const key = data.replaceAll("\u0010", "");
-            if (key.length == 32) {
+            if (key.length == 32 && hexRegex.test(key)) {
                 postData({ action: "catCatchAddKey", key: key, href: location.href, ext: "key" });
             }
             return data;
@@ -675,6 +676,7 @@
                 }
             }
             data.key = ArrayToBase64(value);
+            if (data.key === false) { return; }
             value = data.key;
         }
         /**
