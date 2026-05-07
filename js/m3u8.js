@@ -1923,6 +1923,9 @@ document.querySelector("#mediaList").addEventListener("click", (e) => {
     if (e.detail === 2) {
         document.querySelector("#mediaList").classList.toggle("expand-all");
     }
+    if (document.querySelector("#mergeTs").classList.contains("no-drop")) {
+        return;
+    }
     const idx = mediaItem.dataset.index;
     _fragments[idx].selected = !_fragments[idx].selected;
     mediaItem.classList.toggle("selected");
