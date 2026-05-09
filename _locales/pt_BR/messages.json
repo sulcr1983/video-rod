@@ -1030,5 +1030,8 @@
   },
   "send2localTips": {
     "message": "Mesclar dados antes de enviar? Clique em 'OK' para mesclar ou em 'Cancelar' para enviar individualmente."
+	  },
+  "removeFailedPreviewFiles": {
+    "message": "Remover arquivos de prévias com falha"
   }
 }
