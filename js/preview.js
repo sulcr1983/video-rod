@@ -677,43 +677,39 @@ class FilePreview {
             video.play();
         }
     }
+
     /**
      * 生成预览video标签
      * @param {Object} item 数据
      */
     async generatePreview(item) {
         return new Promise((resolve, reject) => {
-            const getVideoInfo = (video) => {
-                video.pause();
-                videoInfo.height = video.videoHeight;
-                videoInfo.width = video.videoWidth;
-
-                if (video.duration && video.duration != Infinity) {
-                    videoInfo._duration = video.duration;
-                    videoInfo.duration = secToTime(video.duration);
-                }
-
-                // 判断是否为音频文件
-                if (item.type?.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'aac', 'ogg'].includes(item.ext)) {
-                    videoInfo.type = 'audio';
-                    videoInfo.video = null;
-                    videoInfo.height = 0;
-                    videoInfo.width = 0;
-                }
-                resolve(videoInfo);
-            };
             const video = document.createElement('video');
+            const videoInfo = { video: video, height: 0, width: 0, duration: 0, type: 'video' };
+
             video.muted = true;
             video.playsInline = true;
             video.loop = true;
             video.preload = 'metadata';
             video.addEventListener('loadedmetadata', () => {
                 video.currentTime = 0.5;
-                if (video.videoHeight && video.videoWidth) {
-                    getVideoInfo(video);
-                } else {
-                    setTimeout(getVideoInfo, 500, video);
-                }
+                setTimeout(() => {
+                    video.pause();
+                    videoInfo.height = video.videoHeight;
+                    videoInfo.width = video.videoWidth;
+                    if (video.duration && video.duration != Infinity) {
+                        videoInfo._duration = video.duration;
+                        videoInfo.duration = secToTime(video.duration);
+                    }
+                    // 判断是否为音频文件
+                    if (item.type?.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'aac', 'ogg'].includes(item.ext)) {
+                        videoInfo.type = 'audio';
+                        videoInfo.video = null;
+                        videoInfo.height = 0;
+                        videoInfo.width = 0;
+                    }
+                    resolve(videoInfo);
+                }, (video.videoHeight && video.videoWidth) ? 0 : 500);
             });
 
             let hls = null;
@@ -723,7 +719,6 @@ class FilePreview {
                 video.remove();
             };
 
-            const videoInfo = { video: video, height: 0, width: 0, duration: 0, type: 'video' };
             // 处理HLS视频
             if (isM3U8(item)) {
                 if (!Hls.isSupported()) {
