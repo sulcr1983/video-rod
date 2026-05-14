@@ -736,6 +736,8 @@ chrome.commands.onCommand.addListener(function (command) {
         }
         scriptTabid.add(G.tabId);
         chrome.tabs.reload(G.tabId, { bypassCache: true });
+    } else if (command == "preview") {
+        chrome.tabs.create({ url: `preview.html?tabId=${G.tabId}` });
     }
 });
 

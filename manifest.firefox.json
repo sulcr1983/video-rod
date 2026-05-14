@@ -54,6 +54,9 @@
     },
     "deepSearch": {
       "description": "__MSG_deepSearch__"
+    },
+    "preview": {
+      "description": "__MSG_preview__"
     }
   },
   "browser_specific_settings": {

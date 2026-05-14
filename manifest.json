@@ -56,6 +56,9 @@
     },
     "deepSearch": {
       "description": "__MSG_deepSearch__"
+    },
+    "preview": {
+      "description": "__MSG_preview__"
     }
   },
   "host_permissions": [
