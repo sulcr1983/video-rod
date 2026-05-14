@@ -335,8 +335,8 @@
     }
 
     // fromCharCode
-    const originalFromCharCode = String.fromCharCode;
-    const proxyFromCharCode = new Proxy(originalFromCharCode, {
+    const _fromCharCode = String.fromCharCode;
+    const proxyFromCharCode = new Proxy(_fromCharCode, {
         apply(target, thisArg, argumentsList) {
             const data = Reflect.apply(target, thisArg, argumentsList);
             if (data.length < 7) { return data; }
@@ -358,7 +358,7 @@
     });
     String.fromCharCode = proxyFromCharCode;
     String.fromCharCode.toString = function () {
-        return originalFromCharCode.toString();
+        return _fromCharCode.toString();
     };
 
     // DataView
