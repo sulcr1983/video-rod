@@ -224,7 +224,7 @@ const templatesProcessors = {
         }
     },
     find: (txt, arg, data) => {
-        if (data?.pageDOM) {
+        if (data?.pageDOM && data.pageDOM instanceof Document) {
             try {
                 return data.pageDOM.querySelector(arg[0])?.innerText?.trim() || "";
             } catch { return ""; }

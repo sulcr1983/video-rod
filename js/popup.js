@@ -792,7 +792,7 @@ const interval = setInterval(async function () {
 
     // 获取页面DOM
     if (G.getHtmlDOM) {
-        pageDOM = await getPageDOM();
+        pageDOM = getPageDOM();
     }
     // 填充数据
     chrome.runtime.sendMessage(chrome.runtime.id, { Message: "getData", tabId: G.tabId }, function (data) {
