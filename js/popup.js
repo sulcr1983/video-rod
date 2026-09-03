@@ -105,7 +105,7 @@ function AddMedia(data, currentTab = true) {
                 <input type="checkbox" class="DownCheck"/>
                 ${G.ShowWebIco ? `<img class="favicon ${!data.favIconUrl ? "faviconFlag" : ""}" requestId="${data.requestId}" src="${data.favIconUrl}"/>` : ""}
                 <img src="img/regex.png" class="regex ${data.isRegex ? "" : "hide"}" title="${i18n.regexTitle}"/>
-                <span class="group">${data.group ? `[${data.group}]` : ""}</span>
+                <span class="group">${data.group && G.showGroup ? `[${data.group}]` : ""}</span>
                 <span class="name ${data.parsing || data.isRegex || data.tabId == -1 ? "bold" : ""}">${trimName}</span>
                 <span class="size ${data.size ? "" : "hide"}">${data.size}</span>
                 <img src="img/copy.png" class="icon copy" id="copy" title="${i18n.copy}"/>

@@ -425,7 +425,7 @@ class FilePreview {
         item.html.className = 'file-item';
         item.html.innerHTML = `
             <div class="file-title ${this.showTitle ? "" : "hide"}">${item.title}</div>
-            <div class="file-name">${item.group ? `[${item.group}] ` : ""}${item.name}</div>
+            <div class="file-name">${item.group && G.showGroup ? `[${item.group}] ` : ""}${item.name}</div>
             <div class="preview-container">
                 <img src="${item.favIconUrl || 'img/icon.png'}" class="preview-image icon">
             </div>
