@@ -897,51 +897,56 @@ const interval = setInterval(async function () {
     //     $current[G.reverse ? "prepend" : "append"](AddMedia(next));
     //   }
     // }
-    let group = 1;
 
-    // 判断是否是一组
-    const canGroup = (a, b) => {
-      if (!a || !b) return false;
-      return Math.abs(a.getTime - b.getTime) <= G.groupTime
-        && !(a.type?.startsWith('audio') && b.type?.startsWith('audio'))
-        && (a.ext === 'm3u8') === (b.ext === 'm3u8');
-    };
+    if (G.showGroup) {
+      let group = 1;
+      // 判断是否是一组
+      const canGroup = (a, b) => {
+        if (!a || !b) return false;
+        return Math.abs(a.getTime - b.getTime) <= G.groupTime
+          && !(a.type?.startsWith('audio') && b.type?.startsWith('audio'))
+          && (a.ext === 'm3u8') === (b.ext === 'm3u8');
+      };
+      let i = 0;
+      while (i < currentCount) {
+        const current = data[i];
+        const next1 = data[i + 1];
+        const next2 = data[i + 2];
 
-    let i = 0;
-    while (i < currentCount) {
-      const current = data[i];
-      const next1 = data[i + 1];
-      const next2 = data[i + 2];
+        const match1 = canGroup(current, next1);
+        const match2 = canGroup(next1, next2);
 
-      const match1 = canGroup(current, next1);
-      const match2 = canGroup(next1, next2);
+        if (match1) {
+          const diff1 = Math.abs(current.getTime - next1.getTime);
+          const diff2 = match2 ? Math.abs(next1.getTime - next2.getTime) : Infinity;
 
-      if (match1) {
-        const diff1 = Math.abs(current.getTime - next1.getTime);
-        const diff2 = match2 ? Math.abs(next1.getTime - next2.getTime) : Infinity;
+          // 【最优匹配判断】：如果 next1 和 next2 也能成组，且它们的时间差更小
+          // 说明 next1 应该和 next2 结合，当前项 current 应当被跳过（单列）
+          if (match2 && diff2 < diff1) {
+            $current[G.reverse ? "prepend" : "append"](AddMedia(current));
+            i++; // 当前项未成组，游标只前进 1 步
+            continue;
+          } else {
+            // current 和 next1 结合是当前最佳选择
+            current.group = group;
+            next1.group = group;
+            group++;
 
-        // 【最优匹配判断】：如果 next1 和 next2 也能成组，且它们的时间差更小
-        // 说明 next1 应该和 next2 结合，当前项 current 应当被跳过（单列）
-        if (match2 && diff2 < diff1) {
-          $current[G.reverse ? "prepend" : "append"](AddMedia(current));
-          i++; // 当前项未成组，游标只前进 1 步
-          continue;
+            $current[G.reverse ? "prepend" : "append"](AddMedia(current));
+            $current[G.reverse ? "prepend" : "append"](AddMedia(next1));
+            i += 2; // 两项成功分组，游标前进 2 步
+            continue;
+          }
         } else {
-          // current 和 next1 结合是当前最佳选择
-          current.group = group;
-          next1.group = group;
-          group++;
-
+          // current 和 next1 无法成组，直接渲染 current
           $current[G.reverse ? "prepend" : "append"](AddMedia(current));
-          $current[G.reverse ? "prepend" : "append"](AddMedia(next1));
-          i += 2; // 两项成功分组，游标前进 2 步
-          continue;
+          i++; // 游标前进 1 步
         }
-      } else {
-        // current 和 next1 无法成组，直接渲染 current
-        $current[G.reverse ? "prepend" : "append"](AddMedia(current));
-        i++; // 游标前进 1 步
       }
+    } else {
+      data.forEach(item => {
+        $current[G.reverse ? "prepend" : "append"](AddMedia(item));
+      });
     }
 
     $mediaList.append($current);
