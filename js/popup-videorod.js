@@ -159,7 +159,7 @@
     }
 
     /* ==========================================================
-     * 三、抽屉：设置 / 工具
+     * 三、视图开合：设置视图（全屏）/ 高级工具抽屉
      * ========================================================== */
 
     function openDrawer(id) {
@@ -169,14 +169,14 @@
     }
 
     function closeDrawers() {
-        document.querySelectorAll('.drawer.on').forEach(function (d) { d.classList.remove('on'); });
+        document.querySelectorAll('.drawer.on, .setview.on').forEach(function (d) { d.classList.remove('on'); });
     }
 
     function bindDrawers() {
         var btnSettings = el('btnSettings');
-        var btnTools = el('btnTools');
+        var btnAdvTools = el('vrAdvTools');
         if (btnSettings) { btnSettings.addEventListener('click', function () { openDrawer('vrSettings'); }); }
-        if (btnTools) { btnTools.addEventListener('click', function () { openDrawer('vrTools'); }); }
+        if (btnAdvTools) { btnAdvTools.addEventListener('click', function () { openDrawer('vrTools'); }); }
 
         document.querySelectorAll('[data-close]').forEach(function (x) {
             x.addEventListener('click', function () { closeDrawers(); });
@@ -190,7 +190,7 @@
         });
 
         document.addEventListener('click', function (e) {
-            if (!e.target.closest('.drawer') && !e.target.closest('.iconbtn')) { closeDrawers(); }
+            if (!e.target.closest('.drawer') && !e.target.closest('.setview') && !e.target.closest('.iconbtn')) { closeDrawers(); }
         });
     }
 

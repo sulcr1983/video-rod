@@ -127,11 +127,10 @@
 
 ## ADR-018 合并路线：在线FFmpeg 是远程服务，三路线待选
 
-- **日期**：2026-10-17（晚，外部审计后）｜ **状态**：🟡 已记录事实，⏳ 路线待苏哥拍板
+- **日期**：2026-10-17（晚，外部审计后）｜ **状态**：✅ **已定稿（苏哥拍板：路线 A）**
 - **背景**：此前方案一直写「FFmpeg 合并（猫抓原生）/复用猫抓 wasm 能力」。源码审计实锤：猫抓**没有本地 ffmpeg.wasm**，其「合并」是**在线FFmpeg**——用 iframe/标签页打开 `https://ffmpeg.bmmmd.com/` 或 `https://ffmpeg.94cat.com/`（init.js:213），把视频分片 blob **发送到猫抓作者的远程服务器**处理（downloader.js:90/214）。lib/ 目录只有 mux.js/hls.js 等，无任何 wasm 转码器。
 - **事实认定**：原文档「FFmpeg 合并（猫抓原生）」表述没错但严重不完整，「纯本地运行无上传」（DESIGN §6 原第 1 条）**是错的**——开合并就会上传。
-- **决策**：三路线摆上台面（DESIGN §8）：A 保持远程现状（0 开发，隐私裸露）/ B 本地合并引 ffmpeg.wasm 或 mediabunny（开发量中，注意 ffmpeg.wasm ~2GB wasm 内存上限 + MV3 需 offscreen + CSP 'wasm-unsafe-eval'）/ C 不合并，音视频分开存（0 开发）。
-- **建议**：按苏哥「不要过度设计」校准——默认 A 起步，M2 设置里留「合并路线」开关，介意隐私一键切 B/C。
+- **决策（2026-10-17 苏哥拍板）**：**走路线 A——保持猫抓在线FFmpeg现状，不开发本地合并**。理由：个人自用、不要过度设计，0 开发量保住 m3u8 一键合并体验；隐私暴露面仅「开启合并时」的分片上传，且默认已在 M2 设置里留「m3u8 自动合并为 MP4」开关（`#vrSetMerge`），介意的人关掉开关即回到 C 的效果。B（ffmpeg.wasm/mediabunny 本地合并）留档不实施；若未来隐私诉求升级，从 ADR-018 本条目恢复 B/C 方案即可，代码零沉没成本。
 - **附带纠正**：mux.js 是单流转封装器（TS→fMP4），**合并不了分离的音频+视频两路流**——B站 DASH 场景别指望 mux.js。
 
 ## ADR-019 B站/YouTube 改版：弃签名对抗，改零对抗嗅探路线
@@ -183,6 +182,18 @@
 - **决策**：去重（下载前查记录、跳过已下地址）进 P0，随 M2 下载管线一起实现。
 - **理由**：实现就几十行，防手残重复下载；chrome.storage.local 存储 + unlimitedStorage 权限（manifest 已含则不加）。
 - **实现细节定案**：去重 key 不用裸 URL hash——m3u8/带签名直链每次 URL 都变，对流失效；改用 `hash(站点+标题+作者)` 兜底 + 提供「忽略去重强制重下」的单条覆盖入口。
+
+## ADR-025 popup 浅色重设计定案：方案 A「收网」（全量整合）
+
+- **日期**：2026-10-17 ｜ **状态**：✅（苏哥拍板）
+- **决策**：popup 按另一会话调研的方案 A「收网·清单式」做浅色重设计，**全量整合**（不是渐进试点）：浅色 token 体系 + 头部两行化 + 行卡片精简（每行 1 个控件）+ 设置 4 组收编。DOM 钩子全保留，每步过有头浏览器回归。
+- **理由**：① 猫抓原生主题本就是浅色（`public.css` 白底黑字，仅 dark media query 翻深），我们 M1 的深色外壳是包在外面的——浅色化 = 让猫抓原生变量在我们作用域内回归浅色，阻力最小；② 方案 A 的「清单感」最契合个人工具「快速扫一眼、批量勾选、一把薅走」的核心动线；③ 苏哥明确「个人自用、不要过度设计」，全量整合避免 AB 混搭的中间态长期化。
+- **关键实现手法（留档）**：
+  - 深色压制：猫抓样式靠 `#vrShell`（ID 特异性 100）> `:root`（10），media query 不参与特异性 → 新建 `css/popup-light.css` 在 `#vrShell` 作用域内钉住猫抓 17 个原生变量为浅色
+  - 行展开：`:has(.url:not(.hide))` 方案失效（jQuery toggle 后 class 与 inline style 并存）→ 改 JS 在 url 面板显隐时给 `.panel` 加/删 `vr-open` class，CSS 据此控制 row2
+  - 文件名展示：行卡片模板 `.name` 原本带 `hide`（一直靠 row2 输入框展示）→ 改为显示 `.name` + 新增 `.metasub` 包裹 size+mime，改名时同步标题文本
+  - **z 序陷阱**：猫抓 `popup.css` 给 `#down` 带 `z-index:999`（原为 fixed 浮动底栏）；我们改 static 后，作为 `#vrShell` 的 flex item，static 元素的 z-index 仍创建层叠上下文，把 setview(470)/drawer(460)/modal(450) 全压在脚下 → `videorod.css` 补 `z-index:auto` 修复。**教训：flex item 的 z-index 不挑 position，换定位方式必须连 z-index 一起清**
+- **影响**：M7 里程碑（BUILD-PLAN）；`popup.html`/`css/videorod.css`/`css/popup-light.css`/`js/popup.js`/`js/popup-videorod.js` 全量回归通过（TESTING §6 M7 记录）
 
 ---
 

@@ -85,7 +85,8 @@ def main():
         return !document.getElementById('vrSettings').classList.contains('on'); })()
     """, psid)
     smoke["openTools"] = cdp.eval("""
-      (() => { document.getElementById('btnTools').click();
+      (() => { document.getElementById('btnSettings').click();
+        document.getElementById('vrAdvTools').click();
         return document.getElementById('vrTools').classList.contains('on'); })()
     """, psid)
     smoke["closeTools"] = cdp.eval("""
@@ -123,7 +124,7 @@ def main():
     if state:
         exprs = {
             "settings": "document.getElementById('btnSettings').click()",
-            "tools": "document.getElementById('btnTools').click()",
+            "tools": "document.getElementById('btnSettings').click();document.getElementById('vrAdvTools').click();",
             "rename": ("(()=>{const b=document.querySelector('#mediaList .panel .DownCheck');"
                        "if(b&&!b.checked)b.click();document.getElementById('vrRename').click();})()"),
             "dirmenu": "document.querySelector('#mediaList .panel [data-vr-dir]').click()",

@@ -1,8 +1,8 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.1 ｜ 日期：2026-10-17 ｜ 状态：✅ 已生效
+> 版本：v1.2 ｜ 日期：2026-10-17 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
-> v1.1 变更：M2–M6 里程碑产出物批量登记（下载管线/站点增强/周边/打磨四组共 18 条）。
+> v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 
 ---
 
@@ -76,32 +76,38 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.0 | 进行中 | ADR-001~024，追加式 |
+| 决策记录 | `docs/DECISIONS.md` | v1.0 | 进行中 | ADR-001~025，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合） |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
-| popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 评审中 | 浅色 A/B/C 三方案可点原型；行高 66px，6/12 条数据量切换（默认 12）；不改源码 |
-| popup 重设计三方向（旧） | `deliverables/prototypes/popup-redesign-options-v1.html` | v1 | 已被 v2 取代 | 首版交付（6 条数据、行高 59px）；苏哥确认 v2 后按 §5.1 归档 |
-| 重设计方案说明 | `deliverables/reviews/2026-10-17-popup-redesign.md` | 2026-10-17 | 评审中 | 调研依据 + 现状诊断 + 推荐 A + 10+ 滚动规则 + 落地契约 |
-| popup 外壳 | `popup.html` + `css/videorod.css` | v1.0 | 已定稿 | M1 产物；按原型 v5 重写，功能钩子全保留 |
-| popup 交互层 | `js/popup-videorod.js` | v1.1 | 已定稿 | M1 打底（v1.0）+ M2 下载管线 + M3/M4 站点增强 + M5 图片批量；`currentPageUrl()` 改走 `chrome.tabs.get` |
+| popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 已定稿 | 浅色 A/B/C 三方案可点原型；苏哥拍板方案 A「收网」（ADR-025），已全量整合进产品代码 |
+| popup 重设计三方向（旧） | `archive/prototypes/popup-redesign-options-v1.html` | v1 | 已归档 | 首版交付（6 条数据、行高 59px）；苏哥确认 v2 后按 §5.1 归档；配套调研脚本 probe12.py/shot_v2.py 同迁 archive/prototypes/ |
+| 重设计方案说明 | `deliverables/reviews/2026-10-17-popup-redesign.md` | 2026-10-17 | 已定稿 | 调研依据 + 现状诊断 + 推荐 A + 10+ 滚动规则 + 落地契约；方案 A 已施工完毕 |
+| popup 外壳 | `popup.html` + `css/videorod.css` | v2.0 | 已定稿 | M1 按原型 v5 重写（v1.0）；M7 浅色重设计整合（v2.0）：浅色 token + 头部两行化 + 66px 干净行卡片 + 设置 4 组全屏视图 |
+| popup 浅色覆盖层 | `css/popup-light.css` | v1.0 | 已定稿 | M7 新建；`#vrShell` 作用域内把猫抓 17 个原生变量钉为浅色（ID 特异性压制 dark media query，不动猫抓源码） |
+| popup 交互层 | `js/popup-videorod.js` | v1.2 | 已定稿 | M1 打底（v1.0）+ M2 下载管线 + M3/M4 站点增强 + M5 图片批量（v1.1）+ M7 设置视图/高级工具入口适配（v1.2）；`currentPageUrl()` 改走 `chrome.tabs.get` |
+| 猫抓内核最小触碰 | `js/popup.js` | v1.1 | 已定稿 | M7 三处最小改动：模板 meta 段显 `.name` + 新增 `.metasub`；url 面板显隐给 `.panel` 加/删 `vr-open` class；改名失焦同步标题文本 |
 | M1 有头浏览器验收脚本 | `tools/cdp-m1-test.py` | v1.1 | 已定稿 | CDP 连有头 Chromium，DOM 断言+交互冒烟+状态截图；v1.1 增加 biliBanner/partChips/ytBanner 断言 |
-| M1 面板截图 | `deliverables/assets/m1-panel-{list,settings,rename,dirmenu}.png` | 2026-10-17 | 评审中 | 有头浏览器四态实拍（列表/设置/命名弹层/目录菜单） |
+| M1 面板截图（深色版） | `deliverables/assets/m1-panel-{list,settings,rename,dirmenu}.png` | 2026-10-17 | 已归档 | M1 深色外壳四态实拍；M7 浅色化后由 final-m7-plain/settings.png 取代 |
 | CDP 公用客户端 | `tools/cdp_client.py` | v1.1 | 已定稿 | `Cdp` 类 + `find_ext_id` + `open_popup`；v1.1 内建「新建标签页 + 禁缓存」修掉复用旧标签页嗅探为 0 的坑 |
 | M2 下载管线验收脚本 | `tools/cdp-m2-test.py` | v1.0 | 已定稿 | 真落盘 + 去重 + 完成态；测完自动清理本次新增文件 |
 | M3+M5 合并验收脚本 | `tools/cdp-m3-m5-test.py` | v1.1 | 已定稿 | B站分P横幅 + 图片弹层 + 图片真落盘（`VR_DL=1` 开启落盘）；v1.1 加 try/except+traceback，崩了留现场不再空文件 |
 | M5b 秒存/快捷键验收脚本 | `tools/cdp-m5b-test.py` | v1.0 | 已定稿 | 走 `vrSaveContextMedia` 真实路径验右键秒存落盘；CDP 真实派发 Alt+Shift+V 验快捷键 |
 | SW 状态诊断探针 | `tools/cdp-probe.py` | v1.0 | 已定稿 | 读 service worker 的 G/cacheData 状态，排查「嗅探为 0」类问题用 |
-| M2 面板回归截图 | `deliverables/assets/m1-regress.png` | 2026-10-17 | 评审中 | M2 阶段复跑 M1 断言集的实拍（防重构改坏） |
-| M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 评审中 | 12 分P横幅 + 展开态 |
-| M4 YouTube 限制横幅截图 | `deliverables/assets/m4-yt-banner.png` | 2026-10-17 | 评审中 | 离线等效验证（域名映射）下的橙色警示横幅 |
-| M5 图片弹层截图 | `deliverables/assets/m5-img-modal.png` | 2026-10-17 | 评审中 | 抓图弹层：2 张有效图（坏图/小图/重复图已滤掉） |
-| HLS 流媒体回归截图 | `deliverables/assets/hls-regress.png` | 2026-10-17 | 评审中 | m3u8 双清晰度卡 + 清晰度下拉 |
-| M6 全功能回归截图 | `deliverables/assets/final-{m1,hls,yt}.png` | 2026-10-17 | 评审中 | M6 从已提交状态重跑 M1 断言集的实拍：index.html / hls.html / notyoutube.com 三页，errors 均 0 |
+| M2 面板回归截图（深色版） | `deliverables/assets/m1-regress.png` | 2026-10-17 | 已归档 | M2 阶段复跑 M1 断言集的实拍（防重构改坏）；浅色版现行 |
+| M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 已定稿 | M7 回归时重拍为浅色版（12 分P横幅 + 展开态），与 final-m7-bili.png 同内容 |
+| M4 YouTube 限制横幅截图（深色版） | `deliverables/assets/m4-yt-banner.png` | 2026-10-17 | 已归档 | 离线等效验证（域名映射）下的橙色警示横幅；浅色版见 final-m7-ytbanner.png |
+| M5 图片弹层截图 | `deliverables/assets/m5-img-modal.png` | 2026-10-17 | 已定稿 | M7 回归时重拍为浅色版（2 张有效图，坏图/小图/重复图已滤掉），与 final-m7-imgmodal.png 同内容 |
+| HLS 流媒体回归截图（深色版） | `deliverables/assets/hls-regress.png` | 2026-10-17 | 已归档 | m3u8 双清晰度卡 + 清晰度下拉；浅色版回归由断言集覆盖（hls 页 cardCount=2/qualities=2） |
+| M6 全功能回归截图（深色版） | `deliverables/assets/final-{m1,hls,yt}.png` | 2026-10-17 | 已归档 | M6 深色版三页实拍；M7 浅色化后由 final-m7-* 五态截图取代 |
 | 测试站页面 | `test-site/{index,hls,bili-fake,images,yt-fake}.html` | 2026-10-17 | 已定稿 | 五类测试夹具：直链视频/HLS/B站分P/图片批量/YouTube（域名映射） |
 | 右键秒存 + 快捷键 | `js/init.js` + `js/background.js` + `manifest.json` | v1.0 | 已定稿 | M5 产物；两个一级右键菜单 + `vrSaveContextMedia()` + Alt+Shift+V |
-| README 使用说明 | `README.md` §使用说明 | v1.1 | 已定稿 | M6 产物；九节大白话完整指引（安装/日常/秒存/批量/B站/命名/设置/认账/快捷键） |
-| 测试策略文档 | `docs/TESTING.md` | v1.2 | 已定稿 | M6 产物；补 M2–M5 冒烟记录 + 4 条测试环境限制 + 脚手架要点 |
-| 施工计划检查站记录 | `docs/BUILD-PLAN.md` §六 | v1.1 | 已定稿 | M6 产物；M2/M3/M4/M5/M6 五个检查站全部填毕 |
+| README 使用说明 | `README.md` §使用说明 | v1.2 | 已定稿 | M6 产物：九节大白话完整指引；M7 随浅色重设计更新（行展开改名/抓图位置/设置视图四组 9 项+高级工具） |
+| 测试策略文档 | `docs/TESTING.md` | v1.3 | 已定稿 | M6 产物：用例表+回归清单+M2–M5 冒烟记录；M7 补浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧） |
+| 施工计划检查站记录 | `docs/BUILD-PLAN.md` §六 | v1.2 | 已定稿 | M6 产物：M2/M3/M4/M5/M6 五个检查站全部填毕；M7 补浅色重设计整合检查站 |
+| M4 YouTube 验收脚本 | `tools/cdp-m4-test.py` | v1.0 | 已定稿 | M7 新建（M4 此前只有临时探针）；导航 `http://notyoutube.com:18080/`（必须带端口，见 TESTING §5），验 YT 横幅 + 嗅探卡片 + 浅色 |
+| z 序回归探针 | `tools/probe-zorder.py` | v1.0 | 已定稿 | M7 新建；elementFromPoint 验证各浮层完整盖住底栏—— flex item z-index 陷阱的回归防线，改外壳 CSS 后必跑 |
+| M7 归档截图工具 | `tools/shot-m7-final.py` | v1.0 | 已定稿 | 五状态归档截图（普通/设置/YT横幅/B站/图片弹层）；内建 settle+retry 绕 CDP 懒帧、显式 force 绕卡死过渡 |
+| M7 回归截图（五态） | `deliverables/assets/final-m7-{plain,settings,ytbanner,bili,imgmodal}.png` | 2026-10-17 | 评审中 | 浅色重设计落地实拍：普通列表/设置 4 组视图/YT 警示横幅/B站 12 分P 展开/图片弹层 |
 
 > 登记规则：新产出物落地当天登记；状态变化当天更新；每完成一个 M 里程碑过一遍表。
 

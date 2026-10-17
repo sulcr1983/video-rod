@@ -1,26 +1,36 @@
 /* ==========================================================================
-   钓鱼竿 video-rod — popup 视觉层（M1）
-   设计基准：deliverables/prototypes/popup-prototype-v5.html
-   说明：本文件在 popup.css 之后加载，只做「覆盖 + 新组件」，
-        猫抓原有的定位/隐藏逻辑（#down / .container / .more 等）照旧生效。
+   钓鱼竿 video-rod — popup 视觉层
+   M1 基准：deliverables/prototypes/popup-prototype-v5.html（深色）
+   M7 重设计：deliverables/reviews/2026-10-17-popup-redesign.md 方案 A「收网」
+     · 浅色 token（正文 #0E1116 18.9:1 / 次要 #6B7480 5.1:1 / 分隔线 #EFF1F4）
+     · 两行式头部：① 站点·标题·数量+页签（文字）② 类型筛选（文字下划线）
+     · 列表行 66px：每行 1 个控件（勾选），改名/清晰度/目录收进展开区
+     · 底部固定主操作栏：全选 → 批量命名 → 批量下载（唯一主按钮）
+   本文件在 popup.css 之后加载，只做「覆盖 + 新组件」，
+   猫抓原有的定位/隐藏逻辑（#down / .container / .more 等）照旧生效。
    ========================================================================== */
 
 :root {
-    --vr-bg: #171a21;
-    --vr-bg-deep: #141720;
-    --vr-card: #1d222c;
-    --vr-card-hi: #1d2430;
-    --vr-line: #232936;
-    --vr-line-2: #272e3c;
-    --vr-text: #e6e9ef;
-    --vr-text-dim: #aab3c2;
-    --vr-text-mute: #77808f;
-    --vr-cyan: #22d3ee;
-    --vr-cyan-deep: #0e7490;
-    --vr-cyan-soft: #7dd3fc;
-    --vr-orange: #fb923c;
-    --vr-green: #4ade80;
-    --vr-radius: 11px;
+    --vr-bg: #ffffff;
+    --vr-bg-deep: #f5f6f8;
+    --vr-card: #ffffff;
+    --vr-card-hi: #eef6f4;
+    --vr-line: #eff1f4;
+    --vr-line-2: #e4e6ea;
+    --vr-text: #0e1116;
+    --vr-text-dim: #6b7480;
+    --vr-text-mute: #98a1ac;
+    --vr-cyan: #0f6e63;
+    --vr-cyan-deep: #0b5750;
+    --vr-cyan-soft: #0f6e63;
+    --vr-cyan-tint: #e6f4f1;
+    --vr-cyan-tint-line: #bfe0da;
+    --vr-orange: #c2410c;
+    --vr-green: #12805c;
+    --vr-ink: #16181d;
+    --vr-hover: #f1f3f6;
+    --vr-shadow: 0 10px 30px rgba(16, 24, 40, .12);
+    --vr-radius: 10px;
 }
 
 /* ---------- 外壳 ---------- */
@@ -50,14 +60,14 @@ body.popupBody {
 /* 统一盒模型，避免 padding 撑破 400px */
 #vrShell,
 .pop-head,
-.pageinfo,
-.vr-tabs,
+.sitebar,
 .filters,
 #down,
 .panel,
 .modal,
 .dirmenu,
-.drawer {
+.drawer,
+.setview {
     box-sizing: border-box;
 }
 
@@ -66,8 +76,8 @@ body.popupBody {
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 11px 13px 9px;
-    background: linear-gradient(180deg, #1b202a, var(--vr-bg));
+    padding: 10px 13px 8px;
+    background: var(--vr-bg);
     border-bottom: 1px solid var(--vr-line);
     flex: none;
 }
@@ -87,7 +97,7 @@ body.popupBody {
 
 .pop-head .pop-title small {
     font-size: 9.5px;
-    color: var(--vr-cyan);
+    color: var(--vr-text-mute);
     font-weight: 500;
     margin-left: 5px;
     letter-spacing: 0;
@@ -95,9 +105,9 @@ body.popupBody {
 
 .pop-head .ver {
     font-size: 9px;
-    color: #8b93a3;
-    background: #222736;
-    border: 1px solid #2c3444;
+    color: var(--vr-text-mute);
+    background: var(--vr-bg-deep);
+    border: 1px solid var(--vr-line-2);
     padding: 2px 6px;
     border-radius: 20px;
 }
@@ -108,7 +118,7 @@ body.popupBody {
     border-radius: 8px;
     border: none;
     cursor: pointer;
-    background: #222736;
+    background: none;
     color: var(--vr-text-dim);
     display: grid;
     place-items: center;
@@ -119,38 +129,33 @@ body.popupBody {
 
 .iconbtn:first-of-type { margin-left: auto; }
 
-.iconbtn:hover { background: #2b3242; color: var(--vr-text); }
+.iconbtn:hover { background: var(--vr-hover); color: var(--vr-text); }
 .iconbtn svg { width: 14px; height: 14px; }
 
-/* ---------- 页面信息条 ---------- */
-.pageinfo {
+/* ---------- 两行式头部 ①：站点 · 标题 · 数量 + 页签 ---------- */
+.sitebar {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 13px;
-    font-size: 10.5px;
-    color: #7d8697;
-    background: var(--vr-bg-deep);
+    padding: 8px 13px 7px;
+    font-size: 11px;
+    color: var(--vr-text-dim);
     border-bottom: 1px solid var(--vr-line);
     flex: none;
+    min-width: 0;
 }
 
-.pageinfo .site {
-    background: #1d2b33;
+.sitebar .site {
     color: var(--vr-cyan);
-    border: 1px solid #23434f;
-    padding: 1.5px 7px;
-    border-radius: 20px;
-    font-size: 9.5px;
     font-weight: 600;
     flex: none;
-    max-width: 118px;
+    max-width: 108px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.pageinfo .ptitle {
+.sitebar .ptitle {
     flex: 1;
     min-width: 0;
     overflow: hidden;
@@ -158,91 +163,93 @@ body.popupBody {
     white-space: nowrap;
 }
 
-.pageinfo .count { flex: none; color: var(--vr-text-dim); }
-.pageinfo .count b { color: var(--vr-orange); }
+.sitebar .count { flex: none; color: var(--vr-text-mute); }
+.sitebar .count b { color: var(--vr-ink); font-weight: 600; }
 
-/* ---------- 标签页（猫抓原生，收窄成小胶囊） ---------- */
+/* 页签收成文字，靠右；选中=墨色+下划线（猫抓原生 .Tabs/.TabButton 结构不动） */
 .vr-tabs {
     display: flex;
-    gap: 5px;
-    padding: 7px 13px 0;
+    gap: 10px;
     flex: none;
+    padding: 0;
+    margin-left: 4px;
 }
 
 .vr-tabs .TabButton {
-    flex: 1;
+    flex: none;
+    width: auto;
     font-size: 10.5px;
-    padding: 5px 6px;
-    border-radius: 7px;
-    background: #1a1e27;
-    border: 1px solid var(--vr-line-2);
+    padding: 1px 0 2px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
     color: var(--vr-text-mute);
-    text-align: center;
     cursor: pointer;
     transition: .15s;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .vr-tabs .TabButton.Active {
-    background: #12242e;
-    border-color: #23434f;
-    color: var(--vr-cyan);
+    color: var(--vr-ink);
     font-weight: 600;
+    border-bottom-color: var(--vr-ink);
 }
 
-.vr-tabs .TabButton:hover { border-color: #384257; }
+.vr-tabs .TabButton:hover { color: var(--vr-text); }
 
 /* 猫抓把数量塞在 #quantity 里，别让它换行 */
 .vr-tabs .TabButton #quantity {
     display: inline;
-    margin-left: 3px;
+    margin-left: 2px;
     font-size: 9.5px;
-    color: var(--vr-orange);
+    color: var(--vr-text-mute);
 }
 
-/* ---------- 类型筛选 ---------- */
+/* ---------- 两行式头部 ②：类型筛选（文字，选中下划线） ---------- */
 .filters {
     display: flex;
-    gap: 5px;
-    padding: 8px 13px;
+    gap: 13px;
+    padding: 7px 13px 8px;
     flex: none;
     border-bottom: 1px solid var(--vr-line);
+    align-items: baseline;
 }
 
 .fchip {
-    font-size: 10.5px;
-    padding: 3px 9px;
-    border-radius: 99px;
-    border: 1px solid #2a3a44;
-    background: #152027;
-    color: #9fb3bd;
+    font-size: 11px;
+    padding: 1px 0 3px;
+    border-radius: 0;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--vr-text-dim);
     cursor: pointer;
     font-family: inherit;
     transition: .15s;
+    white-space: nowrap;
 }
 
-.fchip:hover { border-color: #3b5260; }
+.fchip:hover { color: var(--vr-ink); }
 
 .fchip.on {
-    border-color: var(--vr-cyan);
-    color: var(--vr-cyan);
-    background: #12242e;
+    color: var(--vr-ink);
+    font-weight: 600;
+    border-bottom-color: var(--vr-ink);
 }
 
-.fchip b { font-weight: 600; opacity: .75; }
+.fchip b { font-weight: 600; color: var(--vr-text-mute); margin-left: 2px; }
+.fchip.on b { color: var(--vr-text-dim); }
 
-/* 抓图按钮靠右 */
+/* 抓图按钮靠右，安静的文字按钮 */
 .filters .vr-imgbtn {
     margin-left: auto;
-    border-color: #2e5a6b;
-    color: var(--vr-cyan-soft);
+    color: var(--vr-cyan);
+    border-bottom: 2px solid transparent;
 }
 
-.filters .vr-imgbtn:hover { border-color: var(--vr-cyan); color: var(--vr-cyan); }
+.filters .vr-imgbtn:hover { color: var(--vr-cyan-deep); }
 
-/* 图片批量弹层 */
+/* ---------- 图片批量弹层 ---------- */
 .vrimg-list {
     max-height: 300px;
     overflow-y: auto;
@@ -256,21 +263,21 @@ body.popupBody {
     align-items: center;
     gap: 6px;
     background: var(--vr-bg-deep);
-    border: 1px solid #222736;
+    border: 1px solid var(--vr-line-2);
     border-radius: 7px;
     padding: 5px 6px;
     cursor: pointer;
     min-width: 0;
 }
 
-.vrimg-row:hover { border-color: #384257; }
+.vrimg-row:hover { border-color: var(--vr-cyan-tint-line); }
 
 .vrimg-row img {
     width: 34px;
     height: 34px;
     object-fit: cover;
     border-radius: 5px;
-    background: #0f1218;
+    background: var(--vr-bg-deep);
     flex: none;
 }
 
@@ -289,7 +296,7 @@ body.popupBody {
 #maybeKey.container,
 #vrTools.container {
     margin-bottom: 0 !important;
-    padding: 9px;
+    padding: 0;
     max-height: 460px;
     overflow-y: auto;
     overflow-x: hidden;
@@ -306,26 +313,28 @@ body.popupBody {
 #allMediaList::-webkit-scrollbar-thumb,
 #otherOptions::-webkit-scrollbar-thumb,
 #vrTools::-webkit-scrollbar-thumb {
-    background: #2c3444;
+    background: #d7dbe1;
     border-radius: 3px;
 }
 
 #mediaList > div,
 #allMediaList > div { display: block; }
 
-/* ---------- 卡片 ---------- */
+/* ---------- 列表行（方案 A：66px 干净行，1px 分隔，无卡片描边） ---------- */
 .panel {
     background: var(--vr-card);
-    border: 1px solid var(--vr-line-2);
-    border-radius: var(--vr-radius);
-    margin: 0 0 8px;
-    padding: 8px 9px 9px;
-    transition: border-color .15s, background .15s;
+    border: none;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+    transition: background .15s;
     position: relative;
 }
 
-.panel:hover { border-color: #384257; }
-.panel:has(.DownCheck:checked) { border-color: #22d3ee66; background: var(--vr-card-hi); }
+.panel + .panel { border-top: 1px solid var(--vr-line); }
+
+.panel:hover { background: #fafbfc; }
+.panel:has(.DownCheck:checked) { background: var(--vr-card-hi); }
 
 /* 类型筛选：独立 class，不与猫抓的扩展名筛选（inline display）互相覆盖 */
 .panel.vr-type-off { display: none !important; }
@@ -335,12 +344,12 @@ body.popupBody {
 .panel.done::after {
     content: '✓ ' attr(data-vr-state);
     position: absolute;
-    top: 7px;
-    right: 9px;
+    top: 10px;
+    right: 12px;
     font-size: 9px;
     color: var(--vr-green);
-    background: #17301f;
-    border: 1px solid #24513a;
+    background: #e7f6ee;
+    border: 1px solid #c2e6d2;
     padding: 1.5px 6px;
     border-radius: 20px;
     pointer-events: none;
@@ -351,11 +360,11 @@ body.popupBody {
 .panel-heading {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0;
+    gap: 9px;
+    padding: 9px 14px;
     background: none;
     cursor: pointer;
-    min-height: 22px;
+    min-height: 66px;
 }
 
 /* 复选框 */
@@ -363,29 +372,29 @@ body.popupBody {
 .chk {
     appearance: none;
     -webkit-appearance: none;
-    width: 15px;
-    height: 15px;
+    width: 16px;
+    height: 16px;
     border-radius: 5px;
     flex: none;
     cursor: pointer;
-    border: 1.5px solid #3a4356;
-    background: #222736;
+    border: 1.5px solid #c9ced6;
+    background: #fff;
     transition: .15s;
     position: relative;
     padding: 0;
     margin: 0;
 }
 
-.chk:checked { background: var(--vr-cyan); border-color: var(--vr-cyan); }
+.chk:checked { background: var(--vr-ink); border-color: var(--vr-ink); }
 
 .chk:checked::after {
     content: '';
     position: absolute;
-    left: 4px;
-    top: 1px;
+    left: 4.5px;
+    top: 1.5px;
     width: 4px;
     height: 8px;
-    border: solid #0b1116;
+    border: solid #fff;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
@@ -402,47 +411,58 @@ body.popupBody {
     text-transform: uppercase;
 }
 
-.panel .badge.b-mp4 { background: #3b2a12; color: #fbbf24; border: 1px solid #57411a; }
-.panel .badge.b-hls { background: #122c3d; color: #38bdf8; border: 1px solid #1d4a66; }
-.panel .badge.b-mpd { background: #1b2a3d; color: #93c5fd; border: 1px solid #2a4360; }
-.panel .badge.b-img { background: #0f2f22; color: #34d399; border: 1px solid #17543a; }
-.panel .badge.b-aud { background: #2c1a33; color: #d8b4fe; border: 1px solid #4a2a58; }
-.panel .badge.b-other { background: #262b36; color: #9aa3b2; border: 1px solid #333b4a; }
+.panel .badge.b-mp4 { background: #fdf0e0; color: #9a4a06; border: 1px solid #f3d9b8; }
+.panel .badge.b-hls { background: #e9f3fb; color: #175e8a; border: 1px solid #c8e0f0; }
+.panel .badge.b-mpd { background: #eef0fb; color: #3b4a8a; border: 1px solid #d5d9ee; }
+.panel .badge.b-img { background: #e7f6ee; color: #11683f; border: 1px solid #c2e6d2; }
+.panel .badge.b-aud { background: #f3edfa; color: #6b3fa0; border: 1px solid #e0d2f0; }
+.panel .badge.b-other { background: #f1f3f6; color: #5b6472; border: 1px solid #e2e5ea; }
 
-/* 标题 + 元信息 */
+/* 标题 + 元信息（两行：名称 / 大小·格式） */
 .panel-heading .meta {
     flex: 1;
     min-width: 0;
     display: flex;
-    align-items: baseline;
-    gap: 5px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
     overflow: hidden;
 }
 
 .panel-heading .name {
     flex: 0 1 auto;
     min-width: 0;
+    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 11.5px;
+    font-size: 12.5px;
     color: var(--vr-text);
     margin: 0;
 }
 
 .panel-heading .name.bold { font-weight: 600; }
 
+.panel-heading .metasub {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
 .panel-heading .size {
     float: none;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 400;
     color: var(--vr-text-mute);
     flex: none;
 }
 
 .panel-heading .vrmime {
-    font-size: 9.5px;
-    color: #5c6575;
+    font-size: 10.5px;
+    color: var(--vr-text-mute);
     flex: 0 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -455,9 +475,9 @@ body.popupBody {
     display: none;   /* 猫抓的分组序号（video 元素下标），设计里没有，纯噪音 */
 }
 
-/* 卡片内图标统一成线性风格（cat-catch 的位图在深色下是蓝块） */
+/* 卡片内图标统一成线性风格（cat-catch 的位图在浅色下是灰块，统一走 currentColor） */
 .panel-heading svg.icon {
-    color: #8b93a3;
+    color: var(--vr-text-mute);
     stroke: currentColor;
     fill: none;
 }
@@ -466,8 +486,8 @@ body.popupBody {
 .panel-heading .icon,
 .panel-heading .favicon,
 .panel-heading .regex {
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     padding: 0;
     margin: 0;
     flex: none;
@@ -481,41 +501,31 @@ body.popupBody {
 
 .panel-heading .icon:active { transform: scale(.9); }
 
-/* 下载按钮（原 #download 图标 → 蓝色方块） */
-.panel-heading .icon.download {
-    width: 25px;
-    height: 25px;
-    border-radius: 7px;
-    border: 1px solid #2c3444;
-    background: #222736;
-    padding: 5px;
-    opacity: 1;
-    box-sizing: border-box;
-    margin-left: 2px;
-}
+/* 方案 A：行内不再常驻第二个下载图标和复制图标（批量下载是唯一主按钮；
+   预览播放保留——只在可播放行出现，且没有别的入口） */
+.panel-heading .icon.download,
+.panel-heading .icon.copy { display: none; }
 
-.panel-heading .icon.download:hover {
-    background: var(--vr-cyan-deep);
-    border-color: var(--vr-cyan);
-    transform: none;
-    filter: none;
-}
+.panel-heading .icon.play { color: var(--vr-cyan); opacity: .8; }
 
-/* ---------- 第二行：文件名 / 清晰度 / 目录 ---------- */
+/* ---------- 第二行：文件名 / 清晰度 / 目录（默认收起，展开行时出现） ---------- */
 .panel .row2,
 .row2 {
-    display: flex;
+    display: none;
     align-items: center;
     gap: 6px;
-    margin-top: 7px;
+    margin: 0;
+    padding: 0 14px 10px;
 }
+
+.panel.vr-open .row2 { display: flex; }
 
 .namebox {
     flex: 1;
     display: flex;
     align-items: center;
     background: var(--vr-bg-deep);
-    border: 1px solid #262b36;
+    border: 1px solid var(--vr-line-2);
     border-radius: 7px;
     padding: 0 7px;
     transition: .15s;
@@ -523,13 +533,13 @@ body.popupBody {
 }
 
 .namebox:focus-within {
-    border-color: #22d3ee88;
-    background: #10131b;
+    border-color: var(--vr-cyan-tint-line);
+    background: #fff;
 }
 
 .namebox .lbl {
     font-size: 9.5px;
-    color: #5c6575;
+    color: var(--vr-text-mute);
     margin-right: 4px;
     flex: none;
     user-select: none;
@@ -550,7 +560,7 @@ body.popupBody {
 
 .qsel {
     background: var(--vr-bg-deep);
-    border: 1px solid #262b36;
+    border: 1px solid var(--vr-line-2);
     color: var(--vr-text-dim);
     font-size: 10px;
     border-radius: 7px;
@@ -562,15 +572,15 @@ body.popupBody {
     max-width: 84px;
 }
 
-.qsel:focus { border-color: #22d3ee88; }
+.qsel:focus { border-color: var(--vr-cyan-tint-line); }
 
 .dirchip {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: #1a2b33;
-    border: 1px solid #23434f;
-    color: var(--vr-cyan-soft);
+    background: var(--vr-cyan-tint);
+    border: 1px solid var(--vr-cyan-tint-line);
+    color: var(--vr-cyan);
     font-size: 9.5px;
     padding: 5px 7px;
     border-radius: 7px;
@@ -583,23 +593,23 @@ body.popupBody {
     overflow: hidden;
 }
 
-.dirchip:hover { background: #1f3540; border-color: #2e5a6b; }
+.dirchip:hover { background: #d9ede8; border-color: var(--vr-cyan); }
 .dirchip svg { width: 10px; height: 10px; flex: none; }
 .dirchip span { overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- 展开区（猫抓原生 url 面板） ---------- */
 .panel .url,
 .panel .confirm {
-    padding: 7px 0 2px;
-    border-top: 1px dashed #2a3a44;
-    margin-top: 7px;
+    padding: 8px 14px 12px;
+    border-top: 1px dashed var(--vr-line-2);
+    margin-top: 0;
     font-size: 10.5px;
-    color: var(--vr-text-mute);
+    color: var(--vr-text-dim);
     line-height: 1.7;
     word-break: break-all;
 }
 
-.panel .url a { color: var(--vr-cyan-soft); font-size: 10px; }
+.panel .url a { color: var(--vr-cyan); font-size: 10px; }
 
 .panel .url .moreButton {
     display: flex;
@@ -634,9 +644,9 @@ body.popupBody {
 /* ---------- 进度条 ---------- */
 .panel .prog {
     height: 3px;
-    background: #222736;
+    background: var(--vr-line-2);
     border-radius: 2px;
-    margin-top: 7px;
+    margin: 0 14px 10px;
     overflow: hidden;
     display: none;
 }
@@ -647,22 +657,26 @@ body.popupBody {
     display: block;
     height: 100%;
     width: 0;
-    background: linear-gradient(90deg, var(--vr-cyan), var(--vr-green));
+    background: var(--vr-cyan);
     border-radius: 2px;
     transition: width .2s;
 }
 
-/* ---------- 底部操作栏 ---------- */
+/* ---------- 底部主操作栏（固定，唯一主按钮） ---------- */
 #down {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 9px 11px;
-    background: var(--vr-bg-deep);
+    background: var(--vr-bg);
     border-top: 1px solid var(--vr-line);
     position: static;
     flex: none;
     box-shadow: none;
+    /* 猫抓原样式给 #down 带了 z-index:999（原为 fixed 浮动底栏）。
+       现改为文档流内底栏，但作为 #vrShell 的 flex item，static 元素的 z-index 仍会
+       创建层叠上下文，把 mask/modal/drawer/setview 全压在脚下 → 必须清掉 */
+    z-index: auto;
 }
 
 #down .allsel {
@@ -670,7 +684,7 @@ body.popupBody {
     align-items: center;
     gap: 5px;
     font-size: 10.5px;
-    color: #8b93a3;
+    color: var(--vr-text-dim);
     cursor: pointer;
     user-select: none;
     flex: none;
@@ -680,9 +694,9 @@ body.popupBody {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: #222736;
-    border: 1px solid #2c3444;
-    color: #c6cdd9;
+    background: #fff;
+    border: 1px solid var(--vr-line-2);
+    color: var(--vr-text-dim);
     font-size: 10.5px;
     padding: 6px 9px;
     border-radius: 8px;
@@ -692,30 +706,31 @@ body.popupBody {
     white-space: nowrap;
 }
 
-.fbtn:hover { background: #2b3242; border-color: #3a4356; }
+.fbtn:hover { background: var(--vr-hover); border-color: #d3d8df; color: var(--vr-text); }
 .fbtn svg { width: 11px; height: 11px; }
 
 .fbtn.primary {
     margin-left: auto;
-    background: linear-gradient(135deg, #0e7490, #155e75);
-    border-color: #22d3ee55;
-    color: #e0faff;
+    background: var(--vr-ink);
+    border-color: var(--vr-ink);
+    color: #fff;
     font-weight: 600;
 }
 
 .fbtn.primary:hover {
-    background: linear-gradient(135deg, #0891b2, #0e7490);
-    box-shadow: 0 0 12px #22d3ee33;
+    background: #23282f;
+    border-color: #23282f;
+    color: #fff;
 }
 
-.fbtn.primary:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.fbtn.primary:disabled { opacity: .45; cursor: not-allowed; }
 
 .fbtn .cnt {
-    background: #0b1116;
+    background: rgba(255, 255, 255, .18);
     border-radius: 10px;
     padding: 0 5px;
     font-size: 9px;
-    color: var(--vr-cyan-soft);
+    color: #fff;
 }
 
 /* 原生按钮统一缩窄 */
@@ -726,15 +741,15 @@ body.popupBody {
     font-size: 10px;
     padding: 5px 7px;
     border-radius: 7px;
-    border: 1px solid #2c3444;
-    background: #222736;
-    color: #c6cdd9;
+    border: 1px solid var(--vr-line-2);
+    background: #fff;
+    color: var(--vr-text-dim);
     cursor: pointer;
     font-family: inherit;
     margin: 0;
 }
 
-#down > button:not(.fbtn):hover { background: #2b3242; }
+#down > button:not(.fbtn):hover { background: var(--vr-hover); }
 
 /* ---------- 提示 / 空状态 ---------- */
 #Tips {
@@ -751,13 +766,13 @@ body.popupBody {
     right: auto !important;
     bottom: 58px;
     transform: translateX(-50%);
-    background: #22262f;
-    border: 1px solid #2c3444;
-    color: var(--vr-text);
+    background: var(--vr-ink);
+    border: none;
+    color: #fff;
     font-size: 10.5px;
     padding: 7px 13px;
     border-radius: 9px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+    box-shadow: var(--vr-shadow);
     white-space: nowrap;
     max-width: 360px;
     overflow: hidden;
@@ -769,7 +784,7 @@ body.popupBody {
 #filter.more,
 #features.more {
     position: fixed;
-    background: #1a1e27f2;
+    background: #fffffff2;
     backdrop-filter: blur(6px);
     border-top: 1px solid var(--vr-line-2);
     padding: 9px 11px;
@@ -793,7 +808,7 @@ body.popupBody {
 #ext .flexFilter {
     font-size: 10px;
     color: var(--vr-text-dim);
-    background: #1a1e27;
+    background: #fff;
     border: 1px solid var(--vr-line-2);
     border-radius: 6px;
     padding: 3px 7px;
@@ -819,7 +834,7 @@ body.popupBody {
 .mask {
     position: fixed;
     inset: 0;
-    background: #0b0d10b0;
+    background: rgba(14, 17, 22, .32);
     backdrop-filter: blur(2px);
     z-index: 400;
     display: none;
@@ -834,12 +849,12 @@ body.popupBody {
     top: 50%;
     transform: translateY(-50%);
     background: var(--vr-card);
-    border: 1px solid #2c3444;
+    border: 1px solid var(--vr-line-2);
     border-radius: 13px;
     padding: 15px;
     z-index: 450;
     display: none;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+    box-shadow: var(--vr-shadow);
 }
 
 .modal.on { display: block; animation: vrUp .16s ease; }
@@ -852,14 +867,14 @@ body.popupBody {
 
 .modal .sub {
     font-size: 10px;
-    color: var(--vr-text-mute);
+    color: var(--vr-text-dim);
     margin-bottom: 11px;
     line-height: 1.7;
 }
 
 .modal .sub code {
-    color: var(--vr-cyan-soft);
-    background: #12242e;
+    color: var(--vr-cyan);
+    background: var(--vr-cyan-tint);
     padding: 1px 4px;
     border-radius: 4px;
     font-size: 9.5px;
@@ -872,7 +887,7 @@ body.popupBody {
 .tplrow input {
     flex: 1;
     background: var(--vr-bg-deep);
-    border: 1px solid #262b36;
+    border: 1px solid var(--vr-line-2);
     border-radius: 8px;
     color: var(--vr-text);
     font-size: 11.5px;
@@ -882,12 +897,12 @@ body.popupBody {
     min-width: 0;
 }
 
-.tplrow input:focus { border-color: #22d3ee88; }
+.tplrow input:focus { border-color: var(--vr-cyan-tint-line); }
 
 .tplrow button {
-    background: var(--vr-cyan-deep);
-    border: 1px solid #22d3ee66;
-    color: #e0faff;
+    background: var(--vr-ink);
+    border: 1px solid var(--vr-ink);
+    color: #fff;
     font-size: 11px;
     padding: 0 12px;
     border-radius: 8px;
@@ -897,15 +912,15 @@ body.popupBody {
     flex: none;
 }
 
-.tplrow button:hover { background: #0891b2; }
+.tplrow button:hover { background: #23282f; }
 
 .preview {
     background: var(--vr-bg-deep);
-    border: 1px solid #222736;
+    border: 1px solid var(--vr-line-2);
     border-radius: 8px;
     padding: 8px 10px;
     font-size: 10px;
-    color: #8b93a3;
+    color: var(--vr-text-dim);
     line-height: 1.9;
     max-height: 110px;
     overflow-y: auto;
@@ -914,15 +929,15 @@ body.popupBody {
 
 .preview b { color: var(--vr-orange); font-weight: 600; }
 
-/* ---------- 抽屉 ---------- */
+/* ---------- 抽屉（仅剩「高级工具」一个入口） ---------- */
 .drawer {
     position: fixed;
     top: 0;
     right: 0;
     bottom: 0;
     width: 246px;
-    background: #1a1e27;
-    border-left: 1px solid #2c3444;
+    background: #fff;
+    border-left: 1px solid var(--vr-line-2);
     z-index: 460;
     transform: translateX(102%);
     transition: transform .22s cubic-bezier(.2, .8, .3, 1);
@@ -930,6 +945,7 @@ body.popupBody {
     overflow-y: auto;
     box-sizing: border-box;
     font-size: 11px;
+    box-shadow: -10px 0 30px rgba(16, 24, 40, .1);
 }
 
 .drawer.on { transform: none; }
@@ -952,7 +968,7 @@ body.popupBody {
     border-radius: 5px;
 }
 
-.drawer h3 .x:hover { background: #2b3242; color: var(--vr-text); }
+.drawer h3 .x:hover { background: var(--vr-hover); color: var(--vr-text); }
 
 .srow { margin-bottom: 13px; }
 
@@ -966,7 +982,7 @@ body.popupBody {
 .srow input[type=text] {
     width: 100%;
     background: var(--vr-bg-deep);
-    border: 1px solid #262b36;
+    border: 1px solid var(--vr-line-2);
     border-radius: 7px;
     color: var(--vr-text);
     font-size: 11px;
@@ -976,14 +992,14 @@ body.popupBody {
     box-sizing: border-box;
 }
 
-.srow input[type=text]:focus { border-color: #22d3ee88; }
+.srow input[type=text]:focus { border-color: var(--vr-cyan-tint-line); }
 
 .toggle {
     display: flex;
     align-items: center;
     justify-content: space-between;
     font-size: 11px;
-    color: #c6cdd9;
+    color: var(--vr-text);
     padding: 6px 0;
     gap: 8px;
 }
@@ -994,7 +1010,7 @@ body.popupBody {
     width: 31px;
     height: 17px;
     border-radius: 20px;
-    background: #2c3444;
+    background: #d3d8df;
     cursor: pointer;
     position: relative;
     transition: .18s;
@@ -1003,7 +1019,7 @@ body.popupBody {
     margin: 0;
 }
 
-.sw:checked { background: var(--vr-cyan-deep); }
+.sw:checked { background: var(--vr-ink); }
 
 .sw::after {
     content: '';
@@ -1013,15 +1029,16 @@ body.popupBody {
     width: 13px;
     height: 13px;
     border-radius: 50%;
-    background: #8b93a3;
+    background: #fff;
     transition: .18s;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .2);
 }
 
-.sw:checked::after { left: 16px; background: #e0faff; }
+.sw:checked::after { left: 16px; }
 
 .drawer .note {
     font-size: 9.5px;
-    color: #5c6575;
+    color: var(--vr-text-mute);
     line-height: 1.75;
     margin-top: 14px;
     border-top: 1px solid var(--vr-line);
@@ -1039,30 +1056,155 @@ body.popupBody {
     font-size: 10px;
     padding: 7px 5px;
     border-radius: 7px;
-    border: 1px solid #2c3444;
-    background: #222736;
-    color: #c6cdd9;
+    border: 1px solid var(--vr-line-2);
+    background: #fff;
+    color: var(--vr-text-dim);
     cursor: pointer;
     font-family: inherit;
 }
 
-.drawer .toolgrid button:hover { background: #2b3242; border-color: #3a4356; }
+.drawer .toolgrid button:hover { background: var(--vr-hover); border-color: #d3d8df; }
 .drawer .toolgrid button.wide { grid-column: span 2; }
+
+/* ---------- 设置视图（方案 A：4 组，全屏面板内视图） ---------- */
+.setview {
+    position: fixed;
+    inset: 0;
+    background: var(--vr-bg);
+    z-index: 470;
+    transform: translateX(100%);
+    transition: transform .22s cubic-bezier(.2, .8, .3, 1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.setview.on { transform: none; }
+
+.setview .sethead {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 14px 9px;
+    border-bottom: 1px solid var(--vr-line);
+    flex: none;
+}
+
+.setview .back {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: none;
+    background: none;
+    color: var(--vr-text-dim);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: .15s;
+    padding: 0;
+}
+
+.setview .back:hover { background: var(--vr-hover); color: var(--vr-text); }
+.setview .back svg { width: 15px; height: 15px; }
+
+.setview .ttl { font-size: 13.5px; font-weight: 600; }
+
+.setview .setbody {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px 14px 20px;
+}
+
+.setview .sgroup { margin-top: 14px; }
+
+.setview .glabel {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: var(--vr-text-mute);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.setview .srow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--vr-line);
+}
+
+.setview .srow .txt { flex: 1; min-width: 0; }
+
+.setview .srow .slabel { font-size: 12px; color: var(--vr-text); }
+
+.setview .srow .shint {
+    font-size: 10px;
+    color: var(--vr-text-mute);
+    margin-top: 1px;
+    line-height: 1.5;
+    word-break: break-all;
+}
+
+.setview .srow input[type=text] {
+    width: 100%;
+    background: var(--vr-bg-deep);
+    border: 1px solid var(--vr-line-2);
+    border-radius: 7px;
+    color: var(--vr-text);
+    font-size: 11.5px;
+    padding: 7px 9px;
+    outline: none;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+}
+
+.setview .srow input[type=text]:focus { border-color: var(--vr-cyan-tint-line); background: #fff; }
+
+.setview .toggle {
+    padding: 9px 0;
+    border-bottom: 1px solid var(--vr-line);
+}
+
+.ghostbtn {
+    flex: none;
+    font-size: 11px;
+    padding: 5px 11px;
+    border-radius: 7px;
+    border: 1px solid var(--vr-line-2);
+    background: #fff;
+    color: var(--vr-text-dim);
+    cursor: pointer;
+    font-family: inherit;
+    transition: .15s;
+}
+
+.ghostbtn:hover { background: var(--vr-hover); color: var(--vr-text); border-color: #d3d8df; }
+
+.setview .note {
+    font-size: 9.5px;
+    color: var(--vr-text-mute);
+    line-height: 1.75;
+    margin-top: 16px;
+}
 
 /* ---------- 站点增强横幅（M3 B站分P / M4 YouTube 提示） ---------- */
 .vr-banner {
-    margin: 0 0 8px;
-    background: #1a2230;
-    border: 1px solid #2a3a4a;
-    border-radius: 10px;
-    padding: 8px 10px;
+    margin: 0;
+    background: var(--vr-cyan-tint);
+    border: none;
+    border-bottom: 1px solid var(--vr-cyan-tint-line);
+    border-radius: 0;
+    padding: 8px 14px;
     flex: none;
     box-sizing: border-box;
 }
 
 .vr-banner-warn {
-    background: #2a1f14;
-    border-color: #4a3520;
+    background: #fdf3e3;
+    border-bottom-color: #f3d9b8;
 }
 
 .vr-banner-head {
@@ -1077,13 +1219,13 @@ body.popupBody {
     font-weight: 700;
     padding: 2px 6px;
     border-radius: 5px;
-    background: #3b2a12;
-    color: #fbbf24;
-    border: 1px solid #57411a;
+    background: var(--vr-ink);
+    color: #fff;
+    border: none;
     flex: none;
 }
 
-.vr-banner-tag.warn { background: #3a1d1d; color: #f87171; border-color: #5a2a2a; }
+.vr-banner-tag.warn { background: var(--vr-orange); color: #fff; }
 
 .vr-banner-txt {
     font-size: 10px;
@@ -1093,7 +1235,7 @@ body.popupBody {
     min-width: 110px;
 }
 
-.vr-banner-txt b { color: var(--vr-orange); }
+.vr-banner-txt b { color: var(--vr-ink); }
 
 .vr-banner .fbtn { padding: 4px 8px; font-size: 10px; }
 .vr-banner .fbtn.primary { margin-left: 0; }
@@ -1101,7 +1243,7 @@ body.popupBody {
 .vr-banner-body {
     margin-top: 7px;
     padding-top: 6px;
-    border-top: 1px dashed #2a3a44;
+    border-top: 1px dashed var(--vr-cyan-tint-line);
     max-height: 132px;
     overflow-y: auto;
 }
@@ -1113,7 +1255,7 @@ body.popupBody {
     align-items: center;
     gap: 6px;
     font-size: 10.5px;
-    color: #9fb3bd;
+    color: var(--vr-text-dim);
     padding: 3px 2px;
     cursor: default;
 }
@@ -1122,8 +1264,8 @@ body.popupBody {
     flex: none;
     font-size: 9px;
     color: var(--vr-orange);
-    background: #2a1d10;
-    border: 1px solid #7c4a1e;
+    background: #fff;
+    border: 1px solid #f3d9b8;
     border-radius: 4px;
     padding: 0 4px;
 }
@@ -1139,9 +1281,9 @@ body.popupBody {
     font-size: 9px;
     padding: 2px 6px;
     border-radius: 99px;
-    border: 1px solid #7c4a1e;
-    background: #2a1d10;
-    color: #fbbf24;
+    border: 1px solid #f3d9b8;
+    background: #fdf0e0;
+    color: #9a4a06;
     cursor: pointer;
     font-family: inherit;
     white-space: nowrap;
@@ -1156,11 +1298,11 @@ body.popupBody {
 .dirmenu {
     position: fixed;
     background: var(--vr-card);
-    border: 1px solid #2c3444;
+    border: 1px solid var(--vr-line-2);
     border-radius: 10px;
     padding: 4px;
     width: 208px;
-    box-shadow: 0 14px 40px rgba(0, 0, 0, .55);
+    box-shadow: var(--vr-shadow);
     z-index: 500;
     display: none;
     box-sizing: border-box;
@@ -1174,7 +1316,7 @@ body.popupBody {
 
 .dirmenu .grouplbl {
     font-size: 9px;
-    color: #5c6575;
+    color: var(--vr-text-mute);
     padding: 5px 8px 3px;
 }
 
@@ -1185,7 +1327,7 @@ body.popupBody {
     gap: 6px;
     background: none;
     border: none;
-    color: #c6cdd9;
+    color: var(--vr-text);
     font-size: 10.5px;
     padding: 6px 8px;
     border-radius: 6px;
@@ -1195,7 +1337,7 @@ body.popupBody {
     box-sizing: border-box;
 }
 
-.dirmenu button:hover { background: #2b3242; }
+.dirmenu button:hover { background: var(--vr-hover); }
 .dirmenu button.cur { color: var(--vr-cyan); }
 .dirmenu button.cur::after { content: '✓'; margin-left: auto; font-size: 9px; }
 .dirmenu .newdir { color: var(--vr-orange); }
@@ -1205,7 +1347,7 @@ body.popupBody {
 #otherOptions .otherTips {
     font-size: 10.5px;
     color: var(--vr-text-mute);
-    margin: 8px 0 6px;
+    margin: 8px 6px 6px;
 }
 
 #otherOptions .flexRow {
@@ -1214,6 +1356,7 @@ body.popupBody {
     gap: 7px;
     margin-bottom: 7px;
     font-size: 10.5px;
+    padding: 0 6px;
 }
 
 #otherOptions select {
@@ -1231,13 +1374,14 @@ body.popupBody {
 #otherOptions .line {
     height: 1px;
     background: var(--vr-line);
-    margin: 10px 0;
+    margin: 10px 6px;
 }
 
 .otherFeat {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
+    padding: 0 6px;
 }
 
 #PlayControl {
@@ -1247,6 +1391,7 @@ body.popupBody {
     gap: 5px;
     font-size: 10.5px;
     color: var(--vr-text-dim);
+    padding: 0 6px;
 }
 
 #PlayControl input[type=number],
@@ -1259,5 +1404,3 @@ body.popupBody {
     font-size: 9.5px;
     color: var(--vr-text-mute);
 }
-
-#PlayControl .width100 { width: 100%; }

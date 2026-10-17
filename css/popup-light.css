@@ -1,0 +1,63 @@
+/* ==========================================================================
+   钓鱼竿 video-rod — 猫抓原生组件浅色校准（M7）
+   作用域：#vrShell（ID 特异性 100 > :root 的 10，media query 不参与特异性，
+   所以 public.css 里 prefers-color-scheme:dark 的翻深色也压得住）
+   口径与 css/videorod.css 的浅色 token 一致：
+   正文 #0E1116 / 次要 #6B7480 / 分隔线 #EFF1F4 / 主色墨黑 #16181D / 深青 #0F6E63
+   ========================================================================== */
+
+#vrShell {
+    --background-color: #ffffff;
+    --background-color-opacity: #fffffff2;
+    --background-color-two: #f5f6f8;
+    --text-color: #0e1116;
+    --text-error-color: #b91c1c;
+    --text2-color: #0f6e63;
+    --link-color: #0f6e63;
+
+    --optionBox-color: #ffffff;
+
+    --button-color: #ffffff;
+    --button-text-color: #16181d;
+    --button-border: solid 1px #e4e6ea;
+    --button-hover-color: #f1f3f6;
+    --button-active-color: #e9ebef;
+
+    --button2-color: #16181d;
+    --button2-text-color: #ffffff;
+    --button2-border: solid 1px #16181d;
+    --button2-hover-color: #23282f;
+    --button2-active-color: #353b44;
+
+    --scrollbar-track-color: #f5f5f500;
+    --scrollbar-thumb-color: #c9ced6;
+
+    --switch-off-color: #d3d8df;
+    --switch-on-color: #16181d;
+    --switch-round-color: #fff;
+
+    --input-border: solid 1px #e4e6ea;
+}
+
+/* 面板内漏样式的基础控件兜底（猫抓 public.css 的 input/textarea/select 规则） */
+#vrShell input,
+#vrShell textarea,
+#vrShell select {
+    color: var(--text-color);
+    background: var(--background-color);
+    border: var(--input-border);
+}
+
+/* 猫抓 .more 浮层里的原生按钮（筛选/更多功能），统一成 quiet 形态 */
+#vrShell #filter button,
+#vrShell #features button {
+    border: 1px solid var(--button-border);
+    background: var(--button-color);
+    color: var(--button-text-color);
+    border-radius: 7px;
+}
+
+#vrShell #filter button:hover,
+#vrShell #features button:hover {
+    background: var(--button-hover-color);
+}

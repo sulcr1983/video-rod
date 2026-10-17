@@ -51,6 +51,11 @@ b,strong{font-weight:600}
 .device .cap{display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:#98A1AC;
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.02em}
 .device .cap b{color:#6B7480;font-weight:500}
+.dataswitch{display:inline-flex;align-items:center;gap:6px;font-family:inherit;letter-spacing:0}
+.dataswitch button{border:1px solid #E3E6EA;background:#fff;border-radius:999px;padding:2px 9px;font-size:10.5px;
+  color:#7A8391;cursor:pointer;transition:.14s;font-family:inherit}
+.dataswitch button:hover{border-color:#C9CED6;color:#0E1116}
+.dataswitch button.on{background:#0E1116;border-color:#0E1116;color:#fff}
 .swap{display:none}
 
 /* ---- 右侧说明 ---- */
@@ -101,12 +106,15 @@ b,strong{font-weight:600}
 .cb:checked{background:#0E1116;border-color:#0E1116}
 .cb:checked::after{content:"";width:4px;height:7.5px;border-right:1.8px solid #fff;border-bottom:1.8px solid #fff;
   transform:translateY(-1px) rotate(42deg)}
+.cb:indeterminate{background:#0E1116;border-color:#0E1116}
+.cb:indeterminate::after{content:"";width:7px;height:1.8px;background:#fff;border:0;transform:none}
 .cb:focus-visible{outline:2px solid #2F6BED;outline-offset:2px}
 
 .typeicon{width:14px;height:14px;color:#A6AEB9;flex:none;display:block}
 .typeicon svg{width:14px;height:14px;display:block}
 
-.pfoot{flex:none;display:flex;align-items:center;gap:10px;border-top:1px solid #EFF1F4;background:#fff}
+.pfoot{flex:none;display:flex;align-items:center;gap:10px;border-top:1px solid #EFF1F4;background:#fff;
+  box-shadow:0 -10px 16px -14px rgba(16,24,40,.35)}
 .allsel{display:flex;align-items:center;gap:7px;font-size:12px;color:#5B6472;cursor:pointer;flex:none}
 .allsel .cb{width:16px;height:16px;border-radius:5px}
 .sum{font-size:11.5px;color:#98A1AC;margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -168,7 +176,7 @@ b,strong{font-weight:600}
 [data-proto="a"] .f.on{color:#0E1116;font-weight:600}
 [data-proto="a"] .f.on b{color:#0E1116}
 [data-proto="a"] .f.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1.5px;background:#0E1116;border-radius:2px}
-[data-proto="a"] .row{height:59px;padding:0 12px 0 14px;display:flex;align-items:center;gap:9px;border-bottom:1px solid #F5F6F8;
+[data-proto="a"] .row{height:66px;padding:0 12px 0 14px;display:flex;align-items:center;gap:9px;border-bottom:1px solid #F5F6F8;
   cursor:default;transition:background .12s}
 [data-proto="a"] .row:hover{background:#FAFBFC}
 [data-proto="a"] .rmain{min-width:0;flex:1;padding:0 2px}
@@ -261,6 +269,13 @@ b,strong{font-weight:600}
 [data-proto="c"] .cta:hover{background:#153A5E;transform:translateY(-1px)}
 [data-proto="c"] .cta:disabled{background:#EDEFF2;color:#B6BDC6;box-shadow:none;transform:none}
 [data-proto="c"] .cta svg{width:16px;height:16px}
+[data-proto="c"] .hrow{display:flex;align-items:baseline;gap:8px}
+[data-proto="c"] .collapse{margin-left:auto;font-size:11px;color:#8A939F;flex:none}
+[data-proto="c"] .collapse:hover{color:#0E1116}
+[data-proto="c"] .pop.is-expanded .h1{font-size:16px;margin-bottom:2px}
+[data-proto="c"] .pop.is-expanded .hsub{margin-bottom:0}
+[data-proto="c"] .pop.is-expanded .cta,[data-proto="c"] .pop.is-expanded .under{display:none}
+[data-proto="c"] .pop.is-expanded .hero{padding-bottom:12px}
 [data-proto="c"] .under{display:flex;align-items:center;gap:8px;margin-top:13px;font-size:11px;color:#8A939F}
 [data-proto="c"] .under button{color:#0E2A47;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:3px}
 [data-proto="c"] .under button:hover{text-decoration:underline}
@@ -318,6 +333,7 @@ b,strong{font-weight:600}
 /* 诊断 */
 .diag{display:grid;grid-template-columns:200px 1fr;gap:34px;align-items:start}
 .sketch{width:200px;border-radius:10px;background:#171A21;border:1px solid #232936;padding:9px;position:relative}
+.sketch-cap{font-size:10px;color:#B6BDC6;margin-top:7px;text-align:center;letter-spacing:.04em}
 .sketch .sk{display:flex;align-items:center;border-radius:4px;color:#5E6A7A;font-size:8px;letter-spacing:.04em}
 .sk-top{height:16px;background:#1D222C;margin-bottom:4px;padding:0 4px;justify-content:space-between}
 .sk-info{height:11px;background:#141720;margin-bottom:3px;padding:0 4px}
@@ -334,12 +350,12 @@ b,strong{font-weight:600}
 .sk-foot i:first-child{width:20%;background:#2B3546}
 .sk-foot i:nth-child(2){width:34%;background:#2B3546}
 .sk-foot i:last-child{flex:1}
-.sk .pin{position:absolute;width:14px;height:14px;border-radius:50%;background:#FB923C;color:#1A1206;
+.sketch .pin{position:absolute;width:14px;height:14px;border-radius:50%;background:#FB923C;color:#1A1206;
   font-size:8px;font-weight:700;display:grid;place-items:center;box-shadow:0 0 0 2px #171A21}
 .issues{counter-reset:i;display:grid;gap:11px;margin:0;padding:0;list-style:none}
-.issues li{counter-increment:i;display:grid;grid-template-columns:20px 1fr;gap:10px;font-size:13px;color:#3C4654;line-height:1.6}
+.issues li{counter-increment:i;display:flex;gap:10px;font-size:13px;color:#3C4654;line-height:1.6;align-items:flex-start}
 .issues li::before{content:counter(i);width:20px;height:20px;border-radius:50%;background:#0E1116;color:#fff;
-  font-size:10.5px;font-weight:600;display:grid;place-items:center;margin-top:2px}
+  font-size:10.5px;font-weight:600;display:grid;place-items:center;margin-top:2px;flex:none}
 .issues b{color:#0E1116;font-weight:600}
 .delta{display:flex;gap:26px;margin-top:22px;padding-top:18px;border-top:1px dashed #DFE2E7}
 .delta div{display:flex;flex-direction:column;gap:1px}
@@ -476,7 +492,7 @@ pre.tree .x{color:#C4322B}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
           </div>
-          <div class="sitebar"><span class="site">bilibili.com</span><span class="sep">·</span><span>河西走廊 第1集</span><span class="cnt">6 个</span></div>
+          <div class="sitebar"><span class="site">bilibili.com</span><span class="sep">·</span><span>河西走廊 第1集</span><span class="cnt" data-bind="cnt">6 个</span></div>
           <nav class="filters" data-bind="filters" aria-label="媒体类型"></nav>
           <div class="plist" data-bind="list"></div>
           <div class="pfoot">
@@ -495,7 +511,7 @@ pre.tree .x{color:#C4322B}
         <div class="pop">
           <div class="phead">
             <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M5 19L19 5"/><path d="M5 19l2-6"/><circle cx="13" cy="11" r="1.2" fill="#fff" stroke="none"/></svg></span>
-            <div class="ptitle">河西走廊 第1集<small>bilibili.com · 6 个媒体</small></div>
+            <div class="ptitle">河西走廊 第1集<small data-bind="bcnt">bilibili.com · 6 个媒体</small></div>
             <button class="icon" data-view="settings" aria-label="设置">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
@@ -523,16 +539,19 @@ pre.tree .x{color:#C4322B}
             </button>
           </div>
           <div class="hero">
-            <h1 class="h1" data-bind="h1">—</h1>
+            <div class="hrow">
+              <h1 class="h1" data-bind="h1">—</h1>
+              <button class="collapse" data-expand-c data-bind="collapseBtn" hidden>收起清单</button>
+            </div>
             <p class="hsub" data-bind="hsub"></p>
             <button class="cta" data-download>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
               <span data-bind="ctatext">下载</span>
             </button>
-            <div class="under">
+            <div class="under" data-bind="under">
               <span data-bind="skipnote">已按最高画质 · 作者_标题 · 站点分文件夹</span>
               <span class="dots"></span>
-              <button data-expand-c>查看全部 <span data-bind="total">6</span> 个</button>
+              <button data-expand-c data-bind="expandBtn">查看全部 <span data-bind="total">6</span> 个</button>
             </div>
           </div>
           <div class="receipt" data-bind="receipt"></div>
@@ -549,7 +568,11 @@ pre.tree .x{color:#C4322B}
         </div>
       </div>
 
-      <div class="cap"><span>380 × 560 <b>Chrome popup 实际尺寸</b></span><span data-bind="capdir">方案 A · 收网</span></div>
+      <div class="cap">
+        <span>380 × 560 <b>Chrome popup 实际尺寸</b></span>
+        <span class="dataswitch">演示数据<button type="button" data-n="6">6 条</button><button type="button" data-n="12" class="on">12 条</button></span>
+        <span data-bind="capdir">方案 A · 收网</span>
+      </div>
     </div>
 
     <!-- ---------- 说明 ---------- -->
@@ -563,7 +586,7 @@ pre.tree .x{color:#C4322B}
           <dt>改了什么</dt><dd>边框卡片 → 分隔线清单；行内 4 个控件 → 1 个勾选；改名收进标题</dd>
           <dt>代价</dt><dd>改名入口比 B 含蓄，第一次要教一下</dd>
         </dl>
-        <div class="chips"><span>一屏 7 条</span><span>2 次点击下载</span><span>零边框</span></div>
+        <div class="chips"><span>一屏 5 条</span><span>2 次点击下载</span><span>零边框</span></div>
         <button class="pick" data-choose="A"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>就按这个做</button>
         <div class="pick-note">点一下记下选择；细节可以再微调</div>
       </div>
@@ -574,7 +597,7 @@ pre.tree .x{color:#C4322B}
         <dl class="kv">
           <dt>适合</dt><dd>以存图为主；习惯一条条确认名字和去向</dd>
           <dt>改了什么</dt><dd>清单 → 两张圆角卡；文件名变成常驻输入框；每条带目录 chip</dd>
-          <dt>代价</dt><dd>一屏约 4 条；只有 2 条内容时会显得空</dd>
+          <dt>代价</dt><dd>一屏 2–3 条；只有 2 条内容时会显得空</dd>
         </dl>
         <div class="chips"><span>分组清晰</span><span>名字常驻可改</span><span>暖白纸感</span></div>
         <button class="pick" data-choose="B"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>就按这个做</button>
@@ -597,10 +620,11 @@ pre.tree .x{color:#C4322B}
         <div class="try-h">可以点着试</div>
         <ul>
           <li>勾掉一条 → 底部数字和体积跟着变</li>
-          <li>点<b>标题</b> → 就地改名，回车保存</li>
-          <li>点右侧<b>箭头</b> → 展开目录和清晰度</li>
+          <li>改名：<b>A 点标题</b> · <b>B 直接改输入框</b></li>
+          <li>展开：<b>A 点右侧箭头</b> · <b>C 点「查看全部」</b></li>
           <li>点右上<b>齿轮</b> → 设置页（三版共用一套）</li>
-          <li>按底部<b>下载</b> → 走一遍进度和完成提示</li>
+          <li>按<b>下载</b> → 走一遍进度和完成提示</li>
+          <li>下面<b>「6 条 / 12 条」</b>切换数据量 → 看一次抓十几种时的样子</li>
         </ul>
       </div>
     </aside>
@@ -616,7 +640,7 @@ pre.tree .x{color:#C4322B}
       <div class="vcard hi">
         <span class="tag">推荐</span>
         <h3>A · 收网</h3>
-        <p>它最贴合你的真实动作：<b>打开 → 看有几条 → 全选 → 下载</b>。一屏能看 7 条，主按钮只有一个，改名在你点标题时才出现，不打扰。</p>
+        <p>它最贴合你的真实动作：<b>打开 → 看有几条 → 全选 → 下载</b>。行距放宽到 66px，一个 UP 主的视频+图片一次抓十几种也滚得动；主按钮只有一个，改名在你点标题时才出现，不打扰。</p>
         <p>后面要加"下载队列""历史记录"，往清单里加一行就行，不用重排布局。</p>
       </div>
       <div class="vcard">
@@ -628,12 +652,13 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <!-- ===================== 02 现状 ===================== -->
-  <section class="sec">
+  <section class="sec" id="sec-diag">
     <div class="sec-head">
       <span class="sec-no">02</span>
       <div><h2>现在这版，问题不在"不好看"</h2><p class="lead">是每一屏都在让你做决定。下面 6 条，都能在现在的面板里指出来。</p></div>
     </div>
     <div class="diag">
+      <div class="sketchwrap">
       <div class="sketch" aria-hidden="true">
         <div class="sk sk-top"><span>钓鱼竿 v1.0</span><span>⚙ ⋯</span></div>
         <div class="sk sk-info"><span>127.0.0.1:18080 · 7 个</span></div>
@@ -650,6 +675,8 @@ pre.tree .x{color:#C4322B}
         <span class="pin" style="bottom:26px;right:10px">5</span>
         <span class="pin" style="bottom:6px;left:12px">6</span>
       </div>
+      <div class="sketch-cap">结构示意 · 非截图</div>
+      </div>
       <div>
         <ol class="issues">
           <li><b>三层框架挡在内容前面</b>：页信息条、4 个标签页、4 个筛选，真正要下的东西被推到第 110px 才出现。</li>
@@ -660,7 +687,7 @@ pre.tree .x{color:#C4322B}
           <li><b>设置散在 4 个地方</b>：齿轮抽屉、更多工具抽屉、更多功能浮层、完整设置页。找个开关要碰运气。</li>
         </ol>
         <div class="delta">
-          <div><span class="from">3 条 / 屏</span><span class="to num">7 条</span><span class="lb">一屏可见</span></div>
+          <div><span class="from">3 条 / 屏</span><span class="to num">5 条</span><span class="lb">一屏可见</span></div>
           <div><span class="from">每条 4 个控件</span><span class="to num">1 个</span><span class="lb">行内控件</span></div>
           <div><span class="from">4 条路径</span><span class="to num">1 条</span><span class="lb">进设置</span></div>
           <div><span class="from">100% 深色</span><span class="to num">浅色</span><span class="lb">面板底色</span></div>
@@ -670,7 +697,7 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <!-- ===================== 03 用户 ===================== -->
-  <section class="sec">
+  <section class="sec" id="sec-flow">
     <div class="sec-head">
       <span class="sec-no">03</span>
       <div><h2>你实际是怎么用它的</h2><p class="lead">自用工具没有大数据，只能按真实场景推。三个场景覆盖了 95% 的使用。</p></div>
@@ -713,7 +740,7 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <!-- ===================== 04 参考 ===================== -->
-  <section class="sec">
+  <section class="sec" id="sec-ref">
     <div class="sec-head">
       <span class="sec-no">04</span>
       <div><h2>参考了谁</h2><p class="lead">都是公开的产品和规范，学的是"为什么这样排"，不是抄皮。</p></div>
@@ -753,7 +780,7 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <!-- ===================== 05 对比 ===================== -->
-  <section class="sec">
+  <section class="sec" id="sec-table">
     <div class="sec-head">
       <span class="sec-no">05</span>
       <div><h2>三个方案，逐项对比</h2><p class="lead">同一份内容、同一套默认值，只有结构和密度不同。</p></div>
@@ -763,8 +790,8 @@ pre.tree .x{color:#C4322B}
         <tr><th>维度</th><th class="a">A · 收网</th><th>B · 分堆</th><th>C · 一句话</th></tr>
       </thead>
       <tbody>
-        <tr><td>一屏可见</td><td class="best">7 条（59px/行）</td><td class="muted">4 条（82px/行）</td><td class="muted">首屏 1 个按钮</td></tr>
-        <tr><td>到下载</td><td class="best">2 次点击</td><td>2 次点击</td><td class="best">1 次点击</td></tr>
+        <tr><td>一屏可见</td><td class="best">5 条（66px/行）</td><td class="muted">2–3 条</td><td class="muted">首屏 1 个按钮</td></tr>
+        <tr><td>到下载</td><td>2 次点击</td><td>2 次点击</td><td class="best">1 次点击</td></tr>
         <tr><td>改名入口</td><td>点标题就地改</td><td class="best">常驻输入框</td><td class="muted">展开后改</td></tr>
         <tr><td>改目录</td><td>展开行详情</td><td class="best">每条一个 chip</td><td class="muted">默认分好，不显</td></tr>
         <tr><td>图片批量</td><td>切「图片」筛选</td><td class="best">天然分成一堆</td><td class="muted">折叠在"全部"里</td></tr>
@@ -776,7 +803,7 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <!-- ===================== 06 共用规则 ===================== -->
-  <section class="sec">
+  <section class="sec" id="sec-rules">
     <div class="sec-head">
       <span class="sec-no">06</span>
       <div><h2>三版共用的底层规则</h2><p class="lead">这些不管你选哪个都成立，也是"简单好用"的真正来源。</p></div>
@@ -801,10 +828,19 @@ pre.tree .x{color:#C4322B}
         </ul>
       </div>
       <div class="rule">
+        <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>10+ 也 hold 得住</h4>
+        <ul>
+          <li>抓一个 UP 主的<b>全部视频+图片</b>是常态，列表允许滚动</li>
+          <li>行高 66px：比原来放松，长列表滚起来不累眼</li>
+          <li><b>底栏固定</b>：合计和下载按钮不随滚动消失，随时可点</li>
+          <li>筛选行带计数，十几条时先切「视频」再逐类下</li>
+        </ul>
+      </div>
+      <div class="rule">
         <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8h8M8 12h5"/></svg>设置搬出面板</h4>
         <ul>
           <li>面板里只留一个齿轮 → 独立设置页</li>
-          <li>4 组、11 项，一屏看完：下载位置 / 命名 / 画质 / 面板</li>
+          <li>4 组、9 项，翻半屏看到底：下载位置 / 命名 / 画质 / 面板</li>
           <li>删掉「更多工具」「更多功能」两个抽屉</li>
           <li>缓存捕捉、录制、深度搜索 → 收进设置页底部的「高级工具」</li>
         </ul>
@@ -844,17 +880,17 @@ pre.tree .x{color:#C4322B}
           <div>
             <div class="cap" style="font-size:10px;letter-spacing:.1em;color:#B6BDC6;text-transform:uppercase;margin-bottom:6px">改后</div>
             <div class="treebox" style="background:#F7FBF9;border-color:#E3EFEA"><pre class="tree">popup
-├ <b>站点 · 6 个</b>        <s>1 行</s>
+├ <b>站点 · 数量</b>        <s>1 行</s>
 ├ <b>全部 / 视频 / 图片 / 流</b>  <s>1 行</s>
 ├ <b>清单</b>              <s>勾选 · 名称 · 元信息</s>
 │   └ 展开一行 → 目录 / 清晰度
-└ <b>全选</b>            <b>下载 6 个</b>
+└ <b>全选</b>            <b>下载 N 个</b>
 
 设置（独立页）
-├ 下载位置  3 项
-├ 命名      3 项
+├ 下载位置  2 项
+├ 命名      2 项
 ├ 画质      2 项
-└ 面板      3 项</pre></div>
+└ 面板      3 项 + 高级工具入口</pre></div>
           </div>
         </div>
       </div>
@@ -862,7 +898,7 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <!-- ===================== 07 落地 ===================== -->
-  <section class="sec">
+  <section class="sec" id="sec-land">
     <div class="sec-head">
       <span class="sec-no">07</span>
       <div><h2>落地：只改壳，不碰内核</h2><p class="lead">另一条会话在写代码，所以这版特意按"CSS 优先"设计，尽量不打断它。</p></div>
@@ -895,7 +931,7 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <!-- ===================== 08 下一步 ===================== -->
-  <section class="sec">
+  <section class="sec" id="sec-next">
     <div class="sec-head">
       <span class="sec-no">08</span>
       <div><h2>你只需要做一个决定</h2><p class="lead">选完我就出精细稿，不动你现在跑的代码。</p></div>
@@ -909,7 +945,7 @@ pre.tree .x{color:#C4322B}
   </section>
 
   <div class="footnote">
-    <span>钓鱼竿 video-rod · popup 重设计三方向 · v1 · 2026-10-17</span>
+    <span>钓鱼竿 video-rod · popup 重设计三方向 · v2 · 2026-10-17</span>
     <span>380×560 · 浅色 · 真实交互 · 不改源码</span>
   </div>
 </main>
@@ -924,14 +960,22 @@ pre.tree .x{color:#C4322B}
 (function(){
   "use strict";
 
-  var MEDIA = [
+  /* 全量演示数据：模拟"一个 UP 主空间页"抓到的 12 个媒体（6 视频 + 4 图片 + 2 流） */
+  var MEDIA_FULL = [
     {id:'v1',type:'video', name:'河西走廊 第1集 使者', ext:'MP4', q:'1080P', size:'128.4 MB', mb:128.4, dir:'video-rod/bilibili/河西走廊'},
     {id:'v2',type:'video', name:'河西走廊 第2集 通道', ext:'MP4', q:'1080P', size:'141.2 MB', mb:141.2, dir:'video-rod/bilibili/河西走廊'},
     {id:'v3',type:'video', name:'花絮 · 拍摄日志',   ext:'MP4', q:'720P',  size:'68.5 MB',  mb:68.5,  dir:'video-rod/bilibili/河西走廊'},
     {id:'i1',type:'img',   name:'封面 · 敦煌壁画',    ext:'JPG', q:'1920×1080', size:'420 KB', mb:0.41, dir:'video-rod/bilibili/河西走廊'},
     {id:'i2',type:'img',   name:'剧照 01',           ext:'JPG', q:'1080×1440', size:'186 KB', mb:0.18, dir:'video-rod/bilibili/河西走廊'},
-    {id:'s1',type:'stream',name:'预告片',            ext:'M3U8',q:'2 档清晰度', size:'24.6 MB', mb:24.6, dir:'video-rod/bilibili/河西走廊'}
+    {id:'s1',type:'stream',name:'预告片',            ext:'M3U8',q:'2 档清晰度', size:'24.6 MB', mb:24.6, dir:'video-rod/bilibili/河西走廊'},
+    {id:'v4',type:'video', name:'河西走廊 第3集 驿站', ext:'MP4', q:'1080P', size:'156.8 MB', mb:156.8, dir:'video-rod/bilibili/河西走廊'},
+    {id:'v5',type:'video', name:'河西走廊 第4集 出入', ext:'MP4', q:'1080P', size:'133.2 MB', mb:133.2, dir:'video-rod/bilibili/河西走廊'},
+    {id:'v6',type:'video', name:'幕后 · 十年拍摄纪实', ext:'MP4', q:'1080P', size:'205.6 MB', mb:205.6, dir:'video-rod/bilibili/河西走廊'},
+    {id:'i3',type:'img',   name:'剧照 02',           ext:'JPG', q:'1080×1440', size:'192 KB', mb:0.19, dir:'video-rod/bilibili/河西走廊'},
+    {id:'i4',type:'img',   name:'片头书法 · 河西',    ext:'JPG', q:'2400×1350', size:'1.2 MB', mb:1.2,  dir:'video-rod/bilibili/河西走廊'},
+    {id:'s2',type:'stream',name:'直播回放 · 首映',    ext:'M3U8',q:'3 档清晰度', size:'312.4 MB', mb:312.4, dir:'video-rod/bilibili/河西走廊'}
   ];
+  var MEDIA = MEDIA_FULL.slice();   /* 当前生效的数据集（6 或 12 条） */
   var TYPE_LABEL = {all:'全部', video:'视频', img:'图片', stream:'流'};
   var ICON = {
     video:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="2.5" y="5" width="13" height="14" rx="2.5"/><path d="M15.5 10l6-3.2v10.4l-6-3.2"/></svg>',
@@ -960,13 +1004,11 @@ pre.tree .x{color:#C4322B}
       + '<div class="setbody">'
       + '<div class="sgroup"><div class="glabel">下载位置</div>'
       + '<div class="srow"><div class="txt"><div class="slabel">默认文件夹</div><div class="shint">Downloads/video-rod/</div></div><button class="ghostbtn">更改</button></div>'
-      + '<div class="srow"><div class="txt"><div class="slabel">按平台分文件夹</div><div class="shint">bilibili/、xiaohongshu/</div></div>'+sw(true)+'</div>'
-      + '<div class="srow"><div class="txt"><div class="slabel">按作者分文件夹</div><div class="shint">拿不到作者就跳过</div></div>'+sw(true)+'</div>'
+      + '<div class="srow"><div class="txt"><div class="slabel">按站点/作者分文件夹</div><div class="shint">bilibili/纪录片之家/；拿不到作者就跳过</div></div>'+sw(true)+'</div>'
       + '</div>'
       + '<div class="sgroup"><div class="glabel">命名</div>'
       + '<div class="srow"><div class="txt"><div class="slabel">文件名规则</div><div class="shint">纪录片之家_河西走廊 第1集 使者.mp4</div></div><button class="ghostbtn">作者_标题 ▾</button></div>'
-      + '<div class="srow"><div class="txt"><div class="slabel">超长自动截断</div><div class="shint">超过 60 字保留前 60 字</div></div>'+sw(true)+'</div>'
-      + '<div class="srow"><div class="txt"><div class="slabel">重名自动加序号</div><div class="shint">同名变 _01、_02</div></div>'+sw(true)+'</div>'
+      + '<div class="srow"><div class="txt"><div class="slabel">文件名自动整理</div><div class="shint">超长截断 60 字 · 重名加 _01</div></div>'+sw(true)+'</div>'
       + '</div>'
       + '<div class="sgroup"><div class="glabel">画质</div>'
       + '<div class="srow"><div class="txt"><div class="slabel">默认最高画质</div><div class="shint">多档时自动挑最高</div></div>'+sw(true)+'</div>'
@@ -976,6 +1018,7 @@ pre.tree .x{color:#C4322B}
       + '<div class="srow"><div class="txt"><div class="slabel">图片嗅探</div><div class="shint">扫页面里的图片</div></div>'+sw(true)+'</div>'
       + '<div class="srow"><div class="txt"><div class="slabel">图标显示数字角标</div><div class="shint">工具栏图标上的小数字</div></div>'+sw(false)+'</div>'
       + '<div class="srow"><div class="txt"><div class="slabel">快捷键</div><div class="shint">Alt + Shift + V</div></div><button class="ghostbtn">去改</button></div>'
+      + '<div class="srow"><div class="txt"><div class="slabel">高级工具</div><div class="shint">缓存捕捉 · 录制 · 深度搜索</div></div><button class="ghostbtn">打开</button></div>'
       + '</div>'
       + '<button class="reset">恢复默认设置</button>'
       + '</div></div>';
@@ -1173,6 +1216,10 @@ pre.tree .x{color:#C4322B}
       this.nodes.filters.innerHTML = html;
     }
 
+    // 头部计数（A 站点条 / B 标题副行）——跟随演示数据量
+    if(this.nodes.cnt) this.nodes.cnt.textContent = MEDIA.length + ' 个';
+    if(this.nodes.bcnt) this.nodes.bcnt.textContent = 'bilibili.com · ' + MEDIA.length + ' 个媒体';
+
     // A 列表
     if(this.nodes.list){
       var out = '';
@@ -1275,8 +1322,11 @@ pre.tree .x{color:#C4322B}
       }
       if(this.nodes.cfoot) this.nodes.cfoot.hidden = !st.expanded;
       if(this.nodes.total) this.nodes.total.textContent = MEDIA.length;
-      var expBtn = this.root.querySelector('[data-expand-c]');
-      if(expBtn) expBtn.innerHTML = st.expanded ? '收起清单' : ('查看全部 <span>'+MEDIA.length+'</span> 个');
+      if(this.nodes.collapseBtn) this.nodes.collapseBtn.hidden = !st.expanded;
+      if(this.nodes.expandBtn) this.nodes.expandBtn.innerHTML = '查看全部 <span>' + MEDIA.length + '</span> 个';
+      var popEl = this.root.querySelector('.pop');
+      if(popEl) popEl.classList.toggle('is-expanded', st.expanded);
+      if(this.nodes.under) this.nodes.under.hidden = st.expanded;
     }
 
     if(this.nodes.sum) this.nodes.sum.textContent = st.sel.length ? sizes : '还没选';
@@ -1305,6 +1355,34 @@ pre.tree .x{color:#C4322B}
     protos[el.getAttribute('data-proto')] = new Proto(el);
   });
 
+  /* ---------- 演示数据量切换（6 / 12 条） ----------
+     10+ 是常态（比如一次抓一个 UP 主的全部视频+图片），列表滚动可接受，
+     底栏合计和按钮固定不动。切换时三个方案同步重置为"默认全选"。 */
+  function setDataN(n){
+    MEDIA = MEDIA_FULL.filter(function(_, i){ return n === 12 ? true : i < 6; });
+    Object.keys(protos).forEach(function(k){
+      var p = protos[k];
+      var all = p.dir === 'c' ? MEDIA.filter(function(m){ return m.type !== 'img'; }) : MEDIA.slice();
+      p.st.sel = all.map(function(m){ return m.id; });
+      p.st.filter = 'all';
+      p.st.editing = null;
+      p.st.open = [];
+      p.st.expanded = false;
+      p.st.view = 'main';
+      p.st.busy = false;
+      p.st.progress = 0;
+      p.st.toast = '';
+      if(p.pane) p.pane.classList.remove('on');
+      p.render();
+    });
+    document.querySelectorAll('.dataswitch button').forEach(function(b){
+      b.classList.toggle('on', b.getAttribute('data-n') === String(n));
+    });
+  }
+  document.querySelectorAll('.dataswitch button').forEach(function(b){
+    b.addEventListener('click', function(){ setDataN(Number(b.getAttribute('data-n'))); });
+  });
+
   /* ---------- 方案切换 ---------- */
   var tabBtns = Array.prototype.slice.call(document.querySelectorAll('[data-tab]'));
   function show(dir){
@@ -1319,7 +1397,8 @@ pre.tree .x{color:#C4322B}
       s.hidden = s.getAttribute('data-spec')!==dir;
     });
     if(protos[dir]) protos[dir].render();
-    try{ history.replaceState(null, '', '#' + dir); }catch(e){}
+    var h = location.hash || '#';
+    if(h === '#' || /^#[abc](-|$)/.test(h)){ try{ history.replaceState(null, '', '#' + dir); }catch(e){} }
   }
   tabBtns.forEach(function(b, i){
     b.addEventListener('click', function(){ show(b.getAttribute('data-tab')); });
