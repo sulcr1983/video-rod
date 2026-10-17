@@ -308,26 +308,25 @@
         var tabId = (window.G && G.tabId) || -1;
         if (!chrome.scripting || tabId < 0) { return Promise.resolve(null); }
 
-        var pageUrl = '';
-        try { pageUrl = (window.G && G.webUrl) || ''; } catch (e) { /* 忽略 */ }
-
-        return chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            files: ['js/naming.js']
-        }).then(function () {
+        return currentPageUrl().then(function (pageUrl) {
             return chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                func: function () {
-                    return self.VideoRodNaming
-                        ? self.VideoRodNaming.extractPageInfo(document, location.href)
-                        : null;
-                }
+                files: ['js/naming.js']
+            }).then(function () {
+                return chrome.scripting.executeScript({
+                    target: { tabId: tabId },
+                    func: function () {
+                        return self.VideoRodNaming
+                            ? self.VideoRodNaming.extractPageInfo(document, location.href)
+                            : null;
+                    }
+                });
+            }).then(function (res) {
+                var info = res && res[0] && res[0].result;
+                if (!info) { return null; }
+                info.site = info.site || hostOf(pageUrl);
+                return info;
             });
-        }).then(function (res) {
-            var info = res && res[0] && res[0].result;
-            if (!info) { return null; }
-            info.site = info.site || hostOf(pageUrl);
-            return info;
         }).catch(function () {
             // 页面还在加载 / 正在跳转时会失败，隔一拍重试（最多 3 次）
             if (attempt >= 2) { return null; }
@@ -615,7 +614,605 @@
     }
 
     /* ==========================================================
-     * 九、启动
+     * 九、下载管线（M2）：目录落盘 / 去重 / 完成汇报
+     * ========================================================== */
+
+    var RESERVED_SEG = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+    var MAX_PATH_LEN = 170;          // Downloads 前缀之外留足余量（Windows MAX_PATH 260）
+
+    /** 单段清洗：非法字符、尾点尾空格、Windows 保留名 */
+    function cleanSeg(seg) {
+        var t = String(seg == null ? '' : seg)
+            .replace(/[<>:"|?*\u0000-\u001F]/g, '_')
+            .replace(/\\/g, '/')
+            .trim();
+        t = t.replace(/^[.\s]+|[.\s]+$/g, '');
+        if (!t) { return ''; }
+        if (RESERVED_SEG.test(t)) { t = '_' + t; }
+        return t;
+    }
+
+    /** 整条相对路径清洗：逐段清洗 + 丢空段 */
+    function cleanPath(p) {
+        return String(p || '').split('/').map(cleanSeg).filter(Boolean).join('/');
+    }
+
+    /** 最终落盘路径（相对下载目录）：video-rod/平台/名字.mp4 */
+    function vrFullPath(data) {
+        var dir = cleanPath(window.vrDirOf(data)) || DEFAULTS.defaultDir;
+        var name = cleanPath(data.downFileName || data.name || ('file.' + (data.ext || 'mp4')));
+        if (!name) { name = 'file.' + (data.ext || 'mp4'); }
+        if (name.indexOf(dir + '/') === 0) { return name; }   // 已带目录，幂等
+
+        var full = dir + '/' + name;
+        if (full.length > MAX_PATH_LEN) {
+            // 太长就把最后一段（文件名）截短，保住目录结构
+            var parts = full.split('/');
+            var file = parts.pop();
+            var dot = file.lastIndexOf('.');
+            var stem = dot > 0 ? file.slice(0, dot) : file;
+            var ext = dot > 0 ? file.slice(dot) : '';
+            var room = Math.max(24, MAX_PATH_LEN - (parts.join('/').length + 1) - ext.length);
+            parts.push(stem.slice(0, room) + ext);
+            full = parts.join('/');
+        }
+        return full;
+    }
+
+    /* ---------- 去重记录 ---------- */
+    var downloaded = {};          // { hash: {p, t} }
+    var DOWNLOADED_MAX = 2000;
+
+    function loadDownloaded(cb) {
+        try {
+            chrome.storage.local.get(['vrDownloaded'], function (res) {
+                downloaded = (res && res.vrDownloaded) || {};
+                cb && cb();
+            });
+        } catch (e) { cb && cb(); }
+    }
+
+    function saveDownloaded() {
+        try {
+            var keys = Object.keys(downloaded);
+            if (keys.length > DOWNLOADED_MAX) {
+                keys.sort(function (a, b) { return (downloaded[a].t || 0) - (downloaded[b].t || 0); });
+                keys.slice(0, keys.length - DOWNLOADED_MAX).forEach(function (k) { delete downloaded[k]; });
+            }
+            chrome.storage.local.set({ vrDownloaded: downloaded });
+        } catch (e) { /* 忽略 */ }
+    }
+
+    function hashKey(str) {
+        var h = 5381;
+        for (var i = 0; i < str.length; i++) {
+            h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+        }
+        return 'k' + (h >>> 0).toString(36);
+    }
+
+    function isDownloaded(path) {
+        return settings.dedupe && !!downloaded[hashKey(path)];
+    }
+
+    function markDownloaded(path) {
+        downloaded[hashKey(path)] = { p: path, t: Date.now() };
+        saveDownloaded();
+    }
+
+    /* ---------- 卡片状态 ---------- */
+    function markCardDone(data, label) {
+        if (!data || !data.html) { return; }
+        data.html.addClass('done');
+        var box = data.html.find('.DownCheck');
+        if (box.length && box.prop('checked')) {
+            data.checked = false;     // 下过的自动取消勾选，避免重复提交
+        }
+        // 徽章文案由 CSS ::after 控制，这里只保证只有一个
+        data.html.attr('data-vr-state', label || '已完成');
+    }
+
+    /** 找 DOM 对应的资源数据 */
+    function dataOfEl(el) {
+        var panel = el && el.closest ? el.closest('.panel') : null;
+        if (!panel) { return null; }
+        var all = vrAllData();
+        for (var i = 0; i < all.length; i++) {
+            if (all[i] && all[i].html && all[i].html[0] === panel) { return all[i]; }
+        }
+        return null;
+    }
+
+    /* ---------- 批量下载前置处理 ---------- */
+    var batchIds = [];
+
+    function beforeBatchDownload() {
+        var items = vrCheckedData();
+        if (!items.length) { return; }
+
+        var skipped = 0;
+        var planned = [];
+
+        items.forEach(function (d) {
+            var full = vrFullPath(d);
+            if (isDownloaded(full)) {
+                skipped++;
+                markCardDone(d, '已下载过');
+                return;
+            }
+            d.downFileName = full;      // 目录 + 名字，交给猫抓的下载循环
+            markDownloaded(full);       // 先记账：批量中途关面板也不会重复下
+            planned.push(d);
+        });
+
+        if (skipped) {
+            tip('跳过 ' + skipped + ' 个已下载过的文件');
+        }
+        if (!planned.length) {
+            tip('选中的都下载过了，换个页面或清空下载记录');
+            return false;               // 调用方决定是否拦下
+        }
+        batchIds = [];
+        batchTotal = planned.length;
+        batchDone = 0;
+        return true;
+    }
+
+    var batchTotal = 0;
+    var batchDone = 0;
+
+    /** 记录本批下载 id（monkey-patch chrome.downloads.download） */
+    function hookDownloadsApi() {
+        try {
+            var api = chrome.downloads;
+            var orig = api.download;
+            if (!orig || orig.__vrHooked) { return; }
+            var wrapped = function (opts, cb) {
+                return orig.call(api, opts, function (id) {
+                    if (id) { batchIds.push(id); }
+                    cb && cb(id);
+                });
+            };
+            wrapped.__vrHooked = true;
+            api.download = wrapped;
+        } catch (e) { /* 个别版本 API 只读，忽略 */ }
+    }
+
+    /** 完成/失败汇报 */
+    function bindDownloadProgress() {
+        try {
+            chrome.downloads.onChanged.addListener(function (delta) {
+                if (!delta || !delta.id) { return; }
+
+                // 单条卡片状态：借猫抓的 downData 反查是哪个卡片
+                var data = null;
+                try {
+                    if (typeof downData !== 'undefined' && downData[delta.id]) {
+                        data = downData[delta.id];
+                    }
+                } catch (e) { /* 忽略 */ }
+
+                if (delta.state && delta.state.current === 'complete') {
+                    if (data) { markCardDone(data); }
+                    if (batchIds.indexOf(delta.id) >= 0) {
+                        batchDone++;
+                        if (batchTotal && batchDone >= batchTotal) {
+                            tip('批量完成：' + batchDone + ' 个文件已保存');
+                            batchTotal = 0;
+                            batchDone = 0;
+                            batchIds = [];
+                        }
+                    }
+                }
+                if (delta.state && delta.state.current === 'interrupted') {
+                    if (data) {
+                        data.html.removeClass('done');
+                        data.html.attr('data-vr-state', '失败');
+                        // 失败了就把去重记录撤掉，允许重试
+                        var key = hashKey(data.downFileName || '');
+                        if (downloaded[key]) {
+                            delete downloaded[key];
+                            saveDownloaded();
+                        }
+                        tip('下载失败：' + (delta.error && delta.error.current || '未知原因'));
+                    }
+                }
+            });
+        } catch (e) { /* 忽略 */ }
+    }
+
+    /**
+     * 下载前置钩子（捕获阶段，抢在猫抓的 jQuery 处理器之前）
+     *  - 批量下载：算路径、去重、跳过已下过的
+     *  - 单卡下载：算路径
+     */
+    function bindDownloadHooks() {
+        document.addEventListener('click', function (e) {
+            var target = e.target;
+
+            // 单卡下载按钮
+            var single = target.closest && target.closest('.icon.download');
+            if (single) {
+                var d = dataOfEl(single);
+                if (d) {
+                    var full = vrFullPath(d);
+                    if (isDownloaded(full)) {
+                        markCardDone(d, '已下载过');
+                        tip('这个文件已经下过了（可在设置里清空记录）');
+                        e.stopPropagation();
+                        e.preventDefault();
+                        return;
+                    }
+                    d.downFileName = full;
+                    markDownloaded(full);
+                }
+                return;
+            }
+
+            // 批量下载
+            var batch = target.closest && target.closest('#DownFile');
+            if (batch) {
+                var ok = beforeBatchDownload();
+                if (ok === false) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    updateCounts();
+                }
+            }
+        }, true);
+    }
+
+    function bindClearDownloaded() {
+        var btn = el('vrClearDownloaded');
+        if (!btn) { return; }
+        btn.addEventListener('click', function () {
+            downloaded = {};
+            saveDownloaded();
+            document.querySelectorAll('.panel.done').forEach(function (p) {
+                p.classList.remove('done');
+                p.removeAttribute('data-vr-state');
+            });
+            tip('下载记录已清空，之前下过的可以重下了');
+        });
+    }
+
+
+
+    /* ==========================================================
+     * 十一、站点增强（M3 的 B站分P / M4 的 YouTube 提示）
+     * ========================================================== */
+
+    var siteInfo = { bili: null, youtube: false };
+    var biliExpanded = false;
+
+    /** 当前标签页网址。G.webUrl 只在 background 上下文存在，面板里必须走 chrome.tabs.get */
+    function currentPageUrl() {
+        var tabId = (window.G && G.tabId) || -1;
+        if (tabId < 0) { return Promise.resolve(''); }
+        return new Promise(function (resolve) {
+            try {
+                chrome.tabs.get(tabId, function (tab) {
+                    resolve((chrome.runtime.lastError || !tab) ? '' : (tab.url || ''));
+                });
+            } catch (e) { resolve(''); }
+        });
+    }
+
+    /** B站：读页面 __INITIAL_STATE__ 拿分P列表（主世界执行，零签名对抗） */
+    function fetchBiliParts(tabId) {
+        return chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            func: function () {
+                try {
+                    var s = window.__INITIAL_STATE__;
+                    if (!s || !s.videoData) { return null; }
+                    var vd = s.videoData;
+                    if (!vd.pages || !vd.pages.length) { return null; }
+                    return {
+                        bvid: vd.bvid || '',
+                        title: vd.title || '',
+                        pages: vd.pages.map(function (p) {
+                            return { page: p.page, part: p.part || p.page, cid: p.cid };
+                        })
+                    };
+                } catch (e) { return null; }
+            }
+        }).then(function (res) {
+            return (res && res[0] && res[0].result) || null;
+        }).catch(function () { return null; });
+    }
+
+    function buildBiliBanner(info) {
+        var old = el('vrBiliBanner');
+        if (old) { old.remove(); }
+        if (!info || !info.pages || info.pages.length < 2) { return; }
+
+        var box = document.createElement('div');
+        box.id = 'vrBiliBanner';
+        box.className = 'vr-banner';
+
+        var n = info.pages.length;
+        box.innerHTML =
+            '<div class="vr-banner-head">' +
+            '<span class="vr-banner-tag">B站</span>' +
+            '<span class="vr-banner-txt">本页共 <b>' + n + '</b> 个分P</span>' +
+            '<button class="fbtn vr-banner-toggle">展开</button>' +
+            '<button class="fbtn primary vr-banner-open">后台打开全部</button>' +
+            '</div>' +
+            '<div class="vr-banner-body hide">' +
+            info.pages.map(function (p) {
+                return '<label class="vr-partrow"><span class="vr-partno">P' + p.page + '</span>' +
+                    '<span class="vr-partname">' + escHtml(p.part) + '</span></label>';
+            }).join('') +
+            '</div>';
+
+        var anchor = el('Tips');
+        anchor.parentNode.insertBefore(box, anchor);
+
+        var body = box.querySelector('.vr-banner-body');
+        var toggle = box.querySelector('.vr-banner-toggle');
+        toggle.addEventListener('click', function () {
+            biliExpanded = !biliExpanded;
+            body.classList.toggle('hide', !biliExpanded);
+            toggle.textContent = biliExpanded ? '收起' : '展开';
+        });
+
+        if (biliExpanded) { body.classList.remove('hide'); toggle.textContent = '收起'; }
+
+        box.querySelector('.vr-banner-open').addEventListener('click', function () {
+            openAllParts(info);
+        });
+
+        // 给 B站 卡片挂上「分P ×N」chip（原型要求）
+        vrAllData().forEach(function (d) {
+            if (!d || !d.html) { return; }
+            var u = d.webUrl || '';
+            if (u.indexOf('bilibili.com/video') < 0) { return; }
+            if (d.html.find('.partchip').length) { return; }
+            var chip = $('<button class="partchip" title="展开本页分P列表">分P ×' + n + '</button>');
+            chip.on('click', function (e) {
+                e.stopPropagation();
+                if (!biliExpanded) { toggle.click(); }
+                box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            });
+            d.html.find('.icon.download').before(chip);
+        });
+    }
+
+    var openingParts = false;
+    function openAllParts(info) {
+        if (openingParts) { return; }
+        var n = info.pages.length;
+        if (n > 12 && !confirm('要打开 ' + n + ' 个后台标签页，可能有点卡。继续？')) { return; }
+
+        currentPageUrl().then(function (full) {
+            var base = full.split('?')[0];
+            if (!base || base.indexOf('bilibili.com/video') < 0) {
+                tip('拿不到当前视频地址，先刷新一下页面');
+                return;
+            }
+            openingParts = true;
+            tip('正在后台打开 ' + n + ' 个分P，嗅探完成后到「其他页面」批量下载');
+
+            var i = 0;
+            var timer = setInterval(function () {
+                if (i >= n) {
+                    clearInterval(timer);
+                    openingParts = false;
+                    tip('已打开 ' + n + ' 个分P，切到「其他页面」看看');
+                    return;
+                }
+                var p = info.pages[i++];
+                chrome.tabs.create({ url: base + '?p=' + p.page, active: false });
+            }, 700);
+        });
+    }
+
+    function buildYoutubeBanner() {
+        if (el('vrYtBanner')) { return; }
+        var box = document.createElement('div');
+        box.id = 'vrYtBanner';
+        box.className = 'vr-banner vr-banner-warn';
+        box.innerHTML =
+            '<div class="vr-banner-head">' +
+            '<span class="vr-banner-tag warn">YouTube</span>' +
+            '<span class="vr-banner-txt">2026 起 YT 强制 SABR + poToken，纯扩展多半抓不到。<br>' +
+            '能抓到就直接下；抓不到属已知限制，不折腾签名对抗。</span>' +
+            '</div>';
+        var anchor = el('Tips');
+        anchor.parentNode.insertBefore(box, anchor);
+    }
+
+    function detectSite() {
+        var tabId = (window.G && G.tabId) || -1;
+        if (tabId < 0) { return; }
+
+        currentPageUrl().then(function (url) {
+            if (/youtube\.com/i.test(url)) {
+                siteInfo.youtube = true;
+                buildYoutubeBanner();
+            }
+
+            // B站：不看域名看数据——页面里有 __INITIAL_STATE__.videoData 就是分P页
+            // （顺带兼容镜像站；非 B站页面注入后直接返回 null，成本几毫秒）
+            fetchBiliParts(tabId).then(function (info) {
+                if (!info) { return; }
+                siteInfo.bili = info;
+                buildBiliBanner(info);
+            });
+        });
+    }
+
+
+
+    /* ==========================================================
+     * 十二、图片批量保存（M5）
+     * ========================================================== */
+
+    var scannedImages = [];
+
+    function collectImagesInPage() {
+        var tabId = (window.G && G.tabId) || -1;
+        if (!chrome.scripting || tabId < 0) { return Promise.resolve([]); }
+
+        return chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function () {
+                var out = [];
+                var seen = {};
+                function push(src, w, h, alt) {
+                    if (!src || src.indexOf('data:') === 0 || seen[src]) { return; }
+                    seen[src] = 1;
+                    out.push({ src: src, w: w || 0, h: h || 0, alt: alt || '' });
+                }
+                // <img>
+                var imgs = document.querySelectorAll('img');
+                for (var i = 0; i < imgs.length && out.length < 300; i++) {
+                    var im = imgs[i];
+                    var src = im.currentSrc || im.src;
+                    var w = im.naturalWidth || im.width || 0;
+                    var h = im.naturalHeight || im.height || 0;
+                    // 明确加载失败的图（complete 且无固有尺寸）直接跳过，
+                    // 还没加载完的保留——可能是懒加载，扫描后正好触发加载
+                    if (im.complete && !im.naturalWidth) { continue; }
+                    if (w && h && (w < 120 || h < 120)) { continue; }   // 跳过图标/小图
+                    push(src, w, h, im.alt);
+                }
+                // background-image（只扫前 3000 个节点，避免卡）
+                var all = document.querySelectorAll('*');
+                var limit = Math.min(all.length, 3000);
+                for (var j = 0; j < limit && out.length < 300; j++) {
+                    var bg = getComputedStyle(all[j]).backgroundImage;
+                    if (!bg || bg === 'none') { continue; }
+                    var m = /url\(["']?(.*?)["']?\)/.exec(bg);
+                    if (m) { push(m[1], 0, 0, ''); }
+                }
+                // srcset 里的大图已由 currentSrc 覆盖
+                return out;
+            }
+        }).then(function (res) {
+            return (res && res[0] && res[0].result) || [];
+        }).catch(function () { return []; });
+    }
+
+    function ensureImageModal() {
+        if (el('vrImgModal')) { return; }
+        var mask = document.createElement('div');
+        mask.className = 'mask';
+        mask.id = 'vrImgMask';
+
+        var modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.id = 'vrImgModal';
+        modal.innerHTML =
+            '<h3>本页图片 <span id="vrImgCount" style="color:var(--vr-cyan)">0</span></h3>' +
+            '<div class="sub">勾选要保存的图片，按「页面标题_序号」命名，存进默认目录。</div>' +
+            '<div class="vrimg-list" id="vrImgList"></div>' +
+            '<div class="tplrow" style="margin-top:10px">' +
+            '<button id="vrImgAll" style="background:#222736;border-color:#2c3444;color:#c6cdd9">全选</button>' +
+            '<button id="vrImgDown">保存选中</button>' +
+            '</div>';
+
+        var shell = el('vrShell');
+        shell.appendChild(mask);
+        shell.appendChild(modal);
+
+        mask.addEventListener('click', closeImageModal);
+        modal.querySelector('#vrImgAll').addEventListener('click', function () {
+            var boxes = modal.querySelectorAll('.vrimg-chk');
+            var allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+            Array.prototype.forEach.call(boxes, function (b) { b.checked = !allOn; });
+            this.textContent = allOn ? '全选' : '全不选';
+        });
+        modal.querySelector('#vrImgDown').addEventListener('click', downloadPickedImages);
+    }
+
+    function closeImageModal() {
+        if (el('vrImgMask')) { el('vrImgMask').classList.remove('on'); }
+        if (el('vrImgModal')) { el('vrImgModal').classList.remove('on'); }
+    }
+
+    function openImageModal(images) {
+        ensureImageModal();
+        scannedImages = images;
+        var list = el('vrImgList');
+        el('vrImgCount').textContent = images.length;
+
+        if (!images.length) {
+            list.innerHTML = '<div style="font-size:10.5px;color:#77808f;padding:8px 0">本页没扫到可保存的图片（大于 120×120）</div>';
+        } else {
+            list.innerHTML = images.map(function (im, i) {
+                return '<label class="vrimg-row">' +
+                    '<input type="checkbox" class="chk vrimg-chk" data-i="' + i + '" checked>' +
+                    '<img src="' + esc(im.src) + '" loading="lazy" onerror="this.style.opacity=.2">' +
+                    '<span class="vrimg-meta">' + (im.w ? im.w + '×' + im.h : '背景图') + '</span>' +
+                    '</label>';
+            }).join('');
+        }
+        el('vrImgMask').classList.add('on');
+        el('vrImgModal').classList.add('on');
+    }
+
+    function downloadPickedImages() {
+        var picked = [];
+        document.querySelectorAll('#vrImgList .vrimg-chk').forEach(function (b) {
+            if (b.checked) { picked.push(scannedImages[+b.dataset.i]); }
+        });
+        if (!picked.length) { tip('先勾选要保存的图片'); return; }
+
+        var dir = cleanPath(settings.defaultDir) || DEFAULTS.defaultDir;
+        var base = (pageInfo && pageInfo.title) || (el('vrPageTitle') && el('vrPageTitle').textContent) || '图片';
+        var N = naming();
+
+        var names = picked.map(function (im, i) {
+            var ext = (im.src.split('#')[0].split('?')[0].split('.').pop() || 'jpg').toLowerCase();
+            if (!/^(jpg|jpeg|png|gif|webp|avif|bmp)$/.test(ext)) { ext = 'jpg'; }
+            var nm;
+            if (N && N.buildNameFromInfo) {
+                nm = N.buildNameFromInfo({ title: base, site: '' }, im.src, {
+                    tpl: '${title}_${index}', ext: ext, index: i
+                });
+            } else {
+                nm = base + '_' + String(i + 1).padStart(2, '0') + '.' + ext;
+            }
+            return nm;
+        });
+        names = dedupe(names);
+
+        var ok = 0;
+        picked.forEach(function (im, i) {
+            var filename = dir + '/' + cleanPath(names[i]);
+            if (isDownloaded(filename)) { return; }
+            markDownloaded(filename);
+            chrome.downloads.download({ url: im.src, filename: filename }, function () {
+                chrome.runtime.lastError && console.warn(chrome.runtime.lastError);
+            });
+            ok++;
+        });
+
+        closeImageModal();
+        tip(ok ? ('已保存 ' + ok + ' 张图片到 ' + dir + '/') : '这些图都下过了');
+    }
+
+    function bindImageScan() {
+        var btn = el('vrScanImages');
+        if (!btn) { return; }
+        btn.addEventListener('click', function () {
+            btn.disabled = true;
+            btn.textContent = '扫描中…';
+            collectImagesInPage().then(function (images) {
+                btn.disabled = false;
+                btn.textContent = '抓图';
+                openImageModal(images);
+            });
+        });
+    }
+
+
+
+    /* ==========================================================
+     * 十三、启动
      * ========================================================== */
 
     function esc(s) {
@@ -668,13 +1265,23 @@
             bindFoot();
             bindDirMenu();
             bindRenameModal();
+            bindClearDownloaded();
+            bindImageScan();
             watchList();
+
+            // 下载管线（M2）：需要在猫抓绑定之前装好钩子
+            loadDownloaded(function () {
+                hookDownloadsApi();
+                bindDownloadHooks();
+                bindDownloadProgress();
+            });
 
             // 先按现有数据刷一遍，再等 tabId 落地做页面信息 + 智能起名
             updateCounts();
             waitTabId(function (id) {
                 if (id < 0) { return; }
                 fillPageInfo();
+                detectSite();
                 if (!settings.smartName) { return; }
                 fetchPageInfo().then(function (info) {
                     pageInfo = info;
