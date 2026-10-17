@@ -1,0 +1,1093 @@
+/* ==========================================================================
+   钓鱼竿 video-rod — popup 视觉层（M1）
+   设计基准：deliverables/prototypes/popup-prototype-v5.html
+   说明：本文件在 popup.css 之后加载，只做「覆盖 + 新组件」，
+        猫抓原有的定位/隐藏逻辑（#down / .container / .more 等）照旧生效。
+   ========================================================================== */
+
+:root {
+    --vr-bg: #171a21;
+    --vr-bg-deep: #141720;
+    --vr-card: #1d222c;
+    --vr-card-hi: #1d2430;
+    --vr-line: #232936;
+    --vr-line-2: #272e3c;
+    --vr-text: #e6e9ef;
+    --vr-text-dim: #aab3c2;
+    --vr-text-mute: #77808f;
+    --vr-cyan: #22d3ee;
+    --vr-cyan-deep: #0e7490;
+    --vr-cyan-soft: #7dd3fc;
+    --vr-orange: #fb923c;
+    --vr-green: #4ade80;
+    --vr-radius: 11px;
+}
+
+/* ---------- 外壳 ---------- */
+html {
+    background: var(--vr-bg);
+}
+
+body.popupBody {
+    width: 400px;
+    min-width: 400px;
+    max-width: 400px;
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 12px;
+    background: var(--vr-bg);
+    color: var(--vr-text);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+#vrShell {
+    display: flex;
+    flex-direction: column;
+    max-height: 600px;
+    background: var(--vr-bg);
+}
+
+/* 统一盒模型，避免 padding 撑破 400px */
+#vrShell,
+.pop-head,
+.pageinfo,
+.vr-tabs,
+.filters,
+#down,
+.panel,
+.modal,
+.dirmenu,
+.drawer {
+    box-sizing: border-box;
+}
+
+/* ---------- 顶栏 ---------- */
+.pop-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 13px 9px;
+    background: linear-gradient(180deg, #1b202a, var(--vr-bg));
+    border-bottom: 1px solid var(--vr-line);
+    flex: none;
+}
+
+.pop-head .logo {
+    width: 24px;
+    height: 24px;
+    flex: none;
+}
+
+.pop-head .pop-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    white-space: nowrap;
+}
+
+.pop-head .pop-title small {
+    font-size: 9.5px;
+    color: var(--vr-cyan);
+    font-weight: 500;
+    margin-left: 5px;
+    letter-spacing: 0;
+}
+
+.pop-head .ver {
+    font-size: 9px;
+    color: #8b93a3;
+    background: #222736;
+    border: 1px solid #2c3444;
+    padding: 2px 6px;
+    border-radius: 20px;
+}
+
+.iconbtn {
+    width: 27px;
+    height: 27px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    background: #222736;
+    color: var(--vr-text-dim);
+    display: grid;
+    place-items: center;
+    transition: .15s;
+    flex: none;
+    padding: 0;
+}
+
+.iconbtn:first-of-type { margin-left: auto; }
+
+.iconbtn:hover { background: #2b3242; color: var(--vr-text); }
+.iconbtn svg { width: 14px; height: 14px; }
+
+/* ---------- 页面信息条 ---------- */
+.pageinfo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    font-size: 10.5px;
+    color: #7d8697;
+    background: var(--vr-bg-deep);
+    border-bottom: 1px solid var(--vr-line);
+    flex: none;
+}
+
+.pageinfo .site {
+    background: #1d2b33;
+    color: var(--vr-cyan);
+    border: 1px solid #23434f;
+    padding: 1.5px 7px;
+    border-radius: 20px;
+    font-size: 9.5px;
+    font-weight: 600;
+    flex: none;
+    max-width: 118px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pageinfo .ptitle {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pageinfo .count { flex: none; color: var(--vr-text-dim); }
+.pageinfo .count b { color: var(--vr-orange); }
+
+/* ---------- 标签页（猫抓原生，收窄成小胶囊） ---------- */
+.vr-tabs {
+    display: flex;
+    gap: 5px;
+    padding: 7px 13px 0;
+    flex: none;
+}
+
+.vr-tabs .TabButton {
+    flex: 1;
+    font-size: 10.5px;
+    padding: 5px 6px;
+    border-radius: 7px;
+    background: #1a1e27;
+    border: 1px solid var(--vr-line-2);
+    color: var(--vr-text-mute);
+    text-align: center;
+    cursor: pointer;
+    transition: .15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vr-tabs .TabButton.Active {
+    background: #12242e;
+    border-color: #23434f;
+    color: var(--vr-cyan);
+    font-weight: 600;
+}
+
+.vr-tabs .TabButton:hover { border-color: #384257; }
+
+/* 猫抓把数量塞在 #quantity 里，别让它换行 */
+.vr-tabs .TabButton #quantity {
+    display: inline;
+    margin-left: 3px;
+    font-size: 9.5px;
+    color: var(--vr-orange);
+}
+
+/* ---------- 类型筛选 ---------- */
+.filters {
+    display: flex;
+    gap: 5px;
+    padding: 8px 13px;
+    flex: none;
+    border-bottom: 1px solid var(--vr-line);
+}
+
+.fchip {
+    font-size: 10.5px;
+    padding: 3px 9px;
+    border-radius: 99px;
+    border: 1px solid #2a3a44;
+    background: #152027;
+    color: #9fb3bd;
+    cursor: pointer;
+    font-family: inherit;
+    transition: .15s;
+}
+
+.fchip:hover { border-color: #3b5260; }
+
+.fchip.on {
+    border-color: var(--vr-cyan);
+    color: var(--vr-cyan);
+    background: #12242e;
+}
+
+.fchip b { font-weight: 600; opacity: .75; }
+
+/* ---------- 列表容器 ---------- */
+#mediaList.container,
+#allMediaList.container,
+#otherOptions.container,
+#maybeKey.container,
+#vrTools.container {
+    margin-bottom: 0 !important;
+    padding: 9px;
+    max-height: 460px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1 1 auto;
+    background: var(--vr-bg);
+}
+
+#mediaList::-webkit-scrollbar,
+#allMediaList::-webkit-scrollbar,
+#otherOptions::-webkit-scrollbar,
+#vrTools::-webkit-scrollbar { width: 5px; }
+
+#mediaList::-webkit-scrollbar-thumb,
+#allMediaList::-webkit-scrollbar-thumb,
+#otherOptions::-webkit-scrollbar-thumb,
+#vrTools::-webkit-scrollbar-thumb {
+    background: #2c3444;
+    border-radius: 3px;
+}
+
+#mediaList > div,
+#allMediaList > div { display: block; }
+
+/* ---------- 卡片 ---------- */
+.panel {
+    background: var(--vr-card);
+    border: 1px solid var(--vr-line-2);
+    border-radius: var(--vr-radius);
+    margin: 0 0 8px;
+    padding: 8px 9px 9px;
+    transition: border-color .15s, background .15s;
+    position: relative;
+}
+
+.panel:hover { border-color: #384257; }
+.panel:has(.DownCheck:checked) { border-color: #22d3ee66; background: var(--vr-card-hi); }
+
+/* 类型筛选：独立 class，不与猫抓的扩展名筛选（inline display）互相覆盖 */
+.panel.vr-type-off { display: none !important; }
+
+.panel-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+    background: none;
+    cursor: pointer;
+    min-height: 22px;
+}
+
+/* 复选框 */
+.DownCheck.chk,
+.chk {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 15px;
+    height: 15px;
+    border-radius: 5px;
+    flex: none;
+    cursor: pointer;
+    border: 1.5px solid #3a4356;
+    background: #222736;
+    transition: .15s;
+    position: relative;
+    padding: 0;
+    margin: 0;
+}
+
+.chk:checked { background: var(--vr-cyan); border-color: var(--vr-cyan); }
+
+.chk:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid #0b1116;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+/* 类型徽章 */
+.panel .badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2.5px 6px;
+    border-radius: 5px;
+    flex: none;
+    letter-spacing: .3px;
+    line-height: 1.25;
+    text-transform: uppercase;
+}
+
+.panel .badge.b-mp4 { background: #3b2a12; color: #fbbf24; border: 1px solid #57411a; }
+.panel .badge.b-hls { background: #122c3d; color: #38bdf8; border: 1px solid #1d4a66; }
+.panel .badge.b-mpd { background: #1b2a3d; color: #93c5fd; border: 1px solid #2a4360; }
+.panel .badge.b-img { background: #0f2f22; color: #34d399; border: 1px solid #17543a; }
+.panel .badge.b-aud { background: #2c1a33; color: #d8b4fe; border: 1px solid #4a2a58; }
+.panel .badge.b-other { background: #262b36; color: #9aa3b2; border: 1px solid #333b4a; }
+
+/* 标题 + 元信息 */
+.panel-heading .meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    overflow: hidden;
+}
+
+.panel-heading .name {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11.5px;
+    color: var(--vr-text);
+    margin: 0;
+}
+
+.panel-heading .name.bold { font-weight: 600; }
+
+.panel-heading .size {
+    float: none;
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--vr-text-mute);
+    flex: none;
+}
+
+.panel-heading .vrmime {
+    font-size: 9.5px;
+    color: #5c6575;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.panel-heading .meta { cursor: default; }
+
+.panel-heading .group {
+    display: none;   /* 猫抓的分组序号（video 元素下标），设计里没有，纯噪音 */
+}
+
+/* 卡片内图标统一成线性风格（cat-catch 的位图在深色下是蓝块） */
+.panel-heading svg.icon {
+    color: #8b93a3;
+    stroke: currentColor;
+    fill: none;
+}
+
+/* 卡片内图标 */
+.panel-heading .icon,
+.panel-heading .favicon,
+.panel-heading .regex {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    margin: 0;
+    flex: none;
+    opacity: .55;
+    transition: opacity .15s, transform .15s;
+}
+
+.panel-heading .icon:hover,
+.panel-heading .favicon:hover,
+.panel-heading .regex:hover { opacity: 1; transform: scale(1.15); }
+
+.panel-heading .icon:active { transform: scale(.9); }
+
+/* 下载按钮（原 #download 图标 → 蓝色方块） */
+.panel-heading .icon.download {
+    width: 25px;
+    height: 25px;
+    border-radius: 7px;
+    border: 1px solid #2c3444;
+    background: #222736;
+    padding: 5px;
+    opacity: 1;
+    box-sizing: border-box;
+    margin-left: 2px;
+}
+
+.panel-heading .icon.download:hover {
+    background: var(--vr-cyan-deep);
+    border-color: var(--vr-cyan);
+    transform: none;
+    filter: none;
+}
+
+/* ---------- 第二行：文件名 / 清晰度 / 目录 ---------- */
+.panel .row2,
+.row2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 7px;
+}
+
+.namebox {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: var(--vr-bg-deep);
+    border: 1px solid #262b36;
+    border-radius: 7px;
+    padding: 0 7px;
+    transition: .15s;
+    min-width: 0;
+}
+
+.namebox:focus-within {
+    border-color: #22d3ee88;
+    background: #10131b;
+}
+
+.namebox .lbl {
+    font-size: 9.5px;
+    color: #5c6575;
+    margin-right: 4px;
+    flex: none;
+    user-select: none;
+}
+
+.namebox input.vr-name {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--vr-text);
+    font-size: 11px;
+    padding: 5px 0;
+    font-family: inherit;
+    min-width: 0;
+    width: 100%;
+}
+
+.qsel {
+    background: var(--vr-bg-deep);
+    border: 1px solid #262b36;
+    color: var(--vr-text-dim);
+    font-size: 10px;
+    border-radius: 7px;
+    padding: 5px 3px;
+    cursor: pointer;
+    outline: none;
+    flex: none;
+    font-family: inherit;
+    max-width: 84px;
+}
+
+.qsel:focus { border-color: #22d3ee88; }
+
+.dirchip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #1a2b33;
+    border: 1px solid #23434f;
+    color: var(--vr-cyan-soft);
+    font-size: 9.5px;
+    padding: 5px 7px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: .15s;
+    white-space: nowrap;
+    flex: none;
+    max-width: 118px;
+    font-family: inherit;
+    overflow: hidden;
+}
+
+.dirchip:hover { background: #1f3540; border-color: #2e5a6b; }
+.dirchip svg { width: 10px; height: 10px; flex: none; }
+.dirchip span { overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 展开区（猫抓原生 url 面板） ---------- */
+.panel .url,
+.panel .confirm {
+    padding: 7px 0 2px;
+    border-top: 1px dashed #2a3a44;
+    margin-top: 7px;
+    font-size: 10.5px;
+    color: var(--vr-text-mute);
+    line-height: 1.7;
+    word-break: break-all;
+}
+
+.panel .url a { color: var(--vr-cyan-soft); font-size: 10px; }
+
+.panel .url .moreButton {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 4px 0;
+}
+
+.panel .url .moreButton .icon { width: 16px; height: 16px; opacity: .7; }
+
+.panel .url video,
+.panel .url #screenshots {
+    max-width: 100%;
+    margin-top: 5px;
+    border-radius: 7px;
+}
+
+.panel .confirm textarea {
+    width: 100%;
+    font-size: 10px;
+    background: var(--vr-bg-deep);
+    color: var(--vr-text);
+    border: 1px solid var(--vr-line-2);
+    border-radius: 7px;
+    padding: 6px;
+    box-sizing: border-box;
+    font-family: ui-monospace, monospace;
+}
+
+.panel .confirm button { margin-top: 5px; margin-right: 5px; }
+
+/* ---------- 进度条 ---------- */
+.panel .prog {
+    height: 3px;
+    background: #222736;
+    border-radius: 2px;
+    margin-top: 7px;
+    overflow: hidden;
+    display: none;
+}
+
+.panel .prog.on { display: block; }
+
+.panel .prog i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--vr-cyan), var(--vr-green));
+    border-radius: 2px;
+    transition: width .2s;
+}
+
+/* ---------- 底部操作栏 ---------- */
+#down {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 11px;
+    background: var(--vr-bg-deep);
+    border-top: 1px solid var(--vr-line);
+    position: static;
+    flex: none;
+    box-shadow: none;
+}
+
+#down .allsel {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    color: #8b93a3;
+    cursor: pointer;
+    user-select: none;
+    flex: none;
+}
+
+.fbtn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #222736;
+    border: 1px solid #2c3444;
+    color: #c6cdd9;
+    font-size: 10.5px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: .15s;
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.fbtn:hover { background: #2b3242; border-color: #3a4356; }
+.fbtn svg { width: 11px; height: 11px; }
+
+.fbtn.primary {
+    margin-left: auto;
+    background: linear-gradient(135deg, #0e7490, #155e75);
+    border-color: #22d3ee55;
+    color: #e0faff;
+    font-weight: 600;
+}
+
+.fbtn.primary:hover {
+    background: linear-gradient(135deg, #0891b2, #0e7490);
+    box-shadow: 0 0 12px #22d3ee33;
+}
+
+.fbtn.primary:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+
+.fbtn .cnt {
+    background: #0b1116;
+    border-radius: 10px;
+    padding: 0 5px;
+    font-size: 9px;
+    color: var(--vr-cyan-soft);
+}
+
+/* 原生按钮统一缩窄 */
+#down > button:not(.fbtn),
+#features button,
+.otherFeat button,
+#maybeKey button {
+    font-size: 10px;
+    padding: 5px 7px;
+    border-radius: 7px;
+    border: 1px solid #2c3444;
+    background: #222736;
+    color: #c6cdd9;
+    cursor: pointer;
+    font-family: inherit;
+    margin: 0;
+}
+
+#down > button:not(.fbtn):hover { background: #2b3242; }
+
+/* ---------- 提示 / 空状态 ---------- */
+#Tips {
+    font-size: 11px;
+    color: var(--vr-text-mute);
+    padding: 34px 18px;
+    line-height: 1.9;
+    text-align: center;
+}
+
+#TipsFixed {
+    position: fixed !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: 58px;
+    transform: translateX(-50%);
+    background: #22262f;
+    border: 1px solid #2c3444;
+    color: var(--vr-text);
+    font-size: 10.5px;
+    padding: 7px 13px;
+    border-radius: 9px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .5);
+    white-space: nowrap;
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 99999 !important;
+}
+
+/* ---------- 筛选/更多 面板（原生 .more：保持 fixed 浮层，只换皮） ---------- */
+#filter.more,
+#features.more {
+    position: fixed;
+    background: #1a1e27f2;
+    backdrop-filter: blur(6px);
+    border-top: 1px solid var(--vr-line-2);
+    padding: 9px 11px;
+    max-height: 210px;
+    overflow-y: auto;
+    gap: 5px;
+    flex-wrap: wrap;
+    box-sizing: border-box;
+}
+
+#filter button {
+    width: auto;
+    margin-left: 4px;
+}
+
+#features button {
+    margin-left: 4px;
+}
+
+#filter .flexFilter,
+#ext .flexFilter {
+    font-size: 10px;
+    color: var(--vr-text-dim);
+    background: #1a1e27;
+    border: 1px solid var(--vr-line-2);
+    border-radius: 6px;
+    padding: 3px 7px;
+    margin: 2px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+#regularText {
+    background: var(--vr-bg-deep);
+    border: 1px solid var(--vr-line-2);
+    border-radius: 7px;
+    color: var(--vr-text);
+    font-size: 10.5px;
+    padding: 5px 8px;
+    outline: none;
+    flex: 1;
+}
+
+/* ---------- 遮罩 / 弹层 ---------- */
+.mask {
+    position: fixed;
+    inset: 0;
+    background: #0b0d10b0;
+    backdrop-filter: blur(2px);
+    z-index: 400;
+    display: none;
+}
+
+.mask.on { display: block; }
+
+.modal {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--vr-card);
+    border: 1px solid #2c3444;
+    border-radius: 13px;
+    padding: 15px;
+    z-index: 450;
+    display: none;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+}
+
+.modal.on { display: block; animation: vrUp .16s ease; }
+
+@keyframes vrUp {
+    from { opacity: 0; transform: translateY(calc(-50% + 8px)); }
+}
+
+.modal h3 { font-size: 13px; margin: 0 0 4px; }
+
+.modal .sub {
+    font-size: 10px;
+    color: var(--vr-text-mute);
+    margin-bottom: 11px;
+    line-height: 1.7;
+}
+
+.modal .sub code {
+    color: var(--vr-cyan-soft);
+    background: #12242e;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 9.5px;
+}
+
+.modal .sub b { color: var(--vr-orange); }
+
+.tplrow { display: flex; gap: 6px; margin-bottom: 10px; }
+
+.tplrow input {
+    flex: 1;
+    background: var(--vr-bg-deep);
+    border: 1px solid #262b36;
+    border-radius: 8px;
+    color: var(--vr-text);
+    font-size: 11.5px;
+    padding: 7px 9px;
+    outline: none;
+    font-family: ui-monospace, monospace;
+    min-width: 0;
+}
+
+.tplrow input:focus { border-color: #22d3ee88; }
+
+.tplrow button {
+    background: var(--vr-cyan-deep);
+    border: 1px solid #22d3ee66;
+    color: #e0faff;
+    font-size: 11px;
+    padding: 0 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    flex: none;
+}
+
+.tplrow button:hover { background: #0891b2; }
+
+.preview {
+    background: var(--vr-bg-deep);
+    border: 1px solid #222736;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 10px;
+    color: #8b93a3;
+    line-height: 1.9;
+    max-height: 110px;
+    overflow-y: auto;
+    word-break: break-all;
+}
+
+.preview b { color: var(--vr-orange); font-weight: 600; }
+
+/* ---------- 抽屉 ---------- */
+.drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 246px;
+    background: #1a1e27;
+    border-left: 1px solid #2c3444;
+    z-index: 460;
+    transform: translateX(102%);
+    transition: transform .22s cubic-bezier(.2, .8, .3, 1);
+    padding: 14px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    font-size: 11px;
+}
+
+.drawer.on { transform: none; }
+
+.drawer h3 {
+    font-size: 12.5px;
+    margin: 0 0 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.drawer h3 .x {
+    margin-left: auto;
+    color: var(--vr-text-mute);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 5px;
+}
+
+.drawer h3 .x:hover { background: #2b3242; color: var(--vr-text); }
+
+.srow { margin-bottom: 13px; }
+
+.srow label {
+    font-size: 10.5px;
+    color: var(--vr-text-dim);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.srow input[type=text] {
+    width: 100%;
+    background: var(--vr-bg-deep);
+    border: 1px solid #262b36;
+    border-radius: 7px;
+    color: var(--vr-text);
+    font-size: 11px;
+    padding: 6px 8px;
+    outline: none;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.srow input[type=text]:focus { border-color: #22d3ee88; }
+
+.toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #c6cdd9;
+    padding: 6px 0;
+    gap: 8px;
+}
+
+.sw {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 31px;
+    height: 17px;
+    border-radius: 20px;
+    background: #2c3444;
+    cursor: pointer;
+    position: relative;
+    transition: .18s;
+    flex: none;
+    border: none;
+    margin: 0;
+}
+
+.sw:checked { background: var(--vr-cyan-deep); }
+
+.sw::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #8b93a3;
+    transition: .18s;
+}
+
+.sw:checked::after { left: 16px; background: #e0faff; }
+
+.drawer .note {
+    font-size: 9.5px;
+    color: #5c6575;
+    line-height: 1.75;
+    margin-top: 14px;
+    border-top: 1px solid var(--vr-line);
+    padding-top: 10px;
+}
+
+.drawer .toolgrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.drawer .toolgrid button {
+    font-size: 10px;
+    padding: 7px 5px;
+    border-radius: 7px;
+    border: 1px solid #2c3444;
+    background: #222736;
+    color: #c6cdd9;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.drawer .toolgrid button:hover { background: #2b3242; border-color: #3a4356; }
+.drawer .toolgrid button.wide { grid-column: span 2; }
+
+/* ---------- 目录迷你菜单 ---------- */
+.dirmenu {
+    position: fixed;
+    background: var(--vr-card);
+    border: 1px solid #2c3444;
+    border-radius: 10px;
+    padding: 4px;
+    width: 208px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .55);
+    z-index: 500;
+    display: none;
+    box-sizing: border-box;
+}
+
+.dirmenu.on { display: block; animation: vrPop .12s ease; }
+
+@keyframes vrPop {
+    from { opacity: 0; transform: translateY(-4px); }
+}
+
+.dirmenu .grouplbl {
+    font-size: 9px;
+    color: #5c6575;
+    padding: 5px 8px 3px;
+}
+
+.dirmenu button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: #c6cdd9;
+    font-size: 10.5px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    box-sizing: border-box;
+}
+
+.dirmenu button:hover { background: #2b3242; }
+.dirmenu button.cur { color: var(--vr-cyan); }
+.dirmenu button.cur::after { content: '✓'; margin-left: auto; font-size: 9px; }
+.dirmenu .newdir { color: var(--vr-orange); }
+.dirmenu .newdir::before { content: '＋'; font-weight: 700; }
+
+/* ---------- 其他功能页（媒体控制）原生化 ---------- */
+#otherOptions .otherTips {
+    font-size: 10.5px;
+    color: var(--vr-text-mute);
+    margin: 8px 0 6px;
+}
+
+#otherOptions .flexRow {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 7px;
+    font-size: 10.5px;
+}
+
+#otherOptions select {
+    flex: 1;
+    background: var(--vr-bg-deep);
+    border: 1px solid var(--vr-line-2);
+    border-radius: 7px;
+    color: var(--vr-text);
+    font-size: 10.5px;
+    padding: 5px 7px;
+    outline: none;
+    min-width: 0;
+}
+
+#otherOptions .line {
+    height: 1px;
+    background: var(--vr-line);
+    margin: 10px 0;
+}
+
+.otherFeat {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+#PlayControl {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    color: var(--vr-text-dim);
+}
+
+#PlayControl input[type=number],
+#PlayControl input.volume { width: 58px; }
+
+#PlayControl .flexColumn {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 9.5px;
+    color: var(--vr-text-mute);
+}
+
+#PlayControl .width100 { width: 100%; }

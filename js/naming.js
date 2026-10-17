@@ -317,13 +317,21 @@
      * @param {object} opts { tpl, ext, index, date, keepEmoji }
      */
     function buildName(doc, url, opts) {
+        return buildNameFromInfo(extractPageInfo(doc, url), url, opts);
+    }
+
+    /**
+     * 同上，但页面信息已经提取过（popup 场景：内容脚本一次性提取，多条媒体复用）
+     * @param {{title, post, authorFull, site}} info extractPageInfo 的返回值
+     */
+    function buildNameFromInfo(info, url, opts) {
         const o = opts || {};
-        const info = extractPageInfo(doc, url);
+        const p = info || {};
         const vars = {
-            title: cleanVar(info.title),
-            post: cleanVar(info.post || info.title),
-            author: cleanVar(info.authorFull),
-            site: cleanVar(info.site),
+            title: cleanVar(p.title),
+            post: cleanVar(p.post || p.title),
+            author: cleanVar(p.authorFull),
+            site: cleanVar(p.site),
             index: o.index !== undefined
                 ? (typeof o.index === 'number' ? String(o.index + 1).padStart(2, '0') : String(o.index))
                 : '',
@@ -348,7 +356,7 @@
         // 模板与清洗
         fillTemplate, sanitizeName, dedupeNames, truncate,
         // 便捷入口
-        buildName,
+        buildName, buildNameFromInfo,
         MAX_NAME_LEN
     };
 });
