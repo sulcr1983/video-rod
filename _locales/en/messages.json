@@ -1,9 +1,9 @@
 {
   "catCatch": {
-    "message": "cat-catch"
+    "message": "Video Rod"
   },
   "description": {
-    "message": "Web media sniffing tool"
+    "message": "Web video sniffing & download tool (personal fork of cat-catch)"
   },
   "confirm": {
     "message": "Confirm"

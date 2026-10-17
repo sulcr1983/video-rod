@@ -33,7 +33,6 @@
       <li><a href="#anchorM3u8Parser" data-i18n="m3u8Parser" title="m3u8Parser"></a></li>
       <li><a href="#anchorOtherSettings" data-i18n="otherSettings" title="otherSettings"></a></li>
       <li><a href="#anchorCustomCSS" data-i18n="customCSS" title="customCSS"></a></li>
-      <li><a href="#anchorMQTT" data-i18n="MQTT" title="MQTT"></a></li>
       <li><a href="#anchorOperation" data-i18n="operation" title="operation"></a></li>
       <li><a href="#anchorAbout" data-i18n="about" title="about"></a></li>
     </ul>
@@ -828,110 +827,7 @@
       </div>
     </section>
 
-    <!-- MQTT Configuration -->
-    <section id="anchorMQTT">
-      <h1 class="optionsTitle">
-        <img src="img/mqtt.svg" style="width: 18px" class="mqtt" />
-        <i18n>MQTT</i18n>
-      </h1>
-      <div class="optionBox" id="mqttOption">
-        <div class="list loose">
-          <div class="item">
-            <div data-i18n="enable"></div>
-            <div class="switch">
-              <label class="switchLabel switchRadius">
-                <input type="checkbox" id="mqttEnable" save="click" class="switchInput" />
-                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
-              </label>
-            </div>
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttBroker"></div>
-            <input id="mqttBroker" save="input" type="text" class="width100" placeholder="test.mosquitto.org"
-              data-i18n-placeholder="mqttBrokerHelp" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="port"></div>
-            <input id="mqttPort" save="input" type="number" min="1" max="65535" class="width100" placeholder="8081" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttPath"></div>
-            <input id="mqttPath" save="input" type="text" class="width100" placeholder="/mqtt"
-              data-i18n-placeholder="mqttPathHelp" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttProtocol"></div>
-            <div class="switch switchSelect">
-              <select id="mqttProtocol" class="select" save="select">
-                <option value="wss" data-i18n="mqttProtocolWss"></option>
-                <option value="ws" data-i18n="mqttProtocolWs"></option>
-              </select>
-            </div>
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttClientId"></div>
-            <input id="mqttClientId" save="input" type="text" class="width100" placeholder="cat-catch-client"
-              data-i18n-placeholder="mqttClientIdHelp" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttTitleLength"></div>
-            <input id="mqttTitleLength" save="input" type="number" min="1" max="1000" class="width100" value="100"
-              data-i18n-placeholder="mqttTitleLengthHelp" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttUsername"></div>
-            <input id="mqttUser" save="input" type="text" class="width100"
-              data-i18n-placeholder="mqttCredentialsHelp" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttPassword"></div>
-            <input id="mqttPassword" save="input" type="password" class="width100"
-              data-i18n-placeholder="mqttCredentialsHelp" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttTopic"></div>
-            <input id="mqttTopic" save="input" type="text" class="width100" placeholder="cat-catch/media"
-              data-i18n-placeholder="mqttTopicHelp" />
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttQos"></div>
-            <div class="switch switchSelect">
-              <select id="mqttQos" class="select" save="select">
-                <option value="0" data-i18n="mqttQos0"></option>
-                <option value="1" data-i18n="mqttQos1"></option>
-                <option value="2" data-i18n="mqttQos2"></option>
-                </option>
-              </select>
-            </div>
-            <div class="help-text" data-i18n="mqttQosHelp"></div>
-          </div>
-
-          <div class="item">
-            <div data-i18n="mqttDataFormat"></div>
-            <textarea id="mqttDataFormat" save="input" class="width100" rows="4"
-              data-i18n-placeholder="mqttDataFormatHelp"></textarea>
-            <div class="help-text">
-              <a href="https://cat-catch.94cat.com/docs/tag" target="_blank" data-i18n="replaceKeywordList"></a>
-              <span data-i18n="mqttDataFormatDefault"></span>
-            </div>
-          </div>
-
-          <div class="flex-end">
-            <button type="button" class="resetOption" data-i18n="resetSettings"></button>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!-- [video-rod fork] MQTT 同步模块已移除（个人单机版无需跨设备同步），原始代码见 git 历史 -->
 
     <!-- 操作按钮 -->
     <section id="anchorOperation">

@@ -1,102 +1,65 @@
-<p align="center"> [中文] | [<a href="README_en.md">English</a>] | [<a href="README_es.md">Español</a>] | [<a href="README_ru.md">Русский</a>]</p>
+# 🎣 钓鱼竿 Video Rod
 
-# 📑简介
+> 个人自用的浏览器媒体嗅探下载扩展：**猫抓（cat-catch）的全站嗅探内核 × Plucker 式文件管理体验 × B站/YouTube 主动抓取**。
+>
+> 自用工具，不上架、不分发。开发者模式 Load unpacked 安装。
 
-猫抓(cat-catch) 资源嗅探扩展，能够帮你筛选列出当前页面的资源。
+---
 
-# 📖安装地址
+## 这是什么
 
-## 🐴Chrome
+钓鱼竿是一个 Chrome 扩展（MV3），把「网页里的视频和图片，按我想要的名字和文件夹，整整齐齐下到我电脑上」这件事做到极致：
 
-https://chromewebstore.google.com/detail/cat-catch/jfedfbgedapdagkghmgibemcoggfppbb
+- 视频自动嗅探（m3u8/直链/`<video>` 标签），多档清晰度**默认自动选最高**
+- **智能起名**：文章页取文章标题、推特页取推文正文、B站/小红书带作者 `昵称(@账号)_标题`
+- **下载到文件夹**：按 `平台/作者/` 自动分目录，每条也能手动改
+- **批量下载**、m3u8 碎片**自动合并**成完整 MP4
+- **网页图片批量下载**：扫 img/srcset/背景图/懒加载，滤掉小图标
+- **右键秒存**：视频/图片上右键直接下，不用开面板
+- **B站/YouTube 主动抓取**：分P/合集/播放列表/频道/会员内容，纯扩展内置实现
+- 快捷键 `Alt+Shift+V` 唤起面板
 
-## 🦄Edge
+## 安装（开发者模式）
 
-https://microsoftedge.microsoft.com/addons/detail/oohmdefbjalncfplafanlagojlakmjci
+1. 克隆本仓库到本地
+2. Chrome 地址栏打开 `chrome://extensions`
+3. 右上角打开「**开发者模式**」开关
+4. 点「**加载已解压的扩展程序**」，选择本仓库目录
+5. 完成。快捷键可在 `chrome://extensions/shortcuts` 自行修改
 
-## 🦊Firefox
+## 快速上手（大白话）
 
-https://addons.mozilla.org/addon/cat-catch/ 😂需非国区IP访问
+1. 打开任意有视频的网页，点工具栏的钓鱼竿图标（或按 `Alt+Shift+V`）
+2. 面板列出当前页所有媒体：勾选想下的，文件名和文件夹不满意就手改
+3. 点「下载选中」，文件排队下到 `Downloads/video-rod/平台/作者/` 里
+4. 想单独下某个视频/图片：在它上面**右键 → 钓鱼竿下载这个**，直接落盘
+5. B站/YouTube 播放页会自动列出全部分P/列表项，想下哪个勾哪个
 
-## 📱Edge Android
+详细使用说明见 M6 交付时的《使用说明》（施工计划最后一步）。
 
-<img src="https://raw.githubusercontent.com/xifangczy/cat-catch/master/README/edgeqrcode.png" width="20%" />
+## 项目文档
 
-💔猫抓是开源的，任何人都可以下载修改上架到应用商店，已经有不少加上广告代码后上架的伪猫抓，请注意自己的数据安全。所有安装地址以github和用户文档为准。
+| 文档 | 内容 |
+|---|---|
+| [docs/PLAN.md](docs/PLAN.md) | 方案书：功能设计、竞品调研对标、需求决策记录 |
+| [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) | 施工计划：7 个里程碑（M0-M6）与验收标准 |
+| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | 需求规格：用户故事、功能清单（P0-P2）、非功能需求 |
+| [docs/DESIGN.md](docs/DESIGN.md) | 技术设计：架构、模块边界、数据流、集成对象 |
+| [docs/TESTING.md](docs/TESTING.md) | 测试策略：用例表、验收标准、回归清单、已知限制 |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | 决策记录（ADR）：每个重要选择为什么这么做 |
 
-# 📒用户文档
+## 致谢（本项目站在这些开源项目肩上）
 
-https://cat-catch.94cat.com/
+| 项目 | 贡献 | 许可 |
+|---|---|---|
+| [猫抓 cat-catch](https://github.com/xifangczy/cat-catch) | 底座：嗅探内核、下载器、m3u8 合并、FFmpeg | GPLv3 |
+| [Video DownloadHelper](https://www.downloadhelper.net/) | 右键秒存、类型筛选、快捷键交互范式 | 闭源（借鉴设计） |
+| [Plucker XBD](https://chromewebstore.google.com/detail/plucker-xbd/...) | 自定义命名 + 下载到文件夹的产品体验 | 闭源（借鉴设计） |
+| [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect) | B站 WBI 签名与 playurl 接口文档 | CC BY-NC-SA 4.0 |
+| [avi12/youtube-downloader](https://github.com/avi12/youtube-downloader) | YouTube 页面变量提取 + 签名 decipher | Apache-2.0 |
 
-# 📘安装方法
+## 许可证说明
 
-## 应用商店安装
+本项目为猫抓的衍生作品：**整体遵循 GPLv3**（与猫抓一致），保留上游 LICENSE 与署名。个人自用不分发，无额外义务；集成自 Apache-2.0 项目的代码保留其版权声明。
 
-通过安装地址的链接到官方扩展商店即可安装。
-
-## 源码安装
-
-1. Git Clone 代码。
-2. 扩展管理页面 打开 "开发者模式"。
-3. 点击 "加载已解压的扩展程序" 选中扩展文件夹即可。
-
-## crx安装
-
-1. [Releases](https://github.com/xifangczy/cat-catch/releases) **右键另存为**下载crx文件。
-2. 扩展管理页面 打开 "开发者模式"。
-3. 将crx文件拖入扩展程序页面即可。
-
-# 📚兼容性说明
-
-1.0.17版本之后需要Chromium内核版本93以上。
-低于93请使用1.0.16版本。
-要体验完整功能，请使用104版本以上。
-
-# 🔍界面
-
-![popup界面](https://raw.githubusercontent.com/xifangczy/cat-catch/master/README/popup.png)
-![m3u8解析器界面](https://raw.githubusercontent.com/xifangczy/cat-catch/master/README/m3u8.png)
-
-# 🤚🏻免责
-
-本扩展仅供下载用户拥有版权或已获授权的视频，禁止用于下载受版权保护且未经授权的内容。用户需自行承担使用本工具的全部法律责任，开发者不对用户的任何行为负责。本工具按“原样”提供，开发者不承担任何直接或间接责任。
-
-# 🚫版权保护与拒绝抓取声明
-
-我们尊重所有网站的内容版权和运营方的合法权益。
-如果您不允许本工具运行在您的网站上，请遵循以下流程向我们提交请求，我们将会把您的域名加入本项目的“避免抓取列表”中。
-
-- 在本仓库创建一个新的 Issue
-- Issue 标题请使用格式： `[Opt-Out Request] 您的网站域名`
-
-在 Issue 正文中，请提供以下信息以便我们核实：
-
-- 网站域名：（例如：`example.com`）
-- 联系人邮箱：（用于必要时核实身份）
-
-我们承诺在收到有效请求后，将在后续版本更新中尊重您的意愿。请注意，本项目是一个开源项目，更新和发布需要一定的周期。感谢您的理解与合作。
-
-# 🔒隐私政策
-
-本扩展收集所有信息都在本地储存处理，不会发送到远程服务器，不包含任何跟踪器。
-
-# 💖鸣谢
-
-- [hls.js](https://github.com/video-dev/hls.js)
-- [jQuery](https://github.com/jquery/jquery)
-- [mux.js](https://github.com/videojs/mux.js)
-- [jquery.json-viewer](https://github.com/abodelot/jquery.json-viewer)
-- [Momo707577045](https://github.com/Momo707577045)
-- [mpd-parser](https://github.com/videojs/mpd-parser)
-- [StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js)
-- [MQTT.js](https://github.com/mqttjs/MQTT.js)
-
-# 📜License
-
-GPL-3.0 license
-
-1.0版 使用 MIT许可
-
-2.0版 更改为GPL v3许可
-
-为了资源嗅探扩展有良好发展，希望使用猫抓源码的扩展仍然保持开源。
+> ⚠️ `.env` 等含凭据的文件已被 `.gitignore` 屏蔽，请勿手动提交。
