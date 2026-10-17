@@ -497,6 +497,33 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         sendResponse("HeartBeat OK");
         return true;
     }
+    // 钓鱼竿：X(推特) 推文内联按钮下载（M8），js/x-button.js 发起
+    // 取 X 的「已合并音视频」完整 MP4 直链 → 直接下载。不下载分片、不合成、不走在线 FFmpeg。
+    // 页面只传 user/statusId/mediaId 和文件名，直链由后台查——页面无法借道下载任意地址。
+    if (Message.Message == "vrQuickDownX") {
+        const tabId = sender && sender.tab ? sender.tab.id : G.tabId;
+        (async () => {
+            try {
+                const url = await fetchXVideo(
+                    Message.user, Message.statusId, Message.mediaId, Message.wantBest !== false);
+                if (!url) {
+                    sendResponse({ ok: false, reason: "no-mp4", tabId: tabId });
+                    return;
+                }
+                const ext = (url.split("?")[0].split(".").pop() || "mp4").toLowerCase();
+                const fname = (Message.filename || "")
+                    .replace(/\.(mp4|m4v|webm|mov)$/i, "") + "." + ext;
+                chrome.downloads.download({ url: url, filename: fname }, function () {
+                    chrome.runtime.lastError &&
+                        console.warn("[video-rod] X按钮下载失败", chrome.runtime.lastError);
+                });
+                sendResponse({ ok: true, kind: "mp4", url: url.slice(0, 120) });
+            } catch (e) {
+                sendResponse({ ok: false, reason: "api-fail", detail: String(e).slice(0, 80) });
+            }
+        })();
+        return true;
+    }
     // 清理数据
     if (Message.Message == "clearData") {
         // 当前标签
@@ -751,6 +778,40 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
         G.damnUrlSet.has(tabId) && G.damnUrlSet.delete(tabId);
     }
 });
+
+// 钓鱼竿：X(推特) 推文内联按钮下载（M8）
+// content script 从 video.poster 提取媒体 ID，这里在嗅探缓存里匹配 URL 并下载。
+// 页面只传 mediaId 和文件名，URL 一律从缓存取——页面无法借道下载任意地址。
+// 优先完整渐进式 MP4（X 播放器必请求）；无则最高清视频轨 m3u8 → 打开猫抓 m3u8.html 兜底。
+// X 的视频：页面播放走分轨 HLS（fMP4 分片），但平台另提供**已合并好音视频的完整 MP4**直链。
+// 直链 URL 无法拼（每个分辨率独立文件名+tag），只能查——用 fxtwitter 开源 API 取（免鉴权，
+// 不碰登录态，只发公开推文 ID；比下载分片再合成、比送在线 FFmpeg 都省事，业界通行做法）。
+async function fetchXVideo(user, statusId, mediaId, wantBest) {
+    if (!user || !statusId) { return null; }
+    const r = await fetch("https://api.fxtwitter.com/" + user + "/status/" + statusId);
+    if (!r.ok) { return null; }
+    const d = await r.json();
+    const vids = (((d.tweet || {}).media || {}).videos) || [];
+    if (!vids.length) { return null; }
+    // 多视频推文：用 mediaId（与 video.poster 同源）定位是哪一条
+    let v = vids[0];
+    if (mediaId) {
+        const hit = vids.find(x =>
+            (x.thumbnail_url || "").includes(mediaId) || (x.url || "").includes(mediaId));
+        if (hit) { v = hit; }
+    }
+    // 注意：fxtwitter 的 variants 不一定带 container 字段，按 URL 后缀判断才稳
+    const mps = (v.variants || []).filter(x => x.url && /\.mp4(\?|$)/i.test(x.url));
+    if (!mps.length) { return null; }
+    mps.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));   // 码率降序
+    // wantBest（默认）：最高档（这条推文是 2160p）；否则退到 720p 以内省流量
+    const pick = wantBest ? mps[0]
+        : (mps.find(x => {
+            const m = x.url.match(/\/(\d{2,4})x\d{2,4}\//);
+            return m && parseInt(m[1], 10) <= 720;
+        }) || mps[0]);
+    return pick ? pick.url : null;
+}
 
 // 右键菜单 和 快捷键 复用函数
 /**

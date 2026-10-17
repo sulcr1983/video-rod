@@ -103,7 +103,8 @@ video-rod/
 | 右键秒存 + 快捷键 | `js/init.js` + `js/background.js` + `manifest.json` | v1.0 | 已定稿 | M5 产物；两个一级右键菜单 + `vrSaveContextMedia()` + Alt+Shift+V |
 | README 使用说明 | `README.md` §使用说明 | v1.2 | 已定稿 | M6 产物：九节大白话完整指引；M7 随浅色重设计更新（行展开改名/抓图位置/设置视图四组 9 项+高级工具） |
 | 测试策略文档 | `docs/TESTING.md` | v1.3 | 已定稿 | M6 产物：用例表+回归清单+M2–M5 冒烟记录；M7 补浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧） |
-| 施工计划检查站记录 | `docs/BUILD-PLAN.md` §六 | v1.2 | 已定稿 | M6 产物：M2/M3/M4/M5/M6 五个检查站全部填毕；M7 补浅色重设计整合检查站 |
+| M8 X(推特) 推文内联下载按钮 | `js/x-button.js` + `manifest.json` content_scripts + `background.js` handler | v1.0 | 已定稿 | 推文操作栏 [role=group] 注入按钮 → 后台查预混流直链（fxtwitter）→ 最高画质一键落盘；ADR-026 |
+| M8 端到端测试脚本 | `tools/test-x-button5.py` | v1.0 | 已定稿 | 重载扩展→刷新推文页→等按钮→点击→轮询下载记录，星愿真机回归用 |
 | M4 YouTube 验收脚本 | `tools/cdp-m4-test.py` | v1.0 | 已定稿 | M7 新建（M4 此前只有临时探针）；导航 `http://notyoutube.com:18080/`（必须带端口，见 TESTING §5），验 YT 横幅 + 嗅探卡片 + 浅色 |
 | z 序回归探针 | `tools/probe-zorder.py` | v1.0 | 已定稿 | M7 新建；elementFromPoint 验证各浮层完整盖住底栏—— flex item z-index 陷阱的回归防线，改外壳 CSS 后必跑 |
 | M7 归档截图工具 | `tools/shot-m7-final.py` | v1.0 | 已定稿 | 五状态归档截图（普通/设置/YT横幅/B站/图片弹层）；内建 settle+retry 绕 CDP 懒帧、显式 force 绕卡死过渡 |
