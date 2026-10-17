@@ -1,6 +1,6 @@
 # 钓鱼竿 video-rod 施工计划 v1
 
-> 配套：PLAN.md（方案书 v1.3）+ popup-prototype.html（交互原型 v5）
+> 配套：PLAN.md（方案书 v1.3）+ popup-prototype-v5.html（交互原型，deliverables/prototypes/，浏览器直接打开）
 > 策略：**外壳大改、内核不动**——猫抓的嗅探内核/下载器/FFmpeg 合并一律不碰，保证随时能 cherry-pick 上游更新；所有新功能以独立模块挂在壳上，一个模块坏不影响其他。
 > 节奏：按里程碑推进，**每个里程碑结束都有可验收的实物**，不满意就地整改再往下走。全程 git 托管，每阶段一个回滚点。
 
