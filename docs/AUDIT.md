@@ -1,0 +1,160 @@
+# 钓鱼竿 video-rod 方案审计报告
+
+> 审计对象：`docs/PLAN.md`（方案书 v1.1）+ `BUILD-PLAN.md` / `REQUIREMENTS.md` / `DESIGN.md` / `DECISIONS.md` / `TESTING.md`
+> 定位前提：**个人自用、不公开、不分发**（按苏哥最新表态校准，不按企业级标准加戏）
+> 日期：2026-10-17 ｜ 方法：本地源码核对（猫抓底座）+ 联网检索（对标开源方案与平台事实）
+
+---
+
+## 0. 一句话结论
+
+**方案主干（fork 猫抓、外壳改造、嗅探为主）站得住。** 但有 **3 个硬阻塞**必须先定，其中第 1 个是**事实错误**——方案里反复写的「本地 FFmpeg 合并」，猫抓实际用的是**猫抓作者的远程服务器**。其余问题都属于「执行期注意」级别，不影响开工。
+
+---
+
+## 1. 方案概述与关键假设核对
+
+| # | 方案里的关键假设 | 核对结果 | 依据 / 置信度 |
+|---|---|---|---|
+| A1 | 猫抓是成熟、活跃的 MV3 底座，可直接 fork | ✅ 成立 | 仓库 manifest MV3、GPLv3、活跃维护 ｜ 高 |
+| A2 | 猫抓的「FFmpeg 合并」是**本地**能力，可直接复用 | ❌ **事实错误** | 见 R1 ｜ 高（源码实锤） |
+| A3 | 「下载到文件夹」是本方案核心增量，且要新做 | 🔶 半错：猫抓**已有**模板命名机制；文件夹≈允许模板里带 `/` | `init.js:101` `downFileName`、`templates.js`、`filterFileName` ｜ 高 |
+| A4 | 图片嗅探猫抓没有，需自研 | ✅ 成立 | 嗅探类型清单只有 audio/video，无 `image/*`（`init.js:63-73`）｜ 高 |
+| A5 | 清晰度默认最高是零开发 | ✅ 成立 | `m3u8.js:352-359` 默认勾选最大码率档 ｜ 高 |
+| A6 | M3「抄 bilibili-API-collect 的 WBI 实现」 | ❌ **前提已失效** | 该仓库已关停，见 R2 ｜ 高 |
+| A7 | M4「抄 avi12/youtube-downloader 即可搞定 YouTube」 | 🔶 能抄，但极度脆弱、需长期逆向 | 见 R3 ｜ 中高 |
+| A8 | 纯扩展、不装任何外部程序即可满足 B站+YT | ⚠️ B站勉强可行；YT 很脆弱 | 见 R2/R3 ｜ 中高 |
+| A9 | 「纯本地运行、无任何网络上传」（DESIGN §6） | ❌ 与现状冲突 | 合并/边下边存会走远程服务，见 R1 ｜ 高 |
+| A10 | 60 字截断足以防路径超限 | 🔶 不足 | 见 P1-3 ｜ 中 |
+| A11 | 私有库、不分发 → GPL/CC 无义务 | ✅ 大体成立（除非日后公开） | 见 P2 ｜ 高 |
+
+---
+
+## 2. 风险清单（按严重程度分级）
+
+### P0 硬阻塞（开工前必须先定，共 3 条）
+
+**R1 ｜ 合并依赖远程第三方服务 —— 方案里的事实错误**
+- **事实**：猫抓**没有打包 ffmpeg.wasm**。它的「FFmpeg 合并/转码」是 iframe 调**远程服务**：`https://ffmpeg.bmmmd.com/` 或 `https://ffmpeg.94cat.com/`（猫抓作者自建）。「边下边存」的 StreamSaver 也走 `https://stream.bmmmd.com/mitm.html`。
+- **依据**：`js/init.js:208-221`（远程 URL 实测）；`lib/third-party-libraries.md`（库清单里**没有** ffmpeg，只有 mux.js/mpd-parser/hls.js/jquery 等）｜ **置信度：高（源码实锤）**
+- **影响面**：① 隐私——开合并/边下边存时，媒体分片会被**上传到作者服务器**，与 DESIGN §6「纯本地、不上传」直接矛盾；② 可用性——服务挂了/下线了，合并就废；③ M3/M4（B站 DASH 音视频合并、YT 合并）的成败押在它身上。
+- **触发条件**：任何需要合并的下载（m3u8 多分片、DASH 音视频分离流）；且猫抓默认开启在线转码开关。
+- **发生概率**：**必然**（只要走合并路径）。
+- **补充**：`mux.js` 只能做**单路流的转封装**，**不能把分离的音频流+视频流并成一个 MP4**。所以「B站 DASH 合并」当地 mux.js 顶不上，必须靠真 ffmpeg。
+
+**R2 ｜ bilibili-API-collect 已关停 —— M3 的抄写来源断了**
+- **事实**：该仓库据称因 B站委托律所发函，于 **2026-01-28 永久关停**，理由是「系统性收集并传播非公开 API、参数结构与鉴权机制」。方案 PLANNED/DESIGN/REQUIREMENTS 三处都写「抄 bilibili-API-collect 的 WBI JS 实现」。
+- **依据**：仓库关停公告 ｜ **置信度：高**
+- **影响面**：M3（3-4 天工作量）**失去可抄的现成实现**，只能自建 WBI 签名（`nav` 取 keys + MD5），而这恰是 B站明确发函反对的方向。
+- **触发/概率**：M3 一开工即遇到；**必然**。
+- **补充**：接口/参数仍是「事实」层面的知识，自行实现通常不涉及复制文档版权；但**别直接拷文档文本**（其许可为 CC BY-NC，与 GPLv3 不兼容）。
+
+**R3 ｜ YouTube 纯扩展方案在 2026 年极度脆弱 —— M4 是整条路线最易断的一段**
+- **事实**：YouTube 已推 **SABR + poToken(BotGuard)**，缺有效 poToken 时签名流 URL 返回 403；纯读 `ytInitialPlayerResponse` 已不足以拿高画质，还需 nsig 解算。yt-dlp 因此**约每两周发版**。avi12/youtube-downloader（Apache-2.0，**仍在维护**）是目前最强的纯 MV3 参照实现，但需 4 层回退链 + DNR 改写头 + offscreen 跑 ffmpeg.wasm，且 403 视为终态。
+- **依据**：Archiveteam SABR 技术说明、avi12 ARCHITECTURE、yt-dlp 发版节奏 ｜ **置信度：中高**
+- **影响面**：M4 维护成本高、随时失效；对个人自用的实际收益打折。
+- **触发/概率**：YouTube 再改签名/SABR 节奏时；**高**。
+
+---
+
+### P1 执行期注意（不影响开工，编码时逐条处理）
+
+| # | 事项 | 影响 / 触发条件 | 依据 ｜ 置信度 |
+|---|---|---|---|
+| P1-1 | **mux.js 不能合并分离的音/视频流** | 若自建本地合并，需 ffmpeg.wasm（**单文件 2GB 上限**、需 offscreen + CSP `wasm-unsafe-eval`）或 mediabunny；mux.js 只够单流 | 源码行为+资料推断 ｜ 中（建议实测） |
+| P1-2 | **`chrome.downloads` 不能自定义 Referer** | B站 CDN 缺 Referer 会 403；需用 **DNR `modifyHeaders`** 注入 Referer/UA（底座已含 `declarativeNetRequest` 权限） | Chrome 文档 + avi12 实践 ｜ 高 |
+| P1-3 | **文件名清洗不全 + 路径超限** | 猫抓 `filterFileName` 只滤 `<>:"\|?*~`，**不含 `\`**，也不处理 Windows 保留设备名（CON/PRN/AUX/NUL/COM1…）、尾点/尾空格；「平台/作者/」嵌套目录 + 长标题可能触 **MAX_PATH 260** | `init.js:224` ｜ 高 |
+| P1-4 | **MV3 service worker 30s 空闲回收** | 长下载队列/合并在 SW 里可能被回收；需 offscreen 文档或标签页承载 | Chrome 文档 ｜ 高 |
+| P1-5 | **按 URL hash 去重对 m3u8 无效** | 分片/带签名 URL 每次都变 → 去重命中率为 0，记录还会膨胀 | 推断 ｜ 中 |
+| P1-6 | **智能起名靠站点 DOM 结构** | 站点改版即取错；必须有「认不出退网页标题」的兜底（方案已有，保持） | 推断 ｜ 中 |
+| P1-7 | **权限面很大** | `<all_urls>` + `all_frames` + MAIN world 注入 → 安全面广（自用可接受，知悉即可） | manifest ｜ 高 |
+| P1-8 | **猫抓已内置外部下载器/aria2** | `m3u8dl` 协议可调 N_m3u8DL-CIL/RE + aria2（`init.js:85-88`）。说明「不装外部程序」是主动取舍，而非没得选 | 源码 ｜ 高 |
+| P1-9 | **`--load-extension` 政策变化** | 本轮专项核验未取回结果 → **未验证**，编码前再查官方文档 | — ｜ 未验证 |
+
+---
+
+### P2 合规（一句带过，自用前提下风险低）
+
+- **GPLv3**：私有库 + 不分发 → **无公开源码义务**；**一旦公开**（含把仓库转公开/发 crx），须整体 GPLv3 + 保留上游 notice。
+- **CC BY-NC（bilibili-API-collect 文档）**：**与 GPLv3 不兼容**（NC 是额外限制）→ 别拷文本，只借鉴接口知识自行实现。
+- **借 cookie 下大会员/会员内容**：本质是「绕过访问控制」（不是破解加密）；中美均无个人使用豁免，**自用风险低、分发风险高**。
+
+---
+
+## 3. 与开源方案/组件的对比结论（该复用谁、该自研什么）
+
+| 组件 / 项目 | 许可 | 活跃度 | 对本方案的结论 |
+|---|---|---|---|
+| 猫抓 cat-catch | GPLv3 | 活跃（万级 star） | **继续作底座**：嗅探内核/右键菜单/快捷键/模板引擎/下载器全复用 ✅ |
+| ffmpeg.wasm | MIT | 活跃 | 若要**本地**合并需自行引入；2GB 上限、需 offscreen ✅（成本中） |
+| mediabunny | 开源 | 较新、活跃 | 浏览器内音视频合并更优路线（流式、无 2GB 硬墙）→ 💡 **待评估** |
+| mux.js | Apache-2.0 | videojs 维护 | **只做单流转封装**，别指望它合并音+视频 ⚠️ |
+| bilibili-API-collect | CC BY-NC | **已关停** | **不能当依赖**；签名逻辑自行实现，别拷文本 ❌ |
+| avi12/youtube-downloader | Apache-2.0 | 维护中 | 可抄，但 M4 需长期逆向、风险高 🔶 |
+| yt-dlp / N_m3u8DL-RE / cobalt / lux | 各自开源 | 活跃 | 行业主流是「本地/服务端二进制」；被 ADR-008 否决，仅提示这是成熟解 💡 |
+| 图片下载类（img/picpicker 等） | 各异 | — | 「扫描四件套」值得**自研**（这是真增量）✅ |
+
+**复用 vs 自研边界**
+- **该复用**：猫抓嗅探内核、右键菜单、快捷键、`templates.js`、`filterFileName`、下载器、DNR、mux.js（单流）、浏览器 cookie。
+- **值得自研（小）**：起名引擎（作者/正文抽取）、图片扫描器、面板 UI 改造、目录/批量/去重。
+- **别自研**：B站签名链路、YouTube 提取 —— 降级，或直接集成现成实现。
+
+---
+
+## 4. 按优先级排序的可执行改进建议
+
+### 开工前必须先定（3 件事）
+
+1. **合并路线三选一**（点选，别拖到编码期才发现）
+   - **(a) 接受远程合并**：0 开发，沿用猫抓现状，但媒体会**上传到第三方**（bmmmd.com/94cat.com），且必须承认「非纯本地」。
+   - **(b) 本地合并**：引入 ffmpeg.wasm 或 mediabunny（开发量中，纯本地、隐私干净）。
+   - **(c) 不合并**：B站 DASH 音视频**分开存**，或只下「嗅探到的已合并流」（0 开发、最省）。
+   - **建议**：先 **(c)** 起步把主线跑通 → 有空再上 **(b)**；**(a)** 只在完全不在意隐私时用。
+
+2. **B站/YT 主动抓取从 P0 降为 P1**：先把「嗅探主线」跑通可用；ADR-003/008 相应调整。把方案的「失效退回嗅探」**反过来当主线**，主动抓取当增强。
+
+3. **修正文档口径**：把 PLAN/DESIGN 里的「FFmpeg.wasm 本地合并」「纯本地无上传」改掉，避免以后自己骗自己。
+
+### 执行期（编码时逐条处理）
+
+4. 起名引擎只做「够用」的页面识别，站点适配全部留「退网页标题」兜底。
+5. 文件名清洗补齐：`\`、Windows 保留名、尾点/尾空格；限制「目录 + 标题」总长。
+6. 去重对 m3u8 别按 URL hash（无效），改用标题/时长，或干脆不做。
+7. 施工顺序不变：**先 M0/M1/M2**（纯嗅探主线），每阶段保留 git 回滚点。
+
+---
+
+## 5. 信息不足 / 未验证事项（如实标注）
+
+| 事项 | 状态 |
+|---|---|
+| Chrome `--load-extension` 政策变更、`chrome.downloads` 子目录/字符清洗官方细节、DNR `modifyHeaders` 对下载请求的覆盖范围、`storage` 配额 | **未验证**（本轮专项核验未取回结果；编码前须再查官方文档） |
+| mediabunny 在本项目的实际可用性 | 未实测（仅资料评估） |
+| 「mux.js 不能合并两路独立流」 | 来自源码行为 + 资料推断，**未实测** |
+| 猫抓 star 数/活跃度 | 第三方来源，未用 GitHub API 复核 |
+| B站流 URL 有效期（120 分钟 vs 10 分钟两种说法） | 说法不一，未核实 |
+| bilibili-API-collect 许可究竟是 CC BY-NC 还是 BY-NC-SA | 仓库已关停，未取到原 LICENSE |
+
+---
+
+## 附录：关键依据来源
+
+**本地源码（可直接定位）**
+- `js/init.js:63-73` —— 嗅探类型清单只有 audio/video，**无 image/\***
+- `js/init.js:80-88` —— `TitleName` 自定义文件名 + `m3u8dl` 外部下载器协议（CIL/RE）
+- `js/init.js:101` —— `downFileName: "${title}.${ext}"`（猫抓已有模板命名）
+- `js/init.js:208-221` —— **远程** ffmpeg / StreamSaver 服务地址
+- `js/init.js:224` —— `filterFileName` 正则 `/[<>:"|?*~]/g`
+- `js/m3u8.js:352-359` —— 默认勾选最大码率档（高清默认）
+- `lib/third-party-libraries.md` —— 库清单，**无 ffmpeg**
+
+**网络来源**
+- 猫抓仓库 / README / manifest：`github.com/xifangczy/cat-catch`
+- 猫抓在线 FFmpeg 服务说明：`deepwiki.com/xifangczy/cat-catch/8.3-ffmpeg-service`
+- bilibili-API-collect 关停公告：`github.com/SocialSisterYi/bilibili-API-collect`
+- WBI / playurl 镜像文档：`janson20.github.io/bilibili-api-collect-mirror`
+- avi12/youtube-downloader 架构：`github.com/avi12/youtube-downloader/blob/main/ARCHITECTURE.md`
+- YouTube SABR 技术说明：`wiki.archiveteam.org/index.php/YouTube/Technical_details`
+- ffmpeg.wasm 限制：`ffmpegwasm.netlify.app/docs/faq/`
+- 许可兼容性：`gnu.org/licenses/license-compatibility.html`、`creativecommons.org/share-your-work/licensing-considerations/compatible-licenses/`
+- 合规：`copyright.gov/1201/`、`npc.gov.cn`（著作权法 2020 修正）

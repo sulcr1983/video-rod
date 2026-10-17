@@ -59,14 +59,15 @@
    - 动态加载：MutationObserver 监听懒加载/无限滚动
    - 与视频同款卡片（改名/目录/批量）；配图命名可带所在文章标题
 9. **右键秒存**（抄 Video DownloadHelper）：网页视频/图片上右键 →「钓鱼竿下载这个」，不开面板，直接走智能起名+目录下载
-10. **B站/YouTube 主动抓取全家桶**（苏哥定：全功能破解；纯扩展实现，**不装 yt-dlp/Python/任何外部程序**）：
-    - B站：读 BV号 → 分P列表（`x/web-interface/view`）→ WBI 签名（`nav` 拿 keys + MD5，抄 bilibili-API-collect 的 JS 实现）→ `playurl`（fnval=16/4048）→ DASH 音视频分离流 → FFmpeg 合并（复用猫抓 wasm 能力）；Referer 必须 `www.bilibili.com`；keys 每日轮换需缓存
-    - YouTube：content script 读页面全局变量（`ytInitialPlayerResponse` 全码率 / `ytInitialData` 播放列表）+ 签名 decipher（抄 avi12/youtube-downloader，**Apache-2.0 需保留版权声明**）+ ffmpeg.wasm 合并音视频/字幕/封面
-    - **登录态内容**：借浏览器 cookie，大会员/会员内容可下（苏哥定支持；自用范畴，不分享不外传）
+10. **B站/YouTube 抓取**（2026-10-17 审计后改版：**嗅探增强，零签名对抗**）：
+    - **改版原因**：原「WBI 签名 + playurl 主动抓取」前提已崩塌——bilibili-API-collect 2026-01-28 收律师函关停删码，BBDown 归档、哔哩下载姬/BiliTools 2026-07-06 同日收函关停，B站下载开源生态 2026 年集体团灭（律师函点名「突破登录态访问控制、绕过签名鉴权、抓取付费内容、强取最高清晰度」——正是本功能清单）；YouTube 2026-01 起强制 SABR+poToken，「没有 Chrome 扩展能可靠下载 YouTube 视频」，扩展是被打击最重的品类
+    - **B站（P0，新路线）**：分P列表从页面 DOM/状态读取（**不调 API、不碰 WBI 签名**）→ 用户勾选 → 扩展驱动页面切换分P → 猫抓嗅探浏览器实际发出的 DASH 流（m4s 直链）→ 下载 + 合并；Referer 必须 `www.bilibili.com`
+    - **YouTube（降级 P1）**：只走嗅探，能抓多少抓多少；不投入签名对抗。苏哥刚需时唯一稳路 = 猫抓内置 m3u8dl 协议外挂 N_m3u8DL-RE（本机成熟程序，⏳ 待苏哥定）
+    - **登录态内容**：借浏览器 cookie，大会员/会员内容可下（浏览器能播放=请求已带 cookie=嗅探即得，天然支持）
     - **懒加载**：只抓已加载项，不自动滚动页面（苏哥定）
-    - **兜底**：主动抓取失效自动退回「当前页已加载」嗅探模式（苏哥定），永远有得下
-    - 两个解析模块相互独立，一家失效不影响另一家；设置里有开关可整体关掉主动抓取
-    - DRM 严密封锁站点（爱奇艺/腾讯/Netflix）**不做**（苏哥明确不要，主攻 B站+YouTube）
+    - **兜底**：抓取失效自动退回「当前页已加载」嗅探模式（苏哥定），永远有得下
+    - 两个解析模块相互独立，一家失效不影响另一家；设置里有开关可整体关掉
+    - DRM 严密封锁站点（爱奇艺/腾讯/Netflix）**不做**（苏哥明确不要）
 11. **快捷键唤起面板**（抄 VDH：默认 Alt+Shift+V，chrome.commands 官方机制，chrome://extensions/shortcuts 可改）
 
 ### P1（第二版）
@@ -115,15 +116,16 @@
 | 右键秒存 | Video DownloadHelper | video/audio 元素上右键直接下载，不用开面板 |
 | 类型筛选标签 | Video DownloadHelper | 面板顶部 Videos / Images / .m3u8 分类筛选 |
 | 快捷键唤起 | Video DownloadHelper | 默认 Alt+Shift+V，可在系统快捷键设置里改 |
-| B站/YouTube 列表 | Video DownloadHelper | 嗅探式：当前页已加载的全列出，不主动破解（VDH 连 YouTube 都不碰） |
+| B站/YouTube 列表 | Video DownloadHelper | 嗅探式：当前页已加载的全列出，不主动破解——VDH 连 YouTube 都不碰（2026 年审计后：这恰是唯一活路，见下） |
 | 工具栏角标计数 | Video DownloadHelper | 图标显示检测到的媒体条数（猫抓已有开关） |
 | 图片扫描四件套 | image-download-extension / picpicker / Sakura 图片下载器 | DOM 扫描（img/srcset/背景图/懒加载/shadow DOM）+ 尺寸过滤 + currentSrc 取最高清 + MutationObserver 跟动态加载 |
 | 分组文件夹 | Kromio 图片下载教程 `images/${domain}/` 模式 | 按域名分组的文件夹思想，升级为按平台/作者分 |
 | 命名模板 + 每文件独立目录 | Plucker XBD | ${title}/${site}/${index} 变量 + 单文件指定目录 |
-| m3u8 合并 | 猫抓原生 | FFmpeg 合并链路，不重复造 |
+| m3u8 合并 | 猫抓原生（⚠️ 远程在线FFmpeg，非本地 wasm） | FFmpeg 合并链路，不重复造；本地合并路线见 DESIGN §8 待决策 |
 | 下载完成提示 | 面板内 toast（猫抓 popup 已有机制） | 不上系统通知（苏哥定） |
-| B站解析全家桶 | bilibili-API-collect（WBI 签名 JS 实现）+ Bilibili-Evolved 下载模块 + DownKyi 思路 | BV→分P→WBI签名→playurl→DASH流→ffmpeg合并 全链路集成 |
-| YouTube 解析 | avi12/youtube-downloader（Apache-2.0）+ TubeLister（ytInitialData 播放列表） | 读页面全局变量 + 签名 decipher + ffmpeg.wasm 合并音视频字幕封面 |
+| B站解析 | ~~bilibili-API-collect~~ ❌ **2026-01-28 律师函关停删码**（BBDown/哔哩下载姬/BiliTools 同期团灭） | 无源可抄 → 改零签名对抗路线：页面读分P列表 + 嗅探浏览器自己发的 DASH 流 |
+| YouTube 解析 | avi12/youtube-downloader ⚠️ **2026 SABR/poToken 下纯扩展基本失效**（扩展是被打击最重的品类） | 降级 P1 只走嗅探；刚需走 m3u8dl 外挂 N_m3u8DL-RE（⏳ 待苏哥定） |
+| 嗅探式列表 | Video DownloadHelper | 当前页已加载的全列出，不主动破解——VDH 的生存方式，2026 年反而是唯一活路 |
 
 ---
 
@@ -146,13 +148,13 @@
 | 10-17 | 重名处理 | 自动加序号 `_01` `_02` |
 | 10-17 | 清晰度 | 默认自动选最高档（猫抓原生行为，设置可关） |
 | 10-17 | 工作方法 | 不造轮子：所有功能先对标标杆插件（VDH/图片下载类/Plucker），抄成熟设计，不自创 |
-| 10-17 | B站/YouTube 列表 | 先做稳的：当前页已加载全下；主动抓未加载分P留作以后增强 |
+| 10-17 | B站/YouTube 列表 | ~~先做稳的~~ → **已改版**（10-17 晚审计）：嗅探增强成主线，「主动抓取」因生态团灭作废（见 ADR-020） |
+| 10-17 | 破解定位 | ~~自用插件=能力拉满…集成成熟实现~~ → **已改版**（10-17 晚审计）：B站/YouTube 成熟开源实现 2026 年已集体关停，无成熟实现可集成，改零签名对抗嗅探路线（ADR-020） |
+| 10-17 | 破解范围 | ~~全功能：分P/合集+播放列表+会员内容，纯扩展 JS 解析~~ → **已改版**（ADR-020）：B站=P0 嗅探增强（分P/会员仍支持）；YouTube=降级 P1；不装 yt-dlp 立场不变（YouTube 备选路 m3u8dl 外挂待苏哥定） |
 | 10-17 | 完成提醒 | 仅面板内 toast，不上系统通知 |
 | 10-17 | 图片功能 | 进 P0（原定 P1，提前） |
 | 10-17 | 新功能进 P0 | 右键秒存、B站/YouTube 列表、快捷键 Alt+Shift+V 全部进第一批 |
-| 10-17 | 破解定位 | 自用插件=能力拉满，不做商店式自我审查；定位是**集成成熟实现**（B站/YouTube 早有大量成熟插件），不重造 |
-| 10-17 | 破解范围 | 全功能：B站分P/合集 + YouTube 播放列表/频道/会员内容；纯扩展内置 JS 解析（借页面身份+抄社区实现），不装 yt-dlp |
-| 10-17 | 破解兜底 | 主动抓取失效自动退回嗅探模式，永远有得下 |
+| 10-17 | 破解兜底 | 抓取失效自动退回嗅探模式，永远有得下 |
 | 10-17 | 懒加载 | 只抓已加载项，不自动滚动 |
 | 10-17 | 登录态内容 | 支持：借 cookie 下大会员/会员内容（自用，不外传） |
 | 10-17 | DRM 站点 | 不做（爱奇艺/腾讯/Netflix 不要），主攻 B站+YouTube |
@@ -168,9 +170,11 @@
 | 2 | popup 原型样式（深色/浅色、密度） | 先看原型，不满意我调 |
 | 3 | 默认下载目录名 | `Downloads/video-rod/`（下载目录下建总文件夹，干净） |
 | 4 | 去重要不要进 P0 | 建议 P0（实现就 20 行，防手癌） |
-| 5 | 图片批量下载进 P0 还是 P1？ | 建议 P1：先保视频主线；若你常逛图片站可提前 |
+| 5 | 图片批量下载进 P0 还是 P1？ | 已定：P0（苏哥 10-17 拍板提前） |
 | 6 | 多 m3u8 大段拼接要不要做？ | 建议 P1 手动版（勾选后按顺序拼，不做自动判断） |
-| 7 | 确认后我就按方案开工 | — |
+| 7 | **m3u8 合并走哪条路线？**（审计新发现：猫抓合并=远程服务，视频分片上传 bmmmd.com/94cat.com） | A 保持现状 0 开发但隐私裸露 / B 本地合并引 ffmpeg.wasm 或 mediabunny（开发量中）/ C 不合并音视频分开存。建议：默认 A + 设置留开关，介意了再切（DESIGN §8） |
+| 8 | **YouTube 要不要走 m3u8dl 外挂路？**（审计新发现：2026 纯扩展下 YouTube 基本死局） | 建议：先不做，等 M4 真需要时再定（装一个 N_m3u8DL-RE 本机程序，成熟但要违背「纯扩展」立场） |
+| 9 | 确认后我就按方案开工 | — |
 
 ---
 
