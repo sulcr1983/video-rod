@@ -67,15 +67,17 @@ video-rod/
 
 | 产出物 | 路径 | 当前版本 | 状态 | 说明 |
 |---|---|---|---|---|
-| popup 交互原型 | `deliverables/prototypes/popup-prototype-v5.html` | v5 | 评审中 | M1 面板施工基准；浏览器直接打开 |
+| popup 交互原型 | `deliverables/prototypes/popup-prototype-v5.html` | v5 | 已定稿 | M1 面板施工基准；浏览器直接打开 |
 | 外部审计报告 | `deliverables/reviews/2026-10-17-audit.md` | 2026-10-17 | 已定稿 | 3 硬阻塞已核验并落实到 ADR-018/019/020 |
 | 图标预览图 | `deliverables/assets/icon-preview.png` | — | 已定稿 | 新图标三尺寸预览 |
-| 方案书 | `docs/PLAN.md` | v1.3 | 评审中 | 功能设计+竞品对标 |
-| 施工计划 | `docs/BUILD-PLAN.md` | v1 | 评审中 | M0-M6，总工期 1.5-2 周 |
-| 需求规格 | `docs/REQUIREMENTS.md` | v1.0 | 已定稿 | P0 11 项 |
-| 技术设计 | `docs/DESIGN.md` | v1.0 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
-| 测试策略 | `docs/TESTING.md` | v1.0 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.0 | 进行中 | ADR-001~020，追加式 |
+| 方案书 | `docs/PLAN.md` | v1.4 | 已定稿 | 功能设计+竞品对标+决策记录；决策点全关闭 |
+| 施工计划 | `docs/BUILD-PLAN.md` | v1 | 已定稿 | M0-M6，总工期 1.5-2 周；苏哥 10-17 批准开工 |
+| 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
+| 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
+| 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
+| 决策记录 | `docs/DECISIONS.md` | v1.0 | 进行中 | ADR-001~024，追加式 |
+| 智能起名引擎 | `js/naming.js` | v0.1 | 已定稿 | M0 产物；27/27 测试通过；M1 起接入 popup |
+| 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
 
 > 登记规则：新产出物落地当天登记；状态变化当天更新；每完成一个 M 里程碑过一遍表。
 
