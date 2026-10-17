@@ -195,6 +195,17 @@
   - **z 序陷阱**：猫抓 `popup.css` 给 `#down` 带 `z-index:999`（原为 fixed 浮动底栏）；我们改 static 后，作为 `#vrShell` 的 flex item，static 元素的 z-index 仍创建层叠上下文，把 setview(470)/drawer(460)/modal(450) 全压在脚下 → `videorod.css` 补 `z-index:auto` 修复。**教训：flex item 的 z-index 不挑 position，换定位方式必须连 z-index 一起清**
 - **影响**：M7 里程碑（BUILD-PLAN）；`popup.html`/`css/videorod.css`/`css/popup-light.css`/`js/popup.js`/`js/popup-videorod.js` 全量回归通过（TESTING §6 M7 记录）
 
+## ADR-026 X(推特) 推文内联下载按钮：取平台「预混流」直链，不下载分片
+
+- **日期**：2026-10-17 ｜ **状态**：✅
+- **决策**：推文视频下载走**平台已合并好音视频的完整 MP4 直链**（`video.twimg.com/.../vid/avc1/{W}x{H}/{hash}.mp4?tag=N`），由开源元数据服务 fxtwitter（`api.fxtwitter.com/{user}/status/{id}`，免鉴权）查询得到；按码率降序自动取最高档。**不下载 HLS 分片、不本地合成、不走在线 FFmpeg**。
+- **理由**：① 调研确认 X 的 `/vid/avc1/0/0/*.mp4` 是 DASH 初始化段（904B，放不了），页面播放走的是分轨 HLS——自己合成要引入 demux/mux 库并踩时间戳坑，属于自造轮子；② yt-dlp 等成熟工具走的就是这条预混流直链；③ 猫抓官方对分轨 HLS 的解法是「勾选视频轨+音频轨 → 合并下载」，我们的一键场景不适合让人手动选。
+- **代价与边界**：
+  - 多一个只读外部依赖（fxtwitter，只发公开推文 ID，不碰登录态、不上传视频文件）；服务不可用时应退回面板嗅探 + 手动合并
+  - 直链 URL 无法拼（每个分辨率独立文件名 + tag 参数），必须查
+  - fxtwitter 的 `variants` 不一定带 `container` 字段 → 按 URL 后缀 `.mp4` 判断（踩过：按 container 过滤会全部滤空）
+- **已知待办**：① 星愿浏览器下 `chrome.downloads.download` 的 `filename` 被忽略（文件落成服务器名），模板命名待修；② 设置里的「清晰度默认选最高档」目前只影响面板批量下载，按钮恒取最高
+
 ---
 
 *新增决策在此追加，编号顺延。*

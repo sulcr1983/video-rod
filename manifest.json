@@ -82,6 +82,17 @@
       ],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "js/naming.js",
+        "js/x-button.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "default_locale": "en",
