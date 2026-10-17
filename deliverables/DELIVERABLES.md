@@ -88,7 +88,7 @@ video-rod/
 | M1 面板截图 | `deliverables/assets/m1-panel-{list,settings,rename,dirmenu}.png` | 2026-10-17 | 评审中 | 有头浏览器四态实拍（列表/设置/命名弹层/目录菜单） |
 | CDP 公用客户端 | `tools/cdp_client.py` | v1.1 | 已定稿 | `Cdp` 类 + `find_ext_id` + `open_popup`；v1.1 内建「新建标签页 + 禁缓存」修掉复用旧标签页嗅探为 0 的坑 |
 | M2 下载管线验收脚本 | `tools/cdp-m2-test.py` | v1.0 | 已定稿 | 真落盘 + 去重 + 完成态；测完自动清理本次新增文件 |
-| M3+M5 合并验收脚本 | `tools/cdp-m3-m5-test.py` | v1.0 | 已定稿 | B站分P横幅 + 图片弹层 + 图片真落盘（`VR_DL=1` 开启落盘） |
+| M3+M5 合并验收脚本 | `tools/cdp-m3-m5-test.py` | v1.1 | 已定稿 | B站分P横幅 + 图片弹层 + 图片真落盘（`VR_DL=1` 开启落盘）；v1.1 加 try/except+traceback，崩了留现场不再空文件 |
 | M5b 秒存/快捷键验收脚本 | `tools/cdp-m5b-test.py` | v1.0 | 已定稿 | 走 `vrSaveContextMedia` 真实路径验右键秒存落盘；CDP 真实派发 Alt+Shift+V 验快捷键 |
 | SW 状态诊断探针 | `tools/cdp-probe.py` | v1.0 | 已定稿 | 读 service worker 的 G/cacheData 状态，排查「嗅探为 0」类问题用 |
 | M2 面板回归截图 | `deliverables/assets/m1-regress.png` | 2026-10-17 | 评审中 | M2 阶段复跑 M1 断言集的实拍（防重构改坏） |
@@ -96,6 +96,7 @@ video-rod/
 | M4 YouTube 限制横幅截图 | `deliverables/assets/m4-yt-banner.png` | 2026-10-17 | 评审中 | 离线等效验证（域名映射）下的橙色警示横幅 |
 | M5 图片弹层截图 | `deliverables/assets/m5-img-modal.png` | 2026-10-17 | 评审中 | 抓图弹层：2 张有效图（坏图/小图/重复图已滤掉） |
 | HLS 流媒体回归截图 | `deliverables/assets/hls-regress.png` | 2026-10-17 | 评审中 | m3u8 双清晰度卡 + 清晰度下拉 |
+| M6 全功能回归截图 | `deliverables/assets/final-{m1,hls,yt}.png` | 2026-10-17 | 评审中 | M6 从已提交状态重跑 M1 断言集的实拍：index.html / hls.html / notyoutube.com 三页，errors 均 0 |
 | 测试站页面 | `test-site/{index,hls,bili-fake,images,yt-fake}.html` | 2026-10-17 | 已定稿 | 五类测试夹具：直链视频/HLS/B站分P/图片批量/YouTube（域名映射） |
 | 右键秒存 + 快捷键 | `js/init.js` + `js/background.js` + `manifest.json` | v1.0 | 已定稿 | M5 产物；两个一级右键菜单 + `vrSaveContextMedia()` + Alt+Shift+V |
 | README 使用说明 | `README.md` §使用说明 | v1.1 | 已定稿 | M6 产物；九节大白话完整指引（安装/日常/秒存/批量/B站/命名/设置/认账/快捷键） |
