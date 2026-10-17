@@ -76,8 +76,12 @@ video-rod/
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
 | 决策记录 | `docs/DECISIONS.md` | v1.0 | 进行中 | ADR-001~024，追加式 |
-| 智能起名引擎 | `js/naming.js` | v0.1 | 已定稿 | M0 产物；27/27 测试通过；M1 起接入 popup |
+| 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
+| popup 外壳 | `popup.html` + `css/videorod.css` | v1.0 | 已定稿 | M1 产物；按原型 v5 重写，功能钩子全保留 |
+| popup 交互层 | `js/popup-videorod.js` | v1.0 | 已定稿 | M1 产物；筛选/批量命名/目录/设置/页面识别 |
+| M1 有头浏览器验收脚本 | `tools/cdp-m1-test.py` | v1.0 | 已定稿 | CDP 连有头 Chromium，DOM 断言+交互冒烟+状态截图 |
+| M1 面板截图 | `deliverables/assets/m1-panel-{list,settings,rename,dirmenu}.png` | 2026-10-17 | 评审中 | 有头浏览器四态实拍（列表/设置/命名弹层/目录菜单） |
 
 > 登记规则：新产出物落地当天登记；状态变化当天更新；每完成一个 M 里程碑过一遍表。
 

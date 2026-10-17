@@ -7,139 +7,267 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" type="text/css" href="css/public.css" media="all" />
   <link rel="stylesheet" type="text/css" href="css/popup.css" media="all" />
+  <link rel="stylesheet" type="text/css" href="css/videorod.css" media="all" />
   <script src="lib/jquery.min.js"></script>
   <script src="js/polyfill.js"></script>
   <script src="js/init.js"></script>
   <script src="js/function.js"></script>
   <script src="js/templates.js"></script>
+  <script src="js/naming.js"></script>
 </head>
 
 <body class="popupBody">
-  <div class="Tabs">
-    <div id="currentTab" class="TabButton flex Active" title="Current Page">
-      <span data-i18n-outer="currentPage"></span>
-      <div id="quantity"></div>
+  <div id="vrShell">
+
+    <!-- ============ 顶栏 ============ -->
+    <div class="pop-head">
+      <svg class="logo" viewBox="0 0 48 48" fill="none">
+        <rect width="48" height="48" rx="11" fill="#12242e" />
+        <path d="M10 38 L34 12" stroke="#37474f" stroke-width="3.4" stroke-linecap="round" />
+        <path d="M10 38 L14 33" stroke="#78909c" stroke-width="4.6" stroke-linecap="round" />
+        <circle cx="20.5" cy="28" r="1.3" fill="#22d3ee" />
+        <circle cx="26" cy="22.5" r="1.3" fill="#22d3ee" />
+        <circle cx="31.5" cy="17" r="1.3" fill="#22d3ee" />
+        <path d="M34 12 C36 20, 37.5 24, 37 29" stroke="#90a4ae" stroke-width="1.2" />
+        <path d="M35.2 27.5 A2.6 2.6 0 1 0 37.6 30.5" stroke="#546e7a" stroke-width="1.6" fill="none" />
+        <path d="M6 36.5 q2.5 -2.2 5 0 t5 0 t5 0 t5 0 t5 0 t5 0 t5 0" stroke="#29b6f6" stroke-width="1.5"
+          fill="none" />
+        <path d="M6 41.5 q2.5 -2.2 5 0 t5 0 t5 0 t5 0 t5 0 t5 0 t5 0" stroke="#29b6f6" stroke-width="1.2"
+          opacity=".55" fill="none" />
+        <ellipse cx="16" cy="43" rx="4.6" ry="2.3" fill="#fb923c" />
+        <path d="M20.4 43 L25 41.2 L25 44.8 Z" fill="#ef6c00" />
+        <circle cx="13.6" cy="42.6" r=".9" fill="#fff" />
+      </svg>
+      <div class="pop-title">钓鱼竿<small>video-rod</small></div>
+      <span class="ver" id="vrVer">v1.0</span>
+      <button class="iconbtn" id="btnSettings" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+      <button class="iconbtn" id="btnTools" title="更多工具">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="5" cy="12" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="19" cy="12" r="1.7" />
+        </svg>
+      </button>
     </div>
-    <div id="allTab" class="TabButton flex" title="Other Pages">
-      <span data-i18n-outer="otherPage"></span>
-      <div id="quantity"></div>
+
+    <!-- ============ 页面信息条 ============ -->
+    <div class="pageinfo">
+      <span class="site" id="vrSite">—</span>
+      <span class="ptitle" id="vrPageTitle"></span>
+      <span class="count">嗅探到 <b id="vrCount">0</b> 个</span>
     </div>
-    <div id="otherTab" class="TabButton" title="Other Features / Media Control">
-      <!-- <i18n>otherFeatures</i18n> / -->
-      <i18n>mediaControl</i18n> /
-      <i18n>settings</i18n>
-    </div>
-    <div id="maybeKeyTab" class="TabButton hide" title="Possible Key">
-      <span data-i18n-outer="possibleKey"></span>
-    </div>
-  </div>
-  <div id="Tips" data-i18n="loadingData">
-  </div>
-  <div id="TipsFixed">~</div>
-  <div id="mediaList" class="container hide TabShow"></div>
-  <div id="allMediaList" class="container hide"></div>
-  <div id="otherOptions" class="container hide">
-    <div class="otherTips" data-i18n="mediaControl"></div>
-    <div class="flexRow">
-      <b class="nowrap" data-i18n="selectWebpage"></b>
-      <select id="videoTabIndex" title="Video Tab">
-        <option value="-1" id="videoTabTips" data-i18n="noMediaDetected"></option>
-      </select>
-    </div>
-    <div class="flexRow">
-      <b class="nowrap" data-i18n="selectMedia"></b>
-      <select id="videoIndex" title="Video">
-        <option value="-1" id="videoIndexTips" data-i18n="noControllableMediaDetected"></option>
-      </select>
-    </div>
-    <div id="PlayControl" class="textColor">
-      <span data-i18n-outer="multiplier"></span><input id="playbackRate" type="number" value="2" min="0.1" max="16"
-        title="Play Back Rate" step="1" />
-      <button id="speed" class="button2" data-i18n="speedPlayback" title="Adjust playback speed"></button>
-      <button id="control" data-switch="play" data-i18n="play" title="Play/Pause media"></button>
-      <button id="pip" class="firefoxHide" data-i18n="pictureInPicture" title="Toggle picture-in-picture mode"></button>
-      <button id="fullScreen" class="firefoxHide" data-i18n="fullscreen" title="Toggle fullscreen mode"></button>
-      <button id="screenshot" data-switch="play" data-i18n="screenshot"
-        title="Take screenshot of current frame"></button>
-      <label class="flexColumn loop" title="Loop">
-        <div data-i18n="loop"></div><input type="checkbox" id="loop" placeholder="Loop">
-      </label>
-      <label class="flexColumn muted" title="Mute">
-        <div data-i18n="mute"></div><input type="checkbox" id="muted" placeholder="Mute">
-      </label>
-      <div class="flexColumn">
-        <div data-i18n="volume" title="Volume"></div><input type="range" id="volume" class="volume" min="0" max="1"
-          value="1" step="0.01" title="Volume Control" />
+
+    <!-- ============ 标签页（原生，收窄） ============ -->
+    <div class="Tabs vr-tabs">
+      <div id="currentTab" class="TabButton Active" title="Current Page">
+        <span data-i18n-outer="currentPage"></span>
+        <div id="quantity"></div>
       </div>
-      <div class="flexColumn width100">
-        <div id="timeShow" title="Time"></div><input type="range" id="time" class="width100" min="0" max="100" value="0"
-          step="1" title="Time Control" />
+      <div id="allTab" class="TabButton" title="Other Pages">
+        <span data-i18n-outer="otherPage"></span>
+        <div id="quantity"></div>
+      </div>
+      <div id="otherTab" class="TabButton" title="Media Control">
+        <i18n>mediaControl</i18n>
+      </div>
+      <div id="maybeKeyTab" class="TabButton hide" title="Possible Key">
+        <span data-i18n-outer="possibleKey"></span>
       </div>
     </div>
-    <div class="line"></div>
-    <div class="otherTips" data-i18n="functionEntry"></div>
-    <div class="otherFeat flexRow">
-      <button go="downloader.html" class="button2" data-i18n="downloader" title="Downloader"></button>
-      <button go="m3u8.html" class="button2" data-i18n="m3u8Parser" title="M3U8 Parser"></button>
-      <button go="mpd.html" class="button2" data-i18n="mpdParser" title="MPD Parser"></button>
-      <button go="json.html" class="button2" data-i18n="jsonFormatter" title="JSON Formatter"></button>
-      <button go="ffmpegURL" class="button2" title="FFmpeg">FFmpeg</button>
-      <button go="options.html" class="button2" data-i18n="settings" title="Open settings"></button>
+
+    <!-- ============ 类型筛选 ============ -->
+    <div class="filters" id="vrFilters">
+      <button class="fchip on" data-f="all">全部 <b>0</b></button>
+      <button class="fchip" data-f="video">视频 <b>0</b></button>
+      <button class="fchip" data-f="img">图片 <b>0</b></button>
+      <button class="fchip" data-f="stream">流媒体 <b>0</b></button>
     </div>
-  </div>
-  <div id="maybeKey" class="container hide">
-    <button id="maybeKeyCopy" data-i18n="copy" title="Copy" class="button2"></button>
-  </div>
-  <div id="filter" class="more">
-    <span id="regular" class="width100 regular">
-      <input type="text" data-i18n-placeholder="regularFilterPlaceholder" title="Regular Filter" id="regularText" />
-      <button id="filter-duplicateFilenames" class="button2" data-i18n="deleteDuplicateFilenames"
+
+    <!-- ============ 列表区（4 个 .container 顺序不可变，标签切换按索引映射） ============ -->
+    <div id="Tips" data-i18n="loadingData"></div>
+    <div id="mediaList" class="container hide TabShow"></div>
+    <div id="allMediaList" class="container hide"></div>
+
+    <div id="otherOptions" class="container hide">
+      <div class="otherTips" data-i18n="mediaControl"></div>
+      <div class="flexRow">
+        <b class="nowrap" data-i18n="selectWebpage"></b>
+        <select id="videoTabIndex" title="Video Tab">
+          <option value="-1" id="videoTabTips" data-i18n="noMediaDetected"></option>
+        </select>
+      </div>
+      <div class="flexRow">
+        <b class="nowrap" data-i18n="selectMedia"></b>
+        <select id="videoIndex" title="Video">
+          <option value="-1" id="videoIndexTips" data-i18n="noControllableMediaDetected"></option>
+        </select>
+      </div>
+      <div id="PlayControl" class="textColor">
+        <span data-i18n-outer="multiplier"></span><input id="playbackRate" type="number" value="2" min="0.1" max="16"
+          title="Play Back Rate" step="1" />
+        <button id="speed" class="button2" data-i18n="speedPlayback" title="Adjust playback speed"></button>
+        <button id="control" data-switch="play" data-i18n="play" title="Play/Pause media"></button>
+        <button id="pip" class="firefoxHide" data-i18n="pictureInPicture" title="Toggle picture-in-picture mode"></button>
+        <button id="fullScreen" class="firefoxHide" data-i18n="fullscreen" title="Toggle fullscreen mode"></button>
+        <button id="screenshot" data-switch="play" data-i18n="screenshot"
+          title="Take screenshot of current frame"></button>
+        <label class="flexColumn loop" title="Loop">
+          <div data-i18n="loop"></div><input type="checkbox" id="loop" placeholder="Loop">
+        </label>
+        <label class="flexColumn muted" title="Mute">
+          <div data-i18n="mute"></div><input type="checkbox" id="muted" placeholder="Mute">
+        </label>
+        <div class="flexColumn">
+          <div data-i18n="volume" title="Volume"></div><input type="range" id="volume" class="volume" min="0" max="1"
+            value="1" step="0.01" title="Volume Control" />
+        </div>
+        <div class="flexColumn width100">
+          <div id="timeShow" title="Time"></div><input type="range" id="time" class="width100" min="0" max="100"
+            value="0" step="1" title="Time Control" />
+        </div>
+      </div>
+      <div class="line"></div>
+      <div class="otherTips" data-i18n="functionEntry"></div>
+      <div class="otherFeat flexRow">
+        <button go="downloader.html" class="button2" data-i18n="downloader" title="Downloader"></button>
+        <button go="m3u8.html" class="button2" data-i18n="m3u8Parser" title="M3U8 Parser"></button>
+        <button go="mpd.html" class="button2" data-i18n="mpdParser" title="MPD Parser"></button>
+        <button go="json.html" class="button2" data-i18n="jsonFormatter" title="JSON Formatter"></button>
+        <button go="ffmpegURL" class="button2" title="FFmpeg">FFmpeg</button>
+        <button go="options.html" class="button2" data-i18n="settings" title="Open settings"></button>
+      </div>
+    </div>
+
+    <div id="maybeKey" class="container hide">
+      <button id="maybeKeyCopy" data-i18n="copy" title="Copy" class="button2"></button>
+    </div>
+
+    <!-- ============ 浮层面板（原生 .more，fixed） ============ -->
+    <div id="filter" class="more">
+      <span id="regular" class="width100 regular">
+        <input type="text" data-i18n-placeholder="regularFilterPlaceholder" title="Regular Filter" id="regularText" />
+        <button id="filter-duplicateFilenames" class="button2" data-i18n="deleteDuplicateFilenames"
+          title="Delete Duplicate Filenames"></button>
+      </span>
+      <div id="ext" title="Extensions"></div>
+    </div>
+
+    <div id="features" class="more flex-end">
+      <button id="unfoldAll" data-i18n="expandAll" title="Expand All" class="hide"></button>
+      <button id="unfoldPlay" data-i18n="expandPlayable" title="Expand Playable" class="hide"></button>
+      <button id="unfoldFilter" data-i18n="expandSelected" title="Expand Selected" class="hide"></button>
+      <button id="fold" data-i18n="collapseAll" title="Collapse All" class="hide"></button>
+      <button id="features-duplicateFilenames" class="button2 hide" data-i18n="deleteDuplicateFilenames"
         title="Delete Duplicate Filenames"></button>
-    </span>
-    <div id="ext" title="Extensions"></div>
+      <button id="recorder" class="button2 hide firefoxHideScript" type="script" data-i18n="videoRecording"
+        title="Start video recording"></button>
+      <button id="webrtc" class="button2 hide firefoxHideScript" type="script" data-i18n="recordWebRTC"
+        title="Record WebRTC streams"></button>
+      <button id="recorder2" class="button2 hide" type="script" data-i18n="screenCapture"
+        title="Capture screen content"></button>
+      <button id="MobileUserAgent" class="button2 firefoxHideScript" data-i18n="simulateMobile"
+        title="Simulate mobile device"></button>
+      <button id="AutoDown" class="button2" data-i18n="autoDownload" title="Enable automatic downloads"></button>
+      <button id="send2localSelect" class="button2" data-i18n="send2local"
+        title="Send selected items to local storage"></button>
+    </div>
+
+    <!-- ============ 底部主操作栏 ============ -->
+    <div id="down">
+      <label class="allsel" title="全选/取消全选">
+        <input type="checkbox" id="chkAll" class="chk"><span id="selTxt">全选</span>
+      </label>
+      <button id="vrRename" class="fbtn" title="按模板批量重命名选中项">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+        </svg>
+        批量命名
+      </button>
+      <button id="DownFile" class="fbtn primary" title="下载选中项">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <path d="M7 10l5 5 5-5" />
+          <path d="M12 15V3" />
+        </svg>
+        批量下载 <span class="cnt" id="vrBatchCnt">0</span>
+      </button>
+      <button id="AllSelect" class="hide" data-i18n="selectAll"></button>
+    </div>
+
+    <!-- ============ 批量命名弹层 ============ -->
+    <div class="mask" id="vrMask"></div>
+    <div class="modal" id="vrRenameModal">
+      <h3>批量命名</h3>
+      <div class="sub">对勾选的 <b id="vrRenameCnt">0</b> 个文件套用命名规则。<br>
+        可用变量：<code>${title}</code> 原标题 <code>${post}</code> 正文 <code>${author}</code> 作者昵称(@ID)
+        <code>${site}</code> 站点 <code>${index}</code> 序号 <code>${date}</code> 日期 <code>${ext}</code> 扩展名<br>
+        超长截 60 字；重名自动 _01；拿不到的信息自动跳过该段</div>
+      <div class="tplrow">
+        <input type="text" id="vrTplInput" value="${author}_${title}" spellcheck="false">
+        <button id="vrApplyTpl">应用</button>
+      </div>
+      <div class="preview" id="vrTplPreview"></div>
+    </div>
+
+    <!-- ============ 设置抽屉 ============ -->
+    <div class="drawer" id="vrSettings">
+      <h3>设置 <span class="x" data-close="vrSettings">✕</span></h3>
+      <div class="srow">
+        <label>默认下载目录（下载文件夹下的子目录）</label>
+        <input type="text" id="vrSetDefaultDir" value="video-rod" spellcheck="false">
+      </div>
+      <div class="srow">
+        <label>新文件默认命名模板</label>
+        <input type="text" id="vrSetTemplate" value="${author}_${title}" spellcheck="false">
+      </div>
+      <div class="toggle"><span>图片嗅探（批量保存网页图片）</span><input type="checkbox" class="sw" id="vrSetImg"></div>
+      <div class="toggle"><span>智能识别取名（标题/正文/作者）</span><input type="checkbox" class="sw" id="vrSetSmart"></div>
+      <div class="toggle"><span>清晰度默认选最高档</span><input type="checkbox" class="sw" id="vrSetQuality"></div>
+      <div class="toggle"><span>去重检测（跳过已下载）</span><input type="checkbox" class="sw" id="vrSetDedupe"></div>
+      <div class="toggle"><span>m3u8 自动合并为 MP4</span><input type="checkbox" class="sw" id="vrSetMerge"></div>
+      <div class="toggle"><span>显示嗅探数字徽章</span><input type="checkbox" class="sw" id="vrSetBadge"></div>
+      <div class="note">「下载到文件夹」= 浏览器下载目录 / 默认目录 / 每条的子目录。<br>
+        例：Downloads/video-rod/测试站/test.mp4</div>
+    </div>
+
+    <!-- ============ 工具抽屉 ============ -->
+    <div class="drawer" id="vrTools">
+      <h3>更多工具 <span class="x" data-close="vrTools">✕</span></h3>
+      <div class="toolgrid">
+        <button id="mergeDown" disabled data-i18n="onlineMerge" title="合并选中的两个音视频">在线合并</button>
+        <button id="AllCopy" data-i18n="copy" title="复制选中链接">复制链接</button>
+        <button id="invertSelection" data-i18n="invertSelection" title="反选">反选</button>
+        <button id="openFilter" panel="filter" data-i18n="filter" title="按扩展名筛选">筛选</button>
+        <button id="Clear" data-i18n="clear" title="清空列表">清空</button>
+        <button id="more" panel="features" data-i18n="moreFeatures" title="更多功能">更多功能</button>
+        <button id="enable" data-i18n="pause" title="暂停/恢复嗅探">暂停嗅探</button>
+        <button id="popup" data-i18n="popup" title="在独立窗口打开">独立窗口</button>
+        <button id="currentPage" data-i18n="currentPage" title="切到当前页" class="wide">切到当前页</button>
+        <button id="Options" go="options.html" data-i18n="settings" title="完整设置页" class="wide">完整设置页</button>
+        <button id="search" class="firefoxHideScript wide" type="script" data-i18n="deepSearch" title="深度搜索">深度搜索</button>
+        <button id="catch" class="firefoxHideScript wide" type="script" data-i18n="cacheCapture" title="缓存捕捉">缓存捕捉</button>
+      </div>
+      <div class="note">猫抓原生能力都在这里。日常只需要底部三个按钮：全选 → 批量命名 → 批量下载。</div>
+    </div>
+
+    <!-- ============ 目录菜单 ============ -->
+    <div class="dirmenu" id="vrDirMenu"></div>
+
+    <div id="TipsFixed">~</div>
   </div>
-  <div id="features" class="more flex-end">
-    <button id="unfoldAll" data-i18n="expandAll" title="Expand All" class="hide"></button>
-    <button id="unfoldPlay" data-i18n="expandPlayable" title="Expand Playable" class="hide"></button>
-    <button id="unfoldFilter" data-i18n="expandSelected" title="Expand Selected" class="hide"></button>
-    <button id="fold" data-i18n="collapseAll" title="Collapse All" class="hide"></button>
-    <button id="features-duplicateFilenames" class="button2 hide" data-i18n="deleteDuplicateFilenames"
-      title="Delete Duplicate Filenames"></button>
-    <button id="recorder" class="button2 hide firefoxHideScript" type="script" data-i18n="videoRecording"
-      title="Start video recording"></button>
-    <button id="webrtc" class="button2 hide firefoxHideScript" type="script" data-i18n="recordWebRTC"
-      title="Record WebRTC streams"></button>
-    <button id="recorder2" class="button2 hide" type="script" data-i18n="screenCapture"
-      title="Capture screen content"></button>
-    <button id="MobileUserAgent" class="button2 firefoxHideScript" data-i18n="simulateMobile"
-      title="Simulate mobile device"></button>
-    <button id="AutoDown" class="button2" data-i18n="autoDownload" title="Enable automatic downloads"></button>
-    <button id="send2localSelect" class="button2" data-i18n="send2local"
-      title="Send selected items to local storage"></button>
-  </div>
-  <div id="down">
-    <button id="mergeDown" class="button2" data-i18n="onlineMerge" disabled
-      title="Merge selected items for download"></button>
-    <button id="DownFile" data-i18n="download" title="Download selected items"></button>
-    <button id="AllCopy" data-i18n="copy" title="Copy selected items to clipboard"></button>
-    <button id="AllSelect" data-i18n="selectAll" class="hide" title="Select all items"></button>
-    <button id="invertSelection" data-i18n="invertSelection" title="Invert selection"></button>
-    <button id="openFilter" panel="filter" data-i18n="filter" title="Open filter options"></button>
-    <button id="Clear" data-i18n="clear" title="Clear all items"></button>
-    <button id="search" class="button2 hide firefoxHideScript" type="script" data-i18n="deepSearch"
-      title="Perform deep search"></button>
-    <button id="catch" class="button2 hide firefoxHideScript" type="script" data-i18n="cacheCapture"
-      title="Capture cached content"></button>
-    <button id="more" class="button2" panel="features" data-i18n="moreFeatures" title="Show more features"></button>
-    <button id="enable" class="button2" data-i18n="pause" title="Pause/Resume capturing"></button>
-    <button id="Options" go="options.html" class="button2 hide" data-i18n="settings" title="Open settings"></button>
-    <button id="popup" class="button2" data-i18n="popup" title="Open in popup window"></button>
-    <button id="currentPage" class="hide" data-i18n="currentPage" title="Switch to current page"></button>
-  </div>
+
   <script src="lib/base64.js"></script>
   <script src="lib/mqtt.min.js"></script>
   <script src="js/popup-utils.js"></script>
   <script src="js/popup.js"></script>
+  <script src="js/popup-videorod.js"></script>
   <script src="js/media-control.js"></script>
   <script src="lib/jquery.qrcode.min.js"></script>
   <script src="lib/hls.min.js"></script>

@@ -98,24 +98,73 @@ function AddMedia(data, currentTab = true) {
     data.requestId = data.requestId + "_" + Date.now().toString();
   }
 
+  // 类型徽章 + 目录（M1 面板）
+  let badgeText = (data.ext || "FILE").toUpperCase();
+  let badgeClass = "b-other";
+  if (isM3U8(data)) {
+    badgeText = "HLS"; badgeClass = "b-hls";
+  } else if (isMPD(data)) {
+    badgeText = "MPD"; badgeClass = "b-mpd";
+  } else if (isPicture(data)) {
+    badgeText = (data.ext || "IMG").toUpperCase(); badgeClass = "b-img";
+  } else if (/^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i.test(data.ext || "")) {
+    badgeText = (data.ext || "MP4").toUpperCase(); badgeClass = "b-mp4";
+  } else if (/^(mp3|m4a|aac|flac|wav|ogg|opus)$/i.test(data.ext || "")) {
+    badgeText = (data.ext || "AUD").toUpperCase(); badgeClass = "b-aud";
+  }
+  // 清晰度（仅流媒体；默认自动最高，实际生效在 M2 下载管线）
+  const qualityHtml = (data.parsing == "m3u8" || data.parsing == "mpd") ? `
+            <select class="qsel" data-vr-quality title="清晰度（默认自动选最高档）">
+                <option value="auto">自动（最高）</option>
+                <option value="1080">1080p</option>
+                <option value="720">720p</option>
+                <option value="480">480p</option>
+                <option value="360">360p</option>
+                <option value="audio">仅音频</option>
+            </select>` : "";
+  // 目录（M2 真落盘时使用）
+  const dirNow = typeof vrDirOf === "function" ? vrDirOf(data) : "video-rod";
+  const escAttr = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // 卡片类型（供顶部筛选按钮用）
+  const typeClass = data.parsing == "m3u8" || data.parsing == "mpd" ? "stream"
+    : isPicture(data) ? "img"
+      : /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i.test(data.ext || "") ? "video"
+        : "other";
+
   //添加html
   data.html = $(`
-        <div class="panel">
+        <div class="panel vr-${typeClass}">
             <div class="panel-heading">
-                <input type="checkbox" class="DownCheck"/>
+                <input type="checkbox" class="DownCheck chk"/>
                 ${G.ShowWebIco ? `<img class="favicon ${!data.favIconUrl ? "faviconFlag" : ""}" requestId="${data.requestId}" src="${data.favIconUrl}"/>` : ""}
-                <img src="img/regex.png" class="regex ${data.isRegex ? "" : "hide"}" title="${i18n.regexTitle}"/>
+                <span class="badge ${badgeClass}">${badgeText}</span>
                 <span class="group">${data.group && G.showGroup ? `[${data.group}]` : ""}</span>
-                <span class="name ${data.parsing || data.isRegex || data.tabId == -1 ? "bold" : ""}">${trimName}</span>
-                <span class="size ${data.size ? "" : "hide"}">${data.size}</span>
-                <img src="img/copy.png" class="icon copy" id="copy" title="${i18n.copy}"/>
+                <img src="img/regex.png" class="regex ${data.isRegex ? "" : "hide"}" title="${i18n.regexTitle}"/>
+                <span class="meta" title="${escAttr(data.title || '')}">
+                    <span class="name hide">${trimName}</span>
+                    <span class="size ${data.size ? "" : "hide"}">${data.size}</span>
+                    <span class="vrmime">${data.type || data.ext || ""}</span>
+                </span>
+                <svg class="icon copy" id="copy" title="${i18n.copy}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 <img src="img/parsing.png" class="icon parsing ${data.parsing ? "" : "hide"}" id="parsing" data-type="${data.parsing}" title="${i18n.parser}"/>
-                <img src="img/play.png" class="icon play ${data.isPlay ? "" : "hide"}" id="play" title="${i18n.preview}"/>
-                <img src="img/download.svg" class="icon download" id="download" title="${i18n.download}"/>
+                <svg class="icon play ${data.isPlay ? "" : "hide"}" id="play" title="${i18n.preview}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5 19 12 6 19.5z"/></svg>
                 <img src="img/aria2.png" class="icon aria2 ${G.enableAria2Rpc ? "" : "hide"}"" id="aria2" title="Aria2"/>
                 <img src="img/invoke.svg" class="icon invoke ${G.invoke ? "" : "hide"}"" id="invoke" title="${i18n.invoke}"/>
                 <img src="img/send.svg" class="icon send ${G.send2localManual || G.send2local ? "" : "hide"}"" id="send2local" title="${i18n.send2local}"/>
                 <img src="img/mqtt.svg" class="icon mqtt ${G.mqttEnable ? "" : "hide"}" id="mqtt" title="${i18n.send2MQTT}"/>
+                <svg class="icon download" id="download" title="${i18n.download}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            </div>
+            <div class="row2">
+                <div class="namebox">
+                    <span class="lbl">文件名</span>
+                    <input type="text" class="vr-name" value="${escAttr(data.downFileName)}" spellcheck="false" title="改这个文件名，下载时就用它"/>
+                </div>
+                ${qualityHtml}
+                <button class="dirchip" data-vr-dir title="下载到指定文件夹">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <span class="vr-dir-txt">${dirNow}</span>
+                </button>
             </div>
             <div class="url hide">
                 <div id="mediaInfo" data-state="false">
@@ -133,6 +182,7 @@ function AddMedia(data, currentTab = true) {
                 <img id="screenshots" class="hide"/>
                 <video id="preview" class="hide" controls></video>
             </div>
+            <div class="prog"><i></i></div>
         </div>`);
   ////////////////////////绑定事件////////////////////////
   //展开网址
@@ -382,7 +432,7 @@ function AddMedia(data, currentTab = true) {
   // 多选框 创建checked属性 值和checked状态绑定
   data._checked = checkboxState;
   data.html.find(".DownCheck").prop("checked", data._checked);
-  data.html.find('input').click(function (event) {
+  data.html.find('.DownCheck').click(function (event) {
     data._checked = this.checked;
     mergeDownButton();
     event.originalEvent.cancelBubble = true;
@@ -393,8 +443,38 @@ function AddMedia(data, currentTab = true) {
     },
     set(newValue) {
       data._checked = newValue;
-      data.html.find('input').prop("checked", newValue);
+      data.html.find('.DownCheck').prop("checked", newValue);
     }
+  });
+  // 文件名随手改（M1）：失焦即生效，空值回滚，缺扩展名自动补
+  const $vrName = data.html.find(".vr-name");
+  $vrName.on("click", function (event) {
+    event.originalEvent.cancelBubble = true;   // 别触发卡片展开
+  });
+  $vrName.on("change blur", function () {
+    let v = ($(this).val() || "").trim();
+    if (!v) {
+      $(this).val(data.downFileName);
+      Tips(i18n.fileNameEmpty || "文件名不能为空", 1200);
+      return;
+    }
+    if (data.ext && !new RegExp("\\." + data.ext + "$", "i").test(v)) {
+      v += "." + data.ext;
+    }
+    data.downFileName = v.replace(/[\\/:*?"<>|]/g, "_");
+    data.vrManuallyNamed = true;
+    $(this).val(data.downFileName);
+  });
+  // 清晰度（M1 只记录偏好，M2 下载管线读取）
+  data.html.find("[data-vr-quality]").on("change", function (event) {
+    event.originalEvent.cancelBubble = true;
+    data.vrQuality = this.value;
+    Tips((i18n.qualitySwitched || "清晰度已切换为") + " " + this.options[this.selectedIndex].text, 1200);
+  });
+  // 目录 chip
+  data.html.find("[data-vr-dir]").on("click", function (event) {
+    event.originalEvent.cancelBubble = true;
+    if (typeof vrOpenDirMenu === "function") { vrOpenDirMenu(this, data); }
   });
   // 数据发送
   data.html.find("#send2local").click(function () {
@@ -462,7 +542,7 @@ function AddMedia(data, currentTab = true) {
   // 如果被筛选出去 直接隐藏
   if (!filterExt.get(data.ext) || duplicateFilenamesSet?.has(data.name)) {
     data.html.hide();
-    data.html.find("input").prop("checked", false);
+    data.html.find(".DownCheck").prop("checked", false);
   }
   duplicateFilenamesSet && duplicateFilenamesSet.add(data.name);
 
