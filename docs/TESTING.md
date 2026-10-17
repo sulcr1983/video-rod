@@ -1,6 +1,7 @@
 # 钓鱼竿 Video Rod — 测试策略与用例
 
-> 版本：v1.0 ｜ 日期：2026-10-17 ｜ 状态：已确认
+> 版本：v1.3 ｜ 日期：2026-10-17 ｜ 状态：已确认
+> v1.3 变更：M7 浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧）。
 > 原则：小项目不搞重型测试框架，**冒烟 + 关键路径 + 回归清单**三件套，每个用例都是大白话可执行的。
 
 ---
@@ -139,6 +140,9 @@
 | **测试浏览器必须 `--no-proxy-server`** | 沙箱/CI 环境若设了 `HTTP_PROXY`，Chrome 会走代理，代理自己解析域名 → `--host-resolver-rules` 的 MAP 规则被绕过（表现为请求跑到公网、返回 Cloudflare 的 400）。域名映射类测试必须加 `--no-proxy-server` |
 | **`chrome.runtime.reload()` 会弄丢命令行加载的扩展** | 对 `--load-extension` 装入的未打包扩展调 `runtime.reload()`，扩展直接消失（extId 变、service worker 没了）→ 改代码后必须重启浏览器，不能热重载 |
 | **youtube.com 在 HSTS 预载列表** | 无法用 host-resolver 把 `youtube.com` 指到本地 HTTP 服务（会被强制升级 HTTPS）→ 用含 `youtube.com` 子串且未预载的域名（如 `notyoutube.com`）做离线等效验证 |
+| **域名映射测试必须带端口** | `MAP notyoutube.com 127.0.0.1` 后访问 `http://notyoutube.com/`（80 端口）会被 Chromium「公网域名→私有 IP」防护拦成 `net::ERR_BLOCKED_BY_CLIENT`（页面根本不加载，嗅探 0 卡）→ 必须导航到 `http://notyoutube.com:18080/`。**症状是嗅探 0 卡时先看页面本身加载没有** |
+| **flex item 的 z-index 不挑 position** | 猫抓 `popup.css` 给 `#down` 带了 `z-index:999`（原为 fixed 浮动底栏）；改成 static 文档流底栏后，作为 flex item 的 z-index 依然创建层叠上下文，把 setview(470)/drawer(460)/modal(450) 全压在脚下（底栏浮在设置视图上面）→ 换定位方式必须连 z-index 一起清（`z-index:auto`）。**验浮层遮挡只能用 elementFromPoint，不能只看 class** |
+| **CDP 驱动的 popup 页 compositor 懒帧** | 有头 Chromium 里 CDP 创建的 popup 目标不主动产帧：① 打开后立即 `captureScreenshot` 会挂 60s 超时（重试/等待后恢复）② compositor 驱动的 transform 过渡不推进（`.setview.on` 的 class 加了但 computed transform 卡在 translateX(400px），关掉 class 也回不来）→ 测试脚本截图要 settle+retry，验浮层位置要显式 inline force（`transition:none;transform:none`）。**真实浏览器无此现象，非产品缺陷** |
 | Firefox | 不承诺兼容（底座有 manifest 但不保证） |
 
 ## 6. 冒烟自测记录
@@ -184,8 +188,18 @@
 - **快捷键**：CDP 真实派发 Alt+Shift+V → `chrome.commands.onCommand('_execute_action')` 触发 → 面板页 `popup.html?tabId=…` 打开
 - 控制台 0 报错
 
-### 测试脚手架要点（复现测试必读）
+### M7 popup 浅色重设计整合（2026-10-17 全量回归通过）
 
+- M1 断言集三页：index（2 卡）/ hls（2 卡 + 2 清晰度）/ **notyoutube.com:18080**（2 卡 + YT 横幅）——DOM 断言全过、控制台 0 报错；`bodyBg` 全白（浅色生效）
+- M2 批量下载：2 卡真落盘（29151B/121747B）、二次点击去重 toast、完成态、自动清理
+- M3 B站分P：12 分P 横幅 + 展开/收起 + 非 B 站页面不出现
+- M5 图片批量：2 张有效图（640×480/300×300）、全选按钮状态化切换、真落盘 _01.jpg/_02.png + toast
+- M5b 右键秒存 + 快捷键：`vrSaveContextMedia` 路径落盘 15324B；Alt+Shift+V 派发 → 面板打开
+- **z 序专项**（本次新发现并修复）：elementFromPoint 验证设置视图/工具抽屉/命名弹层均完整盖住底栏（修复前底栏浮在设置视图上，根因是猫抓 `#down` 的 z-index:999 在 static flex item 上依然生效）
+- 归档截图：`deliverables/assets/final-m7-{plain,settings,ytbanner,bili,imgmodal}.png`
+- 新增脚本：`tools/cdp-m4-test.py`（M4 正式化，带端口导航）、`tools/probe-zorder.py`（z 序回归）、`tools/shot-m7-final.py`（归档截图，内建 settle+retry+浮层强制）
+
+### 测试脚手架要点（复现测试必读）
 1. 浏览器：Playwright 内置 Chromium 149（`chromium-1228`），Chrome 155 官方版不支持 `--load-extension`
 2. 启动参数：`--remote-debugging-port=9226 --remote-debugging-address=127.0.0.1 --load-extension=<仓库> --no-proxy-server`；域名映射类再加 `--host-resolver-rules`
 3. `tools/cdp_client.py` 的 `open_popup()` 已内建：清理旧标签页 → 新建前台标签页 → `Network.setCacheDisabled(true)` → 导航 → 开面板

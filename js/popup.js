@@ -142,9 +142,11 @@ function AddMedia(data, currentTab = true) {
                 <span class="group">${data.group && G.showGroup ? `[${data.group}]` : ""}</span>
                 <img src="img/regex.png" class="regex ${data.isRegex ? "" : "hide"}" title="${i18n.regexTitle}"/>
                 <span class="meta" title="${escAttr(data.title || '')}">
-                    <span class="name hide">${trimName}</span>
-                    <span class="size ${data.size ? "" : "hide"}">${data.size}</span>
-                    <span class="vrmime">${data.type || data.ext || ""}</span>
+                    <span class="name">${trimName}</span>
+                    <span class="metasub">
+                        <span class="size ${data.size ? "" : "hide"}">${data.size}</span>
+                        <span class="vrmime">${data.type || data.ext || ""}</span>
+                    </span>
                 </span>
                 <svg class="icon copy" id="copy" title="${i18n.copy}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 <img src="img/parsing.png" class="icon parsing ${data.parsing ? "" : "hide"}" id="parsing" data-type="${data.parsing}" title="${i18n.parser}"/>
@@ -199,10 +201,12 @@ function AddMedia(data, currentTab = true) {
         return false;
       }
       data.urlPanel.hide();
+      data.html.removeClass('vr-open');   // 行收起：第二行控件（文件名/清晰度/目录）一起收
       !preview[0].paused && preview.trigger("pause");
       return false;
     }
     data.urlPanel.show();
+    data.html.addClass('vr-open');        // 行展开：第二行控件才出现（方案 A）
     if (!mediaInfo.data("state")) {
       mediaInfo.data("state", true);
       if (isM3U8(data)) {
@@ -464,6 +468,7 @@ function AddMedia(data, currentTab = true) {
     data.downFileName = v.replace(/[\\/:*?"<>|]/g, "_");
     data.vrManuallyNamed = true;
     $(this).val(data.downFileName);
+    data.html.find(".name").text(data.downFileName);   // 行标题同步显示新名字
   });
   // 清晰度（M1 只记录偏好，M2 下载管线读取）
   data.html.find("[data-vr-quality]").on("change", function (event) {

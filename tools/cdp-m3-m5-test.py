@@ -16,10 +16,14 @@ IMG_PAGE = "http://127.0.0.1:18080/images.html"
 
 def shot(cdp, psid, path, h=600):
     time.sleep(1.2)
-    s = cdp.send("Page.captureScreenshot", {"format": "png"}, psid)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        f.write(base64.b64decode(s["data"]))
+    try:
+        s = cdp.send("Page.captureScreenshot", {"format": "png"}, psid)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(s["data"]))
+        return None
+    except Exception as exc:  # 截图偶发超时不致命：留记录继续跑
+        return f"screenshotError: {exc}"
 
 
 def main():
@@ -54,8 +58,12 @@ def main():
         return {open: open, rows: rows, txt: txt, closed: closed};
       })()
     """, psid)
-    shot(cdp, psid, os.path.join(out_dir, "m3-bili-banner.png"))
+    shot_err = shot(cdp, psid, os.path.join(out_dir, "m3-bili-banner.png"))
+    if shot_err:
+        report["bili"]["shotErr"] = shot_err
     report["errors"] += cdp.errors()
+    print(json.dumps({"section": "m3", "data": report["bili"]}, ensure_ascii=False))
+    sys.stdout.flush()
 
     # ---------- M5：图片批量 ----------
     psid2, tab_id2 = open_popup(cdp, IMG_PAGE)
@@ -80,7 +88,11 @@ def main():
         return {checked: document.querySelectorAll('#vrImgList .vrimg-chk:checked').length,
                 label: document.getElementById('vrImgAll').textContent}; })()
     """, psid2)
-    shot(cdp, psid2, os.path.join(out_dir, "m5-img-modal.png"), h=700)
+    shot_err = shot(cdp, psid2, os.path.join(out_dir, "m5-img-modal.png"), h=700)
+    if shot_err:
+        report["img"]["shotErr"] = shot_err
+    print(json.dumps({"section": "m5-scan", "data": report["img"]}, ensure_ascii=False))
+    sys.stdout.flush()
 
     # ---------- M5：图片真落盘 ----------
     if os.environ.get("VR_DL"):

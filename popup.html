@@ -8,6 +8,7 @@
   <link rel="stylesheet" type="text/css" href="css/public.css" media="all" />
   <link rel="stylesheet" type="text/css" href="css/popup.css" media="all" />
   <link rel="stylesheet" type="text/css" href="css/videorod.css" media="all" />
+  <link rel="stylesheet" type="text/css" href="css/popup-light.css" media="all" />
   <script src="lib/jquery.min.js"></script>
   <script src="js/polyfill.js"></script>
   <script src="js/init.js"></script>
@@ -47,41 +48,32 @@
             d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
-      <button class="iconbtn" id="btnTools" title="更多工具">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <circle cx="5" cy="12" r="1.7" />
-          <circle cx="12" cy="12" r="1.7" />
-          <circle cx="19" cy="12" r="1.7" />
-        </svg>
-      </button>
     </div>
 
-    <!-- ============ 页面信息条 ============ -->
-    <div class="pageinfo">
+    <!-- ============ 两行式头部 ①：站点 · 标题 · 数量 + 页签（文字，靠右） ============ -->
+    <div class="sitebar">
       <span class="site" id="vrSite">—</span>
       <span class="ptitle" id="vrPageTitle"></span>
       <span class="count">嗅探到 <b id="vrCount">0</b> 个</span>
-    </div>
-
-    <!-- ============ 标签页（原生，收窄） ============ -->
-    <div class="Tabs vr-tabs">
-      <div id="currentTab" class="TabButton Active" title="Current Page">
-        <span data-i18n-outer="currentPage"></span>
-        <div id="quantity"></div>
-      </div>
-      <div id="allTab" class="TabButton" title="Other Pages">
-        <span data-i18n-outer="otherPage"></span>
-        <div id="quantity"></div>
-      </div>
-      <div id="otherTab" class="TabButton" title="Media Control">
-        <i18n>mediaControl</i18n>
-      </div>
-      <div id="maybeKeyTab" class="TabButton hide" title="Possible Key">
-        <span data-i18n-outer="possibleKey"></span>
+      <div class="Tabs vr-tabs">
+        <div id="currentTab" class="TabButton Active" title="Current Page">
+          <span data-i18n-outer="currentPage"></span>
+          <div id="quantity"></div>
+        </div>
+        <div id="allTab" class="TabButton" title="Other Pages">
+          <span data-i18n-outer="otherPage"></span>
+          <div id="quantity"></div>
+        </div>
+        <div id="otherTab" class="TabButton" title="Media Control">
+          <i18n>mediaControl</i18n>
+        </div>
+        <div id="maybeKeyTab" class="TabButton hide" title="Possible Key">
+          <span data-i18n-outer="possibleKey"></span>
+        </div>
       </div>
     </div>
 
-    <!-- ============ 类型筛选 ============ -->
+    <!-- ============ 两行式头部 ②：类型筛选（文字，选中下划线） ============ -->
     <div class="filters" id="vrFilters">
       <button class="fchip on" data-f="all">全部 <b>0</b></button>
       <button class="fchip" data-f="video">视频 <b>0</b></button>
@@ -217,28 +209,67 @@
       <div class="preview" id="vrTplPreview"></div>
     </div>
 
-    <!-- ============ 设置抽屉 ============ -->
-    <div class="drawer" id="vrSettings">
-      <h3>设置 <span class="x" data-close="vrSettings">✕</span></h3>
-      <div class="srow">
-        <label>默认下载目录（下载文件夹下的子目录）</label>
-        <input type="text" id="vrSetDefaultDir" value="video-rod" spellcheck="false">
+    <!-- ============ 设置视图（方案 A：4 组 9 项 + 高级工具入口） ============ -->
+    <!-- 全屏面板内视图，盖在列表上但列表继续嗅探；input ID 与旧抽屉逐一对应，JS 接线不动 -->
+    <div class="setview" id="vrSettings">
+      <div class="sethead">
+        <button class="back" data-close="vrSettings" aria-label="返回主面板">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <span class="ttl">设置</span>
       </div>
-      <div class="srow">
-        <label>新文件默认命名模板</label>
-        <input type="text" id="vrSetTemplate" value="${author}_${title}" spellcheck="false">
+      <div class="setbody">
+        <div class="sgroup">
+          <div class="glabel">下载位置</div>
+          <div class="srow">
+            <div class="txt">
+              <div class="slabel">默认下载目录</div>
+              <div class="shint">浏览器下载目录下的子目录</div>
+            </div>
+          </div>
+          <div class="srow"><input type="text" id="vrSetDefaultDir" value="video-rod" spellcheck="false"></div>
+        </div>
+        <div class="sgroup">
+          <div class="glabel">命名</div>
+          <div class="srow">
+            <div class="txt">
+              <div class="slabel">新文件默认命名模板</div>
+              <div class="shint">可用 ${author} ${title} ${site} ${index} ${date} ${ext}</div>
+            </div>
+          </div>
+          <div class="srow"><input type="text" id="vrSetTemplate" value="${author}_${title}" spellcheck="false"></div>
+          <div class="toggle"><span>智能识别取名（标题/正文/作者）</span><input type="checkbox" class="sw" id="vrSetSmart"></div>
+          <div class="toggle"><span>去重检测（跳过已下载）</span><input type="checkbox" class="sw" id="vrSetDedupe"></div>
+        </div>
+        <div class="sgroup">
+          <div class="glabel">画质</div>
+          <div class="toggle"><span>清晰度默认选最高档</span><input type="checkbox" class="sw" id="vrSetQuality"></div>
+          <div class="toggle"><span>m3u8 自动合并为 MP4</span><input type="checkbox" class="sw" id="vrSetMerge"></div>
+        </div>
+        <div class="sgroup">
+          <div class="glabel">面板</div>
+          <div class="toggle"><span>图片嗅探（批量保存网页图片）</span><input type="checkbox" class="sw" id="vrSetImg"></div>
+          <div class="toggle"><span>显示嗅探数字徽章</span><input type="checkbox" class="sw" id="vrSetBadge"></div>
+          <div class="srow">
+            <div class="txt">
+              <div class="slabel">清空下载记录</div>
+              <div class="shint">清掉「已下载」标记，所有文件可重下</div>
+            </div>
+            <button id="vrClearDownloaded" class="ghostbtn">清空</button>
+          </div>
+          <div class="srow">
+            <div class="txt">
+              <div class="slabel">高级工具</div>
+              <div class="shint">在线合并 · 复制链接 · 反选 · 筛选 · 深度搜索 · 缓存捕捉</div>
+            </div>
+            <button id="vrAdvTools" class="ghostbtn">打开</button>
+          </div>
+        </div>
+        <div class="note">「下载到文件夹」= 浏览器下载目录 / 默认目录 / 每条的子目录。<br>
+          例：Downloads/video-rod/测试站/test.mp4</div>
       </div>
-      <div class="toggle"><span>图片嗅探（批量保存网页图片）</span><input type="checkbox" class="sw" id="vrSetImg"></div>
-      <div class="toggle"><span>智能识别取名（标题/正文/作者）</span><input type="checkbox" class="sw" id="vrSetSmart"></div>
-      <div class="toggle"><span>清晰度默认选最高档</span><input type="checkbox" class="sw" id="vrSetQuality"></div>
-      <div class="toggle"><span>去重检测（跳过已下载）</span><input type="checkbox" class="sw" id="vrSetDedupe"></div>
-      <div class="toggle"><span>m3u8 自动合并为 MP4</span><input type="checkbox" class="sw" id="vrSetMerge"></div>
-      <div class="toggle"><span>显示嗅探数字徽章</span><input type="checkbox" class="sw" id="vrSetBadge"></div>
-      <div class="srow" style="margin-top:10px">
-        <button id="vrClearDownloaded" class="fbtn" style="width:100%;justify-content:center">清空下载记录（可重下）</button>
-      </div>
-      <div class="note">「下载到文件夹」= 浏览器下载目录 / 默认目录 / 每条的子目录。<br>
-        例：Downloads/video-rod/测试站/test.mp4</div>
     </div>
 
     <!-- ============ 工具抽屉 ============ -->
