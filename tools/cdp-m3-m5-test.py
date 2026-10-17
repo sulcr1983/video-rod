@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp, find_ext_id, open_popup  # noqa: E402
@@ -128,7 +129,14 @@ def main():
 
     report["errors"] += cdp.errors()
     print(json.dumps(report, ensure_ascii=False, indent=2))
+    sys.stdout.flush()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # 崩了也留现场：把 traceback 打到 stderr，退出码非 0
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.exit(1)
