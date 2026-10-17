@@ -753,6 +753,56 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
 });
 
 // 右键菜单 和 快捷键 复用函数
+/**
+ * 钓鱼竿：右键秒存（M5）
+ * 在页面里跑 naming.js 算出「作者_标题」，直接落到 默认目录/名字.ext
+ */
+async function vrSaveContextMedia(info, isImage) {
+    if (!info || !info.srcUrl) { return; }
+    const tabId = info.tabId != null ? info.tabId : G.tabId;
+
+    // 扩展名：从 URL 猜一个，猜不到就用默认
+    let ext = (info.srcUrl.split('#')[0].split('?')[0].split('.').pop() || '').toLowerCase();
+    const allow = isImage
+        ? /^(jpg|jpeg|png|gif|webp|avif|bmp|svg)$/
+        : /^(mp4|webm|mkv|mov|m4v|m4a|mp3|aac|flac|wav|ogg|ts)$/;
+    if (!allow.test(ext)) { ext = isImage ? 'jpg' : 'mp4'; }
+
+    let settings = {};
+    try {
+        const res = await chrome.storage.local.get('vrSettings');
+        settings = (res && res.vrSettings) || {};
+    } catch (e) { /* 忽略 */ }
+
+    const dir = String(settings.defaultDir || 'video-rod').replace(/[<>:"|?*\\]/g, '').replace(/^\/+|\/+$/g, '') || 'video-rod';
+    const tpl = settings.template || '${author}_${title}';
+
+    let name = '';
+    try {
+        await chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['js/naming.js'] });
+        const r = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function (tpl, ext) {
+                const N = self.VideoRodNaming;
+                if (!N) { return ''; }
+                try {
+                    const i = N.extractPageInfo(document, location.href);
+                    return N.buildNameFromInfo(i, location.href, { tpl: tpl, ext: ext });
+                } catch (e) { return ''; }
+            },
+            args: [tpl, ext]
+        });
+        name = (r && r[0] && r[0].result) || '';
+    } catch (e) { /* 受限页面，退回时间戳名 */ }
+
+    if (!name) { name = 'media_' + Date.now() + '.' + ext; }
+    const filename = (dir + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+
+    chrome.downloads.download({ url: info.srcUrl, filename: filename }, function () {
+        chrome.runtime.lastError && console.warn('[video-rod] 秒存失败', chrome.runtime.lastError);
+    });
+}
+
 const runCommands = (command, data) => {
     if (command == "auto_down") {
         if (G.featAutoDownTabId.has(G.tabId)) {
@@ -799,6 +849,8 @@ const runCommands = (command, data) => {
             chrome.runtime.lastError && console.error(chrome.runtime.lastError);
             G.downDataImageSave = data;
         });
+    } else if (command == "vr-video-save" || command == "vr-image-save") {
+        vrSaveContextMedia(data, command == "vr-image-save");
     }
 }
 chrome.downloads.onChanged.addListener(function (item) {

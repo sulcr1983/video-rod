@@ -1,7 +1,8 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.0 ｜ 日期：2026-10-17 ｜ 状态：✅ 已生效
+> 版本：v1.1 ｜ 日期：2026-10-17 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
+> v1.1 变更：M2–M6 里程碑产出物批量登记（下载管线/站点增强/周边/打磨四组共 18 条）。
 
 ---
 
@@ -78,10 +79,28 @@ video-rod/
 | 决策记录 | `docs/DECISIONS.md` | v1.0 | 进行中 | ADR-001~024，追加式 |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
+| popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 评审中 | 浅色 A/B/C 三方案可点原型；行高 66px，6/12 条数据量切换（默认 12）；不改源码 |
+| popup 重设计三方向（旧） | `deliverables/prototypes/popup-redesign-options-v1.html` | v1 | 已被 v2 取代 | 首版交付（6 条数据、行高 59px）；苏哥确认 v2 后按 §5.1 归档 |
+| 重设计方案说明 | `deliverables/reviews/2026-10-17-popup-redesign.md` | 2026-10-17 | 评审中 | 调研依据 + 现状诊断 + 推荐 A + 10+ 滚动规则 + 落地契约 |
 | popup 外壳 | `popup.html` + `css/videorod.css` | v1.0 | 已定稿 | M1 产物；按原型 v5 重写，功能钩子全保留 |
-| popup 交互层 | `js/popup-videorod.js` | v1.0 | 已定稿 | M1 产物；筛选/批量命名/目录/设置/页面识别 |
-| M1 有头浏览器验收脚本 | `tools/cdp-m1-test.py` | v1.0 | 已定稿 | CDP 连有头 Chromium，DOM 断言+交互冒烟+状态截图 |
+| popup 交互层 | `js/popup-videorod.js` | v1.1 | 已定稿 | M1 打底（v1.0）+ M2 下载管线 + M3/M4 站点增强 + M5 图片批量；`currentPageUrl()` 改走 `chrome.tabs.get` |
+| M1 有头浏览器验收脚本 | `tools/cdp-m1-test.py` | v1.1 | 已定稿 | CDP 连有头 Chromium，DOM 断言+交互冒烟+状态截图；v1.1 增加 biliBanner/partChips/ytBanner 断言 |
 | M1 面板截图 | `deliverables/assets/m1-panel-{list,settings,rename,dirmenu}.png` | 2026-10-17 | 评审中 | 有头浏览器四态实拍（列表/设置/命名弹层/目录菜单） |
+| CDP 公用客户端 | `tools/cdp_client.py` | v1.1 | 已定稿 | `Cdp` 类 + `find_ext_id` + `open_popup`；v1.1 内建「新建标签页 + 禁缓存」修掉复用旧标签页嗅探为 0 的坑 |
+| M2 下载管线验收脚本 | `tools/cdp-m2-test.py` | v1.0 | 已定稿 | 真落盘 + 去重 + 完成态；测完自动清理本次新增文件 |
+| M3+M5 合并验收脚本 | `tools/cdp-m3-m5-test.py` | v1.0 | 已定稿 | B站分P横幅 + 图片弹层 + 图片真落盘（`VR_DL=1` 开启落盘） |
+| M5b 秒存/快捷键验收脚本 | `tools/cdp-m5b-test.py` | v1.0 | 已定稿 | 走 `vrSaveContextMedia` 真实路径验右键秒存落盘；CDP 真实派发 Alt+Shift+V 验快捷键 |
+| SW 状态诊断探针 | `tools/cdp-probe.py` | v1.0 | 已定稿 | 读 service worker 的 G/cacheData 状态，排查「嗅探为 0」类问题用 |
+| M2 面板回归截图 | `deliverables/assets/m1-regress.png` | 2026-10-17 | 评审中 | M2 阶段复跑 M1 断言集的实拍（防重构改坏） |
+| M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 评审中 | 12 分P横幅 + 展开态 |
+| M4 YouTube 限制横幅截图 | `deliverables/assets/m4-yt-banner.png` | 2026-10-17 | 评审中 | 离线等效验证（域名映射）下的橙色警示横幅 |
+| M5 图片弹层截图 | `deliverables/assets/m5-img-modal.png` | 2026-10-17 | 评审中 | 抓图弹层：2 张有效图（坏图/小图/重复图已滤掉） |
+| HLS 流媒体回归截图 | `deliverables/assets/hls-regress.png` | 2026-10-17 | 评审中 | m3u8 双清晰度卡 + 清晰度下拉 |
+| 测试站页面 | `test-site/{index,hls,bili-fake,images,yt-fake}.html` | 2026-10-17 | 已定稿 | 五类测试夹具：直链视频/HLS/B站分P/图片批量/YouTube（域名映射） |
+| 右键秒存 + 快捷键 | `js/init.js` + `js/background.js` + `manifest.json` | v1.0 | 已定稿 | M5 产物；两个一级右键菜单 + `vrSaveContextMedia()` + Alt+Shift+V |
+| README 使用说明 | `README.md` §使用说明 | v1.1 | 已定稿 | M6 产物；九节大白话完整指引（安装/日常/秒存/批量/B站/命名/设置/认账/快捷键） |
+| 测试策略文档 | `docs/TESTING.md` | v1.2 | 已定稿 | M6 产物；补 M2–M5 冒烟记录 + 4 条测试环境限制 + 脚手架要点 |
+| 施工计划检查站记录 | `docs/BUILD-PLAN.md` §六 | v1.1 | 已定稿 | M6 产物；M2/M3/M4/M5/M6 五个检查站全部填毕 |
 
 > 登记规则：新产出物落地当天登记；状态变化当天更新；每完成一个 M 里程碑过一遍表。
 

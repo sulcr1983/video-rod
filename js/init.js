@@ -431,6 +431,17 @@ function contextMenusInit(visible = false) {
             title: i18n.autoDownload,
             contexts: ["page", "image"]
         });
+        // 钓鱼竿：右键秒存（M5）——一级菜单，一步到位
+        chrome.contextMenus.create({
+            id: "vr-video-save",
+            title: "钓鱼竿：下载这个视频",
+            contexts: ["video"]
+        });
+        chrome.contextMenus.create({
+            id: "vr-image-save",
+            title: "钓鱼竿：保存这张图片",
+            contexts: ["image"]
+        });
     });
 }
 

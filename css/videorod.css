@@ -233,6 +233,55 @@ body.popupBody {
 
 .fchip b { font-weight: 600; opacity: .75; }
 
+/* 抓图按钮靠右 */
+.filters .vr-imgbtn {
+    margin-left: auto;
+    border-color: #2e5a6b;
+    color: var(--vr-cyan-soft);
+}
+
+.filters .vr-imgbtn:hover { border-color: var(--vr-cyan); color: var(--vr-cyan); }
+
+/* 图片批量弹层 */
+.vrimg-list {
+    max-height: 300px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.vrimg-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--vr-bg-deep);
+    border: 1px solid #222736;
+    border-radius: 7px;
+    padding: 5px 6px;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.vrimg-row:hover { border-color: #384257; }
+
+.vrimg-row img {
+    width: 34px;
+    height: 34px;
+    object-fit: cover;
+    border-radius: 5px;
+    background: #0f1218;
+    flex: none;
+}
+
+.vrimg-meta {
+    font-size: 9px;
+    color: var(--vr-text-mute);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* ---------- 列表容器 ---------- */
 #mediaList.container,
 #allMediaList.container,
@@ -280,6 +329,24 @@ body.popupBody {
 
 /* 类型筛选：独立 class，不与猫抓的扩展名筛选（inline display）互相覆盖 */
 .panel.vr-type-off { display: none !important; }
+
+/* 已下载状态（M2） */
+.panel.done { opacity: .62; }
+.panel.done::after {
+    content: '✓ ' attr(data-vr-state);
+    position: absolute;
+    top: 7px;
+    right: 9px;
+    font-size: 9px;
+    color: var(--vr-green);
+    background: #17301f;
+    border: 1px solid #24513a;
+    padding: 1.5px 6px;
+    border-radius: 20px;
+    pointer-events: none;
+}
+
+.panel.done .panel-heading .icon { opacity: .35; }
 
 .panel-heading {
     display: flex;
@@ -981,6 +1048,109 @@ body.popupBody {
 
 .drawer .toolgrid button:hover { background: #2b3242; border-color: #3a4356; }
 .drawer .toolgrid button.wide { grid-column: span 2; }
+
+/* ---------- 站点增强横幅（M3 B站分P / M4 YouTube 提示） ---------- */
+.vr-banner {
+    margin: 0 0 8px;
+    background: #1a2230;
+    border: 1px solid #2a3a4a;
+    border-radius: 10px;
+    padding: 8px 10px;
+    flex: none;
+    box-sizing: border-box;
+}
+
+.vr-banner-warn {
+    background: #2a1f14;
+    border-color: #4a3520;
+}
+
+.vr-banner-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.vr-banner-tag {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: #3b2a12;
+    color: #fbbf24;
+    border: 1px solid #57411a;
+    flex: none;
+}
+
+.vr-banner-tag.warn { background: #3a1d1d; color: #f87171; border-color: #5a2a2a; }
+
+.vr-banner-txt {
+    font-size: 10px;
+    color: var(--vr-text-dim);
+    line-height: 1.6;
+    flex: 1;
+    min-width: 110px;
+}
+
+.vr-banner-txt b { color: var(--vr-orange); }
+
+.vr-banner .fbtn { padding: 4px 8px; font-size: 10px; }
+.vr-banner .fbtn.primary { margin-left: 0; }
+
+.vr-banner-body {
+    margin-top: 7px;
+    padding-top: 6px;
+    border-top: 1px dashed #2a3a44;
+    max-height: 132px;
+    overflow-y: auto;
+}
+
+.vr-banner-body.hide { display: none; }
+
+.vr-partrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    color: #9fb3bd;
+    padding: 3px 2px;
+    cursor: default;
+}
+
+.vr-partno {
+    flex: none;
+    font-size: 9px;
+    color: var(--vr-orange);
+    background: #2a1d10;
+    border: 1px solid #7c4a1e;
+    border-radius: 4px;
+    padding: 0 4px;
+}
+
+.vr-partname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 卡片上的「分P ×N」chip */
+.panel-heading .partchip {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 99px;
+    border: 1px solid #7c4a1e;
+    background: #2a1d10;
+    color: #fbbf24;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    flex: none;
+    margin-right: 2px;
+}
+
+.panel-heading .partchip:hover { border-color: var(--vr-orange); color: var(--vr-orange); }
+
 
 /* ---------- 目录迷你菜单 ---------- */
 .dirmenu {

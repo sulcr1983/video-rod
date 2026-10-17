@@ -162,3 +162,124 @@ M0 命名引擎 ──► M1 面板 ──► M2 下载管线 ──► M3 B站�
 - ⏳ m3u8 卡片文件名仍是 `.m3u8`（猫抓解析器自己决定输出名），M2 统一成合并后的 `.mp4`
 
 **回滚点**：git 提交见 M1 完成提交
+
+### M2 下载管线 — ✅ 已完成（2026-10-17）
+
+**交付物**：
+- `js/popup-videorod.js` 下载管线分区：`vrFullPath()`（目录+清洗后的名字拼最终 filename）、`beforeBatchDownload()`（批量前统一处理）、`hookDownloadsApi()`（monkey-patch `chrome.downloads.download`，把面板里的名字/目录/清晰度偏好注入每次下载）、`bindDownloadProgress()`（下载中/完成/失败反馈）、`markCardDone()` + `isDownloaded()` + `markDownloaded()`（下载记录去重，持久化在 chrome.storage.local）
+- `js/background.js` 右键秒存 `vrSaveContextMedia(info, isImage)`：注入 naming.js 算名 → `chrome.downloads.download`
+- `tools/cdp-m2-test.py`：真落盘 + 去重 + 完成态验收
+
+**验收结果**（Chromium 149 有头，测试站 127.0.0.1:18080）：
+| 项 | 结果 |
+|---|---|
+| 批量下载真落盘 | 2 张卡 → `Downloads/video-rod/test.mp4`(29151B)、`test2.mp4`(121747B) |
+| 去重 | 二次点「批量下载」文件数不变，toast「批量完成：2 个文件已保存」 |
+| 完成态 | 2 张卡打上「✓ 已完成」；「清空下载记录」可清除 |
+| 控制台 | 0 报错 0 异常 |
+
+**关键设计决策**：
+- 去重键 = **最终 filename**（不是 URL）：同一个地址想存到不同目录/改名后可以再下一次，符合「手残重复下才拦」的本意
+- 下载记录持久化到 `chrome.storage.local`，面板关掉再开仍记得下过什么
+- 不碰猫抓的 `send2local`/下载器主体，只在外层包一层改名+记账
+
+**未完成项（如实记录）**：
+- ⏳ m3u8 合并走的是猫抓原管线（在线 FFmpeg），本里程碑只保证「名字和目录对」；合并路线 A/B/C 仍待苏哥拍板（DESIGN §8）
+- ⏳ 清晰度下拉记录的是偏好值，实际生效依赖猫抓解析器对 m3u8 多码率的处理，本轮未单独验证多码率场景
+
+**回滚点**：git 提交见 M2 完成提交
+
+### M3 B站分P — ✅ 已完成（2026-10-17）
+
+**交付物**：
+- `fetchBiliParts(tabId)`：`chrome.scripting.executeScript` 以 **MAIN world** 读页面 `__INITIAL_STATE__.videoData.pages`（不调 API、不碰 WBI 签名——零签名对抗路线）
+- `buildBiliBanner(info)`：面板内横幅「本页共 N 个分P」+ 展开/收起分P列表 +「后台打开全部」
+- `openAllParts(info)`：按 700ms 错峰在后台打开各分P（浏览器自己去请求，cookie 天然带上 → 大会员内容同样支持），嗅探结果汇总到「其他页面」标签
+- 卡片 `partchip`（「分P ×N」）：点它展开横幅
+
+**验收结果**（`test-site/bili-fake.html`，12 个分P）：
+| 项 | 结果 |
+|---|---|
+| 横幅 | 出现「本页共 12 个分P」 |
+| 展开/收起 | 12 条分P全部渲染，按钮文案正确切换 |
+| 兜底 | 非 B站页面 `fetchBiliParts` 返回 null，不出现横幅 |
+| 控制台 | 0 报错 |
+
+**关键设计决策**：
+- **不看域名看数据**：页面里有 `__INITIAL_STATE__.videoData` 就当分P页处理，顺带兼容镜像站；非 B站页面注入后直接返回 null，成本几毫秒
+- 分P切换靠**驱动浏览器自己打开分P URL**，扩展只发指令不签名——这是 ADR-019/020 之后唯一可持续的路线
+- 打开超过 12 个分P前 confirm 一次，避免手滑开几十个标签页
+
+**未完成项（如实记录）**：
+- ⏳ 真实 B站页面未实测（沙箱无外网、B站需登录态）；选择器按 2026-10 时点结构编写，改版会失效 → 已设计兜底（失效自动退回纯嗅探）
+- ⏳ DASH 合并（m4s 直链 → 合并）依赖猫抓原管线 + DESIGN §8 的合并路线决策，本轮未单独验证
+
+**回滚点**：git 提交见 M3 完成提交
+
+### M4 YouTube — ✅ 已完成（2026-10-17，降级验证）
+
+**交付物**：
+- `buildYoutubeBanner()`：YouTube 页面在面板顶部显示**橙色限制提示**，明确告知「2026 起 YT 强制 SABR + poToken，纯扩展多半抓不到；能抓到就直接下，抓不到属已知限制，不折腾签名对抗」
+- `detectSite()` 统一站点识别入口（YouTube 域名判断 + B站数据判断）
+
+**验收结果**（离线等效：`--host-resolver-rules` 把含 `youtube.com` 子串的域名映射到本地测试站）：
+| 项 | 结果 |
+|---|---|
+| 限制横幅 | YouTube 域名页面出现橙色警示横幅，文案完整 |
+| 不阻塞嗅探 | 同页仍正常嗅探到 1 张视频卡 |
+| 兜底 | 非 YouTube 页面不出现该横幅 |
+| 控制台 | 0 报错 |
+
+**实测发现（测试环境坑，已写入 TESTING 已知限制）**：
+- `youtube.com` 在 Chrome HSTS 预载列表里，无法用 host-resolver 指到本地 HTTP 服务（会被强制升级 HTTPS 打到本地 HTTPS 端口报 400）→ 改用含 `youtube.com` 子串且未预载的域名做离线等效验证
+- 沙箱的 `HTTP_PROXY` 会让 Chrome 走代理，代理自己解析域名 → `--host-resolver-rules` 被绕过 → 必须加 `--no-proxy-server`
+
+**未完成项（如实记录）**：
+- ⏳ 真实 YouTube 页面未实测（无外网）。按 ADR-019 的结论「没有 Chrome 扩展能可靠下载 YouTube 视频」，本里程碑的验收物就是「明确标记限制」——已达成
+- ⏳ 播放列表条目展开未实现（审计改版时降级为「只取已加载项，能做多少做多少」，当前版本未做，面板仍靠猫抓原嗅探）
+
+**回滚点**：git 提交见 M4 完成提交
+
+### M5 周边补齐 — ✅ 已完成（2026-10-17）
+
+**交付物**：
+- 图片批量：`collectImagesInPage()` 扫 `<img>`（currentSrc）+ `background-image`，滤小图（<120×120）、滤重复 URL、**滤加载失败的图**；`openImageModal()` 弹层勾选保存，`${title}_${index}` 命名
+- 右键秒存：`js/init.js` 两个一级菜单「钓鱼竿：下载这个视频」（contexts: video）/「钓鱼竿：保存这张图片」（contexts: image）→ `background.js` 的 `vrSaveContextMedia()`
+- 快捷键：`manifest.json` 的 `_execute_action` 绑 `Alt+Shift+V`
+- `tools/cdp-m3-m5-test.py`（M3+M5 合并验收）、`tools/cdp-m5b-test.py`（秒存+快捷键）
+
+**验收结果**：
+| 项 | 结果 |
+|---|---|
+| 图片扫描 | `images.html` → 2 张（重复 URL 去重 ✓、小图过滤 ✓、坏图过滤 ✓） |
+| 图片真落盘 | `测试站 C：图片批量保存_01.jpg`(15324B)、`_02.png`(1037B)，toast 正确 |
+| 全选按钮 | 状态化切换（全选 ↔ 全不选），标签随状态变 |
+| 右键秒存 | 走 `vrSaveContextMedia` 真实路径 → `测试站 C：图片批量保存.jpg`(15324B) 落盘，名字由页面标题经模板生成 |
+| 快捷键 | CDP 真实派发 Alt+Shift+V → 面板 `popup.html?tabId=…` 打开 |
+| 控制台 | 0 报错 |
+
+**施工中发现并修的问题**：
+- `<img>` 加载失败时 `naturalWidth=0` 会回落到 CSS 宽度，导致坏图混进列表 → 加 `im.complete && !im.naturalWidth` 判定直接跳过
+- 「全选」按钮原实现是无状态切换，标签永远写着「全选」容易误解 → 改为状态化
+
+**未完成项（如实记录）**：
+- ⏳ srcset 多分辨率只取 `currentSrc`（浏览器实际选中的那张），未提供「全部尺寸都列出来」——符合「不过度设计」，真需要再说
+- ⏳ 右键菜单的真机点击（Chrome 原生菜单 UI）无法用 CDP 自动化，本轮验的是菜单点击的最终代码路径 `vrSaveContextMedia`；菜单项注册代码与猫抓既有菜单同在 `contextMenusInit`，结构一致
+
+**回滚点**：git 提交见 M5 完成提交
+
+### M6 打磨交付 — ✅ 已完成（2026-10-17）
+
+**交付物**：
+- README 补全大白话使用说明（原「快速上手」扩写为完整指引，去掉 M6 占位句）
+- `docs/TESTING.md` 补 M2–M5 冒烟记录 + 4 条新发现的测试环境限制 + 测试脚手架要点
+- `deliverables/DELIVERABLES.md` 登记表补 M2–M6 全部产出物
+- 全功能回归一轮（M1/M2/M3/M4/M5 脚本全绿，控制台 0 报错）
+
+**验收结果**：回归清单逐项过——见 docs/TESTING.md §6 冒烟自测记录。
+
+**未完成项（如实记录）**：
+- ⏳ 真实站点（B站/推特/小红书/YouTube）未实测——沙箱无外网且需登录态，选择器按 2026-10 时点结构编写；失效有兜底（退回网页标题/纯嗅探）
+- ⏳ m3u8 合并路线 A/B/C 仍待苏哥拍板（DESIGN §8），不影响日常使用（默认走猫抓原管线）
+
+**回滚点**：git 提交见 M6 完成提交

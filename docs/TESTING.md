@@ -135,6 +135,10 @@
 | 站点 DOM 改版 | B站分P读取/页面识别失效 → 退回网页标题/纯嗅探兜底 |
 | **Chrome 155 禁命令行装扩展** | 官方版（137+）已彻底忽略 `--load-extension`，加 `--disable-features=DisableLoadExtensionCommandLineSwitch` 也无效 → 自动化验证改用 Chromium / Chrome for Testing；用户手动「加载已解压的扩展程序」不受影响 |
 | 扩展就绪前打开的页面 | 首次加载扩展时，已存在的标签页不会被嗅探 → 刷新一次页面即可（后续新开页面正常） |
+| **复用旧标签页会导致嗅探为 0（测试脚手架的坑，非产品缺陷）** | 对已打开的后台标签页做导航/cache-bust，子资源全命中 HTTP 缓存，webRequest 不触发 → 嗅探结果 0 条。**测试必须新建标签页并在导航前 `Network.setCacheDisabled(true)`**（`tools/cdp_client.py` 的 `open_popup()` 已内建该处理） |
+| **测试浏览器必须 `--no-proxy-server`** | 沙箱/CI 环境若设了 `HTTP_PROXY`，Chrome 会走代理，代理自己解析域名 → `--host-resolver-rules` 的 MAP 规则被绕过（表现为请求跑到公网、返回 Cloudflare 的 400）。域名映射类测试必须加 `--no-proxy-server` |
+| **`chrome.runtime.reload()` 会弄丢命令行加载的扩展** | 对 `--load-extension` 装入的未打包扩展调 `runtime.reload()`，扩展直接消失（extId 变、service worker 没了）→ 改代码后必须重启浏览器，不能热重载 |
+| **youtube.com 在 HSTS 预载列表** | 无法用 host-resolver 把 `youtube.com` 指到本地 HTTP 服务（会被强制升级 HTTPS）→ 用含 `youtube.com` 子串且未预载的域名（如 `notyoutube.com`）做离线等效验证 |
 | Firefox | 不承诺兼容（底座有 manifest 但不保证） |
 
 ## 6. 冒烟自测记录
@@ -147,3 +151,45 @@
   - 智能起名：注入 naming.js 取到页面标题并套进文件名（emoji 按规则清除）
   - 设置/工具抽屉开合、标签三页切换、目录菜单翻转定位
   - 控制台 0 报错 0 异常
+
+### M2 下载管线（2026-10-17 复验通过）
+
+- 2 张卡批量下载 → 真落盘 `Downloads/video-rod/test.mp4`(29151B)、`test2.mp4`(121747B)
+- 二次点「批量下载」被去重拦下：文件数不变，toast「批量完成：2 个文件已保存」
+- 2 张卡同时打上「✓ 已完成」态
+- 「清空下载记录」可清除 done 态
+- 控制台 0 报错
+
+### M3 B站分P（2026-10-17 通过）
+
+- `bili-fake.html`（`__INITIAL_STATE__.videoData.pages` 12 个分P）→ 横幅出现「本页共 **12** 个分P」
+- 展开 → 12 条 `vr-partrow` 全部渲染，按钮变「收起」；再点收起
+- 非 B站页面（index/hls/images）不出现横幅（`fetchBiliParts` 返回 null）
+- 控制台 0 报错
+
+### M4 YouTube（2026-10-17 通过，离线等效）
+
+- 用 `--host-resolver-rules="MAP notyoutube.com 127.0.0.1"` + `--no-proxy-server` 把含 `youtube.com` 子串的域名指到本地测试站
+- 面板出现橙色警示横幅：「2026 起 YT 强制 SABR + poToken，纯扩展多半抓不到。能抓到就直接下；抓不到属已知限制，不折腾签名对抗。」
+- 同页仍能正常嗅探到 1 张视频卡（证明横幅不阻塞嗅探）
+- 非 YouTube 页面不出现该横幅
+
+### M5 图片批量 / 右键秒存 / 快捷键（2026-10-17 通过）
+
+- `images.html` 点「抓图」→ 弹层打开，**2 张**（cover.jpg 640×480、sprite.png 300×300）
+  - 重复 URL 去重 ✓；16×16 小图按尺寸过滤 ✓；**加载失败的图（mp4 冒充 img）被过滤** ✓（本次新增）
+  - 「全选」按钮改为状态化切换：全选 ↔ 全不选，标签随状态变
+- 真落盘：`测试站 C：图片批量保存_01.jpg`(15324B)、`_02.png`(1037B)，命名走 `${title}_${index}`，toast「已保存 2 张图片到 video-rod/」
+- **右键秒存**：调 `vrSaveContextMedia`（菜单点击的最终路径）→ `测试站 C：图片批量保存.jpg`(15324B) 落盘，名字由页面标题经模板生成
+- **快捷键**：CDP 真实派发 Alt+Shift+V → `chrome.commands.onCommand('_execute_action')` 触发 → 面板页 `popup.html?tabId=…` 打开
+- 控制台 0 报错
+
+### 测试脚手架要点（复现测试必读）
+
+1. 浏览器：Playwright 内置 Chromium 149（`chromium-1228`），Chrome 155 官方版不支持 `--load-extension`
+2. 启动参数：`--remote-debugging-port=9226 --remote-debugging-address=127.0.0.1 --load-extension=<仓库> --no-proxy-server`；域名映射类再加 `--host-resolver-rules`
+3. `tools/cdp_client.py` 的 `open_popup()` 已内建：清理旧标签页 → 新建前台标签页 → `Network.setCacheDisabled(true)` → 导航 → 开面板
+4. 测试站在 `E:/test/download/test-site/`，`python -m http.server 18080`（M0 起就在跑，重启需重新起）
+5. 改代码后**必须重启浏览器**（`runtime.reload()` 会丢扩展）
+6. 跑下载类测试会写真实 `Downloads/video-rod/`，脚本测完自动清理本次新增文件
+
