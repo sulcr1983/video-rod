@@ -5,3 +5,7 @@ dist/
 *.zip
 *.pem
 /.workbuddy/memory
+
+# 敏感文件（含 GitHub token 等凭据，严禁提交）
+.env
+*.local
