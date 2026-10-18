@@ -446,6 +446,8 @@
 | DED4 | 成功才写账本，失败可重试 | ✅ `seen.add` 仅在 `ok` 后执行 |
 | DED5 | 内容相同但 URL 不同 | 📋 媒体库入库 SHA-256，待 P2 实施 |
 | DED6 | 状态提示 | ✅ 返回 `skipped`，显示「跳过重复 N」 |
+| DED7 | 单次 X 下载重复 | ✅ 第一次 1,336,765 B；第二次 `skipped:true`，无第二次文件 |
+| DED8 | 单次下载入口 | ✅ `vrVideoDownload`/`vrQuickDownX` 查 `vrMediaSeen`；成功才记账 |
 
 - 静态检查：`node --check js/background.js`、`js/bulk-profile.js` 通过。
 - 去重键：`site | workId | mediaId | kind | origin+pathname`；不包含签名参数。
