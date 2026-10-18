@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.30 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.31 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -31,6 +31,7 @@
 > v1.28 变更：媒体库 P4 落地——图片缩略图持久化 `_index/thumbs`、SHA-256 查重 `_index/hashes.json`、本地视频 `preload=metadata` 可 seek；22 文件发现 3 组/9 个重复；`223fdc1`。
 > v1.29 变更：小红书修复——卡片 token 提取、`mediaV2` 视频 mp4、自动补全 files/skipped/errors 计数、详情 state 重试；视频 mp4 31,344,820 B；收藏/点赞页 token 20/20、30/30；`1e93106`。
 > v1.30 变更：Instagram P1 落地——`js/instagram.js` 帖子/Reel 按钮、当前已加载图片/视频提取；`vrIgDownload` 落 `video-rod/instagram/<作者>/images|videos`；fixture 15,324 B；真实登录态待验（`6bd6d19`）。
+> v1.31 变更：单次下载去重——`vrVideoDownload`/`vrQuickDownX` 查 `vrMediaSeen` 并成功记账；同一 X 视频第二次 `skipped`，无重复文件（`24b59e2`）。
 
 ---
 
@@ -202,3 +203,4 @@ video-rod/
 | 媒体库 P4 缩略图/查重 | `library.html` + `css/library.css` + `js/library.js` | v1.0 | 已定稿 | 图片缩略图 480px 持久化 `_index/thumbs`（8 张）；SHA-256 `_index/hashes.json`（22 文件，3 组/9 个重复标记）；查重按钮；本地视频 `preload=metadata` 可 seek（`223fdc1`）。边界：视频首帧缩略图/远程 HTTP Range 未做 |
 | 小红书 token/视频/计数修复 | `js/xhs-batch.js`（cardsOnPage）+ `js/background.js`（vrXhsScanInTab/vrXhsScanInPage/vrXhsAutoQueue） | v1.0 | 已定稿 | 卡片同时读 `/user/profile/...?xsec_token`；详情 state 最多 8 次等待；`mediaV2.stream` 优先带音轨 mp4；files/skipped/errors 分开计数。实测图片 files=1/errors=0，视频 done=1/skipped=1/errors=0，mp4 31,344,820 B；收藏/点赞 token 20/20、30/30（`1e93106`） |
 | Instagram P1 | `js/instagram.js` + `manifest.json` + `js/background.js`（vrIgDownload） | v1.0 | 评审中 | 帖子/Reel 按钮；当前 DOM 图片/视频；作者/文案/shortcode；落 `video-rod/instagram/<作者>/images|videos`；fixture 15,324 B。真实登录态下载待验，blob 视频未做（`6bd6d19`，ADR-042） |
+| 单次下载去重 | `js/background.js`（vrVideoDownload/vrQuickDownX）+ `js/x-button.js` | v1.0 | 已定稿 | 查 `vrMediaSeen`，成功后记账；B站按页面+清晰度，直链按去签名 URL；X 按钮显示「已存在」。实测同一 X 视频第一次 1,336,765 B、第二次 `skipped`，无第二次文件（`24b59e2`） |
