@@ -193,3 +193,5 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
 .pv-tagAdd input{flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:11px;outline:none}
 .pv-tagAdd input:focus{border-color:#91caff;box-shadow:0 0 0 2px rgba(22,119,255,.08)}
 .modalHint{font-size:10.5px;color:#86909c;line-height:1.6;margin:-2px 0 6px}
++.card .tag.dup{background:#fff1f0;color:#f53f3f}
++.card .tag.hash{background:#f2f3f5;color:#86909c}
