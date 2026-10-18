@@ -468,6 +468,18 @@
 - 旧根目录文件（如 `video-rod/奇趣蛋蛋...mp4`）是改动前遗留；新文件在平台/作者/类型子目录。
 - 媒体库管理前需一次性重置目录并选择 `E:\personal\Downloads\video-rod`。
 
+### 10.10 媒体库目录选择（showDirectoryPicker）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| LIB1 | 选择器不再被固定 id 记忆到 F 盘 | ✅ 移除 `id`，`startIn:'downloads'` |
+| LIB2 | 空目录拒绝 | ✅ `hasMediaEntries` 校验 x/微博/小红书/video-rod |
+| LIB3 | 错误句柄自动清除 | ✅ 启动时无效句柄从 IndexedDB 删除 |
+| LIB4 | 正确目录 | 需手动选择 `E:\personal\Downloads\video-rod` |
+| LIB5 | 扫描/预览/重命名/删除 | 待目录选对后逐项验收 |
+
+- 参考：MDN `showDirectoryPicker` 的 `id` 记忆行为；Chromium issue 关于 `id`/`startIn` 被忽略的报告。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。

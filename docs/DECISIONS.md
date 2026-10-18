@@ -555,4 +555,21 @@
 
 ---
 
+## ADR-040 showDirectoryPicker 目录记忆坑与媒体库根校验
+
+- **日期**：2026-10-19 ｜ **状态**：✅
+- **现象**：媒体库反复打开 `F:\download\video-rod`（只有 `_index`），看不到 E 盘实际下载文件。
+- **网络资料**：
+  - MDN：`showDirectoryPicker({id})` 会按 `id` 记住上次目录；再次使用同一 `id` 会在同一目录打开。
+  - Chromium issue：`showDirectoryPicker()` 的 `id`/`startIn` 行为不一致；浏览器不允许网页直接指定绝对路径，`startIn` 只能给已知目录或已持有的 handle。
+- **决策**：
+  1. **移除固定 `id: 'vrLibrary'`**，改为 `startIn: 'downloads'`，避免被记忆目录拖回 F 盘。
+  2. 选中目录后校验 `hasMediaEntries`：必须存在 `x/weibo/douyin/xiaohongshu/instagram/小红书/微博/抖音` 或 `video-rod` 子目录；空目录直接拒绝，不写入 IndexedDB。
+  3. 已存的无效句柄自动清除，回到“选择媒体目录”；提供「重置目录」。
+  4. 期望路径明确提示 `E:\personal\Downloads\video-rod`。
+- **边界**：仍然必须由用户完成一次原生目录授权；浏览器安全模型不允许扩展直接写绝对路径。
+- **验证**：`node --check js/library.js` 通过；目录校验与句柄清除逻辑已接入。
+
+---
+
 *新增决策在此追加，编号顺延。*
