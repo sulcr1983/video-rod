@@ -441,6 +441,19 @@
 - 去重键：`site | workId | mediaId | kind | origin+pathname`；不包含签名参数。
 - 当前只覆盖主页批量；页内悬浮按钮单次下载尚未接账本。
 
+### 10.8 X 单条视频下载按钮（2026-10-19）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| X1 | 目标推文按钮可见 | ✅ `https://x.com/misscandace89/status/2111859456439185801`，蓝色胶囊「下载」65×32 |
+| X2 | 点击后反馈 | ✅ `下载中…` → `已保存`（`vr-done`），2.2 秒后恢复「下载」 |
+| X3 | 落盘命名/大小 | ✅ `奇趣蛋蛋(@misscandace89)_#KTV #公主 吃的真好 我也想吃.mp4`，1,336,765 B，`video/mp4` |
+| X4 | fxtwitter 元数据 | ✅ 720×1280，3 档 MP4；按钮取最高档 |
+| X5 | 同次点击出现原文件名文件 | ⚠️ 来自 **Plucker XBD**（`byExtensionId=piibekljdlkbkdchicfdjpnaggolndif`），不是钓鱼竿 |
+
+- 结论：钓鱼竿单条下载链路正常；用户若看到原文件名文件，是另一个下载扩展同时接管了同一视频。
+- 按钮样式：蓝色渐变实心胶囊 + 白色下载图标 + “下载”文字；不再使用灰色透明圆钮。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。
