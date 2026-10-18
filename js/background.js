@@ -285,7 +285,9 @@ function findMedia(data, isRegex = false, filter = false, timer = false) {
                     } else {
                         fileName = downDir + fileName;
                     }
-                    vrDownloadWithName(info.url, fileName);
+                    vrDownloadWithName(info.url, fileName).then(function (id) {
+                        if (id !== null) { vrMarkDownloaded(fileName); }
+                    });
                 } catch (e) { return; }
             }
             if (chrome.runtime.lastError) { return; }
@@ -375,6 +377,124 @@ function vrAbortFilename(url, filename) {
     }
 }
 
+// hashKey 必须与 popup-videorod.js 里的实现保持一致（djb2 变体），
+// 两边写同一份 chrome.storage.local.vrDownloaded 账本。
+function vrHashKey(str) {
+    var h = 5381;
+    for (var i = 0; i < str.length; i++) {
+        h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    }
+    return 'k' + (h >>> 0).toString(36);
+}
+
+/**
+ * SW 侧下载成功后记账（与 popup 的去重账本同一份数据）。
+ * 下载历史面板（M9）读的就是它；popup 批量去重也认它。
+ * 代价：SW 与 popup 各持一份内存副本，极少数并发下载可能互相覆盖丢一条记录
+ * ——只影响「某文件可重下」，不阻塞下载，个人自用可接受。
+ */
+function vrMarkDownloaded(path) {
+    if (!path) { return; }
+    try {
+        chrome.storage.local.get(['vrDownloaded'], function (res) {
+            if (chrome.runtime.lastError) { return; }
+            const rec = (res && res.vrDownloaded) || {};
+            rec[vrHashKey(path)] = { p: path, t: Date.now() };
+            // 与 popup 侧相同的 2000 条上限，超量退最早的
+            const keys = Object.keys(rec);
+            if (keys.length > 2000) {
+                keys.sort(function (a, b) { return (rec[a].t || 0) - (rec[b].t || 0); });
+                keys.slice(0, keys.length - 2000).forEach(function (k) { delete rec[k]; });
+            }
+            chrome.storage.local.set({ vrDownloaded: rec });
+        });
+    } catch (e) { /* 忽略：记账失败不影响下载 */ }
+}
+
+/* ===== 钓鱼竿：M11 多段自动合并编排（SW 侧，直连管线版）=====
+ * 第一性原理重构（2026-10-18）：不再驱动猫抓 m3u8 页面（给人手动操作的 UI，
+ * 无头驱动必然衍生一堆坑），改为：
+ *   popup 认组发 vrMergeStart → SW 确保离屏文档在位 → 转发 vrMergeRun →
+ *   离屏文档内直连完成「解析清单 + 拉分片 + 解密 + 合并」→ vrMergeReady →
+ *   popup 显示「已拼好」→ 用户点保存 → vrMergeSave → 离屏文档落盘。
+ * 参考社区成熟方案：Fluxon（offscreen 直连管线）、Media Bridge（SW 只做调度）。
+ * 手动兜底页 m3u8-multi.html 走同一条管线，不再有第二套实现。
+ */
+const vrMergeTasks = {};    // taskId -> {urls, state, bytes, ext}
+
+function vrMergeNotify(msg) {
+    try {
+        chrome.runtime.sendMessage(msg, function () { void chrome.runtime.lastError; });
+    } catch (e) { /* popup 可能没开 */ }
+}
+
+function vrMergeEnsureOffscreen() {
+    return new Promise(function (resolve) {
+        try {
+            chrome.offscreen.createDocument({
+                url: 'offscreen.html',
+                reasons: ['BLOBS'],
+                justification: 'M11 多段合并：解析/下载/解密/转码需要稳定的 blob 上下文'
+            }, function () {
+                // 已存在（Only one offscreen document allowed）也算就绪
+                resolve();
+            });
+        } catch (e) {
+            try {
+                chrome.offscreen.createDocument({
+                    url: 'offscreen.html',
+                    reasons: ['BLOBS'],
+                    justification: 'M11 多段合并'
+                }).then(resolve, function () { resolve(); });
+            } catch (e2) { resolve(); }
+        }
+    });
+}
+
+/** 离屏文档刚 createDocument 时脚本可能还没加载完，发消息要带重试 */
+function vrMergeSendToOffscreen(msg, tries) {
+    const n = tries || 0;
+    return new Promise(function (resolve) {
+        try {
+            chrome.runtime.sendMessage(msg, function () {
+                if (chrome.runtime.lastError) {
+                    if (n < 12) {
+                        setTimeout(function () {
+                            vrMergeSendToOffscreen(msg, n + 1).then(resolve);
+                        }, 350);
+                    } else {
+                        resolve(false);
+                    }
+                } else {
+                    resolve(true);
+                }
+            });
+        } catch (e) {
+            if (n < 12) {
+                setTimeout(function () { vrMergeSendToOffscreen(msg, n + 1).then(resolve); }, 350);
+            } else {
+                resolve(false);
+            }
+        }
+    });
+}
+
+function vrMergeStart(taskId, urls) {
+    if (!taskId || !urls || urls.length < 2) {
+        vrMergeNotify({ Message: 'vrMergeError', taskId: taskId, error: '参数不完整' });
+        return;
+    }
+    vrMergeTasks[taskId] = { id: taskId, urls: urls, state: 'running' };
+    vrMergeEnsureOffscreen().then(function () {
+        return vrMergeSendToOffscreen({ Message: 'vrMergeRun', taskId: taskId, urls: urls });
+    }).then(function (ok) {
+        if (!ok) {
+            delete vrMergeTasks[taskId];
+            vrMergeNotify({ Message: 'vrMergeError', taskId: taskId, error: '离屏文档没响应' });
+        }
+    });
+}
+
 /**
  * 带文件名保护的下载（SW 侧统一入口）。
  * 先记账再下载；失败撤账。返回 Promise<downloadId|null>。
@@ -450,6 +570,62 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message && Message.Message == "vrQueueName") {
         vrQueueFilename(Message.url, Message.filename, Message.conflictAction);
         sendResponse({ ok: true });
+        return true;
+    }
+    // ---- M11 多段自动合并（直连管线版）----
+    // popup 认组后发起（fire-and-forget，结果经 vrMergeProgress/Done/Error 异步回）
+    if (Message && Message.Message == "vrMergeStart") {
+        vrMergeStart(Message.taskId, Message.urls);
+        return;
+    }
+    // 离屏文档：拼好了 / 拼错了 / 存完了 —— 转 popup 并维护 SW 侧状态
+    if (Message && Message.Message == "vrMergeReady") {
+        const task = vrMergeTasks[Message.taskId];
+        if (task) {
+            task.state = "ready";
+            task.bytes = Message.bytes;
+            task.ext = Message.ext;
+            task.blobUrl = Message.blobUrl;   // 离屏上下文建的 blob URL，SW 负责落盘
+        }
+        // 对 popup 统一用 vrMergeDone（ready 是离屏→SW 的内部消息名）
+        vrMergeNotify({ Message: 'vrMergeDone', taskId: Message.taskId, bytes: Message.bytes, ext: Message.ext });
+        return;
+    }
+    if (Message && Message.Message == "vrMergeError") {
+        // 来自离屏文档（SW 自己 vrMergeNotify 发的不会回投自身，无冲突）
+        delete vrMergeTasks[Message.taskId];
+        vrMergeNotify(Message);
+        return;
+    }
+    // popup 点保存：SW 用 downloads 落盘（离屏文档没有 downloads 权限），
+    // 走 vrDownloadWithName 保留「文件名保护」；完成后通知离屏释放 blob
+    if (Message && Message.Message == "vrMergeSave") {
+        const task = vrMergeTasks[Message.taskId];
+        const filename = Message.filename;
+        if (!task || !task.blobUrl) {
+            vrMergeNotify({ Message: 'vrMergeSaved', taskId: Message.taskId, ok: false, error: '合并结果已不在（浏览器重启过？）' });
+            return;
+        }
+        vrDownloadWithName(task.blobUrl, filename).then(function (id) {
+            const ok = id !== null;
+            if (ok) {
+                delete vrMergeTasks[Message.taskId];
+                vrMergeSendToOffscreen({ Message: 'vrMergeRevoke', taskId: Message.taskId });
+            }
+            vrMergeNotify({
+                Message: 'vrMergeSaved', taskId: Message.taskId, ok: ok,
+                error: ok ? null : String(chrome.runtime.lastError && chrome.runtime.lastError.message)
+            });
+        });
+        return;
+    }
+    // popup 开机/重开时问：有没有拼好等保存的活
+    if (Message && Message.Message == "vrMergeStatus") {
+        const list = Object.keys(vrMergeTasks).map(function (id) {
+            const t = vrMergeTasks[id];
+            return { taskId: id, state: t.state, bytes: t.bytes || 0, ext: t.ext || "mp4", urls: t.urls };
+        });
+        sendResponse({ tasks: list });
         return true;
     }
     if (!G.initLocalComplete || !G.initSyncComplete) {
@@ -627,6 +803,8 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
                 vrDownloadWithName(url, fname).then(function (id) {
                     if (id === null) {
                         console.warn("[video-rod] X按钮下载失败", chrome.runtime.lastError);
+                    } else {
+                        vrMarkDownloaded(fname);
                     }
                 });
                 sendResponse({ ok: true, kind: "mp4", url: url.slice(0, 120) });
@@ -974,6 +1152,8 @@ async function vrSaveContextMedia(info, isImage) {
     vrDownloadWithName(info.srcUrl, filename).then(function (id) {
         if (id === null) {
             console.warn('[video-rod] 秒存失败', chrome.runtime.lastError);
+        } else {
+            vrMarkDownloaded(filename);
         }
     });
 }

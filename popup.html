@@ -48,6 +48,12 @@
             d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
+      <button class="iconbtn" id="vrSidePanel" title="在浏览器侧边栏打开">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d="M14 4v16" />
+        </svg>
+      </button>
     </div>
 
     <!-- ============ 两行式头部 ①：站点 · 标题 · 数量 + 页签（文字，靠右） ============ -->
@@ -130,6 +136,7 @@
       <div class="otherFeat flexRow">
         <button go="downloader.html" class="button2" data-i18n="downloader" title="Downloader"></button>
         <button go="m3u8.html" class="button2" data-i18n="m3u8Parser" title="M3U8 Parser"></button>
+        <button go="m3u8-multi.html" class="button2" title="多个独立 m3u8 按顺序拼成一个文件">多段合并</button>
         <button go="mpd.html" class="button2" data-i18n="mpdParser" title="MPD Parser"></button>
         <button go="json.html" class="button2" data-i18n="jsonFormatter" title="JSON Formatter"></button>
         <button go="ffmpegURL" class="button2" title="FFmpeg">FFmpeg</button>
@@ -252,12 +259,20 @@
           <div class="glabel">面板</div>
           <div class="toggle"><span>图片嗅探（批量保存网页图片）</span><input type="checkbox" class="sw" id="vrSetImg"></div>
           <div class="toggle"><span>显示嗅探数字徽章</span><input type="checkbox" class="sw" id="vrSetBadge"></div>
+          <div class="toggle"><span>点工具栏图标时开侧边栏</span><input type="checkbox" class="sw" id="vrSetSidePanel"></div>
           <div class="srow">
             <div class="txt">
               <div class="slabel">清空下载记录</div>
               <div class="shint">清掉「已下载」标记，所有文件可重下</div>
             </div>
             <button id="vrClearDownloaded" class="ghostbtn">清空</button>
+          </div>
+          <div class="srow">
+            <div class="txt">
+              <div class="slabel">下载历史</div>
+              <div class="shint">回看已下载的文件，可复制路径或删记录</div>
+            </div>
+            <button id="vrOpenHistory" class="ghostbtn">查看</button>
           </div>
           <div class="srow">
             <div class="txt">
@@ -269,6 +284,27 @@
         </div>
         <div class="note">「下载到文件夹」= 浏览器下载目录 / 默认目录 / 每条的子目录。<br>
           例：Downloads/video-rod/测试站/test.mp4</div>
+      </div>
+    </div>
+
+    <!-- ============ 下载历史视图（M9，复用 setview 全屏模式） ============ -->
+    <div class="setview" id="vrHistory">
+      <div class="sethead">
+        <button class="back" data-back="vrSettings" aria-label="返回设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <span class="ttl">下载历史</span>
+        <span class="hcount" id="vrHistoryCnt">0 条</span>
+      </div>
+      <div class="setbody">
+        <div class="hlist" id="vrHistoryList"></div>
+        <div class="hempty" id="vrHistoryEmpty">还没有下载记录</div>
+        <div class="hfoot">
+          <span class="hnote" id="vrHistoryNote"></span>
+          <button id="vrHistoryClear" class="ghostbtn danger">清空全部</button>
+        </div>
       </div>
     </div>
 

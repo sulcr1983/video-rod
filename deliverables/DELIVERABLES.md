@@ -1,8 +1,9 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.2 ｜ 日期：2026-10-17 ｜ 状态：✅ 已生效
+> 版本：v1.3 ｜ 日期：2026-10-18 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
+> v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
 
 ---
 
@@ -76,7 +77,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.1 | 进行中 | ADR-001~027，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合）；ADR-026 = X 按钮预混流直链；ADR-027 = 下载文件名保护（抄 XBD/CocoCut/Imageye 的 onDeterminingFilename 套路） |
+| 决策记录 | `docs/DECISIONS.md` | v1.1 | 进行中 | ADR-001~028，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合）；ADR-026 = X 按钮预混流直链；ADR-027 = 下载文件名保护（抄 XBD/CocoCut/Imageye 的 onDeterminingFilename 套路）；ADR-028 = M11 放弃驱动猫抓 m3u8 页、改离屏直连管线 |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
 | popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 已定稿 | 浅色 A/B/C 三方案可点原型；苏哥拍板方案 A「收网」（ADR-025），已全量整合进产品代码 |
@@ -111,6 +112,14 @@ video-rod/
 | z 序回归探针 | `tools/probe-zorder.py` | v1.0 | 已定稿 | M7 新建；elementFromPoint 验证各浮层完整盖住底栏—— flex item z-index 陷阱的回归防线，改外壳 CSS 后必跑 |
 | M7 归档截图工具 | `tools/shot-m7-final.py` | v1.0 | 已定稿 | 五状态归档截图（普通/设置/YT横幅/B站/图片弹层）；内建 settle+retry 绕 CDP 懒帧、显式 force 绕卡死过渡 |
 | M7 回归截图（五态） | `deliverables/assets/final-m7-{plain,settings,ytbanner,bili,imgmodal}.png` | 2026-10-17 | 评审中 | 浅色重设计落地实拍：普通列表/设置 4 组视图/YT 警示横幅/B站 12 分P 展开/图片弹层 |
+| M9 下载历史面板 | `js/background.js`(history 段) + `popup.html`(入口) + `css/videorod.css`(历史视图) + `js/popup-videorod.js` | v1.0 | 已定稿 | M9 产物：下载完成入历史（storage.local）；设置抽屉历史入口；按时间分组/重下/清空；星愿真机 6 项全过 |
+| M10 侧边栏模式 | `manifest.json`(side_panel) + `js/background.js` + `js/popup-videorod.js` + `css/videorod.css` | v1.0 | 已定稿 | M10 产物：工具条按钮/右键开侧边栏；侧栏窄宽适配；侧栏下载都走 `vrDownloadWithName` 带文件名保护；星愿真机 7 项全过 |
+| M11 离屏直连合并管线 | `js/m3u8-merge.js` + `js/m3u8-multi.js` + `m3u8-multi.html` + `offscreen.html` + `js/background.js`(M11 段) + `js/popup-videorod.js` + `js/vr-download-hook.js` | v1.0 | 已定稿 | M11 产物（ADR-028）；离屏文档内解析+下载+解密+转码全链路；删旧「驱动猫抓 m3u8 页」约 150 行；星愿真机 5 项全过，落盘 h264 640×360 8.000s 有效 |
+| M9 历史面板验收脚本 | `tools/test-m9-history.py` | v1.0 | 已定稿 | 星愿真机：记录写入/列表/缩略图/重下/清空/设置入口 |
+| M10 侧边栏验收脚本 | `tools/test-m10-sidepanel.py` | v1.0 | 已定稿 | 星愿真机：侧栏开合/窄宽渲染/侧栏下载带文件名保护 |
+| M11 多段合并验收脚本 | `tools/test-m11-automerge.py` + `tools/test-m11-multimerge.py` | v1.0 | 已定稿 | 星愿真机：对抗不误归组/归组徽标/后台合并/点保存落盘/合并文件落地；修复收尾 closeTarget 容错 |
+| M9 历史面板截图 | `deliverables/assets/m9-history-view.png` + `deliverables/assets/m9-settings-history-entry.png` | 2026-10-18 | 已定稿 | M9 实拍：历史列表视图 + 设置抽屉历史入口 |
+| M10 侧边栏截图 | `deliverables/assets/m10-sidepanel.png` | 2026-10-18 | 已定稿 | M10 实拍：侧边栏窄宽渲染 |
 
 > 登记规则：新产出物落地当天登记；状态变化当天更新；每完成一个 M 里程碑过一遍表。
 
