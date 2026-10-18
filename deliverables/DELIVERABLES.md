@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.10 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.11 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -11,6 +11,7 @@
 > v1.8 变更：ADR-033 P1 扩展到 X 主页（照 XBD：忽略转载/已下载、图片视频筛选、反选、清除记录、稳妥限速）；修复 X 单条按钮 mediaId；新增 ADR-035 媒体库（固定目录 + HTML 管理页 + CRUD）方案。
 > v1.9 变更：ADR-036 小红书反爬评估：不做主页自动批量，建议只做「详情页单篇」；新增主页网格/详情 state/CORS/461/471 实探结论。
 > v1.10 变更：媒体库方案 `docs/MEDIA-LIBRARY-PLAN.md` + 可交互 HTML 原型 `deliverables/prototypes/media-library-v1.html` 登记；ADR-035 状态更新为「方案+原型完成，待实施」。
+> v1.11 变更：ADR-036 A 方案落地——小红书详情页单篇适配（`vrXhsScan` 只读 `__INITIAL_STATE__`，图片/视频记录，`video-rod/小红书/作者/` 下载，3–5 秒限速、单次 20 条、失败暂停）。
 
 ---
 
@@ -84,7 +85,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.10 | 进行中 | ADR-001~036，追加式；ADR-030 = 页内悬浮按钮；ADR-031 = 抖音/微博取流与 Referer；ADR-032 = 暂不引入服务端代理；ADR-033 = 主页批量（微博/X P1 已实施）；ADR-034 = YouTube/Instagram 调研；ADR-035 = 媒体库（方案+原型完成，待实施）；ADR-036 = 小红书反爬评估（详情页单篇） |
+| 决策记录 | `docs/DECISIONS.md` | v1.11 | 进行中 | ADR-001~036，追加式；ADR-030 = 页内悬浮按钮；ADR-031 = 抖音/微博取流与 Referer；ADR-032 = 暂不引入服务端代理；ADR-033 = 主页批量（微博/X P1 已实施）；ADR-034 = YouTube/Instagram 调研；ADR-035 = 媒体库（方案+原型完成，待实施）；ADR-036 = 小红书详情页单篇（A 方案已实施） |
 | 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD |
 | 媒体库 HTML 原型 | `deliverables/prototypes/media-library-v1.html` | v1 | 评审中 | 可交互高保真原型：平台/博主/类型筛选、搜索、网格/列表、批量选择、详情检查器、上一张/下一张、最大化、图片缩放、视频播放、重命名/改标签/移动/删除/复制路径；已浏览器实开验证 |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
@@ -163,9 +164,9 @@ video-rod/
 | B站清晰度扫描器 | `tools/bili-1080-probe.py` | v1.0 | 已定稿 | 扫 `fnval × qn` 组合，列出每条路是 durl 还是 dash、实际 quality/尺寸，用于判断「B站给不给 1080P」 |
 | B站双路线端到端脚本 | `tools/test-bili-1080.py` | v1.0 | 已定稿 | `VR_MODE=durl/dash` 选路线：重载扩展→开 popup→读横幅→点按钮→盯进度→ffprobe 验落盘文件 |
 | 页内悬浮下载按钮（ADR-030） | `js/video-overlay.js` + `manifest.json` content_scripts | v1.0 | 已定稿 | 全局一个 `position:fixed` 浮层；`document.mousemove` 60ms 节流 + 矩形命中（解决微博/抖音/B站覆盖层导致按钮不出现）；右上角定位、右缘 14px、top 让开 12%；主按钮 44×40 + 箭头 26×40；一键最高清/菜单选档；全屏隐藏；X 站让给 `x-button.js` |
-| 主页半手动批量（ADR-033 P1） | `js/bulk-profile.js` + `manifest.json` content_scripts + `js/background.js`(vrBulkDownload/vrResolveX) | v1.1 | 评审中 | 微博：滚动记录图片、播放记录视频；X：article 扫描图片/视频，作者/文案，视频走 fxtwitter；XBD 同款忽略转载/忽略已下载、只图片/只视频、反选、清除已下载；File System Access 按 `作者(@ID)/` 写盘；稳妥模式 1.4–2.6s 随机间隔 + 429/5xx 退避 + 连续 3 次失败暂停。已验证记录、视频/图片落盘、X 按钮修复；原生目录选择待苏哥手动确认 |
+| 主页半手动批量（ADR-033 P1 / ADR-036 A） | `js/bulk-profile.js` + `manifest.json` content_scripts + `js/background.js`(vrBulkDownload/vrResolveX/vrXhsScan) | v1.2 | 评审中 | 微博：滚动记录图片、播放记录视频；X：article 扫描图片/视频，作者/文案，视频走 fxtwitter；小红书：详情页只读 `__INITIAL_STATE__`，图片 WB_DFT/urlDefault、视频 stream；XBD 同款忽略转载/已下载、图片视频筛选、反选、清除；File System Access 按作者目录写盘（XHS 走 downloads `video-rod/小红书/`）；稳妥模式 1.4–2.6s（XHS 3–5s）+ 429/5xx 退避 + 连续 3 次失败暂停 |
 | 抖音取流模块（ADR-031） | `js/douyin.js` + `js/background.js`(抖音分支/DNR) + `js/naming.js`(extractDouyin) | v1.1 | 已定稿 | 页面主世界同源 `aweme/v1/web/aweme/detail/`；URL `/video/<id>` 或 `?modal_id=<id>` 定位作品；按短边分辨率降序选最高档；DNR session rule set Referer/Origin 解决 CDN 403。v1.1 增加微博同类问题：通用直链优先页面 fetch→blob→`<a download>`，失败回退 downloads+DNR；微博 `$render_data` 取作者/正文命名 |
 | B站取流模块 | `js/bili-whole.js` | v1.0 | 已定稿 | popup 与 SW 共用的 B站主世界取流核心（ADR-029/补记），从 `popup-videorod.js` 抽出；background `importScripts` 加载 |
 | 悬浮按钮测试脚本 | `tools/overlay-pos.py`、`tools/overlay-check.py`、`tools/test-video-overlay.py`、`tools/shot-overlay.py` | v1.0 | 已定稿 | 位置诊断/通用站点体检/端到端验证/早期截图；CDP 截图统一 `fromSurface:false`，避免白底破图伪影 |
 | 悬浮按钮截图 | `deliverables/assets/overlay-douyin.png` | 2026-10-19 | 已定稿 | 抖音 1920×887 实拍：按钮在右上角（right gap 14px、top 76px），不与播放器控件重叠 |
-| 抖音/微博/X 真机验收记录 | `docs/TESTING.md` §10 | v1.7 | 已定稿 | 按钮 O1-O6、抖音 D1-D10、微博 W1-W6、主页批量 B1-B7、X 主页 X1-X9；4K hevc+aac 7,260,920 B；99MB 大文件 complete；微博 540×960+aac 5,817,304 B；X 视频 8,401,119 B、图片 232,912 B；稳妥限速/失败暂停 |
+| 抖音/微博/X/小红书真机验收记录 | `docs/TESTING.md` §10 | v1.8 | 已定稿 | 按钮 O1-O6、抖音 D1-D10、微博 W1-W6、主页批量 B1-B7、X 主页 X1-X9、小红书 H1-H6；4K hevc+aac 7,260,920 B；99MB complete；微博 540×960+aac 5,817,304 B；X 视频 8,401,119 B、图片 232,912 B；小红书 webp 64,510 B；稳妥限速/失败暂停 |

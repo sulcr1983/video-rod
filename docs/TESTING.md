@@ -412,6 +412,20 @@
 - 保存目录：File System Access 一次选目录 → `作者(@handle)/`；fallback 用 downloads + `video-rod/` 子目录。
 - 注意：自动化下 `x.com/NASA/photo` 会被重定向，图片分支用合成 `article` 验证；X 主页懒加载导致过滤数量不稳定。
 
+### 10.6 小红书详情页单篇（ADR-036 A 方案）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| H1 | 详情页出现「当前笔记媒体」面板 | ✅ `/explore/6accad…?xsec_token=…` 面板 1 项 |
+| H2 | 作者/文案 | ✅ 「小高今天找到工作了么」+ `#留学生找工作[话题]# #秋招[话题]#` |
+| H3 | 图片落盘 | ✅ `video-rod/小红书/小高…(@5904068850c4b46b86967480)_…_01.webp`，64,510 B，image/webp |
+| H4 | 限速/上限/失败暂停 | ✅ 3–5 秒随机、单次 20 条、连续 3 次失败暂停 |
+| H5 | 不自动翻页/不做写操作 | ✅ 只读当前笔记 `__INITIAL_STATE__` |
+| H6 | 视频分支 | 🟡 代码已支持 `video.media.stream`，当前测试笔记为图文，待视频笔记复验 |
+
+- 页面 fetch 被 CORS 拒绝，下载走 `chrome.downloads`；原图（`url` 为空）与签名接口未做，当前为 `urlDefault` webp。
+- 小红书页面自身有 hydration/脚本报错，与扩展无关。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。

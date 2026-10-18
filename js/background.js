@@ -816,6 +816,20 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             });
         return true;
     }
+    // 钓鱼竿：小红书详情页单篇（A 方案），只读当前笔记 state，不自动翻页
+    if (Message.Message == "vrXhsScan") {
+        const tabId = sender && sender.tab ? sender.tab.id : null;
+        if (tabId == null) { sendResponse({ ok: false, reason: 'no-tab' }); return true; }
+        chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            args: [Message.noteId || ''], func: vrXhsScanInPage
+        }).then(function (r) {
+            sendResponse((r && r[0] && r[0].result) || { ok: false, reason: 'no-result' });
+        }).catch(function (e) {
+            sendResponse({ ok: false, reason: String(e).slice(0, 120) });
+        });
+        return true;
+    }
     // 钓鱼竿：X 主页批量里视频是 blob，内容脚本按推文坐标来解析直链
     if (Message.Message == "vrResolveX") {
         fetchXVideo(Message.user, Message.statusId, Message.mediaId, true)
@@ -1318,12 +1332,68 @@ async function vrTryPageDownload(tabId, url, name) {
 /** 页面主世界里的站点元数据（目前：微博 $render_data）。
  *  内容脚本是 isolated world，读不到页面的 $render_data；这里用 MAIN world 读。
  *  拿不到就返回 null，命名继续走 naming.js 的页面提取。 */
+/** 小红书详情页：只读当前笔记 __INITIAL_STATE__（MAIN world）。
+ *  不调用签名接口、不自动翻页、不做任何写操作；只返回当前笔记媒体。 */
+function vrXhsScanInPage(noteId) {
+    try {
+        const st = window.__INITIAL_STATE__;
+        const n = st && st.note;
+        const map = n && n.noteDetailMap;
+        if (!map) { return { ok: false, reason: 'no-state' }; }
+        let id = noteId || n.currentNoteId || Object.keys(map)[0];
+        let d = map[id];
+        if (!d) { d = map[Object.keys(map)[0]]; }
+        const note = d && d.note;
+        if (!note) { return { ok: false, reason: 'no-note' }; }
+
+        const u = note.user || {};
+        const author = u.nickname || u.nickName || '小红书用户';
+        const authorId = u.redId || u.red_id || u.userId || '';
+        const title = String(note.title || note.desc || '小红书笔记')
+            .replace(/\s+/g, ' ').slice(0, 100);
+        const items = [];
+
+        (note.imageList || []).forEach(function (im, i) {
+            let url = im.url || '';
+            if (!url && im.infoList) {
+                const dft = im.infoList.find(function (x) { return x.imageScene === 'WB_DFT'; });
+                const any = im.infoList.find(function (x) { return x.url; });
+                url = (dft && dft.url) || (any && any.url) || '';
+            }
+            url = url || im.urlDefault || im.urlPre || '';
+            if (url) {
+                items.push({ kind: 'image', url: url, ext: 'webp', index: i });
+            }
+        });
+
+        const streams = note.video && note.video.media && note.video.media.stream;
+        if (streams) {
+            ['h264', 'h265', 'av1'].forEach(function (k) {
+                (streams[k] || []).forEach(function (v, j) {
+                    const url = v.masterUrl || v.url || '';
+                    if (url) {
+                        items.push({ kind: 'video', url: url, ext: 'mp4', index: j });
+                    }
+                });
+            });
+        }
+        return {
+            ok: true, noteId: id, title: title,
+            desc: String(note.desc || '').slice(0, 200),
+            author: author, authorId: authorId, items: items
+        };
+    } catch (e) {
+        return { ok: false, reason: String(e).slice(0, 120) };
+    }
+}
+
 /** 主页批量：文件名 = 作者(@UID)_正文_序号.ext（<a download> 不支持子目录） */
 function vrBulkName(item, index) {
     const i = item || {};
     const author = String(i.author || '').trim();
     const id = String(i.authorId || '').trim();
-    const who = author ? (id ? author + '(@' + id + ')' : author) : 'weibo';
+    const who = author ? (id ? author + '(@' + id + ')' : author)
+        : (i.site === 'xhs' ? '小红书' : (i.site === 'x' ? 'x' : 'weibo'));
     let title = String(i.title || '').replace(/\s+/g, ' ').trim();
     if (title === '视频') { title = ''; }
     let name = who + (title ? '_' + title : '') + '_' +
@@ -1367,6 +1437,17 @@ async function vrBulkDownload(items, tabId) {
                 const id = await vrDownloadWithName(it.url, 'video-rod/' + name);
                 if (id !== null) {
                     const outcome = await vrWaitDownload(id, 15000);
+                    if (outcome && outcome.state === 'interrupted') {
+                        try { vrDropDownload(id); } catch (e) { /* ignore */ }
+                    } else {
+                        ok = true;
+                    }
+                }
+            } else if (it.site === 'xhs') {
+                // 小红书页面 fetch 被 CORS 拒绝，只能 downloads；进 小红书/作者 子目录
+                const id = await vrDownloadWithName(it.url, 'video-rod/小红书/' + name);
+                if (id !== null) {
+                    const outcome = await vrWaitDownload(id, 20000);
                     if (outcome && outcome.state === 'interrupted') {
                         try { vrDropDownload(id); } catch (e) { /* ignore */ }
                     } else {

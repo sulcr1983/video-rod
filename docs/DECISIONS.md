@@ -454,7 +454,7 @@
 
 ## ADR-036 小红书不并入主页自动批量：只建议做详情页单篇（待拍板）
 
-- **日期**：2026-10-19 ｜ **状态**：📋 待苏哥拍板（推荐 A）
+- **日期**：2026-10-19 ｜ **状态**：🟡 A 方案已实施（详情页单篇）
 - **实探结论（真机）**：
   - 主页/探索网格只给 `noteId + xsec_token + 封面`（`sns-webpic...!nc_n_webp_mw_1`），**没有完整图片/视频**。
   - 笔记详情 `__INITIAL_STATE__.note.noteDetailMap[id].note.imageList` 只有 `urlPre` / `urlDefault`（webp，1200×1600 量级），原始 `url` 为空；视频需要详情 state/签名接口。
@@ -465,6 +465,16 @@
   - **B 主页自动批量**：自动打开/请求详情，需要签名/xsec_token，风控/封号风险高；**不推荐**。
   - **C 外部工具**：XHS-Downloader（GPL-3.0）等成熟工具做全量；不自研签名，风险自担。
 - **影响**：不把小红书加进 `bulk-profile.js` 的自动主页批量；如做只加「详情页单篇」适配器，并复用稳妥限速/失败暂停。
+
+### ADR-036 实施补记（2026-10-19）：A 方案已落地
+
+- **实现**：`js/bulk-profile.js` 增加小红书详情页适配；`vrXhsScan` 在 MAIN world 只读 `__INITIAL_STATE__.note.noteDetailMap[noteId].note`。
+  - 图片：优先 `imageList.infoList` 的 `WB_DFT`，退回 `urlDefault`/`urlPre`（webp）。
+  - 视频：`video.media.stream.h264/h265/av1[].masterUrl`（当前测试笔记为图文，视频分支待真机补验）。
+  - 下载：走 `chrome.downloads` + `video-rod/小红书/<作者(@小红书号)>/`；页面 fetch 因 CORS 不走。
+  - 限速：串行 3–5 秒随机间隔；单次最多 20 条；连续 3 次失败暂停；不自动翻页/不自动打开详情/不做写操作。
+- **验证**：笔记 `6accad21000000001c02fd82` → 面板 1 张图（作者「小高今天找到工作了么」、文案「#留学生找工作[话题]# #秋招[话题]#」）→ 落盘 `video-rod/小红书/小高今天找到工作了么(@5904068850c4b46b86967480)_#留学生找工作[话题]# #秋招[话题]#_01.webp`，64,510 B，`image/webp`，complete。
+- **边界**：当前拿到的是 `urlDefault` 级别 webp（约 1200×1600），原始 `url` 为空；要原图/视频需详情接口签名，未做。页面自身的 hydration 报错与扩展无关。
 
 ---
 
