@@ -572,7 +572,7 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
     </div>
   </header>
   <div class="pv-body" id="pvBody">
-    <button class="pv-arrow pv-prev" id="pvPrev" title="上一个 (← / ↑)">‹</button>
+    <button class="pv-arrow pv-prev" id="pvPrev" title="上一个 (↑)">‹</button>
     <div class="pv-stage" id="pvStage">
       <img id="pvImg" alt="">
       <video id="pvVideo" controls playsinline></video>
@@ -582,7 +582,7 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
         <button id="pvZoomIn" title="放大 (+)">+</button><button id="pvZoomReset" title="重置 (0)">重置</button>
       </div>
     </div>
-    <button class="pv-arrow pv-next" id="pvNext" title="下一个 (→ / ↓)">›</button>
+    <button class="pv-arrow pv-next" id="pvNext" title="下一个 (↓)">›</button>
     <aside class="pv-info" id="pvInfoPanel">
       <div class="pv-eyebrow" id="pvEyebrow">图片 · 微博</div>
       <h2 id="pvTitle">—</h2>
@@ -600,7 +600,7 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
       </div>
       <div class="pv-shortcuts">
         <b>鼠标</b> 两侧箭头 / 底部胶片 / 图片双击放大 / 滚轮缩放 / 拖拽平移<br>
-        <b>键盘</b> ← → ↑ ↓ 切换 · Space 播放/暂停 · M 静音 · F 全屏 · I 信息 · + − 0 缩放 · Esc 返回
+        <b>键盘</b> ↑ ↓ 切换媒体 · ← → 视频快退/快进、图片同专辑上一张/下一张 · Space 播放/暂停 · M 静音 · F 全屏 · I 信息 · + − 0 缩放 · Esc 返回
       </div>
     </aside>
   </div>
@@ -609,13 +609,13 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
     <div class="pv-helpCard">
       <h3>预览快捷键</h3>
       <div class="pv-helpGrid">
-        <span>← → / ↑ ↓</span><span>上一张 / 下一张</span>
+        <span>↑ ↓</span><span>上一个 / 下一个媒体</span>
+        <span>← →</span><span>视频快退/快进 5 秒；图片同专辑上一张/下一张</span>
         <span>Space</span><span>视频播放/暂停；图片自动播放</span>
         <span>M</span><span>视频静音</span>
         <span>F</span><span>全屏</span>
         <span>I</span><span>显示/隐藏信息栏</span>
         <span>+ / − / 0</span><span>图片放大 / 缩小 / 重置</span>
-        <span>Shift + ← →</span><span>视频快退/快进 5 秒</span>
         <span>Esc</span><span>返回媒体库</span>
       </div>
       <button class="pv-btn" id="pvHelpClose">知道了</button>
@@ -1054,11 +1054,32 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
   }
 
   function pvStep(dir){
-    const n = pvIndex + dir;
-    if (n < 0 || n >= pvList.length) return;
+    // 以当前 hash 为准，避免 hashchange 异步导致 pvIndex 滞后而多跳
+    const m = location.hash.match(/^#preview=(.+)$/);
+    const curId = m ? decodeURIComponent(m[1]) : '';
+    let at = pvList.findIndex(function(x){ return x.id === curId; });
+    if (at < 0) { at = pvIndex; }
+    const n = at + dir;
+    if (at < 0 || n < 0 || n >= pvList.length) return;
     pvIndex = n;
     pvZoom = 1; pvPanX = 0; pvPanY = 0;
-    if (pvList[n]) { location.hash = 'preview=' + encodeURIComponent(pvList[n].id); }
+    location.hash = 'preview=' + encodeURIComponent(pvList[n].id);
+  }
+
+  /** 图片：同一博主/同一平台视为同一专辑，左右切换 */
+  function pvAlbumStep(dir){
+    const d = pvCur();
+    if (!d || d.type !== 'image') return false;
+    const album = pvList.filter(function(x){
+      return x.type === 'image' && x.platform === d.platform && x.author === d.author;
+    });
+    const at = album.findIndex(function(x){ return x.id === d.id; });
+    const n = at + dir;
+    if (at >= 0 && n >= 0 && n < album.length) {
+      location.hash = 'preview=' + encodeURIComponent(album[n].id);
+      return true;
+    }
+    return false;
   }
 
   function pvApplyZoom(){
@@ -1276,18 +1297,26 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
     const d = pvCur();
     const video = $('#pvVideo');
     if (e.key === 'Escape') { e.preventDefault(); pvClose(); return; }
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (d && d.type === 'video' && e.shiftKey) { video.currentTime = Math.max(0, video.currentTime - 5); }
-      else pvStep(-1);
+      if (d && d.type === 'video') {
+        video.currentTime = Math.max(0, video.currentTime - 5);
+      } else {
+        pvAlbumStep(-1);
+      }
       return;
     }
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    if (e.key === 'ArrowRight') {
       e.preventDefault();
-      if (d && d.type === 'video' && e.shiftKey) { video.currentTime = Math.min(video.duration || 0, video.currentTime + 5); }
-      else pvStep(1);
+      if (d && d.type === 'video') {
+        video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
+      } else {
+        pvAlbumStep(1);
+      }
       return;
     }
+    if (e.key === 'ArrowUp') { e.preventDefault(); pvStep(-1); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); pvStep(1); return; }
     if (e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
       if (d && d.type === 'video') { video.paused ? video.play() : video.pause(); }
