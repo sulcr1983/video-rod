@@ -37,6 +37,25 @@ button{cursor:pointer}
 .nav-item.active .count{background:#334052;color:#fff}
 .nav-sub{max-height:230px;overflow:auto}
 .nav-sub .nav-item{font-size:12px;padding:6px 9px}
+/* 资源树：媒体库 > 平台 > 博主 > 图片/视频 */
+.tree{display:flex;flex-direction:column;gap:1px;max-height:calc(100vh - 300px);overflow:auto;padding-right:2px}
+.tree-node{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;color:#c3cad5;border-radius:8px;padding:6px 8px;text-align:left;font-size:12px}
+.tree-node:hover{background:#1c2430;color:#fff}
+.tree-node.active{background:#242e3c;color:#fff}
+.tree-node.root{font-size:13px;font-weight:600;color:#fff;margin-bottom:2px}
+.tree-node.platform{font-size:12.5px}
+.tree-node.author{padding-left:24px;color:#c9d1dc}
+.tree-node.type{padding-left:42px;font-size:11px;color:#9aa3b1;padding-top:4px;padding-bottom:4px}
+.tree-node .twisty{width:13px;flex:0 0 13px;text-align:center;color:#7f8998;font-size:10px}
+.tree-node .twisty:hover{color:#fff}
+.tree-node .folder{width:16px;flex:0 0 16px;text-align:center;font-size:12px;opacity:.8}
+.tree-node .label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.tree-node .count{margin-left:auto;font-size:10px;color:#818b9b;background:#1c2430;border-radius:20px;padding:1px 6px}
+.tree-node.active .count{background:#334052;color:#fff}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:11px;color:#8b8f97;margin-bottom:5px;min-height:16px}
+.breadcrumb .crumb{white-space:nowrap}
+.breadcrumb .crumb.last{color:#4b4f57}
+.breadcrumb .sep{color:#c3bdb2}
 .sidebar-foot{margin-top:auto;font-size:11px;color:#7d8796;line-height:1.6;border-top:1px solid #232b37;padding-top:12px}
 .sidebar-foot b{color:#c9d0db}
 
@@ -180,16 +199,8 @@ main{min-width:0;padding:22px 26px 40px}
     <button class="root-btn" id="rootBtn" title="选择媒体根目录"><span>📁</span><span class="path" id="rootPath">Downloads/video-rod</span><span>⌄</span></button>
 
     <div class="nav-section">
-      <div class="nav-title">平台</div>
-      <div id="platformNav"></div>
-    </div>
-    <div class="nav-section">
-      <div class="nav-title">博主</div>
-      <div class="nav-sub" id="authorNav"></div>
-    </div>
-    <div class="nav-section">
-      <div class="nav-title">类型</div>
-      <div id="typeNav"></div>
+      <div class="nav-title">资源树</div>
+      <div class="tree" id="tree"></div>
     </div>
     <div class="sidebar-foot">
       <div><b id="sidebarCount">0</b> 个素材 · <b id="sidebarSize">0</b></div>
@@ -209,7 +220,7 @@ main{min-width:0;padding:22px 26px 40px}
     </div>
 
     <div class="hero">
-      <div><h1 id="pageTitle">全部媒体</h1><p id="pageSub">所有平台的图片与视频 · 原型使用模拟数据</p></div>
+      <div><div class="breadcrumb" id="breadcrumb"></div><h1 id="pageTitle">全部媒体</h1><p id="pageSub">所有平台的图片与视频 · 原型使用模拟数据</p></div>
       <div class="stats">
         <div class="stat"><b id="statCount">0</b><span>素材</span></div>
         <div class="stat"><b id="statImages">0</b><span>图片</span></div>
@@ -368,7 +379,8 @@ main{min-width:0;padding:22px 26px 40px}
 
   const state = {
     platform:'all', type:'all', author:'all', q:'',
-    sort:'new', view:'grid', selectMode:false, selected:new Set()
+    sort:'new', view:'grid', selectMode:false, selected:new Set(),
+    expanded:{ weibo:true, x:true, douyin:true, xiaohongshu:true, instagram:true }
   };
   let viewerList = [], viewerIndex = -1, zoom = 1;
 
@@ -408,32 +420,43 @@ main{min-width:0;padding:22px 26px 40px}
     return rows;
   }
 
-  function renderSidebar(){
-    const pnav = $('#platformNav');
-    pnav.innerHTML = '<button class="nav-item ' + (state.platform==='all'?'active':'') + '" data-p="all"><span class="ico">▦</span><span>全部平台</span><span class="count">' + DATA.length + '</span></button>' +
-      PLATFORMS.map(p => {
-        const n = DATA.filter(d => d.platform === p.id).length;
-        return '<button class="nav-item ' + (state.platform===p.id?'active':'') + '" data-p="' + p.id + '"><span class="ico">' + p.icon + '</span><span>' + p.name + '</span><span class="count">' + n + '</span></button>';
-      }).join('');
+  function renderTree(){
+    const rootActive = state.platform==='all' && state.author==='all' && state.type==='all';
+    let html = '<button class="tree-node root ' + (rootActive?'active':'') + '" data-p="all">' +
+      '<span class="twisty"></span><span class="folder">🗂</span><span class="label">媒体库</span>' +
+      '<span class="count">' + DATA.length + '</span></button>';
 
-    const counts = {};
-    DATA.forEach(d => {
-      if (state.platform !== 'all' && d.platform !== state.platform) return;
-      const k = d.author + '|' + d.authorId;
-      counts[k] = counts[k] || {name:d.author,id:d.authorId,n:0};
-      counts[k].n++;
+    PLATFORMS.forEach(function(p){
+      const all = DATA.filter(d => d.platform === p.id);
+      if (!all.length) return;
+      const exp = state.expanded[p.id] !== false;
+      const pActive = state.platform === p.id && state.author === 'all';
+      html += '<div class="tree-node platform ' + (pActive?'active':'') + '" data-p="' + p.id + '">' +
+        '<span class="twisty" data-toggle="' + p.id + '">' + (exp?'▾':'▸') + '</span>' +
+        '<span class="folder">' + p.icon + '</span><span class="label">' + p.name + '</span>' +
+        '<span class="count">' + all.length + '</span></div>';
+      if (!exp) return;
+
+      const counts = {};
+      all.forEach(function(d){
+        const k = d.author + '|' + d.authorId;
+        counts[k] = counts[k] || {name:d.author,id:d.authorId,n:0,img:0,vid:0};
+        counts[k].n++;
+        if (d.type === 'image') counts[k].img++; else counts[k].vid++;
+      });
+      Object.values(counts).sort((a,b) => b.n - a.n).forEach(function(a){
+        const active = state.platform === p.id && state.author === a.name;
+        html += '<div class="tree-node author ' + (active?'active':'') + '" data-p="' + p.id + '" data-a="' + esc(a.name) + '">' +
+          '<span class="twisty"></span><span class="folder">@</span><span class="label">' + esc(a.name) + '</span>' +
+          '<span class="count">' + a.n + '</span></div>';
+        if (!active) return;
+        html += '<div class="tree-node type ' + (state.type==='image'?'active':'') + '" data-p="' + p.id + '" data-a="' + esc(a.name) + '" data-t="image">' +
+          '<span class="twisty"></span><span class="folder">▣</span><span class="label">图片</span><span class="count">' + a.img + '</span></div>';
+        html += '<div class="tree-node type ' + (state.type==='video'?'active':'') + '" data-p="' + p.id + '" data-a="' + esc(a.name) + '" data-t="video">' +
+          '<span class="twisty"></span><span class="folder">▶</span><span class="label">视频</span><span class="count">' + a.vid + '</span></div>';
+      });
     });
-    const authors = Object.values(counts).sort((a,b) => b.n-a.n);
-    $('#authorNav').innerHTML = '<button class="nav-item ' + (state.author==='all'?'active':'') + '" data-a="all"><span class="ico">◌</span><span>全部博主</span><span class="count">' + authors.reduce((s,x)=>s+x.n,0) + '</span></button>' +
-      authors.slice(0,14).map(a => '<button class="nav-item ' + (state.author===a.name?'active':'') + '" data-a="' + esc(a.name) + '"><span class="ico">@</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.name) + '</span><span class="count">' + a.n + '</span></button>').join('');
-
-    $('#typeNav').innerHTML = ['all','image','video'].map(t => {
-      const label = t === 'all' ? '全部类型' : t === 'image' ? '图片' : '视频';
-      const icon = t === 'all' ? '◧' : t === 'image' ? '▣' : '▶';
-      const n = DATA.filter(d => (state.platform==='all'||d.platform===state.platform) && (t==='all'||d.type===t)).length;
-      return '<button class="nav-item ' + (state.type===t?'active':'') + '" data-t="' + t + '"><span class="ico">' + icon + '</span><span>' + label + '</span><span class="count">' + n + '</span></button>';
-    }).join('');
-
+    $('#tree').innerHTML = html;
     $('#sidebarCount').textContent = DATA.length;
     $('#sidebarSize').textContent = fmtSize(DATA.reduce((s,d)=>s+(d.bytes||0),0));
   }
@@ -445,6 +468,15 @@ main{min-width:0;padding:22px 26px 40px}
     if (state.type === 'image') title += ' · 图片';
     if (state.type === 'video') title += ' · 视频';
     $('#pageTitle').textContent = title;
+
+    const crumbs = ['媒体库'];
+    if (state.platform !== 'all') crumbs.push(PLATFORM_NAME[state.platform] || state.platform);
+    if (state.author !== 'all') crumbs.push(state.author);
+    if (state.type !== 'all') crumbs.push(state.type === 'image' ? '图片' : '视频');
+    $('#breadcrumb').innerHTML = crumbs.map(function(c,i){
+      return '<span class="crumb ' + (i===crumbs.length-1?'last':'') + '">' + esc(c) + '</span>';
+    }).join('<span class="sep">/</span>');
+
     $('#pageSub').textContent = (state.q ? '搜索「' + state.q + '」· ' : '') + '共 ' + rows.length + ' 个素材 · 原型使用模拟数据';
     $('#statCount').textContent = rows.length;
     $('#statImages').textContent = rows.filter(d=>d.type==='image').length;
@@ -499,7 +531,7 @@ main{min-width:0;padding:22px 26px 40px}
 
   function render(){
     const rows = filtered();
-    renderSidebar();
+    renderTree();
     renderHeader(rows);
     renderGrid(rows);
     renderBulk(rows);
@@ -603,17 +635,31 @@ main{min-width:0;padding:22px 26px 40px}
   }
 
   /* ---------- events ---------- */
-  $('#platformNav').addEventListener('click', e => {
-    const b = e.target.closest('[data-p]'); if (!b) return;
-    state.platform = b.dataset.p; state.author = 'all'; render();
-  });
-  $('#authorNav').addEventListener('click', e => {
-    const b = e.target.closest('[data-a]'); if (!b) return;
-    state.author = b.dataset.a; render();
-  });
-  $('#typeNav').addEventListener('click', e => {
-    const b = e.target.closest('[data-t]'); if (!b) return;
-    state.type = b.dataset.t; render();
+  $('#tree').addEventListener('click', e => {
+    const tgl = e.target.closest('[data-toggle]');
+    if (tgl) {
+      const p = tgl.dataset.toggle;
+      state.expanded[p] = state.expanded[p] === false;
+      render();
+      return;
+    }
+    const n = e.target.closest('.tree-node');
+    if (!n) return;
+    const p = n.dataset.p, a = n.dataset.a, ty = n.dataset.t;
+    if (p === 'all') {
+      state.platform = 'all'; state.author = 'all'; state.type = 'all';
+    } else {
+      state.platform = p;
+      state.expanded[p] = true;
+      if (a) {
+        state.author = a;
+        state.type = ty || 'all';
+      } else {
+        state.author = 'all';
+        state.type = 'all';
+      }
+    }
+    render();
   });
   $('#chips').addEventListener('click', e => {
     const b = e.target.closest('[data-clear]'); if (!b) return;
