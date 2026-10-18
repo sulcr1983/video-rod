@@ -1373,6 +1373,29 @@ body.popupBody {
     color: var(--vr-text-dim);
 }
 
+.vr-whole-note {
+    color: var(--vr-orange);
+    font-size: 9px;
+}
+
+/* 两个清晰度按钮并排：快的 / 高清的 */
+.vr-whole-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: none;
+}
+
+.vr-whole-btns .fbtn { white-space: nowrap; }
+
+.vr-whole-btns .vr-whole-hd {
+    background: var(--vr-orange);
+    border-color: var(--vr-orange);
+    color: #fff;
+}
+
+.vr-whole-btns .fbtn[disabled] { opacity: .55; cursor: default; }
+
 .vr-whole-prog {
     display: flex;
     align-items: center;

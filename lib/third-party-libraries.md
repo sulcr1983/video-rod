@@ -59,6 +59,14 @@ Download:
 `https://github.com/jimmywarting/StreamSaver.js/releases/tag/2.0.6`
 `Source code` -> `StreamSaver.js`
 
+lib/mp4box.all.min.js
+Source: https://github.com/gpac/mp4box.js
+License: MIT license
+Version: 0.5.2
+Download:
+`https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js`
+用途：B站 1080P（DASH）下载时，把分开的画面轨和声音轨合成一个 MP4（ADR-029）
+
 lib/m3u8-decrypt.js
 Source: https://github.com/video-dev/hls.js/blob/master/src/crypt/aes-decryptor.ts
 License: Apache-2.0 license
