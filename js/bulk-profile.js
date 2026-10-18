@@ -243,40 +243,44 @@
         if (btn) { return; }
         const style = document.createElement('style');
         style.textContent = [
-            '.vr-bulk-btn{position:fixed;right:18px;bottom:18px;z-index:2147482000;',
-            'padding:10px 14px;border-radius:10px;background:#111827;color:#fff;',
-            'font:13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;',
-            'box-shadow:0 6px 22px rgba(0,0,0,.35);cursor:pointer;user-select:none}',
-            '.vr-bulk-btn:hover{background:#1f2937}',
-            '.vr-bulk-panel{position:fixed;right:18px;bottom:64px;z-index:2147482000;',
-            'width:380px;max-width:calc(100vw - 36px);max-height:62vh;display:none;',
-            'flex-direction:column;background:#fff;color:#111;border-radius:12px;',
-            'box-shadow:0 10px 34px rgba(0,0,0,.3);overflow:hidden;',
+            '.vr-bulk-btn{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:2147482000;',
+            'padding:14px 8px;border-radius:10px 0 0 10px;background:linear-gradient(180deg,#1677ff,#0f5fd1);color:#fff;',
+            'font:600 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;',
+            'box-shadow:-4px 6px 22px rgba(15,95,209,.28);cursor:pointer;user-select:none;writing-mode:vertical-rl;letter-spacing:.08em}',
+            '.vr-bulk-btn:hover{background:linear-gradient(180deg,#0f6fe8,#0a4fae)}',
+            '.vr-bulk-panel{position:fixed;right:0;top:0;bottom:0;z-index:2147482000;',
+            'width:360px;max-width:100vw;display:flex;flex-direction:column;background:#fff;color:#111;',
+            'border-left:1px solid #e5e8ef;box-shadow:-12px 0 40px rgba(15,23,42,.18);overflow:hidden;',
+            'transform:translateX(100%);visibility:hidden;transition:transform .22s ease,visibility .22s;',
             'font:12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}',
-            '.vr-bulk-panel.vr-open{display:flex}',
-            '.vr-bulk-head{padding:10px 12px;background:#f3f4f6;font-weight:600;',
-            'display:flex;align-items:center;justify-content:space-between}',
-            '.vr-bulk-close{cursor:pointer;color:#6b7280;font-size:16px;line-height:1}',
-            '.vr-bulk-list{overflow:auto;flex:1;padding:4px 8px}',
-            '.vr-bulk-row{display:flex;gap:8px;align-items:center;padding:6px 4px;',
-            'border-bottom:1px solid #f1f1f1;cursor:pointer}',
-            '.vr-bulk-row img,.vr-bulk-thumb{width:40px;height:40px;border-radius:6px;',
-            'object-fit:cover;background:#e5e7eb;flex:0 0 40px;display:flex;',
+            '.vr-bulk-panel.vr-open{transform:none;visibility:visible}',
+            '.vr-bulk-head{padding:14px 16px;background:linear-gradient(90deg,#f7f9fc,#fff);font-weight:650;font-size:13px;',
+            'display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e8ef;color:#1d2129}',
+            '.vr-bulk-close{cursor:pointer;color:#86909c;font-size:20px;line-height:1;padding:0 2px}',
+            '.vr-bulk-close:hover{color:#1d2129}',
+            '.vr-bulk-list{overflow:auto;flex:1;padding:4px 10px}',
+            '.vr-bulk-row{display:flex;gap:8px;align-items:center;padding:8px 2px;',
+            'border-bottom:1px solid #f0f2f6;cursor:pointer}',
+            '.vr-bulk-row:hover{background:#f7f9fc;border-radius:6px}',
+            '.vr-bulk-row img,.vr-bulk-thumb{width:42px;height:42px;border-radius:6px;',
+            'object-fit:cover;background:#eef1f6;flex:0 0 42px;display:flex;',
             'align-items:center;justify-content:center;font-size:18px}',
             '.vr-bulk-info{min-width:0;flex:1}',
             '.vr-bulk-info b{display:block;font-weight:600;white-space:nowrap;',
-            'overflow:hidden;text-overflow:ellipsis}',
-            '.vr-bulk-info span{display:block;color:#6b7280;white-space:nowrap;',
-            'overflow:hidden;text-overflow:ellipsis}',
-            '.vr-bulk-foot{display:flex;gap:6px;padding:8px 10px;background:#f9fafb;',
-            'align-items:center;flex-wrap:wrap}',
-            '.vr-bulk-foot button{border:1px solid #d1d5db;background:#fff;border-radius:7px;',
-            'padding:5px 9px;cursor:pointer;font-size:12px}',
-            '.vr-bulk-foot button.vr-primary{background:#111827;color:#fff;border-color:#111827}',
-            '.vr-bulk-status{margin-left:auto;color:#6b7280;font-size:11px}',
-            '.vr-bulk-opt{display:flex;align-items:center;gap:3px;color:#4b5563;font-size:11px}',
-            '.vr-bulk-type{border:1px solid #d1d5db;border-radius:7px;padding:3px 5px;font-size:11px;background:#fff}',
-            '.vr-bulk-empty{padding:14px 10px;color:#6b7280;line-height:1.6}'
+            'overflow:hidden;text-overflow:ellipsis;color:#1d2129}',
+            '.vr-bulk-info span{display:block;color:#86909c;white-space:nowrap;',
+            'overflow:hidden;text-overflow:ellipsis;margin-top:2px}',
+            '.vr-bulk-foot{display:flex;gap:6px;padding:10px 12px;background:#f7f9fc;',
+            'align-items:center;flex-wrap:wrap;border-top:1px solid #e5e8ef}',
+            '.vr-bulk-foot button{border:1px solid #d9dee8;background:#fff;border-radius:7px;',
+            'padding:6px 9px;cursor:pointer;font-size:11px;color:#4e5969}',
+            '.vr-bulk-foot button:hover{border-color:#bcd7ff;color:#1677ff}',
+            '.vr-bulk-foot button.vr-primary{background:#1677ff;color:#fff;border-color:#1677ff;font-weight:600}',
+            '.vr-bulk-foot button.vr-primary:hover{background:#0958d9;border-color:#0958d9;color:#fff}',
+            '.vr-bulk-status{margin-left:auto;color:#86909c;font-size:10.5px}',
+            '.vr-bulk-opt{display:flex;align-items:center;gap:3px;color:#4e5969;font-size:10.5px}',
+            '.vr-bulk-type{border:1px solid #d9dee8;border-radius:7px;padding:4px 6px;font-size:11px;background:#fff;color:#4e5969}',
+            '.vr-bulk-empty{padding:20px 12px;color:#86909c;line-height:1.7}'
         ].join('');
         (document.head || document.documentElement).appendChild(style);
 
@@ -285,11 +289,16 @@
         btn.textContent = '批量下载 (0)';
         btn.addEventListener('click', function (e) {
             e.stopPropagation();
-            open = !open;
-            panel.classList.toggle('vr-open', open);
-            if (open) { renderList(); }
+            setBulkOpen(!open);
         });
         document.documentElement.appendChild(btn);
+
+        function setBulkOpen(v) {
+            open = !!v;
+            panel.classList.toggle('vr-open', open);
+            btn.style.display = open ? 'none' : '';
+            if (open) { renderList(); }
+        }
 
         panel = document.createElement('div');
         panel.className = 'vr-bulk-panel';
@@ -311,14 +320,15 @@
             '<button type="button" data-act="none">全不选</button>' +
             '<button type="button" data-act="invert">反选</button>' +
             '<button type="button" data-act="resetDone">清除已下载</button>' +
-            '<button type="button" class="vr-primary" data-act="down">保存到文件夹</button>' +
+            '<button type="button" class="vr-primary" data-act="saveall">一键保存本页</button>' +
+            '<button type="button" data-act="down">保存选中</button>' +
             '<button type="button" data-act="clear">清空</button>' +
             '<span class="vr-bulk-status"></span></div>';
         document.documentElement.appendChild(panel);
         listEl = panel.querySelector('.vr-bulk-list');
         statusEl = panel.querySelector('.vr-bulk-status');
         panel.querySelector('.vr-bulk-close').addEventListener('click', function () {
-            open = false; panel.classList.remove('vr-open');
+            setBulkOpen(false);
         });
         panel.addEventListener('change', function (e) {
             const opt = e.target && e.target.getAttribute && e.target.getAttribute('data-opt');
@@ -347,12 +357,35 @@
             } else if (act === 'clear') {
                 items.length = 0; seen.clear(); renderCount(); renderList();
                 statusEl.textContent = '';
-            } else if (act === 'down') {
+            } else if (act === 'down' || act === 'saveall') {
+                if (act === 'saveall') {
+                    if (!visibleItems().length) {
+                        statusEl.textContent = '先手动往下拉，记录媒体后再保存';
+                        return;
+                    }
+                    listEl.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+                        cb.checked = true;
+                    });
+                }
                 downloadSelected();
             }
         });
         statusEl.textContent = '';
         renderCount();
+
+        // 进入主页自动展开一次；关闭后保留右侧竖标签，随时再打开
+        if (SITE !== 'xhs') {
+            setTimeout(function () {
+                try {
+                    if (!sessionStorage.getItem('vrBulkSidebarAuto')) {
+                        sessionStorage.setItem('vrBulkSidebarAuto', '1');
+                        setBulkOpen(true);
+                    }
+                } catch (e) {
+                    setBulkOpen(true);
+                }
+            }, 700);
+        }
     }
 
     function renderCount() {
@@ -527,18 +560,8 @@
             return;
         }
 
-        // 首选：File System Access API，一次选目录，按作者建子文件夹，批量写盘
-        if (typeof window.showDirectoryPicker === 'function') {
-            let dir = null;
-            try {
-                statusEl.textContent = '请选择保存目录…';
-                dir = await window.showDirectoryPicker({ mode: 'readwrite', startIn: 'downloads' });
-            } catch (e) {
-                if (e && e.name === 'AbortError') { statusEl.textContent = '已取消'; return; }
-                statusEl.textContent = '目录选择失败，回退默认下载';
-            }
-            if (dir) { saveToDirectory(dir, chosen); return; }
-        }
+        // 统一保存到默认媒体库（Downloads/video-rod），不再弹目录选择器
+        statusEl.textContent = '保存到媒体库…';
 
         // 回退：后台队列（多次 <a download> 可能被浏览器拦截）
         statusEl.textContent = '开始下载 ' + chosen.length + ' 个…';
