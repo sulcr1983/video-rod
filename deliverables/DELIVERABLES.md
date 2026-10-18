@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.27 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.28 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -28,6 +28,7 @@
 > v1.25 变更：移除媒体库目录白名单硬校验（`hasMediaEntries`）；任何有读写权限的目录都可选，空目录显示 0 个文件，不再弹“目录不对”。
 > v1.26 变更：媒体库根目录定为 F；排除 `xbd-downloader`/`老黄的分享` 外部目录；修复 `FileSystemFileHandle.move` 重命名；新增复盘 `docs/INCIDENT-20261019-LIBRARY-DIR.md` 与 `assets/library-after.png`。
 > v1.27 变更：媒体库 P3 落地——选择/全选/反选/清除、批量移动到 `平台/博主/images|videos`、批量删除到 `_trash`、标签 `_index/tags.json`；`performMove` 只对同名冲突重试；交接文档同步 P3 已验收。
+> v1.28 变更：媒体库 P4 落地——图片缩略图持久化 `_index/thumbs`、SHA-256 查重 `_index/hashes.json`、本地视频 `preload=metadata` 可 seek；22 文件发现 3 组/9 个重复；`223fdc1`。
 
 ---
 
@@ -196,3 +197,4 @@ video-rod/
 | 媒体库修复后截图 | `deliverables/assets/library-after.png` | 2026-10-19 | 已定稿 | F 盘 22 项：X 10 / 小红书 7 / 其他 5；`xbd-downloader` 与“老黄的分享”已隔离 |
 | 媒体库扫描/CRUD 修复 | `js/library.js`（walk/rename/parentDir） | v1.1 | 已定稿 | 跳过 `xbd-downloader`、`老黄的分享`、`_index/_trash/_thumbs`；`move(parentDir,newName)` 修复星愿重命名 `NotAllowedError`；临时文件实测重命名/删除通过 |
 | 媒体库 P3 批量/标签 | `library.html` + `css/library.css` + `js/library.js` | v1.0 | 已定稿 | 选择模式/全选/反选/清除；批量移动到 `平台/博主/images|videos`；批量删除到 `_trash`；标签 `_index/tags.json`；临时文件验收 23→22，移动/删除/标签均通过（`cdcc9f8`） |
+| 媒体库 P4 缩略图/查重 | `library.html` + `css/library.css` + `js/library.js` | v1.0 | 已定稿 | 图片缩略图 480px 持久化 `_index/thumbs`（8 张）；SHA-256 `_index/hashes.json`（22 文件，3 组/9 个重复标记）；查重按钮；本地视频 `preload=metadata` 可 seek（`223fdc1`）。边界：视频首帧缩略图/远程 HTTP Range 未做 |
