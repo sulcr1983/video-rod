@@ -1416,9 +1416,46 @@ function vrBulkDelay() {
     return 1400 + Math.floor(Math.random() * 1200);
 }
 
+/** 去重标识：不依赖 URL 的签名/token 参数。同作品同媒体视为重复。
+ *  statusId/noteId/awemeId/mediaId 优先，URL 只保留 origin+pathname。 */
+function vrMediaIdentity(it) {
+    const i = it || {};
+    let clean = String(i.url || '');
+    try {
+        const u = new URL(clean);
+        clean = u.origin + u.pathname;
+    } catch (e) {
+        clean = clean.split('?')[0].split('#')[0];
+    }
+    const work = i.statusId || i.noteId || i.awemeId || i.mediaId || i.key || '';
+    return [i.site || '', work, i.mediaId || '', i.kind || '', clean].join('|');
+}
+
+function vrDedupLoad() {
+    return new Promise(function (resolve) {
+        try {
+            chrome.storage.local.get('vrMediaSeen', function (x) {
+                const arr = (x && x.vrMediaSeen) || [];
+                resolve(new Set(Array.isArray(arr) ? arr : []));
+            });
+        } catch (e) {
+            resolve(new Set());
+        }
+    });
+}
+
+function vrDedupSave(seen) {
+    try {
+        chrome.storage.local.set({ vrMediaSeen: Array.from(seen).slice(-8000) });
+    } catch (e) { /* ignore */ }
+}
+
 async function vrBulkDownload(items, tabId) {
     const list = (items || []).slice(0, 500);
+    const seen = await vrDedupLoad();
+    const batch = new Set();
     let done = 0;
+    let skipped = 0;
     let failStreak = 0;
     let paused = false;
     for (let i = 0; i < list.length; i++) {
@@ -1427,6 +1464,19 @@ async function vrBulkDownload(items, tabId) {
         if (!it.url && it.kind === 'video' && it.site === 'x') {
             it.url = await fetchXVideo(it.user, it.statusId, it.mediaId, true);
         }
+        const mediaKey = vrMediaIdentity(it);
+        if (mediaKey && (seen.has(mediaKey) || batch.has(mediaKey))) {
+            // 已有记录 / 本次已入队：跳过，不发起下载
+            skipped++;
+            try {
+                chrome.tabs.sendMessage(tabId, {
+                    Message: 'vrBulkProgress', done: done, skipped: skipped,
+                    total: list.length, paused: false
+                });
+            } catch (e) { /* ignore */ }
+            continue;
+        }
+        if (mediaKey) { batch.add(mediaKey); }
         if (!it.url || !/^https?:/i.test(it.url)) {
             failStreak++;
         } else {
@@ -1462,18 +1512,26 @@ async function vrBulkDownload(items, tabId) {
                     ok = id !== null;
                 }
             }
-            if (ok) { done++; failStreak = 0; } else { failStreak++; }
+            if (ok) {
+                done++;
+                failStreak = 0;
+                if (mediaKey) { seen.add(mediaKey); }
+            } else {
+                failStreak++;
+            }
         }
         if (failStreak >= 3) { paused = true; break; }
         try {
             chrome.tabs.sendMessage(tabId, {
-                Message: 'vrBulkProgress', done: done, total: list.length, paused: paused
+                Message: 'vrBulkProgress', done: done, skipped: skipped,
+                total: list.length, paused: paused
             });
         } catch (e) { /* 页面关了 */ }
         await vrBulkSleep(vrBulkDelay());
     }
+    vrDedupSave(seen);
     return {
-        ok: true, total: list.length, done: done,
+        ok: true, total: list.length, done: done, skipped: skipped,
         paused: paused, reason: paused ? '连续失败 3 次，已暂停（可能触发风控）' : ''
     };
 }

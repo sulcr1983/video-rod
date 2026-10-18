@@ -426,6 +426,21 @@
 - 页面 fetch 被 CORS 拒绝，下载走 `chrome.downloads`；原图（`url` 为空）与签名接口未做，当前为 `urlDefault` webp。
 - 小红书页面自身有 hydration/脚本报错，与扩展无关。
 
+### 10.7 下载去重（ADR-037）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| DED1 | 同一批内重复媒体只下一次 | 🟡 代码已接入 `batch Set`，待真机重复项验证 |
+| DED2 | 跨批次重复媒体不再下载 | 🟡 持久账本 `vrMediaSeen` 已接入，待重启扩展复验 |
+| DED3 | 签名参数变化仍判定为同一媒体 | 🟡 标识已去 query/hash；待抖音/微博签名 URL 对照 |
+| DED4 | 成功才写账本，失败可重试 | ✅ `seen.add` 仅在 `ok` 后执行 |
+| DED5 | 内容相同但 URL 不同 | 📋 媒体库入库 SHA-256，待 P2 实施 |
+| DED6 | 状态提示 | ✅ 返回 `skipped`，显示「跳过重复 N」 |
+
+- 静态检查：`node --check js/background.js`、`js/bulk-profile.js` 通过。
+- 去重键：`site | workId | mediaId | kind | origin+pathname`；不包含签名参数。
+- 当前只覆盖主页批量；页内悬浮按钮单次下载尚未接账本。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。
