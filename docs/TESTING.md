@@ -207,3 +207,33 @@
 5. 改代码后**必须重启浏览器**（`runtime.reload()` 会丢扩展）
 6. 跑下载类测试会写真实 `Downloads/video-rod/`，脚本测完自动清理本次新增文件
 
+
+## 7. M8 文件名保护 星愿真机记录（2026-10-18 全链路通过）
+
+> 环境：星愿浏览器 Twinkstar 11.4（Chromium 144.0.7559.110），苏哥主力浏览器、13 个扩展全装（含 XBD/CocoCut/Imageye 三个下载类）、登录态在位。脚本 `tools/test-x-name-fix.py`（三链路）+ `/tmp/regress.py`（加固回归）。
+
+### 三链路验证（ADR-027）
+
+| 链路 | 路径 | 结果 |
+|---|---|---|
+| A | popup 页 blob 下载 → hook 等 SW 记账 IPC → suggest | `E:/personal/Downloads/vr-fix-test/hook_*.txt` 分毫不差 |
+| A2 | SW 内 `vrDownloadWithName` 网络 URL → suggest | `E:/personal/Downloads/vr-fix-test/swdirect_*.ico` 分毫不差 |
+| B | 推文页点按钮 → `vrQuickDownX` → suggest | `E:/personal/Downloads/video-rod/唐十七呀(@m0ve0f).mp4` 29,359,763B，ffprobe：h264 2160×3840 + aac 双轨（最高画质预混流） |
+
+- 加固回归：同 URL 双下载（keep-on-take + uniquify）→ `dup_*.ico` + `dup_* (1).ico` 双双落名
+- 修复前对照：同环境 blob 下载落 `229b7e7c-825f-4d65-819a-ff4681bd8ec4.txt`（UUID 名，即 bug 症状）
+
+### 逆向苏哥扩展的收获（2026-10-18，苏哥指示「看看有没有可抄袭的」）
+
+- 星愿 13 个扩展里 3 个注册 `onDeterminingFilename`：**XBD**（`piibekljdlkbkdchicfdjpnaggolndif`，推特图片视频批量下载，写法最完整：URL 预记账 + byExtensionId 防火墙 + 三级文件名降级 Invalid filename 重试）、**CocoCut**（`ekhbcipncbkfpkaianbjbcbmfehjflpf`，纯 URL 记账、不认识的一律 `suggest()` 空过）、**Imageye**（`agionbommeaifngbhincahgmoflcikhm`，用临时目录标记识别自己的下载，确定文件名时再替换）
+- 三家独立实现套路一致 → 采纳为 ADR-027 方案；XBD 的 `queueFilenameForUrl` / `takePendingFilenameForDownload` / `handleDeterminingFilename` 结构被完整借鉴
+
+### 新坑（复现测试必读）
+
+1. **星愿的钓鱼竿扩展 ID = `bilfgmaaplmlfgpmjfhdaillmnonjlbj`**（手动「加载已解压」，location 4，在 `Default/Secure Preferences` 里查——`Default/Preferences` 的 extensions.settings 是空的！）；多扩展环境 `find_ext_id` 会误匹配，必须按精确 ID 查 SW
+2. **苏哥的浏览器下载目录 = `E:/personal/Downloads`**（不是 C 盘 Users 下）
+3. **blob:/data: 下载的 IPC 记账赛跑**：不走网络的下载 onDeterminingFilename 几乎立即触发，popup 页 fire-and-forget 式 sendMessage 记账必输 → 必须等 SW 记账应答后再发起下载（hook v2 的核心修正）
+4. **X 推文页懒加载**：新标签页打开后 ~10-15s article/video 才渲染，且要 `window.scrollBy` 滚动触发 video 懒加载，`.vr-xbtn` 才会注入；复用旧标签页 + Page.navigate 可能卡在 X 错误页（"Something went wrong"），必须新建标签页
+5. **星愿浏览器必须 `run_in_background` 启动**：用 `&` 后台起的进程会被工具会话回收（端口 9223 静默死亡）；taskkill 全部进程后等 3-4 秒再带参重拉（老实例在跑时新启动的参数被单例锁吞掉）
+6. **hook 检测假阴性**：popup.html 同时加载 `vr-download-hook.js`（`__vrNameHooked`）和 `popup-videorod.js` 的 `hookDownloadsApi`（`__vrHooked`），后者后包装会盖住前者的标记属性——检测 hook 是否装上要看功能（落盘名），不能看最外层 wrapper 的属性
+7. 改扩展代码后星愿里重载：`chrome://extensions` → 找「钓鱼竿」卡片 → `#dev-reload-button`（shadow DOM 里，JS `el.click()` 可靠）；重载后 SW 里 `typeof vrDownloadWithName === 'function'` 可验证新代码上线

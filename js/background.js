@@ -285,10 +285,7 @@ function findMedia(data, isRegex = false, filter = false, timer = false) {
                     } else {
                         fileName = downDir + fileName;
                     }
-                    chrome.downloads.download({
-                        url: info.url,
-                        filename: fileName
-                    });
+                    vrDownloadWithName(info.url, fileName);
                 } catch (e) { return; }
             }
             if (chrome.runtime.lastError) { return; }
@@ -336,11 +333,125 @@ function save(tabId) {
     }
 }
 
+// ===== 钓鱼竿：下载文件名保护（M8 修复「星愿忽略 filename」）=====
+// 根因：Chromium bug 579563——浏览器内任何扩展注册 chrome.downloads.onDeterminingFilename
+// 监听后，其他扩展 downloads.download({filename}) 的 filename 即被忽略（落盘变服务器名）。
+// 官方 workaround：自己也注册该监听、对自己的下载 suggest 文件名。
+// 写法抄自苏哥星愿里装的三个下载扩展（XBD/CocoCut/Imageye 同款套路）：
+//   1. 下载前按 URL 预记账（url -> {filename, conflictAction}），确定文件名时一次性取用；
+//   2. onDeterminingFilename 三道防线：别人的下载不碰 → 按 url/finalUrl 取账 suggest
+//      → 是自己的下载才用 item.filename 兜底 re-suggest；
+//   3. suggest 同步调用，conflictAction 统一 "uniquify"（不覆盖已有文件）。
+// popup/options/m3u8/downloader 页面自身发起的下载，经 js/vr-download-hook.js
+// 发 vrQueueName 消息在这里记账（页面上下文与 SW 不共享内存）。
+
+const vrPendingNameByUrl = new Map();   // url -> {filename, conflictAction, at}
+const VR_NAME_TTL = 10 * 60 * 1000;     // 记账保留 10 分钟：兼容同 URL 重复/并发下载
+const VR_NAME_MAP_MAX = 300;            // 防御性上限，防异常残留撑爆内存
+
+function vrQueueFilename(url, filename, conflictAction) {
+    if (!url || !filename) { return; }
+    vrPendingNameByUrl.set(url, {
+        filename: filename,
+        conflictAction: conflictAction || "uniquify",
+        at: Date.now()
+    });
+    if (vrPendingNameByUrl.size > VR_NAME_MAP_MAX) {
+        // 超量先清过期项，仍超量再退最早的
+        const now = Date.now();
+        for (const [k, v] of vrPendingNameByUrl) {
+            if (now - v.at > VR_NAME_TTL) { vrPendingNameByUrl.delete(k); }
+        }
+        while (vrPendingNameByUrl.size > VR_NAME_MAP_MAX) {
+            vrPendingNameByUrl.delete(vrPendingNameByUrl.keys().next().value);
+        }
+    }
+}
+
+function vrAbortFilename(url, filename) {
+    const hit = vrPendingNameByUrl.get(url);
+    if (hit && hit.filename === filename) {
+        vrPendingNameByUrl.delete(url);
+    }
+}
+
+/**
+ * 带文件名保护的下载（SW 侧统一入口）。
+ * 先记账再下载；失败撤账。返回 Promise<downloadId|null>。
+ */
+function vrDownloadWithName(url, filename, extra) {
+    vrQueueFilename(url, filename, extra && extra.conflictAction);
+    const opts = Object.assign(
+        { url: url, filename: filename, saveAs: false, conflictAction: "uniquify" },
+        extra || {}
+    );
+    return new Promise(function (resolve) {
+        chrome.downloads.download(opts, function (id) {
+            if (chrome.runtime.lastError || id === undefined) {
+                vrAbortFilename(url, filename);
+                resolve(null);
+            } else {
+                resolve(id);
+            }
+        });
+    });
+}
+
+// 文件名确定事件：官方约束每扩展只许注册一个监听器，suggest 必须同步调用。
+// 防御性 try/catch：万一 downloads API 异常，绝不能被拖垮整个 SW。
+try {
+    chrome.downloads.onDeterminingFilename.addListener(function (item, suggest) {
+        const me = chrome.runtime.id;
+        const by = item.byExtensionId;
+        // 防线 1：别的扩展发起的下载，不碰（做好公民，避免抢名）
+        if (typeof by === "string" && by.length > 0 && by !== me) { return; }
+        // 防线 2：预记账取用（url / finalUrl 双查，重定向后的最终地址也能命中）。
+        // 取用不删账：同一 URL 的重复/并发下载都能拿到名字（靠 TTL 自然过期，
+        // 重下会以新记账覆盖）；快速双击、批量去重场景不再丢名。
+        const urls = [item.url, item.finalUrl].filter(function (u) {
+            return typeof u === "string" && u.length > 0;
+        });
+        const now = Date.now();
+        for (let i = 0; i < urls.length; i++) {
+            const hit = vrPendingNameByUrl.get(urls[i]);
+            if (!hit) { continue; }
+            if (now - hit.at > VR_NAME_TTL) {
+                vrPendingNameByUrl.delete(urls[i]);
+                continue;
+            }
+            const name = String(hit.filename).replace(/\\/g, "/");
+            // suggest 只收相对下载目录的路径；绝对路径/空路径会被浏览器忽略
+            if (name && !/^([a-zA-Z]:|\/)/.test(name)) {
+                suggest({ filename: name, conflictAction: hit.conflictAction });
+                return;
+            }
+        }
+        // 防线 3：自己的下载却没记账（SW 重启丢账等极端情况）。item.filename 是绝对路径，
+        // suggest 用不了，弃权让系统按默认名处理——降级兜底，正常流程不该走到这。
+        if (by === me && item.filename) {
+            const name = String(item.filename).replace(/\\/g, "/");
+            if (name && !/^([a-zA-Z]:|\/)/.test(name)) {
+                suggest({ filename: name, conflictAction: "uniquify" });
+            }
+        }
+    });
+} catch (e) {
+    console.warn("[video-rod] onDeterminingFilename 注册失败", e);
+}
+
 /**
  * 监听 扩展 message 事件
  */
 chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (chrome.runtime.lastError) { return; }
+    // 钓鱼竿：下载文件名记账（popup/options 等页面经 vr-download-hook.js 转发）。
+    // 必须放在 init 检查之前——SW 刚被消息唤醒时 init 标志可能还没就绪，
+    // 而记账只碰内存 Map，不依赖任何初始化状态；漏记账 = 文件名被浏览器忽略。
+    if (Message && Message.Message == "vrQueueName") {
+        vrQueueFilename(Message.url, Message.filename, Message.conflictAction);
+        sendResponse({ ok: true });
+        return true;
+    }
     if (!G.initLocalComplete || !G.initSyncComplete) {
         sendResponse("error");
         return true;
@@ -513,9 +624,10 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
                 const ext = (url.split("?")[0].split(".").pop() || "mp4").toLowerCase();
                 const fname = (Message.filename || "")
                     .replace(/\.(mp4|m4v|webm|mov)$/i, "") + "." + ext;
-                chrome.downloads.download({ url: url, filename: fname }, function () {
-                    chrome.runtime.lastError &&
+                vrDownloadWithName(url, fname).then(function (id) {
+                    if (id === null) {
                         console.warn("[video-rod] X按钮下载失败", chrome.runtime.lastError);
+                    }
                 });
                 sendResponse({ ok: true, kind: "mp4", url: url.slice(0, 120) });
             } catch (e) {
@@ -859,8 +971,10 @@ async function vrSaveContextMedia(info, isImage) {
     if (!name) { name = 'media_' + Date.now() + '.' + ext; }
     const filename = (dir + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
 
-    chrome.downloads.download({ url: info.srcUrl, filename: filename }, function () {
-        chrome.runtime.lastError && console.warn('[video-rod] 秒存失败', chrome.runtime.lastError);
+    vrDownloadWithName(info.srcUrl, filename).then(function (id) {
+        if (id === null) {
+            console.warn('[video-rod] 秒存失败', chrome.runtime.lastError);
+        }
     });
 }
 

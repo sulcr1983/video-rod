@@ -76,7 +76,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.0 | 进行中 | ADR-001~025，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合） |
+| 决策记录 | `docs/DECISIONS.md` | v1.1 | 进行中 | ADR-001~027，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合）；ADR-026 = X 按钮预混流直链；ADR-027 = 下载文件名保护（抄 XBD/CocoCut/Imageye 的 onDeterminingFilename 套路） |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
 | popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 已定稿 | 浅色 A/B/C 三方案可点原型；苏哥拍板方案 A「收网」（ADR-025），已全量整合进产品代码 |
@@ -102,7 +102,9 @@ video-rod/
 | 测试站页面 | `test-site/{index,hls,bili-fake,images,yt-fake}.html` | 2026-10-17 | 已定稿 | 五类测试夹具：直链视频/HLS/B站分P/图片批量/YouTube（域名映射） |
 | 右键秒存 + 快捷键 | `js/init.js` + `js/background.js` + `manifest.json` | v1.0 | 已定稿 | M5 产物；两个一级右键菜单 + `vrSaveContextMedia()` + Alt+Shift+V |
 | README 使用说明 | `README.md` §使用说明 | v1.2 | 已定稿 | M6 产物：九节大白话完整指引；M7 随浅色重设计更新（行展开改名/抓图位置/设置视图四组 9 项+高级工具） |
-| 测试策略文档 | `docs/TESTING.md` | v1.3 | 已定稿 | M6 产物：用例表+回归清单+M2–M5 冒烟记录；M7 补浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧） |
+| 测试策略文档 | `docs/TESTING.md` | v1.4 | 已定稿 | M6 产物：用例表+回归清单+M2–M5 冒烟记录；M7 补浅色重设计全量回归记录 + 3 条新测试环境限制；M8 §7 补文件名保护星愿真机三链路记录 + 7 条新坑（星愿扩展 ID/下载目录/blob IPC 赛跑/X 懒加载/后台启动/hook 假阴性/重载方式） |
+| M8 下载文件名保护 | `js/background.js` 记账+监听段 + `js/vr-download-hook.js`（新建）+ 4 个 HTML 挂载 | v1.1 | 已定稿 | 修「星愿忽略 filename」（Chromium bug 579563）：SW 侧 URL 预记账 Map + 自注册 onDeterminingFilename 三道防线 + `vrDownloadWithName()` 统一入口（3 处下载点改造）；页面侧 hook 等记账 IPC 应答后再下载；keep-on-take + 10 分钟 TTL + uniquify。ADR-027；v1.1 = 加固版（try/catch 防御 + 同 URL 重复下载不丢名） |
+| M8 文件名保护验收脚本 | `tools/test-x-name-fix.py` | v1.0 | 已定稿 | 星愿真机三链路：popup blob（hook IPC）/ SW 直连（网络 URL）/ X 按钮（推文页懒加载等待+滚动触发）；判定落盘名=模板名+ffprobe 验双轨；加固回归（同 URL 双下载）内嵌 |
 | M8 X(推特) 推文内联下载按钮 | `js/x-button.js` + `manifest.json` content_scripts + `background.js` handler | v1.0 | 已定稿 | 推文操作栏 [role=group] 注入按钮 → 后台查预混流直链（fxtwitter）→ 最高画质一键落盘；ADR-026 |
 | M8 端到端测试脚本 | `tools/test-x-button5.py` | v1.0 | 已定稿 | 重载扩展→刷新推文页→等按钮→点击→轮询下载记录，星愿真机回归用 |
 | M4 YouTube 验收脚本 | `tools/cdp-m4-test.py` | v1.0 | 已定稿 | M7 新建（M4 此前只有临时探针）；导航 `http://notyoutube.com:18080/`（必须带端口，见 TESTING §5），验 YT 横幅 + 嗅探卡片 + 浅色 |
