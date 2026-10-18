@@ -94,6 +94,17 @@
         "js/x-button.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "js/naming.js",
+        "js/video-overlay.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "default_locale": "en",

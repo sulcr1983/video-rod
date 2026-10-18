@@ -277,4 +277,42 @@
 
 ---
 
+## ADR-030 页内悬浮下载按钮：固定浮层 + 矩形命中 + 右上角
+
+- **日期**：2026-10-19 ｜ **状态**：✅
+- **背景**：苏哥要「鼠标放到视频上，出现下载图标，点一下自动下，也可以出几个清晰度给我选」。第一版做完后反馈「按钮被图标遮住」；2026-10-19 又明确要求放到**右上角**。
+- **决策**：
+  1. **全局只留一个浮层**，`position:fixed` 挂在 `documentElement` 下，鼠标进哪个 `video` 就飘到哪个。不插进播放器父容器——各站父容器可能有 `overflow:hidden` / `transform` / 自己的 z-index，插进去必被坑。
+  2. **命中判定不用 `video.mouseenter`**：微博/抖音/B站都会在 `video` 上盖一层自己的覆盖层（封面、播放键、作者条），鼠标实际落在覆盖层上，`video` 收不到事件。改成 `document` 上听 `mousemove`（60ms 节流）+ 按 `video` 矩形命中；滚动出视口、鼠标出窗、窗口失焦时收起。
+  3. **定位右上角**：按钮右缘距视频右缘 14px；`top` 按视频高度让开 12%（16~76px），避开播放器顶部控件；`z-index: 2147483000`；全屏时隐藏。清晰度菜单右对齐，避免顶出屏幕。
+  4. **按钮只负责画 UI**：取流/命名/下载全部走 background 的 `vrVideoOptions` / `vrVideoDownload`，与 `x-button.js` 同一套路。
+- **验证**：B站、普通测试页、抖音均已实测；抖音 1920×887 视频上按钮 `right=1906`（距视频右缘 14px）、`top=76`，截图 `deliverables/assets/overlay-douyin.png`。
+- **边界**：X/Twitter 已有专属 `x-button.js`，不在其地盘重复加；只处理 ≥200×120 的 `video`；全屏不显示；B站/抖音的实际下载仍在页面主世界跑（见 ADR-029/031）。
+
+## ADR-031 抖音取流/命名 + 媒体 CDN 的 Referer 回放（参考 CocoCut / yt-dlp）
+
+- **日期**：2026-10-19 ｜ **状态**：✅
+- **背景**：苏哥报抖音「能下载，但下错视频 + 起名错，拿不到作者 ID 和标题」。实探确认三件事：
+  1. 抖音详情页同时有当前播放的 `<video>` 和推荐位/预览位的 `<video>`，通用分支「按体积选最大」会选歪；页面实际播放的还是低码率自适应档。
+  2. `js/naming.js` 没有 douyin 规则，掉进 `article` 兜底，作者/抖音号全空。
+  3. 抖音 CDN 直链**不带 Referer 返回 403**；CocoCut 3.89 能下，逆向发现它在 webRequest 里保存 `requestHeaders.referer`，并用 `declarativeNetRequest.updateSessionRules` 给媒体请求 set Referer。
+- **决策**：
+  1. **命名**：`naming.js` 新增 `extractDouyin`，只依赖 `data-e2e` 稳定锚点（`user-info` / `detail-video-info`），取昵称、作者数字 UID、描述；标题兜底 `document.title` 去「 - 抖音」。
+  2. **取流**：新增 `js/douyin.js`。页面主世界同源 fetch `aweme/v1/web/aweme/detail/?aweme_id=...`（yt-dlp DouyinIE 同款路线，Unlicense；页面自己请求过，无需签名）。从 URL 的 `/video/<id>` 或 `?modal_id=<id>` 定位作品，一次拿 `nickname` / `unique_id`(抖音号) / `uid` / `desc` / `duration` / 无水印 `play_addr` / 全档 `bit_rate`；按短边分辨率降序、同分辨率码率降序，一键取最高档。不依赖嗅探缓存，也不会选到推荐位。
+  3. **下载**：DNR session rule 对 `douyinvod.com` set `Referer` + `Origin`（`resourceTypes: other/media/xmlhttprequest/image`），10 分钟后用 alarm 清理。**通用直链**也按目标 URL 的 host 回放页面 Referer（抄 CocoCut 的通用做法），解决其他站点的防盗链 403。
+  4. **通用选流**：通用分支改成「当前正在播/可见的 `video`」优先，体积最大只作兜底；选项标注「当前播放」。
+- **验证**：
+  - `东方街拍(@22994771145)_感知幸福用心寻找！ #瑜伽裤穿搭 #散步随拍 #街拍美女.mp4`：hevc **2160×3840** + aac，16.35s，7,260,920 B。
+  - `老马探秘社(@72091560982)_五角大楼...mp4`：99,973,037 B，`state=complete`，mime `video/mp4`。
+  - curl 对照：无 Referer → `403 text/html`；带 `Referer: https://www.douyin.com/` → `206 video/mp4`。
+  - 命名单测 32/32（新增 5 条抖音断言）。
+- **代价与边界（如实记录）**：
+  - 详情接口依赖页面登录态与同源环境；接口风控/改版失败时自动回退通用嗅探分支（仍能下，但可能不是最高清）。
+  - 抖音号 `unique_id` 只在接口里有；DOM 兜底用 `author_id` 数字 UID。
+  - DNR 规则用固定 id（91001），连续下载不同站点会互相覆盖；10 分钟自动清理，影响面可控。
+  - 抖音当前给的是 mp4 直链（含音轨），未走 ADR-028 的 HLS 管线；遇到加密 HLS 站点仍需另行验证。
+- **参考**：CocoCut 3.89（`pagehelper.js` 回传 `requestHeaders.referer`；`popup.js` 的 DNR `updateSessionRules`；`background.js` 的 `allRequestHeaders`）；yt-dlp `DouyinIE`（同源 detail 接口，Unlicense）。
+
+---
+
 *新增决策在此追加，编号顺延。*

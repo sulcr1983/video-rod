@@ -4,7 +4,8 @@
  * firefox 在 manifest 文件中已经加载以下脚本，如果已经加载 G 变量存在，不再加载。
  */
 if (typeof G === 'undefined') {
-    importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js");
+    importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js",
+        "/js/bili-whole.js", "/js/douyin.js");
 }
 
 // Service Worker 5分钟后会强制终止扩展
@@ -784,6 +785,27 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         sendResponse("HeartBeat OK");
         return true;
     }
+    // 钓鱼竿：页内视频悬浮按钮（ADR-030），js/video-overlay.js 发起
+    if (Message.Message == "vrVideoOptions") {
+        const tabId = (sender && sender.tab && sender.tab.id != null)
+            ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
+        vrVideoOptions(tabId).then(function (r) {
+            sendResponse({ ok: true, site: r.site, options: r.options });
+        }).catch(function (e) {
+            sendResponse({ ok: false, reason: String(e).slice(0, 120) });
+        });
+        return true;
+    }
+    if (Message.Message == "vrVideoDownload") {
+        const tabId = (sender && sender.tab && sender.tab.id != null)
+            ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
+        vrVideoDownload(tabId, Message.optionId, Message.wantBest !== false)
+            .then(function (r) { sendResponse(r); })
+            .catch(function (e) {
+                sendResponse({ ok: false, reason: String(e).slice(0, 120) });
+            });
+        return true;
+    }
     // 钓鱼竿：X(推特) 推文内联按钮下载（M8），js/x-button.js 发起
     // 取 X 的「已合并音视频」完整 MP4 直链 → 直接下载。不下载分片、不合成、不走在线 FFmpeg。
     // 页面只传 user/statusId/mediaId 和文件名，直链由后台查——页面无法借道下载任意地址。
@@ -1108,6 +1130,330 @@ async function fetchXVideo(user, statusId, mediaId, wantBest) {
  * 钓鱼竿：右键秒存（M5）
  * 在页面里跑 naming.js 算出「作者_标题」，直接落到 默认目录/名字.ext
  */
+/* ==========================================================
+ * 页内悬浮下载按钮的背后支撑（ADR-030）
+ * js/video-overlay.js 只管「画一个按钮」，取流/命名/下载全在这儿：
+ *   vrNameInTab      —— 复用既有命名引擎（注入 naming.js 到页面，用页面自己的信息起名）
+ *   vrVideoOptions   —— 这个标签页能下哪些清晰度
+ *   vrVideoDownload  —— 按选项执行下载，完成后主动推消息给按钮更新状态
+ * ========================================================== */
+
+/** 在指定标签页里跑命名引擎 → 返回「目录/文件名」。
+ *  做法与 vrSaveContextMedia 一致：把 naming.js 注入页面，用页面自己的 document 提取信息。
+ *  override：调用方已经知道作者/标题时直接给（如 B站 从 __INITIAL_STATE__ 拿到的 UP 主），
+ *  否则页面提取常常拿不到作者，文件名就会少一段前缀。 */
+async function vrNameInTab(tabId, ext, override) {
+    let settings = {};
+    try {
+        const res = await chrome.storage.local.get('vrSettings');
+        settings = (res && res.vrSettings) || {};
+    } catch (e) { /* 忽略 */ }
+    const dir = String(settings.defaultDir || 'video-rod')
+        .replace(/[<>:"|?*\\]/g, '').replace(/^\/+|\/+$/g, '') || 'video-rod';
+    const tpl = settings.template || '${author}_${title}';
+
+    let name = '';
+    try {
+        await chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['js/naming.js'] });
+        const r = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function (tpl, ext, ov) {
+                const N = self.VideoRodNaming;
+                if (!N) { return ''; }
+                try {
+                    const i = N.extractPageInfo(document, location.href);
+                    // 调用方已知作者/标题时覆盖页面提取（抖音详情接口、B站 UP 主等），
+                    // 否则页面 DOM 常常拿不到作者，文件名就少一段前缀。
+                    if (ov) {
+                        if (ov.title) { i.title = ov.title; i.post = ov.post || ov.title; }
+                        if (ov.author) { i.author = ov.author; }
+                        if (ov.authorId) { i.authorId = ov.authorId; }
+                        if (ov.site) { i.site = ov.site; }
+                        i.authorFull = N.buildAuthorFull(i.author, i.authorId);
+                    }
+                    return N.buildNameFromInfo(i, location.href, { tpl: tpl, ext: ext });
+                } catch (e) { return ''; }
+            },
+            args: [tpl, ext, override || null]
+        });
+        name = (r && r[0] && r[0].result) || '';
+    } catch (e) { /* 受限页面，退回时间戳名 */ }
+
+    if (!name) { name = 'media_' + Date.now() + '.' + ext; }
+    return (dir + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+}
+
+const VR_VIDEO_EXT = /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i;
+
+/* ---------- 媒体 CDN 的 Referer 保护 ----------
+ * 抖音直链不带 Referer 会 403（实测：无 Referer 403 text/html，带 Referer 206 video/mp4）。
+ * CocoCut 的做法是下载前用 declarativeNetRequest 临时给媒体请求 set Referer/Origin。
+ * 规则只加在指定域名上，10 分钟后自动清掉，避免长期影响页面自己的请求。 */
+const VR_MEDIA_HEADER_RULE_ID = 91001;
+const VR_MEDIA_HEADER_ALARM = 'vrClearMediaHeaders';
+
+async function vrSetMediaHeaders(domain, referer) {
+    try {
+        if (!chrome.declarativeNetRequest || !domain || !referer) { return; }
+        let origin = '';
+        try { origin = new URL(referer).origin; } catch (e) { /* ignore */ }
+        const headers = [{ header: 'referer', operation: 'set', value: referer }];
+        if (origin) { headers.push({ header: 'origin', operation: 'set', value: origin }); }
+        await chrome.declarativeNetRequest.updateSessionRules({
+            removeRuleIds: [VR_MEDIA_HEADER_RULE_ID],
+            addRules: [{
+                id: VR_MEDIA_HEADER_RULE_ID,
+                priority: 1,
+                action: { type: 'modifyHeaders', requestHeaders: headers },
+                condition: {
+                    urlFilter: '||' + domain,
+                    resourceTypes: ['other', 'media', 'xmlhttprequest', 'image']
+                }
+            }]
+        });
+        try {
+            chrome.alarms.create(VR_MEDIA_HEADER_ALARM, { when: Date.now() + 10 * 60 * 1000 });
+        } catch (e) { /* ignore */ }
+    } catch (e) { /* 规则失败不阻塞下载 */ }
+}
+
+/** 通用直链：按目标 URL 的 host 回放页面 Referer（抄 CocoCut 的通用做法）。
+ *  很多站的 CDN 会校验 Referer；blob:/data: 没有 host，直接跳过。 */
+async function vrSetMediaHeadersFor(url, referer) {
+    try {
+        const u = new URL(url);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') { return; }
+        await vrSetMediaHeaders(u.hostname, referer);
+    } catch (e) { /* 非法 URL 不处理 */ }
+}
+
+try {
+    chrome.alarms.onAlarm.addListener(function (a) {
+        if (a && a.name === VR_MEDIA_HEADER_ALARM) {
+            chrome.declarativeNetRequest.updateSessionRules({
+                removeRuleIds: [VR_MEDIA_HEADER_RULE_ID]
+            });
+        }
+    });
+} catch (e) { /* ignore */ }
+
+/** 页内按钮：查询这个标签页能下哪些清晰度 */
+async function vrVideoOptions(tabId) {
+    const out = { site: 'generic', options: [] };
+
+    // 抖音优先：详情接口一次拿到「当前这条」的元数据和全部清晰度。
+    // 不走嗅探缓存 → 不会把推荐位/预览片当成目标（苏哥 2026-10-19 报的选错）。
+    try {
+        const tab = await chrome.tabs.get(tabId);
+        const awemeId = self.VR_DOUYIN.parseAwemeId((tab && tab.url) || '');
+        if (awemeId) {
+            const r = await chrome.scripting.executeScript({
+                target: { tabId: tabId }, world: 'MAIN',
+                args: [awemeId], func: self.VR_DOUYIN.probeFunc
+            });
+            const info = r && r[0] && r[0].result;
+            const rows = self.VR_DOUYIN.normalize(info);
+            if (info && rows.length) {
+                out.site = 'douyin';
+                out.meta = self.VR_DOUYIN.metaFrom(info);
+                out.options = rows.map(function (x, i) {
+                    return {
+                        id: 'dy' + i, kind: 'url', url: x.url,
+                        label: self.VR_DOUYIN.labelFor(x),
+                        note: i === 0 ? '最高清' : ''
+                    };
+                });
+                return out;
+            }
+        }
+    } catch (e) { /* 不是抖音 / 接口失败 → 走后面的分支 */ }
+
+    // B站优先：主动向 playurl 要，两条路都探，不依赖嗅探缓存
+    try {
+        const r = await chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN', func: self.VR_BILI.probeFunc
+        });
+        const info = r && r[0] && r[0].result;
+        if (info && (info.hasDurl || info.hasDash)) {
+            out.site = 'bili';
+            if (info.hasDurl) {
+                out.options.push({
+                    id: 'durl', kind: 'durl',
+                    label: (self.VR_BILI.qShort(info.quality) || info.qualityText || '标清'),
+                    note: info.size ? (info.size / 1048576).toFixed(1) + 'MB · 快' : '快'
+                });
+            }
+            // 只有 DASH 档位更高才给高清选项——一样高就别让用户白等合成
+            if (info.hasDash &&
+                (!info.hasDurl || Number(info.dashQuality) > Number(info.quality || 0))) {
+                out.options.push({
+                    id: 'dash', kind: 'dash',
+                    label: (self.VR_BILI.qShort(info.dashQuality) || info.dashQualityText || '高清'),
+                    note: '高清 · 需合成'
+                });
+            }
+            if (out.options.length) { return out; }
+        }
+    } catch (e) { /* 不是 B站 或探测失败 → 走通用 */ }
+
+    // 通用站点：先问页面「现在正在播的是哪个」，再回落到嗅探缓存。
+    // 多视频页面（信息流/推荐位）里「体积最大」不等于「你正在看的」。
+    let playing = '';
+    try {
+        const pr = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function () {
+                const vs = Array.from(document.querySelectorAll('video'));
+                const v = vs.filter(function (x) { return x.currentSrc && !x.paused; })[0]
+                    || vs.filter(function (x) { return x.currentSrc; })[0];
+                return v ? v.currentSrc : '';
+            }
+        });
+        playing = (pr && pr[0] && pr[0].result) || '';
+    } catch (e) { /* 受限页面，退回体积排序 */ }
+
+    const list = (cacheData[tabId] || []).filter(function (m) {
+        return m && m.url && VR_VIDEO_EXT.test(m.ext || '');
+    }).slice().sort(function (a, b) {
+        // 正在播的那条永远排第一；其余才按体积（单视频页面的老规则）
+        const ap = (playing && a.url === playing) ? 0 : 1;
+        const bp = (playing && b.url === playing) ? 0 : 1;
+        return (ap - bp) || ((b.size || 0) - (a.size || 0));
+    });
+
+    out.options = list.slice(0, 6).map(function (m, i) {
+        return {
+            id: 'm' + i, kind: 'url', url: m.url,
+            label: (m.ext || 'video').toUpperCase() +
+                (m.size ? ' · ' + (m.size / 1048576).toFixed(1) + 'MB' : ''),
+            note: i === 0 ? ((playing && m.url === playing) ? '当前播放' : '最大') : ''
+        };
+    });
+    return out;
+}
+
+/** 页内按钮：按选项下载。完成后主动推 vrVideoProgress 给按钮更新状态。
+ *  B站 的两条路都必须在页面主世界跑（CDN 要页面 Referer，ADR-029）。 */
+async function vrVideoDownload(tabId, optionId, wantBest) {
+    const opt = await vrVideoOptions(tabId);
+    let pick = null;
+    if (wantBest || !optionId) {
+        // 一键下载 = 最高清：B站 有更高档的 DASH 就用它（合成只多一两秒），
+        // 没有就退回整段 MP4；通用站取体积最大的那条。
+        // 想要「快」的用户从箭头菜单里挑标清那条。
+        if (opt.site === 'bili') {
+            pick = opt.options.filter(function (o) { return o.kind === 'dash'; })[0] ||
+                   opt.options[0];
+        } else {
+            pick = opt.options[0];
+        }
+    } else {
+        pick = opt.options.filter(function (o) { return o.id === optionId; })[0];
+    }
+    if (!pick) { return { ok: false, reason: 'no-option' }; }
+
+    // ---- 抖音：详情接口已经给了作者/抖音号/描述，命名直接用 override ----
+    if (opt.site === 'douyin') {
+        // 抖音 CDN 要 Referer；用 DNR 会话规则补上（抄 CocoCut，ADR-031）
+        const tab = await chrome.tabs.get(tabId);
+        await vrSetMediaHeaders('douyinvod.com', (tab && tab.url) || 'https://www.douyin.com/');
+        const filename = await vrNameInTab(tabId, 'mp4', opt.meta);
+        const id = await vrDownloadWithName(pick.url, filename);
+        if (id === null) { return { ok: false, reason: 'download-failed' }; }
+        vrMarkDownloaded(filename);
+        return { ok: true, kind: 'url', filename: filename };
+    }
+
+    // ---- 通用站点：直链交给既有的自定义文件名下载（M8） ----
+    if (pick.kind === 'url') {
+        let pageUrl = '';
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            pageUrl = (tab && tab.url) || '';
+        } catch (e) { /* ignore */ }
+        const ext = (pick.url.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
+        const filename = await vrNameInTab(tabId, VR_VIDEO_EXT.test(ext) ? ext : 'mp4');
+        // 通用 CDN 也经常校验 Referer（CocoCut 同款做法）：下载前按目标 host 回放页面地址
+        if (pageUrl) { await vrSetMediaHeadersFor(pick.url, pageUrl); }
+        const id = await vrDownloadWithName(pick.url, filename);
+        if (id === null) { return { ok: false, reason: 'download-failed' }; }
+        vrMarkDownloaded(filename);
+        return { ok: true, kind: 'url', filename: filename };
+    }
+
+    // ---- B站：走页面主世界 ----
+    // <a download> 不支持子目录（ADR-029 已知限制），只取文件名
+    const full = await vrNameInTab(tabId, 'mp4');
+    const name = full.split('/').pop() || full;
+
+    const probe = await chrome.scripting.executeScript({
+        target: { tabId: tabId }, world: 'MAIN', func: self.VR_BILI.probeFunc
+    });
+    const info = probe && probe[0] && probe[0].result;
+    if (!info || !(info.hasDurl || info.hasDash)) {
+        return { ok: false, reason: 'no-bili-info' };
+    }
+
+    if (pick.kind === 'dash') {
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN', files: ['lib/mp4box.all.min.js']
+        });
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            args: [name, info.cid, info.bvid], func: self.VR_BILI.dashFunc
+        });
+    } else {
+        await chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            args: [name, info.cid, info.bvid], func: self.VR_BILI.durlFunc
+        });
+    }
+
+    // 下载在页面里跑，后台盯着进度，完成后主动通知按钮
+    vrWatchBiliDownload(tabId, name);
+    return { ok: true, kind: pick.kind, filename: name, started: true };
+}
+
+/** 盯页面里的下载进度，结束/出错时推消息给按钮 */
+function vrWatchBiliDownload(tabId, name) {
+    let ticks = 0;
+    const timer = setInterval(async function () {
+        ticks++;
+        let st = null;
+        try {
+            const r = await chrome.scripting.executeScript({
+                target: { tabId: tabId }, world: 'MAIN',
+                func: function () { return window.__vrBiliDL || null; }
+            });
+            st = r && r[0] && r[0].result;
+        } catch (e) { /* 页面关了 */ }
+
+        const timeout = ticks > 300;   // 约 5 分钟
+        if (!st || !st.done) {
+            if (st && !timeout) {
+                try {
+                    chrome.tabs.sendMessage(tabId, {
+                        Message: 'vrVideoProgress', name: name,
+                        pct: Math.round(st.pct || 0), phase: st.phase || ''
+                    });
+                } catch (e) { /* 页面没按钮了 */ }
+                return;
+            }
+            if (!timeout) { return; }
+        }
+        clearInterval(timer);
+        try {
+            chrome.tabs.sendMessage(tabId, {
+                Message: 'vrVideoProgress', name: name,
+                done: true,
+                ok: !!(st && !st.error),
+                error: (st && st.error) || (timeout ? '超时' : ''),
+                bytes: (st && st.bytes) || 0
+            });
+        } catch (e) { /* 页面关了就算了 */ }
+    }, 1000);
+}
+
 async function vrSaveContextMedia(info, isImage) {
     if (!info || !info.srcUrl) { return; }
     const tabId = info.tabId != null ? info.tabId : G.tabId;

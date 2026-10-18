@@ -1522,80 +1522,14 @@
         return (n / 1024 / 1024).toFixed(1) + 'MB';
     }
 
-    /** 探测能否拿到整段 MP4。拿不到就不显示入口（只给 DASH 的视频另行处理） */
+    /** 探测能否拿到整段 MP4。拿不到就不显示入口（只给 DASH 的视频另行处理）
+     *  主世界探测函数本体在 js/bili-whole.js（后台 SW 也要用同一份） */
     function fetchBiliWhole(tabId) {
-        if (!chrome.scripting || tabId < 0) { return Promise.resolve(null); }
+        if (!chrome.scripting || tabId < 0 || !window.VR_BILI) { return Promise.resolve(null); }
         return chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'MAIN',
-            func: function () {
-                try {
-                    var s = window.__INITIAL_STATE__;
-                    if (!s || !s.videoData) { return null; }
-                    var vd = s.videoData;
-                    var cid = vd.cid || (vd.pages && vd.pages[0] && vd.pages[0].cid);
-                    if (!cid) { return null; }
-                    var bvid = vd.bvid ||
-                        (location.href.match(/\/video\/(BV[0-9A-Za-z]+)/) || [])[1] || '';
-                    var owner = (vd.owner && vd.owner.name) || '';
-                    var base = { bvid: bvid, cid: cid, title: vd.title || '', owner: owner,
-                                 hasDurl: false, hasDash: false };
-                    function qText(sf, q) {
-                        for (var i = 0; i < (sf || []).length; i++) {
-                            if (sf[i] && sf[i].quality === q) {
-                                return sf[i].new_description || sf[i].description || '';
-                            }
-                        }
-                        return q ? ('qn' + q) : '';
-                    }
-                    // 不写死清晰度：直接要最高档（127=8K），B站 按登录态/会员等级给它能给的最高档。
-                    // platform=html5&high_quality=1 让 accept_quality 返回更全。
-                    var COMMON = '&bvid=' + bvid + '&otype=json&platform=html5&high_quality=1';
-                    var apiDurl = 'https://api.bilibili.com/x/player/playurl?cid=' + cid +
-                        '&qn=127' + COMMON;
-                    // fnval=4048 → DASH（画面/声音分开）。实测：B站 把「整段MP4」这条路封顶在 720P，
-                    // 1080P 只有 DASH 有，所以两条路都要探，让用户挑。
-                    var apiDash = 'https://api.bilibili.com/x/player/playurl?cid=' + cid +
-                        '&qn=127' + COMMON + '&fnval=4048';
-                    function jget(u) {
-                        return fetch(u, { method: 'GET', credentials: 'include' })
-                            .then(function (r) { return r.json(); })
-                            .catch(function () { return null; });
-                    }
-                    return Promise.all([jget(apiDurl), jget(apiDash)]).then(function (rs) {
-                        var jd = rs[0], jh = rs[1];
-                        // 路线一：整段 MP4（快，但封顶 720P）
-                        if (jd && jd.code === 0 && jd.data && jd.data.durl && jd.data.durl[0]) {
-                            var d = jd.data, du = d.durl[0];
-                            base.hasDurl = true;
-                            base.size = du.size || 0;
-                            base.format = d.format || 'mp4';
-                            base.quality = d.quality;
-                            base.qualityText = qText(d.support_formats, d.quality);
-                            base.topAccept = (d.accept_quality || [])[0] || 0;
-                        }
-                        // 路线二：DASH 画面+声音（要合成，但能上 1080P 甚至更高）
-                        if (jh && jh.code === 0 && jh.data && jh.data.dash) {
-                            var dh = jh.data.dash;
-                            var vs = (dh.video || []).slice().sort(function (a, b) {
-                                return (b.width * b.height) - (a.width * a.height);
-                            });
-                            var as = (dh.audio || []).slice().sort(function (a, b) {
-                                return (b.bandwidth || 0) - (a.bandwidth || 0);
-                            });
-                            if (vs.length && as.length) {
-                                base.hasDash = true;
-                                base.dashW = vs[0].width;
-                                base.dashH = vs[0].height;
-                                base.dashQuality = vs[0].id;
-                                base.dashQualityText = qText(jh.data.support_formats, vs[0].id) ||
-                                    (vs[0].height + 'P');
-                            }
-                        }
-                        return base;
-                    });
-                } catch (e) { return null; }
-            }
+            func: window.VR_BILI.probeFunc
         }).then(function (res) {
             var r = res && res[0] && res[0].result;
             return (r && (r.hasDurl || r.hasDash)) ? r : null;
@@ -1639,67 +1573,7 @@
                 target: { tabId: tabId },
                 world: 'MAIN',
                 args: [name, info.cid, info.bvid],
-                func: function (filename, cidArg, bvidArg) {
-                    window.__vrBiliDL = { loaded: 0, total: 0, done: false, error: null, bytes: 0 };
-                    function save(url) {
-                        return new Promise(function (resolve, reject) {
-                            var x = new XMLHttpRequest();
-                            x.open('GET', url, true);
-                            x.responseType = 'blob';
-                            x.onprogress = function (ev) {
-                                if (ev.lengthComputable) {
-                                    window.__vrBiliDL.loaded = ev.loaded;
-                                    window.__vrBiliDL.total = ev.total;
-                                }
-                            };
-                            x.onload = function () {
-                                if (x.status < 200 || x.status >= 300) {
-                                    reject(new Error('HTTP ' + x.status));
-                                    return;
-                                }
-                                try {
-                                    var bu = URL.createObjectURL(x.response);
-                                    var a = document.createElement('a');
-                                    a.href = bu;
-                                    a.download = filename;
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    document.body.removeChild(a);
-                                    setTimeout(function () { URL.revokeObjectURL(bu); }, 5000);
-                                    window.__vrBiliDL.bytes = x.response.size;
-                                    window.__vrBiliDL.done = true;
-                                    resolve(true);
-                                } catch (e) { reject(e); }
-                            };
-                            x.onerror = function () { reject(new Error('网络错误')); };
-                            x.send();
-                        });
-                    }
-                    try {
-                        // 同样要最高档，不写死；B站 按账号给它能给的最高档
-                        var api = 'https://api.bilibili.com/x/player/playurl?cid=' + cidArg +
-                            '&qn=127&bvid=' + bvidArg + '&otype=json&platform=html5&high_quality=1';
-                        fetch(api, { method: 'GET', credentials: 'include' })
-                            .then(function (r) { return r.json(); })
-                            .then(function (j) {
-                                // 每次都重新要：durl 链接带时效，不能复用旧地址
-                                var du = j && j.data && j.data.durl && j.data.durl[0];
-                                if (!du) {
-                                    throw new Error((j && j.message) ||
-                                        'B站只给了 DASH（音视频分离），本入口暂不支持');
-                                }
-                                return save(du.url);
-                            })
-                            .catch(function (e) {
-                                window.__vrBiliDL.error = String((e && e.message) || e);
-                                window.__vrBiliDL.done = true;
-                            });
-                    } catch (e) {
-                        window.__vrBiliDL.error = String(e);
-                        window.__vrBiliDL.done = true;
-                    }
-                    return true;
-                }
+                func: window.VR_BILI.durlFunc
             }).then(function () {
                 pollBiliWhole(name, box, prog);
             });
@@ -1735,174 +1609,7 @@
                 target: { tabId: tabId },
                 world: 'MAIN',
                 args: [name, info.cid, info.bvid],
-                func: function (filename, cidArg, bvidArg) {
-                    var S = { pct: 0, phase: '准备', done: false, error: null, bytes: 0,
-                              loaded: 0, total: 0 };
-                    window.__vrBiliDL = S;
-                    function tick(p, ph) { S.pct = p; if (ph) { S.phase = ph; } }
-
-                    function getBuf(url, base, span) {
-                        return new Promise(function (resolve, reject) {
-                            var x = new XMLHttpRequest();
-                            x.open('GET', url, true);
-                            x.responseType = 'arraybuffer';
-                            x.onprogress = function (ev) {
-                                if (ev.lengthComputable) {
-                                    S.loaded = ev.loaded;
-                                    S.total = ev.total;
-                                    tick(base + span * (ev.loaded / ev.total), S.phase);
-                                }
-                            };
-                            x.onload = function () {
-                                if (x.status < 200 || x.status >= 300) {
-                                    reject(new Error('HTTP ' + x.status)); return;
-                                }
-                                resolve(x.response);
-                            };
-                            x.onerror = function () { reject(new Error('网络错误')); };
-                            x.send();
-                        });
-                    }
-
-                    function playurl() {
-                        var u = 'https://api.bilibili.com/x/player/playurl?cid=' + cidArg +
-                            '&qn=127&bvid=' + bvidArg +
-                            '&otype=json&platform=html5&high_quality=1&fnval=4048';
-                        return fetch(u, { method: 'GET', credentials: 'include' })
-                            .then(function (r) { return r.json(); });
-                    }
-
-                    /** 从一个 m4s 里取出轨道条目和样本（数据用原始 buffer 切片，
-                     *  不用 mp4box 的 getSample——它 flush 后会把 mdat 载荷丢掉） */
-                    function openM4s(buf) {
-                        var f = MP4Box.createFile();
-                        f.onError = function () {};
-                        buf.fileStart = 0;
-                        f.appendBuffer(buf);
-                        f.flush();
-                        var trak = f.moov.traks[0];
-                        var entry = trak.mdia.minf.stbl.stsd.entries[0];
-                        var u8 = new Uint8Array(buf);
-                        var ts = trak.mdia.mdhd.timescale;
-                        var list = [];
-                        for (var i = 0; i < trak.samples.length; i++) {
-                            var s = trak.samples[i];
-                            if (!(s.offset >= 0 && s.size > 0 && s.offset + s.size <= buf.byteLength)) {
-                                continue;
-                            }
-                            list.push({
-                                data: u8.subarray(s.offset, s.offset + s.size),
-                                duration: s.duration || 1, dts: s.dts || 0, cts: s.cts || 0,
-                                is_sync: !!s.is_sync,
-                                t: (s.dts || 0) / ts
-                            });
-                        }
-                        return { entry: entry, list: list, timescale: ts };
-                    }
-
-                    try {
-                        if (!window.MP4Box) { throw new Error('合成库没加载上'); }
-                        return playurl().then(function (j) {
-                            var dh = j && j.data && j.data.dash;
-                            if (!dh) { throw new Error((j && j.message) || 'B站没给 DASH 流'); }
-                            var vs = (dh.video || []).slice().sort(function (a, b) {
-                                return (b.width * b.height) - (a.width * a.height);
-                            });
-                            var as = (dh.audio || []).slice().sort(function (a, b) {
-                                return (b.bandwidth || 0) - (a.bandwidth || 0);
-                            });
-                            if (!vs.length || !as.length) { throw new Error('DASH 里没有画面或声音'); }
-                            var vUrl = vs[0].baseUrl || vs[0].base_url;
-                            var aUrl = as[0].baseUrl || as[0].base_url;
-
-                            // 画面（占大头，0→80%）→ 声音（80→88%）→ 合成（88→99%）
-                            tick(0, '下载画面');
-                            return getBuf(vUrl, 0, 80).then(function (vb) {
-                                tick(80, '下载声音');
-                                return getBuf(aUrl, 80, 8).then(function (ab) {
-                                    return { vb: vb, ab: ab };
-                                });
-                            });
-                        }).then(function (bufs) {
-                            tick(88, '合成中');
-                            var V = openM4s(bufs.vb);
-                            var A = openM4s(bufs.ab);
-                            if (!V.list.length || !A.list.length) {
-                                throw new Error('画面或声音没解析出样本');
-                            }
-                            var out = MP4Box.createFile();
-                            out.onError = function () {};
-                            var vLast = V.list[V.list.length - 1];
-                            var aLast = A.list[A.list.length - 1];
-                            var vId = out.addTrack({
-                                id: 1, type: 'avc1', timescale: V.timescale,
-                                width: V.entry.width, height: V.entry.height,
-                                hdlr: 'vide', name: 'VideoHandler',
-                                default_sample_duration: vLast.duration,
-                                description_boxes: V.entry.avcC ? [V.entry.avcC] : []
-                            });
-                            var aId = out.addTrack({
-                                id: 2, type: 'mp4a', timescale: A.timescale,
-                                channel_count: A.entry.channel_count || 2,
-                                samplesize: A.entry.samplesize || 16,
-                                samplerate: A.entry.samplerate || 44100,
-                                hdlr: 'soun', name: 'SoundHandler',
-                                default_sample_duration: aLast.duration,
-                                description_boxes: A.entry.esds ? [A.entry.esds] : []
-                            });
-
-                            // 按时间交错写入，播放器才不会「先放完画面再出声」
-                            var i = 0, j = 0, n = 0, total = V.list.length + A.list.length;
-                            function pump() {
-                                var N = 0;
-                                while ((i < V.list.length || j < A.list.length) && N < 2000) {
-                                    var takeV;
-                                    if (i >= V.list.length) { takeV = false; }
-                                    else if (j >= A.list.length) { takeV = true; }
-                                    else { takeV = V.list[i].t <= A.list[j].t; }
-                                    var s = takeV ? V.list[i++] : A.list[j++];
-                                    out.addSample(takeV ? vId : aId, s.data, {
-                                        duration: s.duration, dts: s.dts, cts: s.cts,
-                                        is_sync: takeV ? s.is_sync : true
-                                    });
-                                    n++; N++;
-                                }
-                                tick(88 + Math.round(10 * n / total), '合成中');
-                                if (i < V.list.length || j < A.list.length) {
-                                    return new Promise(function (r) { setTimeout(r, 0); }).then(pump);
-                                }
-                                return true;
-                            }
-                            return pump().then(function () {
-                                var o = out.getBuffer();
-                                var abuf = (o instanceof ArrayBuffer) ? o
-                                    : (o && o.buffer) ? o.buffer : null;
-                                if (!abuf) { throw new Error('合成结果为空'); }
-                                var blob = new Blob([abuf], { type: 'video/mp4' });
-                                var url = URL.createObjectURL(blob);
-                                var a = document.createElement('a');
-                                a.href = url;
-                                a.download = filename;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                // 别急着回收：大文件下载被中断过（ADR-029）
-                                setTimeout(function () { URL.revokeObjectURL(url); }, 180000);
-                                S.bytes = abuf.byteLength;
-                                tick(100, '完成');
-                                S.done = true;
-                                return true;
-                            });
-                        }).catch(function (e) {
-                            S.error = String((e && e.message) || e);
-                            S.done = true;
-                        });
-                    } catch (e) {
-                        S.error = String((e && e.message) || e);
-                        S.done = true;
-                        return true;
-                    }
-                }
+                func: window.VR_BILI.dashFunc
             });
         }).then(function () {
             pollBiliWhole(name, box, prog);
@@ -1955,11 +1662,11 @@
         }, 700);
     }
 
-    // B站清晰度档位 → 人话短标签
-    var BILI_Q = { 16: '360P', 32: '480P', 64: '720P', 74: '720P60', 80: '1080P',
-                   112: '1080P+', 116: '1080P60', 120: '4K', 127: '8K' };
-
-    function qShort(q) { return BILI_Q[Number(q)] || (q ? ('qn' + q) : ''); }
+    // B站清晰度档位 → 人话短标签：表在 js/bili-whole.js 里，全局只留一份
+    function qShort(q) {
+        return (window.VR_BILI && window.VR_BILI.qShort)
+            ? window.VR_BILI.qShort(q) : (q ? ('qn' + q) : '');
+    }
 
     function buildBiliWholeBanner(info) {
         var old = el('vrBiliWhole');

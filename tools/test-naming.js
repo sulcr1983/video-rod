@@ -30,7 +30,7 @@ function parseHTML(html) {
             continue;
         }
         const attrs = {};
-        const attrRe = /([a-zA-Z-]+)(?:="([^"]*)"|='([^']*)')?/g;
+        const attrRe = /([a-zA-Z][a-zA-Z0-9_-]*)(?:="([^"]*)"|='([^']*)')?/g;
         let am;
         while ((am = attrRe.exec(m[2] || '')) !== null) {
             attrs[am[1].toLowerCase()] = am[2] !== undefined ? am[2] : (am[3] !== undefined ? am[3] : '');
@@ -171,6 +171,21 @@ const SAMPLES = {
         url: 'https://x.com/dirty/status/999',
         html: `<html><head><title>dirty 在 X: "test"</title></head>
             <body><div data-testid="tweetText">🎣 周末钓鱼🎣 大丰收 <script>alert(1)</script> a/b:c*d?e"f<g>h|i</div></body></html>`
+    },
+    // 10. 抖音视频详情页（结构按 2026-10-19 实站）
+    douyin: {
+        url: 'https://www.douyin.com/video/7682668289420880313',
+        html: `<html><head><title>放慢脚步，幸福会追上你！ #瑜伽裤穿搭 #散步随拍 #户外拍摄 - 抖音</title></head>
+            <body><div data-e2e="video-detail">
+              <div data-e2e="user-info">
+                <a href="//www.douyin.com/user/MS4wLjABAAAAHiSLq5THwCh2hNbyHpqtdqDYzSnd1GHHEJ4ajz1lZMe-8zRLZ57bVEvV62X5grdp?author_id=3151627183989326">
+                  <img alt="东方街拍" src="https://example.com/a.jpeg">
+                </a>
+              </div>
+              <div data-e2e="detail-video-info">
+                <h1><span>放慢脚步，幸福会追上你！ #瑜伽裤穿搭 #散步随拍 #户外拍摄</span></h1>
+              </div>
+            </div></body></html>`
     }
 };
 
@@ -268,6 +283,18 @@ console.log('\n===== 页面识别结构 =====');
     const info2 = extractPageInfo(parseHTML(SAMPLES.bili.html), SAMPLES.bili.url);
     eq(info2.pageType, 'bilibili', '识别 B站');
     eq(info2.title, '【纪录片】深蓝之境 第 1 集', 'B站标题去尾巴');
+}
+console.log('\n===== 页面识别：抖音 =====');
+{
+    const doc = parseHTML(SAMPLES.douyin.html);
+    const info = extractPageInfo(doc, SAMPLES.douyin.url);
+    eq(info.pageType, 'douyin', '识别抖音');
+    eq(info.author, '东方街拍', '抖音作者昵称');
+    eq(info.authorId, '3151627183989326', '抖音作者数字 UID');
+    eq(info.title, '放慢脚步，幸福会追上你！ #瑜伽裤穿搭 #散步随拍 #户外拍摄', '抖音描述作为标题');
+    eq(buildName(doc, SAMPLES.douyin.url, { tpl: '${author}_${title}', ext: 'mp4' }),
+        '东方街拍(@3151627183989326)_放慢脚步，幸福会追上你！ #瑜伽裤穿搭 #散步随拍 #户外拍摄.mp4',
+        '抖音文件名 昵称(@UID)_描述');
 }
 
 /* ================= 汇总 ================= */

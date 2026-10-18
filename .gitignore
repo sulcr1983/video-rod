@@ -9,3 +9,10 @@ dist/
 # 敏感文件（含 GitHub token 等凭据，严禁提交）
 .env
 *.local
+
+# 临时诊断截图（tools/overlay-*.py 跑出来的）
+.tmp/
+
+# Python 缓存（tools 脚本 import 时生成）
+__pycache__/
+*.pyc
