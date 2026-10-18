@@ -105,6 +105,17 @@
         "js/video-overlay.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://weibo.com/*",
+        "*://*.weibo.com/*",
+        "*://m.weibo.cn/*"
+      ],
+      "js": [
+        "js/bulk-profile.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "default_locale": "en",

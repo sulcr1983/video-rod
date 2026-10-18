@@ -378,6 +378,22 @@
 - 解法：页面主世界 `fetch(url, {credentials:'include'})` → `blob` → `<a download>`。页面请求天然带 Referer/Cookie，微博 CORS 允许（200/5.8MB）。与 B站 durl 同一成熟路线；CocoCut 也走页面/内容脚本 fetch。
 - 取舍：`<a download>` 不支持子目录，微博文件落 `Downloads/` 根目录（与 B站 durl 同限制）。
 
+### 10.4 微博主页半手动批量（ADR-033 P1）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| B1 | 人工往下拉自动记录图片 | ✅ 主页滚动记录 4 张（缩略图转 `/large/` 大图） |
+| B2 | 播放视频自动记录真实直链 | ✅ 第 5 项为视频，`currentSrc=f.video.weibocdn.com/...mp4` |
+| B3 | 面板列表/全选/清空/保存按钮 | ✅ |
+| B4 | 按 `作者(@UID)/` 建目录写盘 | ✅ OPFS 等价目录写入 125,443 B JPEG（原生目录选择待苏哥点一次确认） |
+| B5 | 不自动翻页/滚动 | ✅ 只随用户滚动/播放记录 |
+| B6 | 批量不受 Chrome 自动下载拦截 | ✅ 走 File System Access，不触发多次 `<a download>` |
+| B7 | 微博 downloads/DNR 回退 | ❌ 仍 403，最终走页面 fetch/目录写入 |
+
+- 模块：`js/bulk-profile.js`（manifest content script，微博域名）。
+- 操作：右下角「批量下载 (N)」→ 勾选 →「保存到文件夹」→ 选一次目录（默认 Downloads）→ 按作者 UID 建子目录。
+- 注意：原生目录选择器必须由用户点击触发；自动化只验证到 OPFS 等价写盘。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。
