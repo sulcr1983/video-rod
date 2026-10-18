@@ -577,4 +577,19 @@
 
 ---
 
+## ADR-041 媒体库根目录改为 F + 外部目录隔离 + 重命名修复
+
+- **日期**：2026-10-19 ｜ **状态**：✅
+- **苏哥决定**：媒体库只用 **`F:\download\video-rod`**，不再要求 E 盘；E 盘容量不足。
+- **根目录处理**：
+  - E 的 `video-rod` 原目录（22 文件、约 143MB）移到 `F:\download\_e-video-rod-original` 备份；
+  - `E:\personal\Downloads\video-rod` 建立 **目录 junction → `F:\download\video-rod`**，浏览器后续下载仍写 `video-rod` 路径时实际落 F；
+  - 媒体库扫描 F，得到 **22 项**：X 10、小红书 7、其他 5（历史根目录文件）。
+- **外部目录隔离**：`xbd-downloader`（704 文件）和 `老黄的分享`（17 个微信图片/视频）**保留在磁盘，但不进入媒体库扫描**；避免“其他”分类被外部下载淹没。仍保留 `_index/_trash/_thumbs` 跳过。
+- **重命名修复**：星愿的 `FileSystemFileHandle.move(newName)` 抛 `NotAllowedError`；改为 `move(parentDir, newName)`，与删除到 `_trash` 的 `move(dir, name)` 一致。`move()` 返回 `undefined`，不得读取返回值的 `.name`。
+- **验证**：临时文件 `test3.png` 预览 → 重命名 `test3-renamed.png`（toast「已重命名」）→ 删除到 `_trash`（toast「已移到回收站」）→ 媒体库回到 22 项；截图 `deliverables/assets/library-after.png`。
+- **边界**：F 是唯一媒体库；E 的 junction 只解决“浏览器默认下载目录仍在 E”的问题。根目录 5 个历史文件暂归“其他”，P3 再做归档。
+
+---
+
 *新增决策在此追加，编号顺延。*

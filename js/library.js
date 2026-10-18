@@ -158,7 +158,7 @@
         let n = 0;
         for await (const [name, handle] of dir.entries()) {
             if (!name || name.startsWith('.') || name === '_index' || name === '_thumbs' || name === '_trash'
-                || name.toLowerCase() === 'xbd-downloader') {
+                || name.toLowerCase() === 'xbd-downloader' || name === '老黄的分享') {
                 continue;
             }
             const rel = prefix ? prefix + '/' + name : name;
@@ -543,6 +543,15 @@
         $('#modal').classList.add('hidden');
         modalSave = null;
     }
+    async function parentDir(item) {
+        const parts = String(item.path || '').split('/').filter(Boolean);
+        parts.pop();
+        let dir = rootHandle;
+        for (const p of parts) {
+            dir = await dir.getDirectoryHandle(p);
+        }
+        return dir;
+    }
     async function rename(item) {
         if (!item || !item.handle || typeof item.handle.move !== 'function') {
             toast('当前浏览器不支持重命名');
@@ -552,10 +561,8 @@
             const v = $('#modalInput').value.trim();
             if (!v || v === item.name) { closeModal(); return; }
             try {
-                const h = await item.handle.move(v);
-                item.handle = h;
-                item.name = h.name;
-                item.title = h.name.replace(/\.[^.]+$/, '');
+                const dir = await parentDir(item);
+                await item.handle.move(dir, v);
                 closeModal();
                 toast('已重命名');
                 closePreview();
