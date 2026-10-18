@@ -477,6 +477,8 @@
 | LIB3 | 错误句柄自动清除 | ✅ 启动时无效句柄从 IndexedDB 删除 |
 | LIB4 | 正确目录 | 需手动选择 `E:\personal\Downloads\video-rod` |
 | LIB5 | 扫描/预览/重命名/删除 | 待目录选对后逐项验收 |
+| LIB6 | 选择器从独立窗口触发 | ✅ 媒体库入口改为 `chrome.windows.create({type:'popup'})` |
+| LIB7 | 选中后请求读写权限 | ✅ `requestPermission({mode:'readwrite'})` |
 
 - 参考：MDN `showDirectoryPicker` 的 `id` 记忆行为；Chromium issue 关于 `id`/`startIn` 被忽略的报告。
 

@@ -2017,7 +2017,12 @@
 
     function openMediaLibrary() {
         try {
-            chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
+            var url = chrome.runtime.getURL('library.html');
+            if (chrome.windows && chrome.windows.create) {
+                chrome.windows.create({ url: url, type: 'popup', width: 1280, height: 900, focused: true });
+            } else {
+                chrome.tabs.create({ url: url });
+            }
         } catch (e) {
             tip('打开媒体库失败：' + e);
         }

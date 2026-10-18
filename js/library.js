@@ -591,10 +591,18 @@
             return;
         }
         try {
+            $('#statusText').textContent = '正在等待系统目录窗口…';
+            try { window.focus(); } catch (e) { /* ignore */ }
             const picked = await window.showDirectoryPicker({
                 mode: 'readwrite',
-                startIn: 'downloads'
+                startIn: rootHandle || 'downloads'
             });
+            const perm = await picked.requestPermission({ mode: 'readwrite' });
+            if (perm !== 'granted') {
+                $('#statusText').textContent = '目录读写权限未授予；请重新选择';
+                toast('需要读写权限才能管理媒体库');
+                return;
+            }
             rootHandle = await resolveRoot(picked);
             if (!(await hasMediaEntries(rootHandle))) {
                 rootHandle = null;
@@ -606,7 +614,12 @@
             $('#rootPath').textContent = rootHandle.name;
             await scan();
         } catch (e) {
-            if (e && e.name !== 'AbortError') { toast('目录选择失败：' + String(e).slice(0, 80)); }
+            if (e && e.name === 'AbortError') {
+                $('#statusText').textContent = '已取消目录选择';
+            } else {
+                $('#statusText').textContent = '目录选择失败：' + String(e).slice(0, 80);
+                toast('目录选择失败：' + String(e).slice(0, 80));
+            }
         }
     }
 
