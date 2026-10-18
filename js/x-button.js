@@ -140,8 +140,8 @@
                         return;
                     }
                     if (res.ok) {
-                        flash(btn, res.kind == 'mp4' ? 'done' : 'link');
-                        setLabel('已保存');
+                        flash(btn, res.skipped ? 'link' : (res.kind == 'mp4' ? 'done' : 'link'));
+                        setLabel(res.skipped ? '已存在' : '已保存');
                     } else {
                         flash(btn, 'warn');
                         setLabel('失败');
