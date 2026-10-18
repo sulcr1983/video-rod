@@ -80,7 +80,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.4 | 进行中 | ADR-001~031，追加式；ADR-028 = M11 放弃驱动猫抓 m3u8 页、改离屏直连管线；ADR-029 = B站完整视频/1080P 路线；ADR-030 = 页内悬浮按钮（右上角/矩形命中）；ADR-031 = 抖音详情接口取流 + DNR Referer 回放（参考 CocoCut/yt-dlp） |
+| 决策记录 | `docs/DECISIONS.md` | v1.5 | 进行中 | ADR-001~032，追加式；ADR-028 = M11 离屏直连管线；ADR-029 = B站完整视频/1080P；ADR-030 = 页内悬浮按钮（右上角/矩形命中）；ADR-031 = 抖音详情接口 + 微博页面 fetch/blob + DNR Referer；ADR-032 = 暂不引入服务端代理（Cloudflare Worker 留作可选兜底） |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
 | popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 已定稿 | 浅色 A/B/C 三方案可点原型；苏哥拍板方案 A「收网」（ADR-025），已全量整合进产品代码 |

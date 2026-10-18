@@ -1300,6 +1300,19 @@ async function vrTryPageDownload(tabId, url, name) {
  *  内容脚本是 isolated world，读不到页面的 $render_data；这里用 MAIN world 读。
  *  拿不到就返回 null，命名继续走 naming.js 的页面提取。 */
 async function vrPageMetaInTab(tabId) {
+    // 1) 微博 feed：内容脚本在点击视频卡片时记录了作者/文案（isolated world）
+    try {
+        const r = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function () { return window.__vrFeedMeta || null; }
+        });
+        const m = r && r[0] && r[0].result;
+        if (m && (m.author || m.title) && (!m.at || Date.now() - m.at < 30 * 60 * 1000)) {
+            return m;
+        }
+    } catch (e) { /* ignore */ }
+
+    // 2) 微博 status 页：MAIN world 的 $render_data
     try {
         const r = await chrome.scripting.executeScript({
             target: { tabId: tabId },
