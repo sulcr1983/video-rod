@@ -428,6 +428,14 @@
 - 页面 fetch 被 CORS 拒绝，下载走 `chrome.downloads`；原图（`url` 为空）与签名接口未做，当前为 `urlDefault` webp。
 - 小红书页面自身有 hydration/脚本报错，与扩展无关。
 
+### 10.11 Instagram P1（ADR-042）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| IG1 | 帖子页按钮注入 | ✅ `/p/test/` 出现「⬇ 下载当前帖」 |
+| IG2 | 已加载图片提取 + 后台下载 | ✅ 本地 fixture → `video-rod/instagram/fixtureauthor/images/test_01.jpg`，15,324 B |
+| IG3 | 真实 Instagram 帖子/Reel | 🟡 无登录态，未验证；blob 视频当前跳过 |
+
 ### 10.7 下载去重（ADR-037）
 
 | # | 验收项 | 结果 |
