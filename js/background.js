@@ -897,10 +897,20 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
                 const ext = (url.split("?")[0].split(".").pop() || "mp4").toLowerCase();
                 const fname = (Message.filename || "")
                     .replace(/\.(mp4|m4v|webm|mov)$/i, "") + "." + ext;
+                const dedupKey = vrMediaIdentity({
+                    site: 'x', statusId: Message.statusId,
+                    mediaId: Message.mediaId || '', url: url, kind: 'video'
+                });
+                const seen = await vrDedupLoad();
+                if (dedupKey && seen.has(dedupKey)) {
+                    sendResponse({ ok: true, skipped: true, kind: 'mp4' });
+                    return;
+                }
                 vrDownloadWithName(url, fname).then(function (id) {
                     if (id === null) {
                         console.warn("[video-rod] X按钮下载失败", chrome.runtime.lastError);
                     } else {
+                        if (dedupKey) { seen.add(dedupKey); vrDedupSave(seen); }
                         vrMarkDownloaded(fname);
                     }
                 });
@@ -1919,6 +1929,30 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
     }
     if (!pick) { return { ok: false, reason: 'no-option' }; }
 
+    const seen = await vrDedupLoad();
+    let dedupKey = '';
+    try {
+        const tab = await chrome.tabs.get(tabId);
+        const pageUrl = (tab && tab.url) || '';
+        dedupKey = vrMediaIdentity({
+            site: opt.site || 'generic',
+            url: pick.url || pageUrl,
+            mediaId: pick.kind || pick.id || '',
+            kind: 'video',
+            key: pageUrl
+        });
+    } catch (e) { /* ignore */ }
+    if (dedupKey && seen.has(dedupKey)) {
+        return { ok: true, skipped: true, reason: 'duplicate' };
+    }
+    const finish = function (res) {
+        if (res && res.ok && !res.skipped && dedupKey) {
+            seen.add(dedupKey);
+            vrDedupSave(seen);
+        }
+        return res;
+    };
+
     // ---- 抖音：详情接口已经给了作者/抖音号/描述，命名直接用 override ----
     if (opt.site === 'douyin') {
         // 抖音 CDN 要 Referer；用 DNR 会话规则补上（抄 CocoCut，ADR-031）
@@ -1928,7 +1962,7 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         const id = await vrDownloadWithName(pick.url, filename);
         if (id === null) { return { ok: false, reason: 'download-failed' }; }
         vrMarkDownloaded(filename);
-        return { ok: true, kind: 'url', filename: filename };
+        return finish({ ok: true, kind: 'url', filename: filename });
     }
 
     // ---- 通用站点：直链交给既有的自定义文件名下载（M8） ----
@@ -1952,7 +1986,7 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
             const outcome = await vrWaitDownload(id, 2500);
             if (!outcome || outcome.state !== 'interrupted') {
                 vrMarkDownloaded(filename);
-                return { ok: true, kind: 'url', filename: filename };
+                return finish({ ok: true, kind: 'url', filename: filename });
             }
             // CDN 403 快速失败：撤账、清掉 .htm 残留，改走页面 fetch
             try { vrAbortFilename(pick.url, filename); } catch (e) { /* ignore */ }
@@ -1966,7 +2000,7 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         if (pageDl && pageDl.ok) {
             const saved = filename.split('/').pop();   // <a download> 只认文件名，不支持子目录
             vrMarkDownloaded(saved);
-            return { ok: true, kind: 'page-blob', filename: saved, bytes: pageDl.bytes || 0 };
+            return finish({ ok: true, kind: 'page-blob', filename: saved, bytes: pageDl.bytes || 0 });
         }
         return { ok: false, reason: 'download-failed', page: pageDl || null };
     }
@@ -2001,7 +2035,7 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
 
     // 下载在页面里跑，后台盯着进度，完成后主动通知按钮
     vrWatchBiliDownload(tabId, name);
-    return { ok: true, kind: pick.kind, filename: name, started: true };
+    return finish({ ok: true, kind: pick.kind, filename: name, started: true });
 }
 
 /** 盯页面里的下载进度，结束/出错时推消息给按钮 */
