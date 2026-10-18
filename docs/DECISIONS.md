@@ -356,7 +356,7 @@
 
 ## ADR-033 微博/X 主页批量下载：复用页面分页接口 + 批量队列（待实施）
 
-- **日期**：2026-10-19 ｜ **状态**：📋 已计划未开工
+- **日期**：2026-10-19 ｜ **状态**：🟡 P1 已实施（微博半手动），P2 待做
 - **背景**：苏哥要「进入某人的主页，可以下载这个人的全部视频和图片」，参考 XBD。
 - **XBD 5.9 逆向结论（只支持 X）**：
   1. `injected.js` 在页面主世界拦截 X 自己的 GraphQL（`UserTweets` / `UserMedia` / `UserPhotoTimeline` / `UserVideoTimeline`），拿到 `queryId`、请求头和 `cursor`；再按 `userId + cursor + count=500` 分页拉全量，`fetchAllProgress` 记录进度。
@@ -372,6 +372,18 @@
   5. **分两期**：P1 当前已加载媒体扫描 + 批量下载（低风险）；P2 全量分页（微博 API / X GraphQL）+ 自动滚动/停止。
 - **工作量**：微博 P1 0.5–1 天、P2 1–2 天；X P1 0.5–1 天、P2 1–2 天；共用 UI/队列约 1 天。建议先微博（页面 fetch/命名已通），再做 X。
 - **风险**：微博 API 风控/cookie、视频 URL 需页面上下文；X GraphQL queryId 会变、429/登录态；大批量限速与重名；自动滚动有副作用（ADR-010 只抓已加载，需要用户显式点「加载全部」）。
+
+### ADR-033 实施补记（2026-10-19）：微博主页 P1 改为「半手动记录」
+
+- **苏哥的修正**：站点有反爬，不允许自动下载全部；改为人工往下拉，扩展自动记录视频/图片地址，最后批量保存。
+- **实现**：新增 `js/bulk-profile.js`（微博 content script）：
+  - `MutationObserver` + `scroll` 节流扫描 `.wb-item`：记录正文图片（缩略图 `/orj360|orj480|mw690/` → `/large/`），过滤头像/表情/视频封面；不自动滚动/翻页。
+  - 监听 `video` 的 `play`：记录真实 `currentSrc`，作者/文案取 `video-overlay.js` 点击卡片时写入的 `__vrFeedMeta`。
+  - 右下角「批量下载 (N)」面板：列表/全选/反选/清空；不自动触发下载。
+  - 保存：优先 `File System Access API`（`showDirectoryPicker`）一次选目录 → 按 `作者(@UID)/` 建子目录、逐条 `fetch` + `createWritable()` 写盘；不支持时回退后台 `vrBulkDownload`（页面 fetch→blob→`<a download>`）。
+  - 串行 + 300~700ms 间隔，降低风控/失败率；不自动翻页。
+- **验证**：微博主页滚动记录 4 张图；点开一个视频后记录到第 5 项（`🎬 @史老柒 视频 …`）；面板/全选/保存按钮正常；OPFS 等价目录写入 125,443 B JPEG 成功；微博 CDN 仍需页面上下文（downloads/DNR 403）。
+- **边界**：原生目录选择器需要用户点一次（浏览器安全要求）；微博文件不进 `Downloads/video-rod/`，而是写入用户选的目录下的 `作者(@UID)/`；X/Instagram 尚未接入该面板。
 
 ---
 

@@ -806,6 +806,16 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             });
         return true;
     }
+    // 钓鱼竿：主页半手动批量下载（ADR-033），js/bulk-profile.js 发起
+    if (Message.Message == "vrBulkDownload") {
+        const tabId = (sender && sender.tab && sender.tab.id != null) ? sender.tab.id : null;
+        vrBulkDownload(Message.items || [], tabId)
+            .then(function (r) { sendResponse(r); })
+            .catch(function (e) {
+                sendResponse({ ok: false, reason: String(e).slice(0, 120) });
+            });
+        return true;
+    }
     // 钓鱼竿：X(推特) 推文内联按钮下载（M8），js/x-button.js 发起
     // 取 X 的「已合并音视频」完整 MP4 直链 → 直接下载。不下载分片、不合成、不走在线 FFmpeg。
     // 页面只传 user/statusId/mediaId 和文件名，直链由后台查——页面无法借道下载任意地址。
@@ -1299,6 +1309,52 @@ async function vrTryPageDownload(tabId, url, name) {
 /** 页面主世界里的站点元数据（目前：微博 $render_data）。
  *  内容脚本是 isolated world，读不到页面的 $render_data；这里用 MAIN world 读。
  *  拿不到就返回 null，命名继续走 naming.js 的页面提取。 */
+/** 主页批量：文件名 = 作者(@UID)_正文_序号.ext（<a download> 不支持子目录） */
+function vrBulkName(item, index) {
+    const i = item || {};
+    const author = String(i.author || '').trim();
+    const id = String(i.authorId || '').trim();
+    const who = author ? (id ? author + '(@' + id + ')' : author) : 'weibo';
+    let title = String(i.title || '').replace(/\s+/g, ' ').trim();
+    if (title === '视频') { title = ''; }
+    let name = who + (title ? '_' + title : '') + '_' +
+        String(index + 1).padStart(2, '0') + '.' + (i.ext || (i.kind === 'image' ? 'jpg' : 'mp4'));
+    try {
+        const N = self.VideoRodNaming;
+        if (N && N.sanitizeName) {
+            name = N.sanitizeName(name, { keepEmoji: false, keepPath: false });
+        }
+    } catch (e) { /* ignore */ }
+    return name.slice(0, 160);
+}
+
+/** 主页批量：逐条页面 fetch → blob → <a download>（微博 CDN 只认页面上下文）。
+ *  串行 + 间隔，避免触发反爬；进度通过 vrBulkProgress 推给内容脚本。 */
+async function vrBulkDownload(items, tabId) {
+    const list = (items || []).slice(0, 500);
+    let done = 0;
+    for (let i = 0; i < list.length; i++) {
+        const it = list[i] || {};
+        if (!it.url || !/^https?:/i.test(it.url)) { continue; }
+        const name = vrBulkName(it, i);
+        let r = null;
+        if (tabId != null) {
+            r = await vrTryPageDownload(tabId, it.url, name);
+        }
+        if (!r || !r.ok) {
+            // 回退：downloads + 子目录（微博会 403，但其他站点可能可用）
+            const id = await vrDownloadWithName(it.url, 'video-rod/' + name);
+            r = { ok: id !== null };
+        }
+        if (r && r.ok) { done++; }
+        try {
+            chrome.tabs.sendMessage(tabId, { Message: 'vrBulkProgress', done: done, total: list.length });
+        } catch (e) { /* 页面关了 */ }
+        await new Promise(function (res) { setTimeout(res, 700); });
+    }
+    return { ok: true, total: list.length, done: done };
+}
+
 async function vrPageMetaInTab(tabId) {
     // 1) 微博 feed：内容脚本在点击视频卡片时记录了作者/文案（isolated world）
     try {
