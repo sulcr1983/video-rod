@@ -15,8 +15,17 @@
     const host = location.hostname;
     const isWeibo = /(^|\.)(weibo\.com|weibo\.cn)$/i.test(host);
     const isX = /(^|\.)(x\.com|twitter\.com)$/i.test(host);
-    if (!isWeibo && !isX) { return; }
-    const SITE = isWeibo ? 'weibo' : 'x';
+    const isXhs = /(^|\.)xiaohongshu\.com$/i.test(host);
+    if (!isWeibo && !isX && !isXhs) { return; }
+
+    let noteId = '';
+    if (isXhs) {
+        // 只做详情页单篇：/explore/<id> 或 /discovery/item/<id>
+        const m = location.pathname.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/);
+        if (!m) { return; }
+        noteId = m[1];
+    }
+    const SITE = isWeibo ? 'weibo' : (isX ? 'x' : 'xhs');
 
     let profileUser = '';
     if (isX) {
@@ -26,9 +35,11 @@
             return;
         }
         profileUser = m[1];
-    } else {
+    } else if (isWeibo) {
         const m = location.pathname.match(/\/(?:profile|u)\/(\d+)/);
         profileUser = m ? m[1] : '';
+    } else {
+        profileUser = noteId;
     }
     window.__vrBulkProfile = true;
 
@@ -96,7 +107,9 @@
     }
 
     function scan() {
-        if (SITE === 'x') { scanX(); } else { scanWeibo(); }
+        if (SITE === 'x') { scanX(); }
+        else if (SITE === 'xhs') { scanXhs(); }
+        else { scanWeibo(); }
     }
 
     function scanWeibo() {
@@ -188,6 +201,26 @@
         });
     }
 
+    /** 小红书详情页：只读当前笔记的 __INITIAL_STATE__，不自动翻页/不写操作 */
+    function scanXhs() {
+        const m = location.pathname.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/);
+        if (!m) { return; }
+        chrome.runtime.sendMessage({ Message: 'vrXhsScan', noteId: m[1] }, function (res) {
+            if (chrome.runtime.lastError || !res || !res.ok || !res.items) { return; }
+            res.items.forEach(function (it) {
+                if (!it || !it.url) { return; }
+                add({
+                    site: 'xhs', kind: it.kind, url: it.url,
+                    ext: it.ext || (it.kind === 'image' ? 'webp' : 'mp4'),
+                    title: res.title || it.title || '小红书笔记',
+                    author: res.author || '', authorId: res.authorId || '',
+                    pageUrl: location.href,
+                    key: 'xhs:' + res.noteId + ':' + it.kind + ':' + it.index + ':' + it.url
+                });
+            });
+        });
+    }
+
     /** 视频真正播放时才记录：主页卡片里只有封面/fid，真实地址在播放器里 */
     function onPlay(ev) {
         if (SITE !== 'weibo') { return; }
@@ -261,7 +294,9 @@
         panel = document.createElement('div');
         panel.className = 'vr-bulk-panel';
         panel.innerHTML =
-            '<div class="vr-bulk-head"><span>主页媒体（手动往下拉自动记录）</span>' +
+            '<div class="vr-bulk-head"><span>' +
+            (SITE === 'xhs' ? '当前笔记媒体（手动打开）' : '主页媒体（手动往下拉自动记录）') +
+            '</span>' +
             '<span class="vr-bulk-close" title="关闭">×</span></div>' +
             '<div class="vr-bulk-list"></div>' +
             '<div class="vr-bulk-foot">' +
@@ -369,7 +404,8 @@
     function dirName(it) {
         const a = safePart(it.author, 40);
         const id = safePart(it.authorId, 24);
-        return a ? (id ? a + '(@' + id + ')' : a) : 'weibo';
+        if (a) { return id ? a + '(@' + id + ')' : a; }
+        return it.site === 'xhs' ? '小红书' : (it.site === 'x' ? 'x' : 'weibo');
     }
     function fileName(it, index) {
         let title = safePart(it.title, 80);
@@ -458,7 +494,7 @@
     }
 
     async function downloadSelected() {
-        const chosen = [];
+        let chosen = [];
         listEl.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
             if (cb.checked) {
                 const it = items[Number(cb.dataset.i)];
@@ -466,6 +502,29 @@
             }
         });
         if (!chosen.length) { statusEl.textContent = '没有选中媒体'; return; }
+
+        // 小红书：页面 fetch 被 CORS 拒绝，走 downloads + 小红书/作者 目录；
+        // 单次最多 20 条，后台 3–5 秒/条，遇风控失败自动暂停。
+        if (SITE === 'xhs') {
+            if (chosen.length > 20) {
+                chosen = chosen.slice(0, 20);
+                statusEl.textContent = '单次最多 20 条，已截取';
+            }
+            statusEl.textContent = '开始保存 ' + chosen.length + ' 条（3–5 秒/条）…';
+            chrome.runtime.sendMessage({ Message: 'vrBulkDownload', items: chosen }, function (res) {
+                if (chrome.runtime.lastError || !res || !res.ok) {
+                    statusEl.textContent = '下载失败';
+                } else if (res.paused) {
+                    statusEl.textContent = res.reason || '已暂停（连续失败）';
+                } else {
+                    statusEl.textContent = '完成：' + res.done + '/' + res.total;
+                    if (res.done === res.total) {
+                        chosen.forEach(function (it) { markDone(it.key); });
+                    }
+                }
+            });
+            return;
+        }
 
         // 首选：File System Access API，一次选目录，按作者建子文件夹，批量写盘
         if (typeof window.showDirectoryPicker === 'function') {
@@ -517,6 +576,12 @@
     document.addEventListener('play', onPlay, true);
     scan();
     ensureUI();
+    if (SITE === 'xhs') {
+        let lastHref = location.href;
+        setInterval(function () {
+            if (location.href !== lastHref) { lastHref = location.href; scan(); }
+        }, 1200);
+    }
     doneReady.then(function () {
         renderCount();
         if (open) { renderList(); }
