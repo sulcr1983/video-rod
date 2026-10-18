@@ -34,6 +34,11 @@
     let selected = new Set();
     let tags = {};
     let pendingMove = [];
+    let thumbs = new Map();
+    let thumbBusy = new Set();
+    let hashes = {};
+    let dupIds = new Set();
+    let hashing = false;
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -223,6 +228,7 @@
             }
             await writeIndex();
             await loadTags();
+            await loadHashes();
         } catch (e) {
             $('#statusText').textContent = '扫描失败：' + String(e).slice(0, 80);
             toast('扫描失败：' + String(e).slice(0, 80));
@@ -300,6 +306,122 @@
     function revokeUrls() {
         urls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
         urls.clear();
+        thumbs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+        thumbs.clear();
+    }
+
+    function keyOf(s) {
+        let h = 2166136261;
+        const str = String(s || '');
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return (h >>> 0).toString(16).padStart(8, '0');
+    }
+
+    async function loadHashes() {
+        hashes = {};
+        dupIds = new Set();
+        if (!rootHandle) { return; }
+        try {
+            const dir = await rootHandle.getDirectoryHandle('_index');
+            const fh = await dir.getFileHandle('hashes.json');
+            const obj = JSON.parse(await (await fh.getFile()).text());
+            if (obj && typeof obj === 'object') { hashes = obj; }
+        } catch (e) { /* no hashes yet */ }
+        const valid = new Set(files.map(f => f.id));
+        Object.keys(hashes).forEach(k => { if (!valid.has(k)) { delete hashes[k]; } });
+        const groups = {};
+        Object.entries(hashes).forEach(([id, h]) => { (groups[h] = groups[h] || []).push(id); });
+        Object.values(groups).forEach(ids => { if (ids.length > 1) { ids.forEach(id => dupIds.add(id)); } });
+    }
+    async function saveHashes() {
+        if (!rootHandle) { return; }
+        try {
+            const dir = await rootHandle.getDirectoryHandle('_index', { create: true });
+            const fh = await dir.getFileHandle('hashes.json', { create: true });
+            const w = await fh.createWritable();
+            await w.write(JSON.stringify(hashes, null, 2));
+            await w.close();
+        } catch (e) { toast('哈希保存失败：' + String(e).slice(0, 60)); }
+    }
+    async function sha256Of(item) {
+        const buf = await (await item.handle.getFile()).arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', buf);
+        return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    async function runHashCheck() {
+        if (hashing) { return; }
+        if (!files.length) { toast('没有文件'); return; }
+        hashing = true;
+        const btn = $('#dedupBtn');
+        if (btn) { btn.disabled = true; }
+        let done = 0;
+        try {
+            for (const f of files) {
+                if (hashes[f.id]) { continue; }
+                done++;
+                $('#statusText').textContent = '计算 SHA-256 ' + done + '/' + files.length + '…';
+                try { hashes[f.id] = await sha256Of(f); } catch (e) { /* skip */ }
+                if (done % 5 === 0) { await saveHashes(); }
+            }
+            await saveHashes();
+            const groups = {};
+            Object.entries(hashes).forEach(([id, h]) => {
+                if (!files.some(f => f.id === id)) { return; }
+                (groups[h] = groups[h] || []).push(id);
+            });
+            dupIds = new Set();
+            let dupGroups = 0;
+            Object.values(groups).forEach(ids => {
+                if (ids.length > 1) { dupGroups++; ids.forEach(id => dupIds.add(id)); }
+            });
+            render();
+            $('#statusText').textContent = dupGroups
+                ? '查重完成：' + dupGroups + ' 组重复，共 ' + dupIds.size + ' 个文件'
+                : '查重完成：未发现内容重复';
+            toast(dupGroups ? '发现 ' + dupGroups + ' 组重复，已标记' : '未发现内容重复');
+        } finally {
+            hashing = false;
+            if (btn) { btn.disabled = false; }
+        }
+    }
+
+    async function thumbUrl(item) {
+        if (item.kind !== 'image') { return ''; }
+        if (thumbs.has(item.id)) { return thumbs.get(item.id); }
+        if (thumbBusy.has(item.id)) { return ''; }
+        thumbBusy.add(item.id);
+        try {
+            const idx = await rootHandle.getDirectoryHandle('_index', { create: true });
+            const dir = await idx.getDirectoryHandle('thumbs', { create: true });
+            const name = keyOf(item.id) + '.jpg';
+            try {
+                const fh = await dir.getFileHandle(name);
+                const tf = await fh.getFile();
+                const url = URL.createObjectURL(tf);
+                thumbs.set(item.id, url);
+                return url;
+            } catch (e) { /* generate */ }
+            const file = await item.handle.getFile();
+            const bmp = await createImageBitmap(file);
+            const scale = Math.min(1, 480 / Math.max(bmp.width, bmp.height));
+            const w = Math.max(1, Math.round(bmp.width * scale));
+            const h = Math.max(1, Math.round(bmp.height * scale));
+            const canvas = new OffscreenCanvas(w, h);
+            canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+            if (bmp.close) { bmp.close(); }
+            const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.82 });
+            const fh = await dir.getFileHandle(name, { create: true });
+            const fw = await fh.createWritable();
+            await fw.write(blob);
+            await fw.close();
+            const url = URL.createObjectURL(blob);
+            thumbs.set(item.id, url);
+            return url;
+        } catch (e) {
+            return '';
+        } finally {
+            thumbBusy.delete(item.id);
+        }
     }
 
     async function fileUrl(item) {
@@ -445,8 +567,8 @@
     function cardHTML(f) {
         const meta = platformOf(f.platform);
         const isVideo = f.kind === 'video';
-        const tagHtml = tagsOf(f.id).slice(0, 3).map(t =>
-            '<span class="tag">' + esc(t) + '</span>').join('');
+        const tagHtml = (dupIds.has(f.id) ? '<span class="tag dup">重复</span>' : '') +
+            tagsOf(f.id).slice(0, 3).map(t => '<span class="tag">' + esc(t) + '</span>').join('');
         return '<article class="card' + (selected.has(f.id) ? ' selected' : '') +
             '" data-id="' + esc(f.id) + '" data-platform="' + esc(f.platform) + '">' +
             '<input type="checkbox" class="selbox" data-sel="' + esc(f.id) + '"' +
@@ -500,7 +622,12 @@
             const card = grid.querySelector('[data-id="' + CSS.escape(f.id) + '"]');
             if (!card) { return; }
             const img = card.querySelector('img');
-            fileUrl(f).then(url => { if (img) { img.src = url; } }).catch(() => {});
+            thumbUrl(f).then(url => {
+                if (url && img) { img.src = url; return; }
+                fileUrl(f).then(u => { if (img) { img.src = u; } }).catch(() => {});
+            }).catch(() => {
+                fileUrl(f).then(u => { if (img) { img.src = u; } }).catch(() => {});
+            });
         });
     }
 
@@ -560,6 +687,10 @@
             '<div>类型<b>' + (d.kind === 'image' ? '图片' : '视频') + '</b></div>' +
             '<div>大小<b>' + fmtSize(d.size) + '</b></div>' +
             '<div>保存时间<b>' + fmtDate(d.lastModified) + '</b></div>';
+        if (hashes[d.id]) {
+            $('#pvMeta').insertAdjacentHTML('beforeend',
+                '<div>SHA-256<b title="' + esc(hashes[d.id]) + '">' + esc(hashes[d.id].slice(0, 12)) + '…</b></div>');
+        }
         $('#pvPath').textContent = d.path;
         const ts = tagsOf(d.id);
         $('#pvTags').innerHTML = ts.length
@@ -572,6 +703,8 @@
         if (d.kind === 'video') {
             img.classList.add('hidden');
             video.classList.remove('hidden');
+            // 本地 File 的 object URL 可 seek；浏览器直接流式读取，不需要额外 HTTP Range
+            video.preload = 'metadata';
             video.src = await fileUrl(d);
         } else {
             video.classList.add('hidden');
@@ -658,6 +791,11 @@
                     delete tags[oldId];
                     await saveTags();
                 }
+                if (hashes[oldId]) {
+                    hashes[newId] = hashes[oldId];
+                    delete hashes[oldId];
+                    await saveHashes();
+                }
                 closeModal();
                 toast('已重命名');
                 closePreview();
@@ -729,6 +867,10 @@
                 if (tags[item.id]) {
                     tags[platform + '/' + author + '/' + kindDir + '/' + name] = tags[item.id];
                     delete tags[item.id];
+                }
+                if (hashes[item.id]) {
+                    hashes[platform + '/' + author + '/' + kindDir + '/' + name] = hashes[item.id];
+                    delete hashes[item.id];
                 }
                 ok++;
             } catch (e) { fail++; }
@@ -824,6 +966,7 @@
         render();
     });
     $('#rescanBtn').addEventListener('click', scan);
+    $('#dedupBtn').addEventListener('click', runHashCheck);
     $('#selectBtn').addEventListener('click', () => {
         selectMode = !selectMode;
         if (!selectMode) { selected.clear(); }
