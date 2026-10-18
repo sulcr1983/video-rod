@@ -18,6 +18,7 @@
 | M5 周边 | 图片批量 + 右键秒存 + 快捷键 + 完成提示 | 2-3 天 | 小红书图片批量存、右键直接下 |
 | M6 打磨 | 细节打磨 + 全功能回归 + 使用说明 | 1-2 天 | 交给苏哥日常用的成品 |
 | M7 重设计 | popup 浅色 UI 重设计整合（方案 A 收网，ADR-025） | 1 天 | 面板浅色化 + 头部两行化 + 行卡片精简 + 设置 4 组，全量回归 0 报错 |
+| M8 X 按钮 | 推文内联下载按钮 + 下载文件名保护（ADR-026/027） | 1 天 | 按钮恒取最高画质预混流；星愿真机三链路文件名验证通过 |
 
 合计约 **1.5-2 周**（2026-10 审计改版后：M3/M4 从签名对抗改为搭便车嗅探，省下约 5 天；每天投入几小时的节奏，集中赶工可压缩到一周内）。
 
@@ -303,3 +304,16 @@ M0 命名引擎 ──► M1 面板 ──► M2 下载管线 ──► M3 B站�
 **未完成项（如实记录）**：
 - ⏳ 真实站点实测——同 M6，装机后苏哥自己验
 - ⏳ CDP 环境 compositor 懒帧导致「立即截图挂 60s + transform 过渡不推进」——测试脚本已用 settle+retry+显式 force 绕过；真实浏览器无此现象（过渡/截图都正常），非产品缺陷
+
+### M8 X(推特) 推文内联按钮 + 下载文件名保护 — ✅ 已完成（2026-10-18）
+
+**交付物**：
+- `js/x-button.js`（新建）：推文操作栏 `[role=group]` 注入钓鱼竿按钮（仅带 video 的 article），MutationObserver 250ms debounce 扫描；点击发 `vrQuickDownX`（页面只传 user/statusId/mediaId + 文件名，不传 URL——防借道下载任意地址）
+- `js/background.js`：`fetchXVideo()` 查 fxtwitter 预混流直链（按 URL 后缀 `.mp4` 过滤 variants，码率降序取最高）；`vrQuickDownX` handler
+- **下载文件名保护**（ADR-027）：SW 侧 URL 预记账 Map + 自注册 `onDeterminingFilename`（三道防线）+ `vrDownloadWithName()` 统一入口（3 处下载点改造）；`js/vr-download-hook.js`（新建）挂 popup/options/m3u8/downloader 四页，等记账 IPC 应答后再下载
+- 写法抄自苏哥星愿里装的 XBD/CocoCut/Imageye（三家独立趋同，见 ADR-027 / TESTING §7）
+
+**验收结果**：星愿真机（Chromium 144，13 扩展全装）三链路通过——popup blob / SW 直连 / X 按钮落盘 `video-rod/唐十七呀(@m0ve0f).mp4`（29,359,763B，ffprobe h264 2160×3840 + aac 双轨，最高画质）；同 URL 双下载 uniquify 回归通过。见 docs/TESTING.md §7。
+
+**未完成项（如实记录）**：
+- ⏳ 设置里的「清晰度默认选最高档」只影响面板批量下载，按钮恒取最高（苏哥明确要求按钮就是要最高，此项记录在案不再改）

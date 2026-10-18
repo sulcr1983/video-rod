@@ -204,7 +204,21 @@
   - 多一个只读外部依赖（fxtwitter，只发公开推文 ID，不碰登录态、不上传视频文件）；服务不可用时应退回面板嗅探 + 手动合并
   - 直链 URL 无法拼（每个分辨率独立文件名 + tag 参数），必须查
   - fxtwitter 的 `variants` 不一定带 `container` 字段 → 按 URL 后缀 `.mp4` 判断（踩过：按 container 过滤会全部滤空）
-- **已知待办**：① 星愿浏览器下 `chrome.downloads.download` 的 `filename` 被忽略（文件落成服务器名），模板命名待修；② 设置里的「清晰度默认选最高档」目前只影响面板批量下载，按钮恒取最高
+- **已知待办**：① ~~星愿浏览器下 `chrome.downloads.download` 的 `filename` 被忽略（文件落成服务器名），模板命名待修~~ → 已修，见 ADR-027；② 设置里的「清晰度默认选最高档」目前只影响面板批量下载，按钮恒取最高
+
+## ADR-027 下载文件名保护：自注册 onDeterminingFilename + URL 预记账（抄 XBD/CocoCut/Imageye）
+
+- **日期**：2026-10-18 ｜ **状态**：✅
+- **背景**：星愿浏览器（苏哥日常主力）里钓鱼竿的 `downloads.download({filename})` 被忽略，文件落成服务器名/UUID。根因 = **Chromium bug 579563**：浏览器内任何扩展注册 `chrome.downloads.onDeterminingFilename` 监听后，其他扩展的 `filename` 参数即失效；官方 workaround 是自己也注册该监听、对自己的下载 suggest 文件名。苏哥星愿装了 13 个扩展，其中 XBD（`piibeklj`）、CocoCut（`ekhbcipn`）、Imageye（`agionbom`）三个下载类扩展全部注册了该监听——完全吻合症状（单扩展的测试 Chromium 无此问题）。
+- **决策**：按苏哥指示逆向他浏览器里装的扩展，抄三家的成熟写法（三家独立实现，套路一致，可信度高）：
+  - **URL 预记账**：下载前把 `url → {filename, conflictAction}` 写进 SW 内存 Map；`onDeterminingFilename` 触发时按 `item.url`/`item.finalUrl`（重定向后地址）双查 suggest。不用 downloadId 记账——id 下载前不存在
+  - **三道防线**（抄 XBD）：① `byExtensionId` 是别的扩展 → 直接 return 不碰（做好公民，多家下载扩展共存）；② 命中预记账 → suggest 记账名；③ 是自己的下载却没记账（SW 重启丢账）→ item.filename 是绝对路径 suggest 用不了，弃权降级
+  - **页面侧 hook**（`js/vr-download-hook.js`）：popup/options/m3u8/downloader 四个页面加载，monkey-patch `chrome.downloads.download`，**等 SW 记账 IPC 应答后才发起下载**——blob:/data: 下载不走网络，onDeterminingFilename 几乎立即触发，fire-and-forget 式记账赛不过（实测第一版就栽在这）
+  - 记账**取用不删 + 10 分钟 TTL**：同 URL 重复/并发下载都能拿到名字（实测同 URL 双下载得 `x.ico` + `x (1).ico`，uniquify 自动去重）；重下会以新记账覆盖；SW 侧 `vrDownloadWithName()` 统一入口替代 3 处裸 `downloads.download`
+  - conflictAction 统一 `"uniquify"`（不覆盖已有文件）；suggest 同步调用；防御性 try/catch 包监听注册（API 异常不拖垮 SW）
+- **理由**：三家生产扩展的独立趋同实现 = 经过真实用户验证的方案；自研（如按 downloadId 记账、异步 suggest）必然重复踩坑。ADR-002「先对标再动手」的又一次执行。
+- **仲裁规则（官方文档）**：多扩展都 suggest 时**最后安装的赢**；调 `suggest()` 无参 = 弃权不参与竞争。我们只对自己的下载 suggest，XBD/CocoCut/Imageye 对我们的下载全部弃权 → 我们赢。
+- **影响**：M8 里程碑；`js/background.js`（记账+监听+3 处下载点改造）、`js/vr-download-hook.js`（新建）、4 个 HTML 挂载；星愿真机三链路验证通过（TESTING §7）：popup blob / SW 直连 / X 按钮落盘 `video-rod/唐十七呀(@m0ve0f).mp4`（29,359,763 B，ffprobe 验证 h264 2160×3840 + aac 双轨）
 
 ---
 
