@@ -237,3 +237,25 @@
 ---
 
 *新增决策在此追加，编号顺延。*
+## ADR-029 B站完整视频下载：在「页面主世界」直面 CDN，并优先要整段 MP4(durl)
+
+- **日期**：2026-10-18 ｜ **状态**：✅
+- **背景**：B站实站验收（TESTING §9）发现：嗅探正常抓到 `.m4s` 分片、自定义文件名也生效，但**实际下载被 `SERVER_FORBIDDEN` 拒**。苏哥提示「有个已经在用的插件好似可以」→ 逆向了星愿里已装的 **`b站视频下载助手`(pamdgobbggbpfpnadidipelihgkafiid v1.0.16)**，扒出其三条关键做法，并在真机验证有效。
+- **决策**：钓鱼竿的 B站完整视频下载采用同一条路线，但用 MV3 原生方式实现：
+  1. **回到页面主世界取数/下载**：用 `chrome.scripting.executeScript({world:'MAIN'})`（复用项目已有的 `fetchBiliParts` 同款写法）读 `__INITIAL_STATE__` 拿 cid/bvid，并在主世界里发请求。
+  2. **向 playurl 要「整段 MP4」**：`https://api.bilibili.com/x/player/playurl?cid=<cid>&qn=80&bvid=<bvid>&otype=json`（**不带 `fnval`**）→ 返回 `durl[0]` 单条完整 MP4 直链，而非 DASH 音视频分离流。
+  3. **主世界 XHR → Blob → `<a download>` 存盘**：`responseType='blob'`，完成后建 `<a download="文件名.mp4">` 触发保存。
+- **为什么这就通了（根因）**：**不是下不了，是「在哪儿下」**。扩展后台/offscreen 发起的请求不带 B站页面的 Referer 与登录态 → CDN 拒；而页面主世界自己的 XHR 天然带这些 → 放行。存盘走 Blob+锚点，绕开 `chrome.downloads.download` 无法自定义请求头的限制。
+- **为什么不走 prior plan（解析 DASH + 音视频合成）**：playurl 不带 fnval 时给的就是整段 MP4，**天生不需要合并**。省掉 DASH 清单解析与 mux 的复杂度，符合「个人自用、不过度设计」。
+- **为什么不需要加 `cookies` 权限**：主世界 `fetch(..., {credentials:'include'})` 自带 B站页面 cookie（实测 `code:0` 拿到 durl）。加 cookies 权限反而会触发星愿权限升级、要重装扩展——得不偿失。
+- **落地位置**：全部在 `js/popup-videorod.js`（`fetchBiliWhole` / `buildBiliWholeBanner` / `startBiliWhole` / `pollBiliWhole`）+ `css/videorod.css` 样式；**未改动 `background.js` 与 `content-script.js`**，风险最低。命名走既有 `VideoRodNaming.buildNameFromInfo`（跟随用户模板），历史/去重走既有 `markDownloaded()`（`vrDownloaded` 存储）。
+- **取舍与边界（如实记录）**：
+  - **不支持子目录**：`<a download>` 的 download 属性只认文件名、路径分隔符会被忽略 → B站整段下载不进 `video-rod/平台/` 子目录，直接落在 Downloads 根目录。这是 Blob+锚点方案的固有代价（要子目录就得走 downloads API，而那条路正是被 Referer 卡死的）。
+  - **只覆盖「给 durl」的视频**：有些视频/更高清晰度 B站只给 DASH → 探测阶段拿不到 durl 就**不显示入口**（避免点了才失败）。这类视频仍需后续支持 DASH 合并。
+  - **清晰度**：固定 `qn=80`（720p），与参考插件一致；暂不暴露清晰度选择，待苏哥需要再加。
+  - **面板关了也能下完**：下载在标签页里跑，不在 popup；轮询只在 popup 存活时更新进度。
+- **验证**：BV1DVaZ6hEK6 端到端通过——弹出「完整视频 13.9MB · mp4720」入口 → 点击 → 进度 3%→100% → 落盘 `一瓶Vc_四位比例优越数值怪｜【恋爱的条件】—BESTie｜路演翻跳原相机不拉腿.mp4`；ffprobe 验 h264 1280×720 + aac、duration 190.52s、14,538,650 B（含音轨，无需合并）。
+
+---
+
+*新增决策在此追加，编号顺延。*

@@ -258,3 +258,47 @@
 - ffprobe 验：h264 640×360、duration 8.000s，有效（两段各 2 个 2 秒分片全拼对）
 - 重构要点：删「驱动猫抓 m3u8 页」约 150 行；offscreen 文档内解析+下载+解密+转码；SW 仅编排+落盘（离屏无 `chrome.downloads`）
 - 待办：**AES-128 解密仅在裸 TS 测试站验过，真实加密 HLS 未验**（真实站点多为 AES-128，漏了真机上拼乱码）；仅 HLS 不支持 DASH
+
+## 9. B站真实站点验收（2026-10-18，苏哥给的 BV1DVaZ6hEK6）
+
+**环境**：星愿浏览器（Twinkstar 11.4 / Chromium 144），扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`，CDP 9223。
+
+### 9.1 结论速览
+| 能力 | 结果 | 证据 |
+|---|---|---|
+| 扩展安装/加载 | ✅ 通过 | SW 存在，`G.enable=true`，popup 版本 v2.7.2.1 |
+| 页面加载与播放 | ✅ 通过 | `<video>` MSE 播放，readyState=4 |
+| **B站嗅探** | ✅ **通过** | 面板「嗅探到 3 个」，3 张卡（`…-100026.m4s` 12.4MB 视频 / `…-30280.m4s` 2.1MB 音频），截图 `tools/bili-popup-proof.png` |
+| 自定义文件名（M8） | ✅ 通过 | `chrome.downloads.search` 返回 `filename=E:\personal\Downloads\钓鱼竿B站片段测试_自定义名.m4s`（未被服务器名覆盖） |
+| **实际下载 .m4s** | ❌ **被拒** | `state=interrupted, error=SERVER_FORBIDDEN` |
+| 完整视频合并 | ❌ 未实现 | B站是 DASH（音视频分离 .m4s），M11 仅支持 HLS/m3u8 |
+
+### 9.2 根因（如实认账）
+1. **嗅探链路正常**：`webRequest.onResponseStarted` 抓到 `.m4s`（ext 白名单含 m4s，state=true），popup 正确渲染 3 卡。
+2. **下载被 CDN 防盗链拦**：B站媒体 CDN（`*.bilivideo.com`）要求请求带 `Referer: https://www.bilibili.com/`，否则 403。`chrome.downloads.download` 无法自定义请求头 → `SERVER_FORBIDDEN`。
+3. **离屏合并也不通**：`js/m3u8-merge.js` 的 `fetchBytes` 仅 `credentials:'include'`，**未带 Referer**；即便带，B站是 DASH 分片，不是 m3u8 列表，M11 现管线不适用。
+4. 猫抓自带 `m3u8.js`/`mpd.js` 解析页**能**用 XHR 设 Referer，但那是「解析页」流程，非本扩展 M11 离屏流程。
+
+### 9.3 已解决：完整视频下载（ADR-029，2026-10-18 同日打通）
+
+苏哥提示「参考已在用的插件」→ 逆向 `b站视频下载助手`(pamdgobbggbpfpnadidipelihgkafiid v1.0.16)，
+按 ADR-029 落地 **B站「完整视频」入口**（面板上方横幅 + 进度条）：
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| W1 | B站视频页自动弹出「完整视频（整段MP4，不用合并）」入口，带大小/格式 | ✅ `13.9MB · mp4720` |
+| W2 | 点击后真实下载，文件落盘 `E:\personal\Downloads` | ✅ id 3751 `complete` |
+| W3 | 文件名走用户命名模板（作者_标题） | ✅ `一瓶Vc_四位比例优越数值怪｜【恋爱的条件】—BESTie｜路演翻跳原相机不拉腿.mp4` |
+| W4 | 文件完整可播（含音轨，无需音视频合并） | ✅ ffprobe：h264 1280×720 + aac，duration 190.523s，14,538,650 B |
+| W5 | 面板进度条推进 | ✅ 3% → 50% → 100% |
+| W6 | 记进下载历史/去重 | ✅ `markDownloaded()` → `vrDownloaded` 存储 |
+
+**关键修复原理**：把取数与下载搬到**页面主世界**（`world:'MAIN'`），并向 playurl 要 `durl`（整段 MP4），
+不再是「扩展后台下载被 CDN 拒」的那条路。详见 ADR-029。
+
+### 9.4 剩余限制（如实记录）
+- **不支持子目录**：`<a download>` 只认文件名 → B站整段落 Downloads 根目录，不进 `video-rod/平台/`。
+- **仅覆盖「B站给 durl」的视频**：部分视频/更高清晰度只给 DASH → 探测拿不到 durl 就**不显示入口**（不假装能用）。
+- **清晰度固定 qn=80（720p）**，暂无清晰度选择器。
+- M3 plan 中的 B2（DASH 合并）仍处于**未实现**状态——只是「大多数视频不需要」而非「已解决」，
+  遇到只给 DASH 的视频仍拿不到完整文件。

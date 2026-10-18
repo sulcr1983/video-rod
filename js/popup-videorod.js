@@ -1491,10 +1491,252 @@
                 siteInfo.bili = info;
                 buildBiliBanner(info);
             });
+            // B站整段下载：先探能不能拿到「整段 MP4」(durl)，能才给入口，
+            // 避免点了才失败（只会给 DASH 的片子集这部分不适用）
+            fetchBiliWhole(tabId).then(function (info) {
+                if (!info) { return; }
+                biliWhole.info = info;
+                buildBiliWholeBanner(info);
+            });
         });
     }
 
 
+
+    /* ==========================================================
+     * 十一之二、B站「完整视频」下载（参考 b站视频下载助手，ADR-029）
+     *
+     * 关键认知：不是下不了，是「在哪儿下」。B站媒体 CDN 校验 Referer，
+     * 扩展后台/offscreen 发起的请求没有 B站页面的 Referer 与登录态 →
+     * SERVER_FORBIDDEN；而「页面主世界里自己的 XHR」天然带着这些 → 稳。
+     * 再叠一层便利：向 B站 要「整段 MP4」(playurl 不带 fnval → durl)，
+     * 拿到的就是一个完整文件，不用做 DASH 音视频合并。
+     * ========================================================== */
+
+    var biliWhole = { info: null, busy: false, timer: null };
+
+    function fmtSize(n) {
+        n = Number(n) || 0;
+        if (!n) { return '大小未知'; }
+        if (n < 1024 * 1024) { return (n / 1024).toFixed(0) + 'KB'; }
+        return (n / 1024 / 1024).toFixed(1) + 'MB';
+    }
+
+    /** 探测能否拿到整段 MP4。拿不到就不显示入口（只给 DASH 的视频另行处理） */
+    function fetchBiliWhole(tabId) {
+        if (!chrome.scripting || tabId < 0) { return Promise.resolve(null); }
+        return chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            func: function () {
+                try {
+                    var s = window.__INITIAL_STATE__;
+                    if (!s || !s.videoData) { return null; }
+                    var vd = s.videoData;
+                    var cid = vd.cid || (vd.pages && vd.pages[0] && vd.pages[0].cid);
+                    if (!cid) { return null; }
+                    var bvid = vd.bvid ||
+                        (location.href.match(/\/video\/(BV[0-9A-Za-z]+)/) || [])[1] || '';
+                    var owner = (vd.owner && vd.owner.name) || '';
+                    var api = 'https://api.bilibili.com/x/player/playurl?cid=' + cid +
+                        '&qn=80&bvid=' + bvid + '&otype=json';
+                    return fetch(api, { method: 'GET', credentials: 'include' })
+                        .then(function (r) { return r.json(); })
+                        .then(function (j) {
+                            var base = { bvid: bvid, cid: cid, title: vd.title || '', owner: owner };
+                            if (!j || j.code !== 0 || !j.data) {
+                                base.hasDurl = false;
+                                return base;
+                            }
+                            var du = j.data.durl && j.data.durl[0];
+                            if (!du) { base.hasDurl = false; return base; }
+                            base.hasDurl = true;
+                            base.size = du.size || 0;
+                            base.format = j.data.format || 'mp4';
+                            return base;
+                        });
+                } catch (e) { return null; }
+            }
+        }).then(function (res) {
+            var r = res && res[0] && res[0].result;
+            return (r && r.hasDurl) ? r : null;
+        }).catch(function () { return null; });
+    }
+
+    /** 主世界：发起下载（不等完成），进度写进 window.__vrBiliDL 供轮询 */
+    function startBiliWhole(info, box) {
+        if (biliWhole.busy) { tip('正在下载中，稍等'); return; }
+        var tabId = (window.G && G.tabId) || -1;
+        if (tabId < 0) { tip('拿不到当前标签页'); return; }
+
+        var btn = box.querySelector('.vr-whole-go');
+        var prog = box.querySelector('.vr-whole-prog');
+        if (btn) { btn.disabled = true; btn.textContent = '下载中…'; }
+        if (prog) { prog.classList.remove('hide'); }
+
+        currentPageUrl().then(function (pageUrl) {
+            var name = '';
+            try {
+                var N = window.VideoRodNaming;
+                if (N) {
+                    name = N.buildNameFromInfo({
+                        title: info.title || '', post: '',
+                        authorFull: info.owner || '', site: 'bilibili.com'
+                    }, pageUrl, { tpl: settings.template, ext: 'mp4', index: 0 });
+                }
+            } catch (e) { name = ''; }
+            if (!name) {
+                name = cleanSeg((info.owner || '') + '_' + (info.title || '')) || 'bilibili';
+                name = name + '.mp4';
+            }
+            // <a download> 不支持子目录，只能取文件名（这是本方案固有取舍，ADR-029）
+            var segs = String(name).split('/');
+            name = cleanSeg(segs[segs.length - 1]) || (info.bvid || 'bilibili') + '.mp4';
+
+            biliWhole.busy = true;
+            return chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                world: 'MAIN',
+                args: [name, info.cid, info.bvid],
+                func: function (filename, cidArg, bvidArg) {
+                    window.__vrBiliDL = { loaded: 0, total: 0, done: false, error: null, bytes: 0 };
+                    function save(url) {
+                        return new Promise(function (resolve, reject) {
+                            var x = new XMLHttpRequest();
+                            x.open('GET', url, true);
+                            x.responseType = 'blob';
+                            x.onprogress = function (ev) {
+                                if (ev.lengthComputable) {
+                                    window.__vrBiliDL.loaded = ev.loaded;
+                                    window.__vrBiliDL.total = ev.total;
+                                }
+                            };
+                            x.onload = function () {
+                                if (x.status < 200 || x.status >= 300) {
+                                    reject(new Error('HTTP ' + x.status));
+                                    return;
+                                }
+                                try {
+                                    var bu = URL.createObjectURL(x.response);
+                                    var a = document.createElement('a');
+                                    a.href = bu;
+                                    a.download = filename;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    document.body.removeChild(a);
+                                    setTimeout(function () { URL.revokeObjectURL(bu); }, 5000);
+                                    window.__vrBiliDL.bytes = x.response.size;
+                                    window.__vrBiliDL.done = true;
+                                    resolve(true);
+                                } catch (e) { reject(e); }
+                            };
+                            x.onerror = function () { reject(new Error('网络错误')); };
+                            x.send();
+                        });
+                    }
+                    try {
+                        var api = 'https://api.bilibili.com/x/player/playurl?cid=' + cidArg +
+                            '&qn=80&bvid=' + bvidArg + '&otype=json';
+                        fetch(api, { method: 'GET', credentials: 'include' })
+                            .then(function (r) { return r.json(); })
+                            .then(function (j) {
+                                // 每次都重新要：durl 链接带时效，不能复用旧地址
+                                var du = j && j.data && j.data.durl && j.data.durl[0];
+                                if (!du) {
+                                    throw new Error((j && j.message) ||
+                                        'B站只给了 DASH（音视频分离），本入口暂不支持');
+                                }
+                                return save(du.url);
+                            })
+                            .catch(function (e) {
+                                window.__vrBiliDL.error = String((e && e.message) || e);
+                                window.__vrBiliDL.done = true;
+                            });
+                    } catch (e) {
+                        window.__vrBiliDL.error = String(e);
+                        window.__vrBiliDL.done = true;
+                    }
+                    return true;
+                }
+            }).then(function () {
+                pollBiliWhole(name, box, btn, prog);
+            });
+        }).catch(function (e) {
+            biliWhole.busy = false;
+            if (btn) { btn.disabled = false; btn.textContent = '下载完整视频'; }
+            if (prog) { prog.classList.add('hide'); }
+            tip('下载没起来：' + String((e && e.message) || e));
+        });
+    }
+
+    /** 轮询主世界进度（面板关了也没事：下载在页面里继续跑，落盘照旧） */
+    function pollBiliWhole(name, box, btn, prog) {
+        var tabId = (window.G && G.tabId) || -1;
+        var bar = box && box.querySelector('.vr-whole-bar i');
+        var pct = box && box.querySelector('.vr-whole-pct');
+        clearInterval(biliWhole.timer);
+
+        function done(ok, msg) {
+            clearInterval(biliWhole.timer);
+            biliWhole.timer = null;
+            biliWhole.busy = false;
+            if (btn) { btn.disabled = false; btn.textContent = '下载完整视频'; }
+            if (prog) { prog.classList.add('hide'); }
+            tip(msg);
+            if (ok) {
+                markDownloaded(name);      // 记进历史/去重（M9）
+                if (typeof renderHistory === 'function') { renderHistory(); }
+            }
+        }
+
+        biliWhole.timer = setInterval(function () {
+            chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                world: 'MAIN',
+                func: function () { return window.__vrBiliDL || null; }
+            }).then(function (res) {
+                var st = res && res[0] && res[0].result;
+                if (!st) { return; }
+                if (st.total && pct && bar) {
+                    var p = Math.min(100, Math.round(st.loaded / st.total * 100));
+                    pct.textContent = p + '%';
+                    bar.style.width = p + '%';
+                }
+                if (st.done) {
+                    if (st.error) { done(false, '下载失败：' + st.error); }
+                    else { done(true, '已保存 ' + name + '（' + fmtSize(st.bytes) + '）'); }
+                }
+            }).catch(function () { /* 页面重载/标签关闭：静默收尾 */ });
+        }, 700);
+    }
+
+    function buildBiliWholeBanner(info) {
+        var old = el('vrBiliWhole');
+        if (old) { old.remove(); }
+        if (!info) { return; }
+
+        var box = document.createElement('div');
+        box.id = 'vrBiliWhole';
+        box.className = 'vr-banner vr-banner-whole';
+        box.innerHTML =
+            '<div class="vr-banner-head">' +
+            '<span class="vr-banner-tag">B站</span>' +
+            '<span class="vr-banner-txt"><b>完整视频</b>（整段MP4，不用合并）<br>' +
+            '<span class="vr-whole-meta">' + escHtml(fmtSize(info.size)) +
+            ' · ' + escHtml(info.format || 'mp4') + '</span></span>' +
+            '<button class="fbtn primary vr-whole-go">下载完整视频</button>' +
+            '</div>' +
+            '<div class="vr-whole-prog hide">' +
+            '<div class="vr-whole-bar"><i style="width:0%"></i></div>' +
+            '<span class="vr-whole-pct">0%</span>' +
+            '</div>';
+
+        var anchor = el('Tips');
+        anchor.parentNode.insertBefore(box, anchor);
+
+        var go = box.querySelector('.vr-whole-go');
+        if (go) { go.addEventListener('click', function () { startBiliWhole(info, box); }); }
+    }
 
     /* ==========================================================
      * 十二、图片批量保存（M5）
