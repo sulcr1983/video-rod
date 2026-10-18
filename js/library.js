@@ -202,8 +202,8 @@
             files.sort((a, b) => String(b.lastModified || 0).localeCompare(String(a.lastModified || 0)));
             $('#syncText').textContent = '刚刚扫描 · ' + files.length + ' 个文件';
             $('#statusText').textContent = '扫描完成';
-            if (!files.length && rootHandle && rootHandle.name !== 'video-rod') {
-                $('#statusText').textContent = '当前目录不是 video-rod；请点“重置目录”选择 Downloads/video-rod';
+            if (!files.length) {
+                $('#statusText').textContent = '扫描完成但 0 个文件；请确认选择 E:\\personal\\Downloads\\video-rod';
             }
             await writeIndex();
         } catch (e) {
