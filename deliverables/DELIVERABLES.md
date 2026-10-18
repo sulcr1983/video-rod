@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.16 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.17 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -17,6 +17,7 @@
 > v1.14 变更：媒体库原型 v3（浅色大厂后台视觉：白色侧栏/蓝色主色/卡片统计/精致网格；预览页白底工具条 + 深色画布 + 白色信息栏）。
 > v1.15 变更：媒体库原型 v4（标准企业中后台 + 平台品牌色 + 彩色统计图标 + 标题渐变/下划线 + 平台分布徽标 + 更多图标/表情）。
 > v1.16 变更：v4 预览键盘映射按通用查看器调整——↑/↓ 切换媒体；←/→ 视频快退/快进 5 秒，图片在同一博主专辑内上一张/下一张。
+> v1.17 变更：小红书主页/收藏/点赞半手动收集器 + 可选自动补全详情（`js/xhs-batch.js` + `vrXhsAutoQueue`）；收集器实测 30 条入队，自动补全首轮落盘 22,696 B 但计数异常待复验。
 
 ---
 
@@ -90,7 +91,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.13 | 进行中 | ADR-001~037，追加式；ADR-030 = 页内悬浮按钮；ADR-031 = 抖音/微博取流与 Referer；ADR-032 = 暂不引入服务端代理；ADR-033 = 主页批量（微博/X P1 已实施）；ADR-034 = YouTube/Instagram 调研；ADR-035 = 媒体库（方案+原型完成，待实施）；ADR-036 = 小红书详情页单篇（A 方案已实施）；ADR-037 = 下载去重（批量已实施，内容哈希待入库） |
+| 决策记录 | `docs/DECISIONS.md` | v1.17 | 进行中 | ADR-001~038；ADR-035 媒体库（方案+原型，待实施）；ADR-036 小红书详情单篇；ADR-037 下载去重；ADR-038 小红书主页/收藏/点赞收集 + 可选自动补全 |
 | 下载去重（ADR-037） | `js/background.js`(vrMediaIdentity / vrDedupLoad / vrDedupSave / vrBulkDownload) + `js/bulk-profile.js` | v1.0 | 已实施 | 稳定标识 `site|workId|mediaId|kind|origin+pathname`（去签名参数）；持久账本 `vrMediaSeen` 上限 8000；同批 Set + 跨批账本；成功才写入；跳过数量回传 UI；内容 SHA-256 入库兜底待 P2 |
 | 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD；§10 开源组件选型（PhotoSwipe/Plyr/Filebrowser/Immich…）；§11 大量博主/内容管理（懒加载/虚拟滚动/分片索引/游标分页） |
 | 媒体库原型 v2 | `deliverables/prototypes/media-library-v2.html` | v1.0 | 评审中 | 资源树 平台→博主→图片/视频；独立图片/视频预览页；鼠标两侧箭头/底部胶片/滚轮缩放/双击/拖拽；键盘 ←→↑↓、Space、M、F、I、+/-/0、Esc、Home/End；树内搜索 + 每平台懒展开 |
@@ -173,7 +174,7 @@ video-rod/
 | B站清晰度扫描器 | `tools/bili-1080-probe.py` | v1.0 | 已定稿 | 扫 `fnval × qn` 组合，列出每条路是 durl 还是 dash、实际 quality/尺寸，用于判断「B站给不给 1080P」 |
 | B站双路线端到端脚本 | `tools/test-bili-1080.py` | v1.0 | 已定稿 | `VR_MODE=durl/dash` 选路线：重载扩展→开 popup→读横幅→点按钮→盯进度→ffprobe 验落盘文件 |
 | 页内悬浮下载按钮（ADR-030） | `js/video-overlay.js` + `manifest.json` content_scripts | v1.0 | 已定稿 | 全局一个 `position:fixed` 浮层；`document.mousemove` 60ms 节流 + 矩形命中（解决微博/抖音/B站覆盖层导致按钮不出现）；右上角定位、右缘 14px、top 让开 12%；主按钮 44×40 + 箭头 26×40；一键最高清/菜单选档；全屏隐藏；X 站让给 `x-button.js` |
-| 主页半手动批量（ADR-033 P1 / ADR-036 A） | `js/bulk-profile.js` + `manifest.json` content_scripts + `js/background.js`(vrBulkDownload/vrResolveX/vrXhsScan) | v1.2 | 评审中 | 微博：滚动记录图片、播放记录视频；X：article 扫描图片/视频，作者/文案，视频走 fxtwitter；小红书：详情页只读 `__INITIAL_STATE__`，图片 WB_DFT/urlDefault、视频 stream；XBD 同款忽略转载/已下载、图片视频筛选、反选、清除；File System Access 按作者目录写盘（XHS 走 downloads `video-rod/小红书/`）；稳妥模式 1.4–2.6s（XHS 3–5s）+ 429/5xx 退避 + 连续 3 次失败暂停 |
+| 主页半手动批量（ADR-033 P1 / ADR-036 A / ADR-038 B） | `js/bulk-profile.js` + `js/xhs-batch.js` + `manifest.json` content_scripts + `js/background.js`(vrBulkDownload/vrResolveX/vrXhsScan/vrXhsAutoQueue) | v1.3 | 评审中 | 微博/ X / 小红书详情；小红书主页/收藏/点赞卡片收集，手动滚动；可选自动补全详情默认关闭，≤20 篇、3–5 秒/篇、失败即停；XBD 过滤/去重；下载去重账本 |
 | 抖音取流模块（ADR-031） | `js/douyin.js` + `js/background.js`(抖音分支/DNR) + `js/naming.js`(extractDouyin) | v1.1 | 已定稿 | 页面主世界同源 `aweme/v1/web/aweme/detail/`；URL `/video/<id>` 或 `?modal_id=<id>` 定位作品；按短边分辨率降序选最高档；DNR session rule set Referer/Origin 解决 CDN 403。v1.1 增加微博同类问题：通用直链优先页面 fetch→blob→`<a download>`，失败回退 downloads+DNR；微博 `$render_data` 取作者/正文命名 |
 | B站取流模块 | `js/bili-whole.js` | v1.0 | 已定稿 | popup 与 SW 共用的 B站主世界取流核心（ADR-029/补记），从 `popup-videorod.js` 抽出；background `importScripts` 加载 |
 | 悬浮按钮测试脚本 | `tools/overlay-pos.py`、`tools/overlay-check.py`、`tools/test-video-overlay.py`、`tools/shot-overlay.py` | v1.0 | 已定稿 | 位置诊断/通用站点体检/端到端验证/早期截图；CDP 截图统一 `fromSurface:false`，避免白底破图伪影 |

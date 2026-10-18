@@ -830,6 +830,16 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         });
         return true;
     }
+    // 钓鱼竿：小红书主页/收藏/点赞收集后，可选「自动补全详情」（默认关闭）
+    if (Message.Message == "vrXhsAuto") {
+        const sourceTabId = sender && sender.tab ? sender.tab.id : null;
+        vrXhsAutoQueue(Message.notes || [], sourceTabId, Message.max || 20)
+            .then(function (r) { sendResponse(r); })
+            .catch(function (e) {
+                sendResponse({ ok: false, reason: String(e).slice(0, 120) });
+            });
+        return true;
+    }
     // 钓鱼竿：X 主页批量里视频是 blob，内容脚本按推文坐标来解析直链
     if (Message.Message == "vrResolveX") {
         fetchXVideo(Message.user, Message.statusId, Message.mediaId, true)
@@ -1387,6 +1397,96 @@ function vrXhsScanInPage(noteId) {
     }
 }
 
+function vrXhsWaitTab(tabId, timeout) {
+    return new Promise(function (resolve) {
+        const start = Date.now();
+        function poll() {
+            chrome.tabs.get(tabId, function (tab) {
+                if (chrome.runtime.lastError || !tab) { resolve(false); return; }
+                if (tab.status === 'complete') {
+                    setTimeout(function () { resolve(true); }, 1200);
+                    return;
+                }
+                if (Date.now() - start > timeout) { resolve(false); return; }
+                setTimeout(poll, 300);
+            });
+        }
+        poll();
+    });
+}
+
+/** 可选：逐篇打开详情，读 state 后复用 vrBulkDownload；默认关闭，最多 20 篇 */
+async function vrXhsAutoQueue(notes, sourceTabId, max) {
+    const list = (notes || []).slice(0, Math.min(Number(max) || 20, 20));
+    let done = 0, files = 0, errors = 0, stopped = '';
+    for (let i = 0; i < list.length; i++) {
+        const n = list[i] || {};
+        if (!n.noteId) { done++; continue; }
+        let tabId = null;
+        let noteOk = false;
+        try {
+            const token = n.xsecToken
+                ? '?xsec_token=' + encodeURIComponent(n.xsecToken) + '&xsec_source=pc_user'
+                : '';
+            const tab = await chrome.tabs.create({
+                url: 'https://www.xiaohongshu.com/explore/' + encodeURIComponent(n.noteId) + token,
+                active: false
+            });
+            tabId = tab.id;
+            const loaded = await vrXhsWaitTab(tabId, 12000);
+            if (!loaded) {
+                errors++;
+            } else {
+                const r = await chrome.scripting.executeScript({
+                    target: { tabId: tabId }, world: 'MAIN',
+                    args: [n.noteId], func: vrXhsScanInPage
+                });
+                const data = r && r[0] && r[0].result;
+                if (!data || !data.ok || !data.items || !data.items.length) {
+                    errors++;
+                } else {
+                    const items = data.items.map(function (it) {
+                        return Object.assign({}, it, {
+                            site: 'xhs', title: data.title, author: data.author,
+                            authorId: data.authorId,
+                            key: 'xhs:' + data.noteId + ':' + it.kind + ':' + it.index + ':' + it.url
+                        });
+                    });
+                    const res = await vrBulkDownload(items, tabId);
+                    files += (res && res.done) || 0;
+                    noteOk = true;
+                    if (res && res.paused) { stopped = res.reason || '下载连续失败'; }
+                }
+            }
+        } catch (e) {
+            errors++;
+        } finally {
+            if (tabId != null) {
+                try { await chrome.tabs.remove(tabId); } catch (e) { /* ignore */ }
+            }
+        }
+        done++;
+        if (noteOk) { errors = 0; }
+        if (sourceTabId != null) {
+            try {
+                chrome.tabs.sendMessage(sourceTabId, {
+                    Message: 'vrXhsAutoProgress', done: done, total: list.length,
+                    files: files, errors: errors, stop: stopped
+                });
+            } catch (e) { /* ignore */ }
+        }
+        if (stopped) { break; }
+        if (errors >= 3) {
+            stopped = '连续 3 篇没有可用详情，已停止';
+            break;
+        }
+        if (i < list.length - 1) {
+            await vrBulkSleep(3000 + Math.floor(Math.random() * 2000));
+        }
+    }
+    return { ok: true, total: list.length, done: done, files: files, errors: errors, stopped: stopped };
+}
+
 /** 主页批量：文件名 = 作者(@UID)_正文_序号.ext（<a download> 不支持子目录） */
 function vrBulkName(item, index) {
     const i = item || {};
@@ -1527,7 +1627,9 @@ async function vrBulkDownload(items, tabId) {
                 total: list.length, paused: paused
             });
         } catch (e) { /* 页面关了 */ }
-        await vrBulkSleep(vrBulkDelay());
+        await vrBulkSleep(it.site === 'xhs'
+            ? 3000 + Math.floor(Math.random() * 2000)
+            : vrBulkDelay());
     }
     vrDedupSave(seen);
     return {
