@@ -833,7 +833,7 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     // 钓鱼竿：小红书主页/收藏/点赞收集后，可选「自动补全详情」（默认关闭）
     if (Message.Message == "vrXhsAuto") {
         const sourceTabId = sender && sender.tab ? sender.tab.id : null;
-        vrXhsAutoQueue(Message.notes || [], sourceTabId, Message.max || 20)
+        vrXhsAutoQueue(Message.notes || [], sourceTabId)
             .then(function (r) { sendResponse(r); })
             .catch(function (e) {
                 sendResponse({ ok: false, reason: String(e).slice(0, 120) });
@@ -1143,8 +1143,25 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
 // 不碰登录态，只发公开推文 ID；比下载分片再合成、比送在线 FFmpeg 都省事，业界通行做法）。
 async function fetchXVideo(user, statusId, mediaId, wantBest) {
     if (!user || !statusId) { return null; }
-    const r = await fetch("https://api.fxtwitter.com/" + user + "/status/" + statusId);
-    if (!r.ok) { return null; }
+    let r = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            r = await fetch("https://api.fxtwitter.com/" + user + "/status/" + statusId);
+        } catch (e) {
+            if (attempt === 0) {
+                await new Promise(function (res) { setTimeout(res, 2500); });
+                continue;
+            }
+            return null;
+        }
+        if (r.ok) { break; }
+        if ((r.status === 429 || r.status >= 500) && attempt === 0) {
+            await new Promise(function (res) { setTimeout(res, 3000); });
+            continue;
+        }
+        return null;
+    }
+    if (!r || !r.ok) { return null; }
     const d = await r.json();
     const vids = (((d.tweet || {}).media || {}).videos) || [];
     if (!vids.length) { return null; }
@@ -1415,9 +1432,10 @@ function vrXhsWaitTab(tabId, timeout) {
     });
 }
 
-/** 可选：逐篇打开详情，读 state 后复用 vrBulkDownload；默认关闭，最多 20 篇 */
-async function vrXhsAutoQueue(notes, sourceTabId, max) {
-    const list = (notes || []).slice(0, Math.min(Number(max) || 20, 20));
+/** 可选：逐篇打开详情，读 state 后复用 vrBulkDownload；默认关闭。
+ *  不设条数上限，只靠 3–5 秒/篇和连续失败停止控制风险。 */
+async function vrXhsAutoQueue(notes, sourceTabId) {
+    const list = Array.isArray(notes) ? notes.slice() : [];
     let done = 0, files = 0, errors = 0, stopped = '';
     for (let i = 0; i < list.length; i++) {
         const n = list[i] || {};
@@ -1564,7 +1582,8 @@ function vrDedupSave(seen) {
 }
 
 async function vrBulkDownload(items, tabId) {
-    const list = (items || []).slice(0, 500);
+    const raw = Array.isArray(items) ? items : [];
+    const list = raw.slice();
     const seen = await vrDedupLoad();
     const batch = new Set();
     let done = 0;
@@ -1640,7 +1659,7 @@ async function vrBulkDownload(items, tabId) {
                 total: list.length, paused: paused
             });
         } catch (e) { /* 页面关了 */ }
-        await vrBulkSleep(it.site === 'xhs'
+        await vrBulkSleep((it.site === 'x' || it.site === 'xhs')
             ? 3000 + Math.floor(Math.random() * 2000)
             : vrBulkDelay());
     }
