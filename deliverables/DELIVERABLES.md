@@ -1,10 +1,11 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.4 ｜ 日期：2026-10-18 ｜ 状态：✅ 已生效
+> 版本：v1.5 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
 > v1.4 变更：B站「完整视频」下载入口产出物登记（ADR-029，参考 b站视频下载助手）；决策记录主线更新至 ADR-029。
+> v1.5 变更：B站 1080P 高清路线（DASH + 页面内 mp4box 合成）产出物登记；新增 `lib/mp4box.all.min.js`（第三方库已登记）、`tools/bili-mux-lab.py`+`mux-attempt.js` 合成实验室、`tools/bili-1080-probe.py` 清晰度扫描器、`tools/test-bili-1080.py` 双路线端到端脚本。
 
 ---
 
@@ -148,3 +149,8 @@ video-rod/
 - 苏哥觉得哪条规则别扭，随时说，改规范比憋着遵守重要
 | B站完整视频下载（M12） | `js/popup-videorod.js`(fetchBiliWhole/buildBiliWholeBanner/startBiliWhole/pollBiliWhole) + `css/videorod.css`(vr-banner-whole/vr-whole-prog) | v1.0 | 已定稿 | ADR-029 产物：主世界 executeScript 读 cid → playurl(不带fnval) 要 durl 整段MP4 → 页面 XHR blob → `<a download>` 存盘；命名走既有模板、历史走 markDownloaded；未改动 background/content-script。星愿真机 BV1DVaZ6hEK6 端到端通过（h264 1280×720 + aac，190.523s，14,538,650 B） |
 | B站实站验收脚本 | `tools/bili-diag.py`、`tools/bili-netcap.py`、`tools/bili-correct.py`、`tools/bili-download.py`、`tools/bili-shot.py` | v1.0 | 已定稿 | B站实站：目标/网络抓包/对照 cacheData/下载与落盘/面板截图证据；`bili-popup-proof.png` 为嗅探证据截图 |
+| B站 1080P 高清下载（DASH+合成） | `js/popup-videorod.js`(runBiliDash/resetBiliButtons/qShort/buildBiliWholeBanner) + `css/videorod.css`(vr-whole-btns/vr-whole-hd) + `lib/mp4box.all.min.js` | v1.0 | 已定稿 | ADR-029 补记：横幅并列「标清(durl) / 高清(DASH)」两按钮，仅当 DASH 档位更高才显示高清；高清路线向页面主世界注入 mp4box，分离解析画面/声音 m4s → 按样本切片取数据 → addTrack/addSample 重建 → `<a download>`。真机双路线通过：标清 14,538,650B/1280×720、高清 73,698,485B/1080×1920（另一支 32,609,576B/1080×1918），均含 aac 音轨 |
+| mp4box 合成库 | `lib/mp4box.all.min.js` | 0.5.2 | 已定稿 | gpac/mp4box.js，MIT；已在 `lib/third-party-libraries.md` 登记。仅高清路线注入，标清不加载 |
+| mp4box 合成实验室 | `tools/bili-mux-lab.py` + `tools/mux-attempt.js` | v1.0 | 已定稿 | 缓冲缓存在页面(`window.__vrDash`)、合成代码单独放 JS，改算法不用重下 27MB；`VR_LIMIT` 限量模式、`VR_REFETCH` 强制重取。踩坑留证：appendBuffer 两文件不可行、getBuffer 才是导出方法 |
+| B站清晰度扫描器 | `tools/bili-1080-probe.py` | v1.0 | 已定稿 | 扫 `fnval × qn` 组合，列出每条路是 durl 还是 dash、实际 quality/尺寸，用于判断「B站给不给 1080P」 |
+| B站双路线端到端脚本 | `tools/test-bili-1080.py` | v1.0 | 已定稿 | `VR_MODE=durl/dash` 选路线：重载扩展→开 popup→读横幅→点按钮→盯进度→ffprobe 验落盘文件 |

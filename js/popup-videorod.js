@@ -1538,40 +1538,80 @@
                     var bvid = vd.bvid ||
                         (location.href.match(/\/video\/(BV[0-9A-Za-z]+)/) || [])[1] || '';
                     var owner = (vd.owner && vd.owner.name) || '';
-                    var api = 'https://api.bilibili.com/x/player/playurl?cid=' + cid +
-                        '&qn=80&bvid=' + bvid + '&otype=json';
-                    return fetch(api, { method: 'GET', credentials: 'include' })
-                        .then(function (r) { return r.json(); })
-                        .then(function (j) {
-                            var base = { bvid: bvid, cid: cid, title: vd.title || '', owner: owner };
-                            if (!j || j.code !== 0 || !j.data) {
-                                base.hasDurl = false;
-                                return base;
+                    var base = { bvid: bvid, cid: cid, title: vd.title || '', owner: owner,
+                                 hasDurl: false, hasDash: false };
+                    function qText(sf, q) {
+                        for (var i = 0; i < (sf || []).length; i++) {
+                            if (sf[i] && sf[i].quality === q) {
+                                return sf[i].new_description || sf[i].description || '';
                             }
-                            var du = j.data.durl && j.data.durl[0];
-                            if (!du) { base.hasDurl = false; return base; }
+                        }
+                        return q ? ('qn' + q) : '';
+                    }
+                    // 不写死清晰度：直接要最高档（127=8K），B站 按登录态/会员等级给它能给的最高档。
+                    // platform=html5&high_quality=1 让 accept_quality 返回更全。
+                    var COMMON = '&bvid=' + bvid + '&otype=json&platform=html5&high_quality=1';
+                    var apiDurl = 'https://api.bilibili.com/x/player/playurl?cid=' + cid +
+                        '&qn=127' + COMMON;
+                    // fnval=4048 → DASH（画面/声音分开）。实测：B站 把「整段MP4」这条路封顶在 720P，
+                    // 1080P 只有 DASH 有，所以两条路都要探，让用户挑。
+                    var apiDash = 'https://api.bilibili.com/x/player/playurl?cid=' + cid +
+                        '&qn=127' + COMMON + '&fnval=4048';
+                    function jget(u) {
+                        return fetch(u, { method: 'GET', credentials: 'include' })
+                            .then(function (r) { return r.json(); })
+                            .catch(function () { return null; });
+                    }
+                    return Promise.all([jget(apiDurl), jget(apiDash)]).then(function (rs) {
+                        var jd = rs[0], jh = rs[1];
+                        // 路线一：整段 MP4（快，但封顶 720P）
+                        if (jd && jd.code === 0 && jd.data && jd.data.durl && jd.data.durl[0]) {
+                            var d = jd.data, du = d.durl[0];
                             base.hasDurl = true;
                             base.size = du.size || 0;
-                            base.format = j.data.format || 'mp4';
-                            return base;
-                        });
+                            base.format = d.format || 'mp4';
+                            base.quality = d.quality;
+                            base.qualityText = qText(d.support_formats, d.quality);
+                            base.topAccept = (d.accept_quality || [])[0] || 0;
+                        }
+                        // 路线二：DASH 画面+声音（要合成，但能上 1080P 甚至更高）
+                        if (jh && jh.code === 0 && jh.data && jh.data.dash) {
+                            var dh = jh.data.dash;
+                            var vs = (dh.video || []).slice().sort(function (a, b) {
+                                return (b.width * b.height) - (a.width * a.height);
+                            });
+                            var as = (dh.audio || []).slice().sort(function (a, b) {
+                                return (b.bandwidth || 0) - (a.bandwidth || 0);
+                            });
+                            if (vs.length && as.length) {
+                                base.hasDash = true;
+                                base.dashW = vs[0].width;
+                                base.dashH = vs[0].height;
+                                base.dashQuality = vs[0].id;
+                                base.dashQualityText = qText(jh.data.support_formats, vs[0].id) ||
+                                    (vs[0].height + 'P');
+                            }
+                        }
+                        return base;
+                    });
                 } catch (e) { return null; }
             }
         }).then(function (res) {
             var r = res && res[0] && res[0].result;
-            return (r && r.hasDurl) ? r : null;
+            return (r && (r.hasDurl || r.hasDash)) ? r : null;
         }).catch(function () { return null; });
     }
 
-    /** 主世界：发起下载（不等完成），进度写进 window.__vrBiliDL 供轮询 */
-    function startBiliWhole(info, box) {
+    /** 主世界：发起下载（不等完成），进度写进 window.__vrBiliDL 供轮询
+     *  mode = 'durl'（整段MP4，快）| 'dash'（画面+声音分开，要合成，能上更高清晰度） */
+    function startBiliWhole(info, box, mode) {
         if (biliWhole.busy) { tip('正在下载中，稍等'); return; }
         var tabId = (window.G && G.tabId) || -1;
         if (tabId < 0) { tip('拿不到当前标签页'); return; }
 
-        var btn = box.querySelector('.vr-whole-go');
+        var btns = box.querySelectorAll('.vr-whole-go');
         var prog = box.querySelector('.vr-whole-prog');
-        if (btn) { btn.disabled = true; btn.textContent = '下载中…'; }
+        for (var bi = 0; bi < btns.length; bi++) { btns[bi].disabled = true; }
         if (prog) { prog.classList.remove('hide'); }
 
         currentPageUrl().then(function (pageUrl) {
@@ -1594,6 +1634,7 @@
             name = cleanSeg(segs[segs.length - 1]) || (info.bvid || 'bilibili') + '.mp4';
 
             biliWhole.busy = true;
+            if (mode === 'dash') { return runBiliDash(tabId, name, info); }
             return chrome.scripting.executeScript({
                 target: { tabId: tabId },
                 world: 'MAIN',
@@ -1635,8 +1676,9 @@
                         });
                     }
                     try {
+                        // 同样要最高档，不写死；B站 按账号给它能给的最高档
                         var api = 'https://api.bilibili.com/x/player/playurl?cid=' + cidArg +
-                            '&qn=80&bvid=' + bvidArg + '&otype=json';
+                            '&qn=127&bvid=' + bvidArg + '&otype=json&platform=html5&high_quality=1';
                         fetch(api, { method: 'GET', credentials: 'include' })
                             .then(function (r) { return r.json(); })
                             .then(function (j) {
@@ -1659,29 +1701,230 @@
                     return true;
                 }
             }).then(function () {
-                pollBiliWhole(name, box, btn, prog);
+                pollBiliWhole(name, box, prog);
             });
         }).catch(function (e) {
             biliWhole.busy = false;
-            if (btn) { btn.disabled = false; btn.textContent = '下载完整视频'; }
-            if (prog) { prog.classList.add('hide'); }
+            resetBiliButtons(box, prog);
             tip('下载没起来：' + String((e && e.message) || e));
         });
     }
 
+    function resetBiliButtons(box, prog) {
+        var bs = box && box.querySelectorAll ? box.querySelectorAll('.vr-whole-go') : [];
+        for (var i = 0; i < bs.length; i++) {
+            bs[i].disabled = false;
+            bs[i].textContent = bs[i].getAttribute('data-label') || '下载完整视频';
+        }
+        if (prog) { prog.classList.add('hide'); }
+    }
+
+    /** DASH 路线：页面主世界下载画面+声音 → mp4box 合成 → <a download> 落盘
+     *  （ADR-029 补记：B站 把「整段MP4直链」封顶在 720P，1080P 只有 DASH 有，
+     *   代价是音视频分开、必须在页面里合成——后台下不来，因为 CDN 要 B站 页面的 Referer） */
+    function runBiliDash(tabId, name, info) {
+        var box = el('vrBiliWhole');
+        var prog = box && box.querySelector('.vr-whole-prog');
+        // 先把合成库塞进页面主世界（147KB，只在走 1080P 时才注入）
+        return chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            files: ['lib/mp4box.all.min.js']
+        }).then(function () {
+            return chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                world: 'MAIN',
+                args: [name, info.cid, info.bvid],
+                func: function (filename, cidArg, bvidArg) {
+                    var S = { pct: 0, phase: '准备', done: false, error: null, bytes: 0,
+                              loaded: 0, total: 0 };
+                    window.__vrBiliDL = S;
+                    function tick(p, ph) { S.pct = p; if (ph) { S.phase = ph; } }
+
+                    function getBuf(url, base, span) {
+                        return new Promise(function (resolve, reject) {
+                            var x = new XMLHttpRequest();
+                            x.open('GET', url, true);
+                            x.responseType = 'arraybuffer';
+                            x.onprogress = function (ev) {
+                                if (ev.lengthComputable) {
+                                    S.loaded = ev.loaded;
+                                    S.total = ev.total;
+                                    tick(base + span * (ev.loaded / ev.total), S.phase);
+                                }
+                            };
+                            x.onload = function () {
+                                if (x.status < 200 || x.status >= 300) {
+                                    reject(new Error('HTTP ' + x.status)); return;
+                                }
+                                resolve(x.response);
+                            };
+                            x.onerror = function () { reject(new Error('网络错误')); };
+                            x.send();
+                        });
+                    }
+
+                    function playurl() {
+                        var u = 'https://api.bilibili.com/x/player/playurl?cid=' + cidArg +
+                            '&qn=127&bvid=' + bvidArg +
+                            '&otype=json&platform=html5&high_quality=1&fnval=4048';
+                        return fetch(u, { method: 'GET', credentials: 'include' })
+                            .then(function (r) { return r.json(); });
+                    }
+
+                    /** 从一个 m4s 里取出轨道条目和样本（数据用原始 buffer 切片，
+                     *  不用 mp4box 的 getSample——它 flush 后会把 mdat 载荷丢掉） */
+                    function openM4s(buf) {
+                        var f = MP4Box.createFile();
+                        f.onError = function () {};
+                        buf.fileStart = 0;
+                        f.appendBuffer(buf);
+                        f.flush();
+                        var trak = f.moov.traks[0];
+                        var entry = trak.mdia.minf.stbl.stsd.entries[0];
+                        var u8 = new Uint8Array(buf);
+                        var ts = trak.mdia.mdhd.timescale;
+                        var list = [];
+                        for (var i = 0; i < trak.samples.length; i++) {
+                            var s = trak.samples[i];
+                            if (!(s.offset >= 0 && s.size > 0 && s.offset + s.size <= buf.byteLength)) {
+                                continue;
+                            }
+                            list.push({
+                                data: u8.subarray(s.offset, s.offset + s.size),
+                                duration: s.duration || 1, dts: s.dts || 0, cts: s.cts || 0,
+                                is_sync: !!s.is_sync,
+                                t: (s.dts || 0) / ts
+                            });
+                        }
+                        return { entry: entry, list: list, timescale: ts };
+                    }
+
+                    try {
+                        if (!window.MP4Box) { throw new Error('合成库没加载上'); }
+                        return playurl().then(function (j) {
+                            var dh = j && j.data && j.data.dash;
+                            if (!dh) { throw new Error((j && j.message) || 'B站没给 DASH 流'); }
+                            var vs = (dh.video || []).slice().sort(function (a, b) {
+                                return (b.width * b.height) - (a.width * a.height);
+                            });
+                            var as = (dh.audio || []).slice().sort(function (a, b) {
+                                return (b.bandwidth || 0) - (a.bandwidth || 0);
+                            });
+                            if (!vs.length || !as.length) { throw new Error('DASH 里没有画面或声音'); }
+                            var vUrl = vs[0].baseUrl || vs[0].base_url;
+                            var aUrl = as[0].baseUrl || as[0].base_url;
+
+                            // 画面（占大头，0→80%）→ 声音（80→88%）→ 合成（88→99%）
+                            tick(0, '下载画面');
+                            return getBuf(vUrl, 0, 80).then(function (vb) {
+                                tick(80, '下载声音');
+                                return getBuf(aUrl, 80, 8).then(function (ab) {
+                                    return { vb: vb, ab: ab };
+                                });
+                            });
+                        }).then(function (bufs) {
+                            tick(88, '合成中');
+                            var V = openM4s(bufs.vb);
+                            var A = openM4s(bufs.ab);
+                            if (!V.list.length || !A.list.length) {
+                                throw new Error('画面或声音没解析出样本');
+                            }
+                            var out = MP4Box.createFile();
+                            out.onError = function () {};
+                            var vLast = V.list[V.list.length - 1];
+                            var aLast = A.list[A.list.length - 1];
+                            var vId = out.addTrack({
+                                id: 1, type: 'avc1', timescale: V.timescale,
+                                width: V.entry.width, height: V.entry.height,
+                                hdlr: 'vide', name: 'VideoHandler',
+                                default_sample_duration: vLast.duration,
+                                description_boxes: V.entry.avcC ? [V.entry.avcC] : []
+                            });
+                            var aId = out.addTrack({
+                                id: 2, type: 'mp4a', timescale: A.timescale,
+                                channel_count: A.entry.channel_count || 2,
+                                samplesize: A.entry.samplesize || 16,
+                                samplerate: A.entry.samplerate || 44100,
+                                hdlr: 'soun', name: 'SoundHandler',
+                                default_sample_duration: aLast.duration,
+                                description_boxes: A.entry.esds ? [A.entry.esds] : []
+                            });
+
+                            // 按时间交错写入，播放器才不会「先放完画面再出声」
+                            var i = 0, j = 0, n = 0, total = V.list.length + A.list.length;
+                            function pump() {
+                                var N = 0;
+                                while ((i < V.list.length || j < A.list.length) && N < 2000) {
+                                    var takeV;
+                                    if (i >= V.list.length) { takeV = false; }
+                                    else if (j >= A.list.length) { takeV = true; }
+                                    else { takeV = V.list[i].t <= A.list[j].t; }
+                                    var s = takeV ? V.list[i++] : A.list[j++];
+                                    out.addSample(takeV ? vId : aId, s.data, {
+                                        duration: s.duration, dts: s.dts, cts: s.cts,
+                                        is_sync: takeV ? s.is_sync : true
+                                    });
+                                    n++; N++;
+                                }
+                                tick(88 + Math.round(10 * n / total), '合成中');
+                                if (i < V.list.length || j < A.list.length) {
+                                    return new Promise(function (r) { setTimeout(r, 0); }).then(pump);
+                                }
+                                return true;
+                            }
+                            return pump().then(function () {
+                                var o = out.getBuffer();
+                                var abuf = (o instanceof ArrayBuffer) ? o
+                                    : (o && o.buffer) ? o.buffer : null;
+                                if (!abuf) { throw new Error('合成结果为空'); }
+                                var blob = new Blob([abuf], { type: 'video/mp4' });
+                                var url = URL.createObjectURL(blob);
+                                var a = document.createElement('a');
+                                a.href = url;
+                                a.download = filename;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                // 别急着回收：大文件下载被中断过（ADR-029）
+                                setTimeout(function () { URL.revokeObjectURL(url); }, 180000);
+                                S.bytes = abuf.byteLength;
+                                tick(100, '完成');
+                                S.done = true;
+                                return true;
+                            });
+                        }).catch(function (e) {
+                            S.error = String((e && e.message) || e);
+                            S.done = true;
+                        });
+                    } catch (e) {
+                        S.error = String((e && e.message) || e);
+                        S.done = true;
+                        return true;
+                    }
+                }
+            });
+        }).then(function () {
+            pollBiliWhole(name, box, prog);
+        }).catch(function (e) {
+            biliWhole.busy = false;
+            resetBiliButtons(box, prog);
+            tip('高清下载没起来：' + String((e && e.message) || e));
+        });
+    }
+
     /** 轮询主世界进度（面板关了也没事：下载在页面里继续跑，落盘照旧） */
-    function pollBiliWhole(name, box, btn, prog) {
+    function pollBiliWhole(name, box, prog) {
         var tabId = (window.G && G.tabId) || -1;
         var bar = box && box.querySelector('.vr-whole-bar i');
-        var pct = box && box.querySelector('.vr-whole-pct');
+        var pctEl = box && box.querySelector('.vr-whole-pct');
         clearInterval(biliWhole.timer);
 
         function done(ok, msg) {
             clearInterval(biliWhole.timer);
             biliWhole.timer = null;
             biliWhole.busy = false;
-            if (btn) { btn.disabled = false; btn.textContent = '下载完整视频'; }
-            if (prog) { prog.classList.add('hide'); }
+            resetBiliButtons(box, prog);
             tip(msg);
             if (ok) {
                 markDownloaded(name);      // 记进历史/去重（M9）
@@ -1697,9 +1940,11 @@
             }).then(function (res) {
                 var st = res && res[0] && res[0].result;
                 if (!st) { return; }
-                if (st.total && pct && bar) {
-                    var p = Math.min(100, Math.round(st.loaded / st.total * 100));
-                    pct.textContent = p + '%';
+                var p;
+                if (st.pct) { p = Math.min(100, Math.round(st.pct)); }
+                else if (st.total) { p = Math.min(100, Math.round(st.loaded / st.total * 100)); }
+                if (p != null && pctEl && bar) {
+                    pctEl.textContent = (st.phase && !st.done) ? (st.phase + ' ' + p + '%') : (p + '%');
                     bar.style.width = p + '%';
                 }
                 if (st.done) {
@@ -1710,10 +1955,49 @@
         }, 700);
     }
 
+    // B站清晰度档位 → 人话短标签
+    var BILI_Q = { 16: '360P', 32: '480P', 64: '720P', 74: '720P60', 80: '1080P',
+                   112: '1080P+', 116: '1080P60', 120: '4K', 127: '8K' };
+
+    function qShort(q) { return BILI_Q[Number(q)] || (q ? ('qn' + q) : ''); }
+
     function buildBiliWholeBanner(info) {
         var old = el('vrBiliWhole');
         if (old) { old.remove(); }
         if (!info) { return; }
+
+        // 高清（DASH）比整段 MP4 档位高，才值得多给一个按钮；
+        // 两条路档位一样时就只留「整段MP4」那个（它能一步到位，不用合成）
+        var wantDash = !!info.hasDash &&
+            (!info.hasDurl || Number(info.dashQuality) > Number(info.quality || 0));
+        var meta = [];
+        if (info.hasDurl) {
+            meta.push(fmtSize(info.size) + ' · ' +
+                (qShort(info.quality) || info.qualityText || info.format || 'mp4'));
+        }
+        // DASH 不显示大小：它只给码率不给实际体积，按码率估会差一倍（实测 69MB 预估 → 32MB 实际），
+        // 与其给个错数字，不如不给
+        if (wantDash) {
+            meta.push((qShort(info.dashQuality) || info.dashQualityText || '高清') +
+                '（需合成，体积比标清大）');
+        }
+        if (!meta.length && info.hasDash) {
+            meta.push((qShort(info.dashQuality) || info.dashQualityText || '高清') +
+                '（需合成）');
+            wantDash = true;
+        }
+
+        var btns = '';
+        if (info.hasDurl) {
+            btns += '<button class="fbtn primary vr-whole-go" data-label="下载 ' +
+                escHtml(qShort(info.quality) || '视频') + ' · 快">' +
+                '下载 ' + escHtml(qShort(info.quality) || '视频') + ' · 快</button>';
+        }
+        if (wantDash) {
+            btns += '<button class="fbtn vr-whole-go vr-whole-hd" data-label="下载 ' +
+                escHtml(qShort(info.dashQuality) || '高清') + ' · 高清">' +
+                '下载 ' + escHtml(qShort(info.dashQuality) || '高清') + ' · 高清</button>';
+        }
 
         var box = document.createElement('div');
         box.id = 'vrBiliWhole';
@@ -1721,10 +2005,12 @@
         box.innerHTML =
             '<div class="vr-banner-head">' +
             '<span class="vr-banner-tag">B站</span>' +
-            '<span class="vr-banner-txt"><b>完整视频</b>（整段MP4，不用合并）<br>' +
-            '<span class="vr-whole-meta">' + escHtml(fmtSize(info.size)) +
-            ' · ' + escHtml(info.format || 'mp4') + '</span></span>' +
-            '<button class="fbtn primary vr-whole-go">下载完整视频</button>' +
+            '<span class="vr-banner-txt"><b>完整视频</b><br>' +
+            '<span class="vr-whole-meta">' + escHtml(meta.join('　｜　')) +
+            (info.topAccept && info.quality && info.topAccept > info.quality && !wantDash
+                ? ' · <span class="vr-whole-note">已按账号给到最高档</span>' : '') +
+            '</span></span>' +
+            '<span class="vr-whole-btns">' + btns + '</span>' +
             '</div>' +
             '<div class="vr-whole-prog hide">' +
             '<div class="vr-whole-bar"><i style="width:0%"></i></div>' +
@@ -1734,8 +2020,14 @@
         var anchor = el('Tips');
         anchor.parentNode.insertBefore(box, anchor);
 
-        var go = box.querySelector('.vr-whole-go');
-        if (go) { go.addEventListener('click', function () { startBiliWhole(info, box); }); }
+        var goDurl = box.querySelector('.vr-whole-go:not(.vr-whole-hd)');
+        if (goDurl) {
+            goDurl.addEventListener('click', function () { startBiliWhole(info, box, 'durl'); });
+        }
+        var goDash = box.querySelector('.vr-whole-hd');
+        if (goDash) {
+            goDash.addEventListener('click', function () { startBiliWhole(info, box, 'dash'); });
+        }
     }
 
     /* ==========================================================
