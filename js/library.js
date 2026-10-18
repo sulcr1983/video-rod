@@ -99,6 +99,27 @@
             tx.onerror = () => reject(tx.error);
         });
     }
+    async function idbDel(key) {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('handles', 'readwrite');
+            tx.objectStore('handles').delete(key);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    }
+
+    /** 如果选中的是 Downloads，自动下钻到 video-rod 子目录 */
+    async function resolveRoot(handle) {
+        if (!handle) { return null; }
+        if (handle.name === 'video-rod') { return handle; }
+        try {
+            const sub = await handle.getDirectoryHandle('video-rod');
+            return sub;
+        } catch (e) {
+            return handle;
+        }
+    }
 
     /* ---------------- 扫描 ---------------- */
     function parseAuthor(folder) {
@@ -181,6 +202,9 @@
             files.sort((a, b) => String(b.lastModified || 0).localeCompare(String(a.lastModified || 0)));
             $('#syncText').textContent = '刚刚扫描 · ' + files.length + ' 个文件';
             $('#statusText').textContent = '扫描完成';
+            if (!files.length && rootHandle && rootHandle.name !== 'video-rod') {
+                $('#statusText').textContent = '当前目录不是 video-rod；请点“重置目录”选择 Downloads/video-rod';
+            }
             await writeIndex();
         } catch (e) {
             $('#statusText').textContent = '扫描失败：' + String(e).slice(0, 80);
@@ -553,9 +577,10 @@
             return;
         }
         try {
-            rootHandle = await window.showDirectoryPicker({
+            const picked = await window.showDirectoryPicker({
                 id: 'vrLibrary', mode: 'readwrite', startIn: 'downloads'
             });
+            rootHandle = await resolveRoot(picked);
             await idbSet('root', rootHandle);
             $('#rootPath').textContent = rootHandle.name;
             await scan();
@@ -566,6 +591,17 @@
 
     $('#pickBtn').addEventListener('click', pickRoot);
     $('#rootBtn').addEventListener('click', pickRoot);
+    $('#resetRoot').addEventListener('click', async () => {
+        if (!confirm('重置媒体库目录？之后需要重新选择 Downloads/video-rod。')) { return; }
+        try { await idbDel('root'); } catch (e) { /* ignore */ }
+        rootHandle = null;
+        files = [];
+        revokeUrls();
+        $('#rootPath').textContent = '选择媒体目录';
+        $('#statusText').textContent = '请选择 Downloads/video-rod';
+        $('#syncText').textContent = '尚未扫描';
+        render();
+    });
     $('#rescanBtn').addEventListener('click', scan);
     $('#search').addEventListener('input', e => { state.q = e.target.value.trim(); render(); });
     $('#treeSearch').addEventListener('input', e => { state.treeQ = e.target.value; render(); });
@@ -707,10 +743,11 @@
         try {
             const h = await idbGet('root');
             if (h) {
-                rootHandle = h;
-                $('#rootPath').textContent = h.name;
+                rootHandle = await resolveRoot(h);
+                if (rootHandle !== h) { await idbSet('root', rootHandle); }
+                $('#rootPath').textContent = rootHandle.name;
                 try {
-                    const p = await h.queryPermission({ mode: 'readwrite' });
+                    const p = await rootHandle.queryPermission({ mode: 'readwrite' });
                     if (p === 'granted') { await scan(); }
                     else { $('#statusText').textContent = '目录权限已失效，请重新选择'; }
                 } catch (e) { /* ignore */ }

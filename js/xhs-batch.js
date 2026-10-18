@@ -5,7 +5,7 @@
  * 用户手动滚动后点「收集当前页」入队。
  *
  * 自动补全详情默认关闭：开启后由 background 逐篇打开详情、
- * 读取 __INITIAL_STATE__ 并下载；3–5 秒/篇、单次最多 20 篇。
+ * 读取 __INITIAL_STATE__ 并下载；3–5 秒/篇，不设条数上限。
  */
 (() => {
     if (window.__vrXhsBatch) { return; }
@@ -14,7 +14,6 @@
     window.__vrXhsBatch = true;
 
     const KEY = 'vrXhsQueue';
-    const MAX = 20;
     let queue = [];
     let btn = null, panel = null, listEl = null, statusEl = null;
     let autoEl = null, downloadBtn = null, running = false;
@@ -197,12 +196,11 @@
         }
         running = true;
         downloadBtn.disabled = true;
-        setStatus('自动补全中：最多 ' + MAX + ' 条，3–5 秒/篇…');
+        setStatus('自动补全中：' + queue.length + ' 条，3–5 秒/篇…');
         try {
             chrome.runtime.sendMessage({
                 Message: 'vrXhsAuto',
-                notes: queue.slice(0, MAX),
-                max: MAX
+                notes: queue.slice()
             }, res => {
                 running = false;
                 downloadBtn.disabled = false;

@@ -536,13 +536,9 @@
         });
         if (!chosen.length) { statusEl.textContent = '没有选中媒体'; return; }
 
-        // 小红书：页面 fetch 被 CORS 拒绝，走 downloads + 小红书/作者 目录；
-        // 单次最多 20 条，后台 3–5 秒/条，遇风控失败自动暂停。
+        // 小红书：页面 fetch 被 CORS 拒绝，走 downloads + 作者目录；
+        // 不设条数上限，后台 3–5 秒/条，遇风控失败自动暂停。
         if (SITE === 'xhs') {
-            if (chosen.length > 20) {
-                chosen = chosen.slice(0, 20);
-                statusEl.textContent = '单次最多 20 条，已截取';
-            }
             statusEl.textContent = '开始保存 ' + chosen.length + ' 条（3–5 秒/条）…';
             chrome.runtime.sendMessage({ Message: 'vrBulkDownload', items: chosen }, function (res) {
                 if (chrome.runtime.lastError || !res || !res.ok) {

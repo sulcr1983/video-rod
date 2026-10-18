@@ -454,6 +454,20 @@
 - 结论：钓鱼竿单条下载链路正常；用户若看到原文件名文件，是另一个下载扩展同时接管了同一视频。
 - 按钮样式：蓝色渐变实心胶囊 + 白色下载图标 + “下载”文字；不再使用灰色透明圆钮。
 
+### 10.9 X 批量与默认媒体库路径（2026-10-19 反馈）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| XB1 | X 主页批量队列 | ✅ `x.com/NASA/media` 8 条，完成 7 条，跳过 1 条重复 |
+| XB2 | 落盘目录 | ✅ `Downloads/video-rod/x/NASA(@NASA)/videos/`，无按图片建目录 |
+| XB3 | X 单条按钮 | ✅ `video-rod/x/奇趣蛋蛋(@misscandace89)/videos/...mp4` |
+| XB4 | 选择器 | ✅ X/微博批量不再调用 `showDirectoryPicker` |
+| XB5 | 限速 | ✅ X/XHS 3–5 秒/条；不设条数上限；fxtwitter 429 退避一次 |
+| XB6 | 媒体库根目录 | ⚠️ 当前选中的根目录是 `download`，扫描 0；新增加自动下钻 `video-rod` 和“重置目录” |
+
+- 旧根目录文件（如 `video-rod/奇趣蛋蛋...mp4`）是改动前遗留；新文件在平台/作者/类型子目录。
+- 媒体库管理前需一次性重置目录并选择 `E:\personal\Downloads\video-rod`。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。
