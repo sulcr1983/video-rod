@@ -1,9 +1,10 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.3 ｜ 日期：2026-10-18 ｜ 状态：✅ 已生效
+> 版本：v1.4 ｜ 日期：2026-10-18 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
+> v1.4 变更：B站「完整视频」下载入口产出物登记（ADR-029，参考 b站视频下载助手）；决策记录主线更新至 ADR-029。
 
 ---
 
@@ -77,7 +78,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.1 | 进行中 | ADR-001~028，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合）；ADR-026 = X 按钮预混流直链；ADR-027 = 下载文件名保护（抄 XBD/CocoCut/Imageye 的 onDeterminingFilename 套路）；ADR-028 = M11 放弃驱动猫抓 m3u8 页、改离屏直连管线 |
+| 决策记录 | `docs/DECISIONS.md` | v1.2 | 进行中 | ADR-001~029，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合）；ADR-026 = X 按钮预混流直链；ADR-027 = 下载文件名保护（抄 XBD/CocoCut/Imageye 的 onDeterminingFilename 套路）；ADR-028 = M11 放弃驱动猫抓 m3u8 页、改离屏直连管线 |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
 | popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 已定稿 | 浅色 A/B/C 三方案可点原型；苏哥拍板方案 A「收网」（ADR-025），已全量整合进产品代码 |
@@ -145,3 +146,5 @@ video-rod/
 
 - 规范本身也要版本化（文档头版本行），改规范 = 在 DECISIONS.md 补一条说明
 - 苏哥觉得哪条规则别扭，随时说，改规范比憋着遵守重要
+| B站完整视频下载（M12） | `js/popup-videorod.js`(fetchBiliWhole/buildBiliWholeBanner/startBiliWhole/pollBiliWhole) + `css/videorod.css`(vr-banner-whole/vr-whole-prog) | v1.0 | 已定稿 | ADR-029 产物：主世界 executeScript 读 cid → playurl(不带fnval) 要 durl 整段MP4 → 页面 XHR blob → `<a download>` 存盘；命名走既有模板、历史走 markDownloaded；未改动 background/content-script。星愿真机 BV1DVaZ6hEK6 端到端通过（h264 1280×720 + aac，190.523s，14,538,650 B） |
+| B站实站验收脚本 | `tools/bili-diag.py`、`tools/bili-netcap.py`、`tools/bili-correct.py`、`tools/bili-download.py`、`tools/bili-shot.py` | v1.0 | 已定稿 | B站实站：目标/网络抓包/对照 cacheData/下载与落盘/面板截图证据；`bili-popup-proof.png` 为嗅探证据截图 |

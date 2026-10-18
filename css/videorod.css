@@ -1360,6 +1360,53 @@ body.popupBody {
     overflow-y: auto;
 }
 
+/* ===== B站「完整视频」入口 + 下载进度 ===== */
+.vr-banner-whole {
+    background: linear-gradient(180deg, #f2fbf8, var(--vr-cyan-tint));
+    border-bottom-color: var(--vr-cyan-tint-line);
+}
+
+.vr-whole-meta {
+    display: inline-block;
+    margin-top: 2px;
+    font-size: 9.5px;
+    color: var(--vr-text-dim);
+}
+
+.vr-whole-prog {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 7px;
+}
+
+.vr-whole-prog.hide { display: none; }
+
+.vr-whole-bar {
+    flex: 1;
+    height: 5px;
+    border-radius: 99px;
+    background: #e8eef0;
+    overflow: hidden;
+}
+
+.vr-whole-bar i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, var(--vr-cyan), #34d399);
+    transition: width .25s ease;
+}
+
+.vr-whole-pct {
+    flex: none;
+    font-size: 9.5px;
+    color: var(--vr-text-dim);
+    min-width: 30px;
+    text-align: right;
+}
+
 .vr-banner-body.hide { display: none; }
 
 .vr-partrow {
