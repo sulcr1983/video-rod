@@ -840,6 +840,38 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             });
         return true;
     }
+    // 钓鱼竿：Instagram 单帖/Reel 已加载媒体（P1）
+    if (Message.Message == "vrIgDownload") {
+        const items = Array.isArray(Message.items) ? Message.items : [];
+        (async () => {
+            let done = 0, failed = 0;
+            const safe = s => String(s || '').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 80);
+            for (const it of items) {
+                const url = it && it.url;
+                if (!url || !/^https?:/i.test(url)) { failed++; continue; }
+                const kindDir = it.kind === 'video' ? 'videos' : 'images';
+                const author = safe(it.author || 'instagram') || 'instagram';
+                const base = safe(it.filename || ('ig_' + (it.index + 1))) || ('ig_' + (it.index + 1));
+                const ext = safe(it.ext || (it.kind === 'video' ? 'mp4' : 'jpg')).replace(/^\./, '') || 'jpg';
+                const fname = 'video-rod/instagram/' + author + '/' + kindDir + '/' + base + '.' + ext;
+                try {
+                    await vrSetMediaHeadersFor(url, 'https://www.instagram.com/');
+                    const id = await vrDownloadWithName(url, fname);
+                    if (id === null) { failed++; continue; }
+                    const outcome = await vrWaitDownload(id, 20000);
+                    if (outcome && outcome.state === 'interrupted') {
+                        try { vrDropDownload(id); } catch (e) { /* ignore */ }
+                        failed++;
+                    } else {
+                        done++;
+                    }
+                } catch (e) { failed++; }
+                await vrBulkSleep(1200 + Math.floor(Math.random() * 800));
+            }
+            sendResponse({ ok: true, total: items.length, done: done, failed: failed });
+        })();
+        return true;
+    }
     // 钓鱼竿：X 主页批量里视频是 blob，内容脚本按推文坐标来解析直链
     if (Message.Message == "vrResolveX") {
         fetchXVideo(Message.user, Message.statusId, Message.mediaId, true)
