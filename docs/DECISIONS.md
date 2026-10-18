@@ -569,6 +569,11 @@
   4. 期望路径明确提示 `E:\personal\Downloads\video-rod`。
 - **边界**：仍然必须由用户完成一次原生目录授权；浏览器安全模型不允许扩展直接写绝对路径。
 - **验证**：`node --check js/library.js` 通过；目录校验与句柄清除逻辑已接入。
+- **抖珍藏 2.8.44 对照（2026-10-19）**：
+  - `c.js` 在抖音页注入 `<aside>` + iframe `rl.html`（侧栏），`s.js` 在 iframe 中执行 `showDirectoryPicker({startIn: 已保存句柄 || 'videos', mode:'readwrite'})`。
+  - 选中后调用 `rootHandle.requestPermission({mode:'readwrite'})`，再把 `archiveFolderHandle` 持久化；没有绕过浏览器权限，也不是下载 API 特殊能力。
+  - 关键差异是**选择器从独立侧栏/窗口触发**，不会被主页面的最大化窗口盖住；我们此前在普通标签页里触发，原生窗口出现在 (0,0) 且被主窗口覆盖。
+- **本实现调整**：媒体库入口改为 `chrome.windows.create({type:'popup'})` 独立窗口；选择前 `window.focus()` 并显示“正在等待系统目录窗口…”，选中后显式 `requestPermission({mode:'readwrite'})`。
 
 ---
 
