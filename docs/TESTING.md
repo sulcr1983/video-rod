@@ -419,9 +419,11 @@
 | H1 | 详情页出现「当前笔记媒体」面板 | ✅ `/explore/6accad…?xsec_token=…` 面板 1 项 |
 | H2 | 作者/文案 | ✅ 「小高今天找到工作了么」+ `#留学生找工作[话题]# #秋招[话题]#` |
 | H3 | 图片落盘 | ✅ `video-rod/小红书/小高…(@5904068850c4b46b86967480)_…_01.webp`，64,510 B，image/webp |
-| H4 | 限速/上限/失败暂停 | ✅ 3–5 秒随机、单次 20 条、连续 3 次失败暂停 |
+| H4 | 限速/失败暂停 | ✅ 3–5 秒随机、不设条数上限、连续 3 次失败暂停 |
 | H5 | 不自动翻页/不做写操作 | ✅ 只读当前笔记 `__INITIAL_STATE__` |
-| H6 | 视频分支 | 🟡 代码已支持 `video.media.stream`，当前测试笔记为图文，待视频笔记复验 |
+| H6 | 视频分支 | ✅ `mediaV2.stream` 优先带音轨 mp4；实测 mp4 31,344,820 B |
+| H7 | 自动补全计数 | ✅ 图片 `files=1, skipped=0, errors=0`；视频 `files=1, skipped=1, errors=0` |
+| H8 | 收藏/点赞页 | ✅ `?tab=fav` 20 条/20 token；`?tab=like` 30 条/30 token |
 
 - 页面 fetch 被 CORS 拒绝，下载走 `chrome.downloads`；原图（`url` 为空）与签名接口未做，当前为 `urlDefault` webp。
 - 小红书页面自身有 hydration/脚本报错，与扩展无关。
