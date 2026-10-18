@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.13 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.14 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -14,6 +14,7 @@
 > v1.11 变更：ADR-036 A 方案落地——小红书详情页单篇适配（`vrXhsScan` 只读 `__INITIAL_STATE__`，图片/视频记录，`video-rod/小红书/作者/` 下载，3–5 秒限速、单次 20 条、失败暂停）。
 > v1.12 变更：媒体库原型 v2（独立图片/视频预览页 + 鼠标/键盘快捷方式 + 资源树搜索/懒展开）；开源组件选型与大量数据管理方案登记。
 > v1.13 变更：ADR-037 下载去重——批量下载前按稳定媒体标识查 `vrMediaSeen` 账本，重复直接跳过并显示「跳过重复 N」；内容哈希作为媒体库入库兜底。
+> v1.14 变更：媒体库原型 v3（浅色大厂后台视觉：白色侧栏/蓝色主色/卡片统计/精致网格；预览页白底工具条 + 深色画布 + 白色信息栏）。
 
 ---
 
@@ -91,6 +92,7 @@ video-rod/
 | 下载去重（ADR-037） | `js/background.js`(vrMediaIdentity / vrDedupLoad / vrDedupSave / vrBulkDownload) + `js/bulk-profile.js` | v1.0 | 已实施 | 稳定标识 `site|workId|mediaId|kind|origin+pathname`（去签名参数）；持久账本 `vrMediaSeen` 上限 8000；同批 Set + 跨批账本；成功才写入；跳过数量回传 UI；内容 SHA-256 入库兜底待 P2 |
 | 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD；§10 开源组件选型（PhotoSwipe/Plyr/Filebrowser/Immich…）；§11 大量博主/内容管理（懒加载/虚拟滚动/分片索引/游标分页） |
 | 媒体库原型 v2 | `deliverables/prototypes/media-library-v2.html` | v1.0 | 评审中 | 资源树 平台→博主→图片/视频；独立图片/视频预览页；鼠标两侧箭头/底部胶片/滚轮缩放/双击/拖拽；键盘 ←→↑↓、Space、M、F、I、+/-/0、Esc、Home/End；树内搜索 + 每平台懒展开 |
+| 媒体库原型 v3（最新视觉） | `deliverables/prototypes/media-library-v3.html` | v1.0 | 评审中 | 大厂后台浅色视觉：白色侧栏 + 蓝色主色 + 卡片统计 + 精致网格；独立图片/视频预览页；预览页白底工具条 + 深色画布 + 白色信息栏；鼠标/键盘快捷方式与 v2 一致 |
 | 媒体库 HTML 原型 | `deliverables/prototypes/media-library-v1.html` | v1 | 评审中 | 可交互高保真原型：平台/博主/类型筛选、搜索、网格/列表、批量选择、详情检查器、上一张/下一张、最大化、图片缩放、视频播放、重命名/改标签/移动/删除/复制路径；已浏览器实开验证 |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
