@@ -363,6 +363,21 @@
 - 下载请求头：`chrome.declarativeNetRequest.updateSessionRules` 规则 id `91001`，对 `douyinvod.com` set `referer`/`origin`，`resourceTypes:["other","media","xmlhttprequest","image"]`，10 分钟 alarm 清理。
 - 通用直链：`vrSetMediaHeadersFor(pick.url, pageUrl)` 按目标 host 回放页面 Referer（CocoCut 同款通用能力）。
 
+### 10.2b 微博下载（ADR-031 补记）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| W1 | 微博视频被识别为当前播放 | ✅ `m.weibo.cn` 播放页拿到 `f.video.weibocdn.com/...mp4?label=mp4_hd` |
+| W2 | 作者/正文进文件名 | ✅ `安然cn(@2042052593)_【阿塞拜疆的这个女孩说...….mp4` |
+| W3 | 页面内 fetch → blob 下载成功 | ✅ `kind=page-blob`，5,817,304 B，`state=complete` |
+| W4 | 音视频完整 | ✅ ffprobe：h264 **540×960** + aac，81.316s |
+| W5 | 嗅探缓存为空时仍能下 | ✅ 当前 `currentSrc` 直接补入选项（不依赖缓存） |
+| W6 | 页面 fetch 失败自动回退 | ✅ 回退 `downloads` + DNR Referer（抖音仍走专属分支） |
+
+- 现象与根因：`chrome.downloads` 请求微博 CDN 返回 `SERVER_FORBIDDEN`（238 字节 HTML）；curl 对照「浏览器 UA + 无 Referer」= 403，「浏览器 UA + Referer」= 206。微博是 Referer ACL。
+- 解法：页面主世界 `fetch(url, {credentials:'include'})` → `blob` → `<a download>`。页面请求天然带 Referer/Cookie，微博 CORS 允许（200/5.8MB）。与 B站 durl 同一成熟路线；CocoCut 也走页面/内容脚本 fetch。
+- 取舍：`<a download>` 不支持子目录，微博文件落 `Downloads/` 根目录（与 B站 durl 同限制）。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。

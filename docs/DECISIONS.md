@@ -313,6 +313,26 @@
   - 抖音当前给的是 mp4 直链（含音轨），未走 ADR-028 的 HLS 管线；遇到加密 HLS 站点仍需另行验证。
 - **参考**：CocoCut 3.89（`pagehelper.js` 回传 `requestHeaders.referer`；`popup.js` 的 DNR `updateSessionRules`；`background.js` 的 `allRequestHeaders`）；yt-dlp `DouyinIE`（同源 detail 接口，Unlicense）。
 
+### ADR-031 补记（2026-10-19）：微博走页面内 fetch + blob
+
+- **背景**：苏哥反馈微博视频下不下来。实测 `chrome.downloads.download` 请求微博 CDN `f.video.weibocdn.com` 返回 `SERVER_FORBIDDEN`（238 字节 HTML）；curl 对照：
+  - curl 默认 UA、无 Referer → `206 video/mp4`；
+  - **浏览器 UA、无 Referer → `403 text/html`**；
+  - 浏览器 UA + `Referer: https://m.weibo.cn/...` → `206 video/mp4`。
+  即微博是 Referer ACL，而 downloads 请求不带 Referer；DNR 规则（`other/media/xmlhttprequest/image`）没有落到 downloads 请求上。
+- **决策**：
+  1. 通用直链优先走**页面主世界 fetch → blob → `<a download>`**。页面请求天然带 Referer/Cookie，微博实测 CORS 允许（200，5,817,304 B）。这条路线与 B站 durl 完全一致（ADR-029），CocoCut 也是在页面/内容脚本里 fetch（`myContent.js` 的 `fetchByCsAB`）。
+  2. 页面 fetch 失败（CORS / 非 2xx / 文件过小）时自动回退 `downloads.download` + DNR Referer；抖音仍走专属分支。
+  3. 微博命名：`vrPageMetaInTab()` 在 MAIN world 读 `window.$render_data.status`，取 `user.screen_name`、`user.id`、`text`，经 `vrNameInTab` 的 override 生成 `作者(@UID)_正文.mp4`。
+  4. 通用选项兜底：嗅探缓存为空时，把页面当前在播/有 `currentSrc` 的 URL 直接补进选项，不再依赖缓存。
+- **验证**：
+  - 微博 81.3s 视频：`page-blob`，5,817,304 B，`state=complete`；ffprobe `h264 540×960 + aac`。
+  - 文件名：`安然cn(@2042052593)_【阿塞拜疆的这个女孩说...….mp4`。
+- **代价与边界**：
+  - `<a download>` 只认文件名，**不支持子目录** → 微博文件落 `Downloads/` 根目录（与 B站 durl 同限制）。
+  - 页面 fetch 受 CORS 限制；不允许时回退 downloads+DNR（微博这类 ACL 站点回退会继续 403，但至少不阻塞其他站点）。
+  - 微博 `$render_data` 结构可能随版本变化；PC/移动版字段不同时，命名退回 `naming.js` 兜底。
+
 ---
 
 *新增决策在此追加，编号顺延。*
