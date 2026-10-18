@@ -158,7 +158,8 @@ Downloads/video-rod/                 # 用户可选根目录
 
 ## 9. 原型
 
-`deliverables/prototypes/media-library-v3.html`：当前最新视觉版（浅色大厂后台风格，白色侧栏/蓝色主色/卡片统计/精致网格；独立图片/视频预览页 + 鼠标/键盘快捷方式）。
+`deliverables/prototypes/media-library-v4.html`：当前最新视觉版（标准企业中后台 + 平台品牌色 + 彩色统计 + 标题可视化；独立图片/视频预览页 + 鼠标/键盘快捷方式）。
+`deliverables/prototypes/media-library-v3.html`：上一版（浅色大厂后台）保留对照。
 `deliverables/prototypes/media-library-v2.html`：上一版（深色侧栏）保留对照。
 `deliverables/prototypes/media-library-v1.html`：初版交互原型保留。
 
