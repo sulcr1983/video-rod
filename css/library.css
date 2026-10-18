@@ -91,7 +91,7 @@ main{padding:0 28px 40px;max-width:1680px;margin:0 auto;width:100%}
 .card .thumb{position:relative;aspect-ratio:4/3;background:#eef1f6;overflow:hidden}
 .card .thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
 .card:hover .thumb img{transform:scale(1.035)}
-.card .thumb .videoThumb{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font-size:26px;background:linear-gradient(135deg,#1f2937,#0f172a)}
+.card .thumb.is-video{background:linear-gradient(135deg,#1f2937,#0f172a)}
 .card .badge{position:absolute;top:8px;left:8px;background:rgba(29,33,41,.74);color:#fff;border-radius:5px;font-size:9.5px;padding:3px 7px;z-index:2}
 .card[data-platform="weibo"] .badge{background:rgba(255,107,53,.92)}
 .card[data-platform="x"] .badge{background:rgba(29,33,41,.84)}
