@@ -170,6 +170,8 @@
 | [docs/TESTING.md](docs/TESTING.md) | 测试策略：用例表、验收标准、回归清单、已知限制 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策记录（ADR）：每个重要选择为什么这么做 |
 | [docs/MEDIA-LIBRARY-PLAN.md](docs/MEDIA-LIBRARY-PLAN.md) | 媒体库方案：固定目录 + index.json + HTML 管理页（搜索/播放/CRUD）；含开源组件选型与大量数据管理 |
+| [docs/LIBRARY-IMPLEMENTATION.md](docs/LIBRARY-IMPLEMENTATION.md) | 媒体库 P1/P2 实施规格：目录契约、句柄、扫描、索引、预览、CRUD、验收 |
+| [library.html](library.html) | 真实媒体库页面：选目录/扫描/搜索/预览/重命名/回收站 |
 | [deliverables/prototypes/media-library-v2.html](deliverables/prototypes/media-library-v2.html) | 媒体库原型 v2：图片/视频独立预览页、鼠标/键盘快捷方式、资源树搜索 |
 | [deliverables/prototypes/media-library-v3.html](deliverables/prototypes/media-library-v3.html) | 媒体库原型 v3：大厂后台浅色风格，图片/视频预览页与快捷键完整保留 |
 | [deliverables/prototypes/media-library-v4.html](deliverables/prototypes/media-library-v4.html) | 媒体库原型 v4（最新）：标准企业中后台 + 平台品牌色 + 彩色统计 + 标题可视化；↑/↓ 切媒体，←/→ 视频进度或同专辑图片切换 |
