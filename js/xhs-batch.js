@@ -25,23 +25,31 @@
     }
 
     function cardsOnPage() {
-        const out = [];
-        const seen = new Set();
-        document.querySelectorAll('a[href*="/explore/"], a[href*="/discovery/item/"]').forEach(a => {
+        const out = new Map();
+        document.querySelectorAll('a[href*="/explore/"], a[href*="/discovery/item/"], a[href*="/user/profile/"]').forEach(a => {
             let u;
             try { u = new URL(a.href, location.href); } catch (e) { return; }
-            const m = u.pathname.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/);
-            if (!m || seen.has(m[1])) { return; }
+            const m = u.pathname.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/) ||
+                u.pathname.match(/\/user\/profile\/[0-9a-f]+\/([0-9a-f]{16,})/);
+            if (!m) { return; }
+            const id = m[1];
+            const token = u.searchParams.get('xsec_token') || '';
+            const prev = out.get(id);
+            // 同一卡片常有隐藏 /explore/id（无 token）和可见封面链接（带 token）。
+            // 后出现的 token 必须补到已有记录上，不能因为先看到隐藏链接就丢掉。
+            if (prev) {
+                if (token && !prev.xsecToken) { prev.xsecToken = token; }
+                return;
+            }
             const card = a.closest('section, article, li') ||
                 a.closest('div[class*="note"], div[class*="cover"]') || a;
             const img = card.querySelector('img') || a.querySelector('img');
             const title = (img && (img.alt || img.title)) ||
                 (card.innerText || '').split('\n').map(x => x.trim()).filter(Boolean)[0] || '未命名笔记';
             const isVideo = !!card.querySelector('video, [class*="play"], [class*="video"]');
-            seen.add(m[1]);
-            out.push({
-                noteId: m[1],
-                xsecToken: u.searchParams.get('xsec_token') || '',
+            out.set(id, {
+                noteId: id,
+                xsecToken: token,
                 title: title.slice(0, 120),
                 cover: (img && img.src) || '',
                 type: isVideo ? 'video' : 'image',
@@ -49,7 +57,7 @@
                 collectedAt: Date.now()
             });
         });
-        return out;
+        return [...out.values()];
     }
 
     function load() {
@@ -208,7 +216,8 @@
                     setStatus('自动补全失败：' + (res && res.reason ? res.reason : '请查看扩展日志'));
                     return;
                 }
-                setStatus('完成：' + (res.files || 0) + ' 个文件，' + (res.errors || 0) + ' 篇失败' +
+                setStatus('完成：' + (res.files || 0) + ' 个文件，跳过 ' + (res.skipped || 0) +
+                    '，' + (res.errors || 0) + ' 篇失败' +
                     (res.stopped ? '；' + res.stopped : ''));
                 render();
             });
@@ -224,6 +233,7 @@
             if (!msg || msg.Message !== 'vrXhsAutoProgress') { return; }
             setStatus('自动补全 ' + msg.done + '/' + msg.total +
                 '，已下载 ' + (msg.files || 0) + ' 个' +
+                (msg.skipped ? '，跳过重复 ' + msg.skipped : '') +
                 (msg.errors ? '，失败 ' + msg.errors + ' 篇' : '') +
                 (msg.stop ? '；' + msg.stop : ''));
         });

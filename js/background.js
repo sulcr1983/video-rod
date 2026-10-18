@@ -1393,16 +1393,41 @@ function vrXhsScanInPage(noteId) {
             }
         });
 
-        const streams = note.video && note.video.media && note.video.media.stream;
-        if (streams) {
-            ['h264', 'h265', 'av1'].forEach(function (k) {
-                (streams[k] || []).forEach(function (v, j) {
-                    const url = v.masterUrl || v.url || '';
-                    if (url) {
-                        items.push({ kind: 'video', url: url, ext: 'mp4', index: j });
-                    }
-                });
+        const vids = new Map();
+        function addVideo(v, idx) {
+            const url = (v && (v.master_url || v.masterUrl || v.url)) || '';
+            if (!url || vids.has(url)) { return; }
+            vids.set(url, {
+                kind: 'video', url: url, ext: 'mp4', index: idx || 0,
+                format: String(v.format || '').toLowerCase(),
+                width: Number(v.width) || 0,
+                height: Number(v.height) || 0,
+                bitrate: Number(v.avg_bitrate || v.video_bitrate || 0),
+                quality: v.quality_type || ''
             });
+        }
+        const oldStreams = note.video && note.video.media && note.video.media.stream;
+        if (oldStreams) {
+            ['h264', 'h265', 'av1'].forEach(function (k) {
+                (oldStreams[k] || []).forEach(function (v, j) { addVideo(v, j); });
+            });
+        }
+        try {
+            let mv = note.video && note.video.mediaV2;
+            if (typeof mv === 'string') { mv = JSON.parse(mv); }
+            const stream = (mv && mv.stream) || {};
+            Object.keys(stream).forEach(function (k) {
+                (stream[k] || []).forEach(function (v, j) { addVideo(v, j); });
+            });
+        } catch (e) { /* old state / malformed mediaV2 */ }
+        const videoList = Array.from(vids.values()).sort(function (a, b) {
+            // 优先带音轨的 mp4（EF4），再按分辨率/码率选最高
+            const amp4 = a.format === 'mp4' ? 1 : 0;
+            const bmp4 = b.format === 'mp4' ? 1 : 0;
+            return (bmp4 - amp4) || (b.height - a.height) || (b.bitrate - a.bitrate);
+        });
+        if (videoList.length) {
+            items.push(videoList[0]);
         }
         return {
             ok: true, noteId: id, title: title,
@@ -1432,11 +1457,30 @@ function vrXhsWaitTab(tabId, timeout) {
     });
 }
 
+/** 详情页的 __INITIAL_STATE__ 是异步填充的；等待最多 ~7 秒，避免视频笔记首次扫描为空。 */
+async function vrXhsScanInTab(tabId, noteId) {
+    let last = null;
+    for (let i = 0; i < 8; i++) {
+        try {
+            const r = await chrome.scripting.executeScript({
+                target: { tabId: tabId }, world: 'MAIN',
+                args: [noteId], func: vrXhsScanInPage
+            });
+            last = r && r[0] && r[0].result;
+            if (last && last.ok && last.items && last.items.length) { return last; }
+        } catch (e) {
+            last = { ok: false, reason: String(e).slice(0, 120) };
+        }
+        await new Promise(function (resolve) { setTimeout(resolve, 700); });
+    }
+    return last;
+}
+
 /** 可选：逐篇打开详情，读 state 后复用 vrBulkDownload；默认关闭。
  *  不设条数上限，只靠 3–5 秒/篇和连续失败停止控制风险。 */
 async function vrXhsAutoQueue(notes, sourceTabId) {
     const list = Array.isArray(notes) ? notes.slice() : [];
-    let done = 0, files = 0, errors = 0, stopped = '';
+    let done = 0, files = 0, skipped = 0, errors = 0, stopped = '';
     for (let i = 0; i < list.length; i++) {
         const n = list[i] || {};
         if (!n.noteId) { done++; continue; }
@@ -1455,12 +1499,7 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
             if (!loaded) {
                 errors++;
             } else {
-                const r = await chrome.scripting.executeScript({
-                    target: { tabId: tabId }, world: 'MAIN',
-                    args: [n.noteId], func: vrXhsScanInPage
-                });
-                const data = r && r[0] && r[0].result;
-                if (!data || !data.ok || !data.items || !data.items.length) {
+                const data = await vrXhsScanInTab(tabId, n.noteId);                if (!data || !data.ok || !data.items || !data.items.length) {
                     errors++;
                 } else {
                     const items = data.items.map(function (it) {
@@ -1472,8 +1511,10 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
                     });
                     const res = await vrBulkDownload(items, tabId);
                     files += (res && res.done) || 0;
-                    noteOk = true;
+                    skipped += (res && res.skipped) || 0;
                     if (res && res.paused) { stopped = res.reason || '下载连续失败'; }
+                    noteOk = !!((res && (res.done || res.skipped)) || (res && res.paused));
+                    if (!noteOk) { errors++; }
                 }
             }
         } catch (e) {
@@ -1489,7 +1530,7 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
             try {
                 chrome.tabs.sendMessage(sourceTabId, {
                     Message: 'vrXhsAutoProgress', done: done, total: list.length,
-                    files: files, errors: errors, stop: stopped
+                    files: files, skipped: skipped, errors: errors, stop: stopped
                 });
             } catch (e) { /* ignore */ }
         }
@@ -1502,7 +1543,7 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
             await vrBulkSleep(3000 + Math.floor(Math.random() * 2000));
         }
     }
-    return { ok: true, total: list.length, done: done, files: files, errors: errors, stopped: stopped };
+    return { ok: true, total: list.length, done: done, files: files, skipped: skipped, errors: errors, stopped: stopped };
 }
 
 /** 主页批量：文件名 = 作者(@UID)_正文_序号.ext（<a download> 不支持子目录） */
