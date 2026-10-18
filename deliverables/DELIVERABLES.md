@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.17 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.18 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -18,6 +18,7 @@
 > v1.15 变更：媒体库原型 v4（标准企业中后台 + 平台品牌色 + 彩色统计图标 + 标题渐变/下划线 + 平台分布徽标 + 更多图标/表情）。
 > v1.16 变更：v4 预览键盘映射按通用查看器调整——↑/↓ 切换媒体；←/→ 视频快退/快进 5 秒，图片在同一博主专辑内上一张/下一张。
 > v1.17 变更：小红书主页/收藏/点赞半手动收集器 + 可选自动补全详情（`js/xhs-batch.js` + `vrXhsAutoQueue`）；收集器实测 30 条入队，自动补全首轮落盘 22,696 B 但计数异常待复验。
+> v1.18 变更：媒体库 P1/P2 落地——`library.html` + `css/library.css` + `js/library.js`；File System Access 选目录/递归扫描/`_index/index.json`、资源树/搜索/类型标签/网格、图片视频预览与键盘、重命名/删除到 `_trash`；popup 新增入口。
 
 ---
 
@@ -93,7 +94,8 @@ video-rod/
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
 | 决策记录 | `docs/DECISIONS.md` | v1.17 | 进行中 | ADR-001~038；ADR-035 媒体库（方案+原型，待实施）；ADR-036 小红书详情单篇；ADR-037 下载去重；ADR-038 小红书主页/收藏/点赞收集 + 可选自动补全 |
 | 下载去重（ADR-037） | `js/background.js`(vrMediaIdentity / vrDedupLoad / vrDedupSave / vrBulkDownload) + `js/bulk-profile.js` | v1.0 | 已实施 | 稳定标识 `site|workId|mediaId|kind|origin+pathname`（去签名参数）；持久账本 `vrMediaSeen` 上限 8000；同批 Set + 跨批账本；成功才写入；跳过数量回传 UI；内容 SHA-256 入库兜底待 P2 |
-| 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD；§10 开源组件选型（PhotoSwipe/Plyr/Filebrowser/Immich…）；§11 大量博主/内容管理（懒加载/虚拟滚动/分片索引/游标分页） |
+| 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD；§10 开源组件选型；§11 大量博主/内容管理 |
+| 媒体库 P1/P2（真实页面） | `library.html` + `css/library.css` + `js/library.js` + `popup.html`/`js/popup-videorod.js` 入口 | v1.0 | 评审中 | 选目录/句柄持久化/递归扫描/平台-博主-类型解析/`_index/index.json`；资源树/搜索/排序/类型标签/网格；图片视频预览与 ↑↓←→ 键盘；重命名、删除到 `_trash`；实施规格见 `docs/LIBRARY-IMPLEMENTATION.md` |
 | 媒体库原型 v2 | `deliverables/prototypes/media-library-v2.html` | v1.0 | 评审中 | 资源树 平台→博主→图片/视频；独立图片/视频预览页；鼠标两侧箭头/底部胶片/滚轮缩放/双击/拖拽；键盘 ←→↑↓、Space、M、F、I、+/-/0、Esc、Home/End；树内搜索 + 每平台懒展开 |
 | 媒体库原型 v3 | `deliverables/prototypes/media-library-v3.html` | v1.0 | 评审中 | 大厂后台浅色视觉：白色侧栏 + 蓝色主色 + 卡片统计 + 精致网格；独立图片/视频预览页；预览页白底工具条 + 深色画布 + 白色信息栏；鼠标/键盘快捷方式与 v2 一致 |
 | 媒体库原型 v4（最新视觉） | `deliverables/prototypes/media-library-v4.html` | v1.1 | 评审中 | 标准企业中后台：平台品牌色徽标；彩色统计卡（emoji 图标）；标题渐变 + 下划线 + 平台分布徽标；卡片平台色顶边与彩色类型角标；资源树平台色；预览页 ↑/↓ 切换媒体、←/→ 视频快退/快进或图片同专辑切换 |

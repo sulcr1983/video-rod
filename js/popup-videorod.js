@@ -2004,4 +2004,11 @@
     } else {
         boot();
     }
+
+    var vrLibBtn = document.getElementById('vrOpenLibrary');
+    if (vrLibBtn) {
+        vrLibBtn.addEventListener('click', function () {
+            chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
+        });
+    }
 })();

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>钓鱼竿 · 媒体库</title>
+<link rel="stylesheet" href="css/library.css">
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">钓</div><div>钓鱼竿<small>Media Library</small></div></div>
+    <button class="root-btn" id="rootBtn" title="选择媒体根目录">
+      <span>📁</span><span class="path" id="rootPath">选择媒体目录</span><span>⌄</span>
+    </button>
+    <div class="nav-title">资源树</div>
+    <div class="tree-search"><span>⌕</span><input id="treeSearch" placeholder="搜索平台 / 博主…" autocomplete="off"></div>
+    <div class="tree" id="tree"></div>
+    <div class="sidebar-foot">
+      <div><b id="sidebarCount">0</b> 个文件 · <b id="sidebarSize">0 B</b></div>
+      <div class="storage"><i id="storageBar"></i></div>
+      <div id="statusText">选择一个目录开始</div>
+      <div>索引：_index/index.json</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div class="search"><span>⌕</span><input id="search" placeholder="搜索标题、博主、平台、路径…"><kbd>⌘ K</kbd></div>
+      <div class="actions">
+        <button class="btn" id="rescanBtn">↻ 重新扫描</button>
+        <button class="btn primary" id="pickBtn">📁 选择目录</button>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div>
+        <div class="kicker">MEDIA LIBRARY</div>
+        <div class="breadcrumb" id="breadcrumb">媒体库</div>
+        <h1 id="pageTitle">媒体库</h1>
+        <p id="pageSub">选择 Downloads/video-rod 后开始扫描</p>
+        <div class="sync"><i></i><span id="syncText">尚未扫描</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="stat-ico">📦</span><div class="stat-copy"><b id="statCount">0</b><span>素材</span></div></div>
+        <div class="stat"><span class="stat-ico">🖼️</span><div class="stat-copy"><b id="statImages">0</b><span>图片</span></div></div>
+        <div class="stat"><span class="stat-ico">🎬</span><div class="stat-copy"><b id="statVideos">0</b><span>视频</span></div></div>
+        <div class="stat"><span class="stat-ico">💾</span><div class="stat-copy"><b id="statSize">0 B</b><span>总大小</span></div></div>
+      </div>
+    </div>
+
+    <div class="filterbar">
+      <div class="type-tabs" id="typeTabs">
+        <button data-type="all" class="active">全部 <b>0</b></button>
+        <button data-type="image">图片 <b>0</b></button>
+        <button data-type="video">视频 <b>0</b></button>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="tools">
+        <select id="sort">
+          <option value="new">最新保存</option>
+          <option value="old">最早保存</option>
+          <option value="size">文件最大</option>
+          <option value="name">标题 A-Z</option>
+        </select>
+        <div class="viewtoggle"><button data-view="grid" class="active">▦</button><button data-view="list">☰</button></div>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+    <div class="empty hidden" id="empty">
+      <b>还没有可显示的素材</b><br>
+      选择一个媒体目录，或点击「重新扫描」。
+    </div>
+  </main>
+</div>
+
+<div class="preview hidden" id="preview">
+  <header class="pv-head">
+    <button class="pv-back" id="pvBack">← 返回媒体库</button>
+    <div class="pv-crumb" id="pvCrumb">媒体库</div>
+    <div class="pv-tools">
+      <span class="pv-count" id="pvCount">0 / 0</span>
+      <button class="pv-btn" id="pvInfoBtn">信息 I</button>
+      <button class="pv-btn" id="pvFullBtn">全屏 F</button>
+      <button class="pv-btn" id="pvHelpBtn">? 快捷键</button>
+    </div>
+  </header>
+  <div class="pv-body" id="pvBody">
+    <button class="pv-arrow pv-prev" id="pvPrev" title="上一个 (↑)">‹</button>
+    <div class="pv-stage" id="pvStage">
+      <img id="pvImg" alt="">
+      <video id="pvVideo" controls playsinline></video>
+      <span class="pv-type" id="pvType">图片</span>
+    </div>
+    <button class="pv-arrow pv-next" id="pvNext" title="下一个 (↓)">›</button>
+    <aside class="pv-info" id="pvInfoPanel">
+      <div class="pv-eyebrow" id="pvEyebrow">图片</div>
+      <h2 id="pvTitle">—</h2>
+      <div class="pv-authorRow"><span class="avatar" id="pvAvatar">?</span><span id="pvAuthor"></span></div>
+      <div class="pv-meta" id="pvMeta"></div>
+      <div class="pv-path" id="pvPath"></div>
+      <div class="pv-infoActions">
+        <button class="pv-btn" id="pvRename">✎ 重命名</button>
+        <button class="pv-btn" id="pvReveal">📂 在文件夹中显示</button>
+        <button class="pv-btn danger" id="pvDelete">🗑 删除到回收站</button>
+        <button class="pv-btn" id="pvClose">关闭</button>
+      </div>
+      <div class="pv-shortcuts">
+        <b>键盘</b> ↑↓ 切换媒体 · ←→ 视频快退/快进、图片同专辑切换 · Space 播放/暂停 · M 静音 · F 全屏 · I 信息 · Esc 返回
+      </div>
+    </aside>
+  </div>
+  <footer class="pv-film" id="pvFilm"></footer>
+</div>
+
+<div class="modal hidden" id="modal">
+  <div class="modalCard">
+    <h3 id="modalTitle">重命名</h3>
+    <div class="field"><label>新文件名</label><input id="modalInput" autocomplete="off"></div>
+    <div class="modalActions">
+      <button class="btn small" id="modalCancel">取消</button>
+      <button class="btn primary small" id="modalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="js/library.js"></script>
+</body>
+</html>

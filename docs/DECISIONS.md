@@ -417,9 +417,9 @@
 
 ---
 
-## ADR-035 媒体库：固定目录 + HTML 管理页（含增删改查）（待实施）
+## ADR-035 媒体库：固定目录 + HTML 管理页（含增删改查）（P1/P2 已实施）
 
-- **日期**：2026-10-19 ｜ **状态**：🟡 方案+原型完成，待实施
+- **日期**：2026-10-19 ｜ **状态**：🟡 P1/P2 已实施（扫描/索引/搜索/预览/基础 CRUD；P3 移动/标签、P4 未做）
 - **背景**：苏哥要下载文件固定在一个目录，按「平台 → 博主 → 图片/视频」分层；用 HTML 页面直接查看、搜索、播放，并能对文件做增删改查。
 - **结论**：可行，且是下载器自然演进成「个人媒体库」；推荐**扩展托管的 library.html + File System Access API + IndexedDB + index.json**，先不做本地服务器。
 - **当前产出**：`docs/MEDIA-LIBRARY-PLAN.md`（完整方案）+ `deliverables/prototypes/media-library-v1.html`（可交互高保真原型，已实开验证：筛选/搜索/网格/详情/上一张下一张/最大化/图片缩放/视频播放/CRUD 界面）。
@@ -449,6 +449,16 @@
   - P4：大文件 Range 流式、缩略图缓存、收藏/标签。
 - **风险/边界**：File System Access handle 的 origin 绑定；`file://` 读取限制；大目录扫描性能；删除误操作；索引并发写；HEVC 解码；浏览器重装/换机后需重新授权目录。
 - **参考**：XBD 的 Web App + 本地任务库/媒体归档；Eagle、PhotoPrism、Immich、Stash 的资产库交互；gallery-dl 的 archive 记录。
+
+### ADR-035 实施补记（2026-10-19，P1/P2）
+
+- **页面**：`library.html` + `css/library.css` + `js/library.js`；popup 顶部新增「媒体库」入口。
+- **目录**：`showDirectoryPicker({mode:'readwrite', id:'vrLibrary'})`，句柄存 IndexedDB；下次打开 `queryPermission`，失效提示重新授权。
+- **扫描**：递归扫描根目录，按 `platform/author(@id)/images|videos/` 解析；跳过 `_index`/`_thumbs`/`_trash`；写 `_index/index.json`（失败不阻塞浏览）。
+- **UI**：资源树、树内搜索/懒展开、类型标签、搜索/排序、网格/列表、图片/视频预览、胶片、↑↓/←→ 键盘映射、信息栏。
+- **CRUD**：重命名（`FileSystemFileHandle.move`）、删除到 `_trash/`；不支持 move 时明确提示。移动/标签留到 P3 后续。
+- **验证**：`node --check js/library.js` 通过；`library.html` 在 1440×900 实开截图，空状态与布局正常。**真实目录选择/扫描需苏哥手动授权一次**（原生 picker 无法自动化）。
+- **后续**：P3 移动/标签/批量，P4 Range 流式/缩略图/内容哈希去重。
 
 ---
 
