@@ -774,11 +774,9 @@ main{min-width:0;padding:22px 26px 40px}
   }
 
   function pvClose(){
-    if (location.hash) {
-      history.back();
-    } else {
-      pvHide();
-    }
+    // 直接回媒体库，不依赖浏览历史（否则 Esc 只会退回上一张）
+    if (location.hash) { location.hash = ''; }
+    else { pvHide(); }
   }
 
   function pvStep(dir){
