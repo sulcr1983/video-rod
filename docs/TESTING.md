@@ -475,7 +475,7 @@
 | LIB1 | 选择器不再被固定 id 记忆到 F 盘 | ✅ 移除 `id`，`startIn:'downloads'` |
 | LIB2 | 空目录拒绝 | ✅ `hasMediaEntries` 校验 x/微博/小红书/video-rod |
 | LIB3 | 错误句柄自动清除 | ✅ 启动时无效句柄从 IndexedDB 删除 |
-| LIB4 | 正确目录 | 需手动选择 `E:\personal\Downloads\video-rod` |
+| LIB4 | 正确目录 | ✅ 已移除白名单；任意有读写权限目录可选，空目录显示 0 |
 | LIB5 | 扫描/预览/重命名/删除 | 待目录选对后逐项验收 |
 | LIB6 | 选择器从独立窗口触发 | ✅ 媒体库入口改为 `chrome.windows.create({type:'popup'})` |
 | LIB7 | 选中后请求读写权限 | ✅ `requestPermission({mode:'readwrite'})` |
