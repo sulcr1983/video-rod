@@ -385,8 +385,63 @@
         }
     }
 
+    function imageThumbBlob(file) {
+        return createImageBitmap(file).then(bmp => {
+            const scale = Math.min(1, 480 / Math.max(bmp.width, bmp.height));
+            const w = Math.max(1, Math.round(bmp.width * scale));
+            const h = Math.max(1, Math.round(bmp.height * scale));
+            const canvas = new OffscreenCanvas(w, h);
+            canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+            if (bmp.close) { bmp.close(); }
+            return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.82 });
+        });
+    }
+
+    // 视频首帧：隐藏 <video> 加载本地完整 mp4 → seek 一点 → 画到 canvas。
+    // 本地文件无需 HTTP Range；抽一帧的耗时远小于下载。失败/超时返回 reject（上层退回占位图）。
+    function videoFrameBlob(file) {
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const video = document.createElement('video');
+            let settled = false;
+            const timer = setTimeout(() => settle(null), 8000);
+            function settle(blob) {
+                if (settled) { return; }
+                settled = true;
+                clearTimeout(timer);
+                try { URL.revokeObjectURL(url); } catch (e) {}
+                try { video.removeAttribute('src'); video.load(); } catch (e) {}
+                if (blob) { resolve(blob); } else { reject(new Error('video-thumb-failed')); }
+            }
+            function grab() {
+                try {
+                    if (!video.videoWidth || !video.videoHeight) { settle(null); return; }
+                    const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
+                    const w = Math.max(1, Math.round(video.videoWidth * scale));
+                    const h = Math.max(1, Math.round(video.videoHeight * scale));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+                    canvas.toBlob(b => settle(b), 'image/jpeg', 0.82);
+                } catch (e) { settle(null); }
+            }
+            video.muted = true;
+            video.playsInline = true;
+            video.preload = 'auto';
+            video.onerror = () => settle(null);
+            video.onloadeddata = () => {
+                const d = isFinite(video.duration) ? video.duration : 0;
+                const t = Math.min(0.1, d > 0 ? d / 2 : 0);
+                if (t > 0) { try { video.currentTime = t; } catch (e) { grab(); } } else { grab(); }
+            };
+            video.onseeked = grab;
+            video.src = url;
+            video.load();
+        });
+    }
+
     async function thumbUrl(item) {
-        if (item.kind !== 'image') { return ''; }
+        if (item.kind !== 'image' && item.kind !== 'video') { return ''; }
         if (thumbs.has(item.id)) { return thumbs.get(item.id); }
         if (thumbBusy.has(item.id)) { return ''; }
         thumbBusy.add(item.id);
@@ -402,14 +457,9 @@
                 return url;
             } catch (e) { /* generate */ }
             const file = await item.handle.getFile();
-            const bmp = await createImageBitmap(file);
-            const scale = Math.min(1, 480 / Math.max(bmp.width, bmp.height));
-            const w = Math.max(1, Math.round(bmp.width * scale));
-            const h = Math.max(1, Math.round(bmp.height * scale));
-            const canvas = new OffscreenCanvas(w, h);
-            canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
-            if (bmp.close) { bmp.close(); }
-            const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.82 });
+            const blob = item.kind === 'image'
+                ? await imageThumbBlob(file)
+                : await videoFrameBlob(file);
             const fh = await dir.getFileHandle(name, { create: true });
             const fw = await fh.createWritable();
             await fw.write(blob);
@@ -565,7 +615,6 @@
     }
 
     function cardHTML(f) {
-        const meta = platformOf(f.platform);
         const isVideo = f.kind === 'video';
         const tagHtml = (dupIds.has(f.id) ? '<span class="tag dup">重复</span>' : '') +
             tagsOf(f.id).slice(0, 3).map(t => '<span class="tag">' + esc(t) + '</span>').join('');
@@ -573,10 +622,8 @@
             '" data-id="' + esc(f.id) + '" data-platform="' + esc(f.platform) + '">' +
             '<input type="checkbox" class="selbox" data-sel="' + esc(f.id) + '"' +
             (selected.has(f.id) ? ' checked' : '') + '>' +
-            '<div class="thumb">' +
-            (isVideo
-                ? '<div class="videoThumb" style="background:linear-gradient(135deg,' + meta.color + ',#0f172a)">▶</div>'
-                : '<img alt="' + esc(f.title) + '" loading="lazy">') +
+            '<div class="thumb' + (isVideo ? ' is-video' : '') + '">' +
+            '<img alt="' + esc(f.title) + '" loading="lazy">' +
             '<span class="badge">' + (isVideo ? '视频' : '图片') + '</span>' +
             '<div class="play"><span>' + (isVideo ? '▶' : '⤢') + '</span></div>' +
             '</div>' +
@@ -618,16 +665,19 @@
         grid.classList.toggle('hidden', rows.length === 0);
 
         rows.forEach(f => {
-            if (f.kind !== 'image') { return; }
+            if (f.kind !== 'image' && f.kind !== 'video') { return; }
             const card = grid.querySelector('[data-id="' + CSS.escape(f.id) + '"]');
             if (!card) { return; }
             const img = card.querySelector('img');
+            // 只有图片失败时用整图兜底；视频失败就留渐变占位，不把整个视频塞进 <img>
+            const fallback = () => {
+                if (f.kind !== 'image' || !img) { return; }
+                fileUrl(f).then(u => { if (img) { img.src = u; } }).catch(() => {});
+            };
             thumbUrl(f).then(url => {
                 if (url && img) { img.src = url; return; }
-                fileUrl(f).then(u => { if (img) { img.src = u; } }).catch(() => {});
-            }).catch(() => {
-                fileUrl(f).then(u => { if (img) { img.src = u; } }).catch(() => {});
-            });
+                fallback();
+            }).catch(fallback);
         });
     }
 
