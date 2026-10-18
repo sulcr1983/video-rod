@@ -157,7 +157,8 @@
     async function walk(dir, prefix) {
         let n = 0;
         for await (const [name, handle] of dir.entries()) {
-            if (!name || name.startsWith('.') || name === '_index' || name === '_thumbs' || name === '_trash') {
+            if (!name || name.startsWith('.') || name === '_index' || name === '_thumbs' || name === '_trash'
+                || name.toLowerCase() === 'xbd-downloader') {
                 continue;
             }
             const rel = prefix ? prefix + '/' + name : name;
