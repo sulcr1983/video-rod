@@ -162,6 +162,7 @@
 | [docs/DESIGN.md](docs/DESIGN.md) | 技术设计：架构、模块边界、数据流、集成对象 |
 | [docs/TESTING.md](docs/TESTING.md) | 测试策略：用例表、验收标准、回归清单、已知限制 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策记录（ADR）：每个重要选择为什么这么做 |
+| [docs/MEDIA-LIBRARY-PLAN.md](docs/MEDIA-LIBRARY-PLAN.md) | 媒体库方案：固定目录 + index.json + HTML 管理页（搜索/播放/CRUD） |
 | [deliverables/DELIVERABLES.md](deliverables/DELIVERABLES.md) | **产出物管理规范**：目录结构、命名、版本状态、登记表 |
 
 **目录速览**：`docs/` 工程文档 ｜ `deliverables/` 产出物（原型/评审/资产）｜ `tools/` 工具脚本 ｜ `archive/` 归档（上游猫抓遗产+作废产出物，留证不删）
