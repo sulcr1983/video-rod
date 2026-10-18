@@ -123,7 +123,8 @@
         "*://www.xiaohongshu.com/*"
       ],
       "js": [
-        "js/bulk-profile.js"
+        "js/bulk-profile.js",
+        "js/xhs-batch.js"
       ],
       "run_at": "document_idle"
     }

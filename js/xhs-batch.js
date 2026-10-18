@@ -1,0 +1,219 @@
+/**
+ * 钓鱼竿 video-rod — 小红书主页/收藏/点赞「半手动收集」
+ * ------------------------------------------------------------------
+ * 只收集当前页面已经渲染的笔记卡片，不自动滚动/翻页/打开详情；
+ * 用户手动滚动后点「收集当前页」入队。
+ *
+ * 自动补全详情默认关闭：开启后由 background 逐篇打开详情、
+ * 读取 __INITIAL_STATE__ 并下载；3–5 秒/篇、单次最多 20 篇。
+ */
+(() => {
+    if (window.__vrXhsBatch) { return; }
+    if (!/(^|\.)xiaohongshu\.com$/i.test(location.hostname)) { return; }
+    if (!/^\/user\/profile\//.test(location.pathname)) { return; }
+    window.__vrXhsBatch = true;
+
+    const KEY = 'vrXhsQueue';
+    const MAX = 20;
+    let queue = [];
+    let btn = null, panel = null, listEl = null, statusEl = null;
+    let autoEl = null, downloadBtn = null, running = false;
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    function cardsOnPage() {
+        const out = [];
+        const seen = new Set();
+        document.querySelectorAll('a[href*="/explore/"], a[href*="/discovery/item/"]').forEach(a => {
+            let u;
+            try { u = new URL(a.href, location.href); } catch (e) { return; }
+            const m = u.pathname.match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/);
+            if (!m || seen.has(m[1])) { return; }
+            const card = a.closest('section, article, li') ||
+                a.closest('div[class*="note"], div[class*="cover"]') || a;
+            const img = card.querySelector('img') || a.querySelector('img');
+            const title = (img && (img.alt || img.title)) ||
+                (card.innerText || '').split('\n').map(x => x.trim()).filter(Boolean)[0] || '未命名笔记';
+            const isVideo = !!card.querySelector('video, [class*="play"], [class*="video"]');
+            seen.add(m[1]);
+            out.push({
+                noteId: m[1],
+                xsecToken: u.searchParams.get('xsec_token') || '',
+                title: title.slice(0, 120),
+                cover: (img && img.src) || '',
+                type: isVideo ? 'video' : 'image',
+                page: location.href,
+                collectedAt: Date.now()
+            });
+        });
+        return out;
+    }
+
+    function load() {
+        try {
+            chrome.storage.local.get(KEY, res => {
+                queue = (res && res[KEY]) || [];
+                if (!Array.isArray(queue)) { queue = []; }
+                render();
+            });
+        } catch (e) { render(); }
+    }
+
+    function save() {
+        try { chrome.storage.local.set({ [KEY]: queue.slice(-500) }); } catch (e) { /* ignore */ }
+    }
+
+    function setStatus(text) {
+        if (statusEl) { statusEl.textContent = text; }
+    }
+
+    function render() {
+        if (!btn) { return; }
+        btn.textContent = '小红书批量 (' + queue.length + ')';
+        if (!listEl) { return; }
+        const items = queue.slice(-30).reverse();
+        listEl.innerHTML = items.length ? items.map(n =>
+            '<div class="vr-xhs-row"><span class="dot ' + (n.type === 'video' ? 'video' : '') + '"></span>' +
+            '<span class="t" title="' + esc(n.title) + '">' + esc(n.title) + '</span>' +
+            '<span class="ty">' + (n.type === 'video' ? '视频' : '图片') + '</span></div>'
+        ).join('') : '<div class="vr-xhs-empty">还没有收集。手动滚动页面后点「收集当前页」。</div>';
+        if (statusEl && !statusEl.textContent) {
+            statusEl.textContent = '共 ' + queue.length + ' 条；手动滚动不会自动翻页';
+        }
+        if (downloadBtn) { downloadBtn.disabled = !queue.length || running; }
+    }
+
+    function ensureUI() {
+        if (btn) { return; }
+        const style = document.createElement('style');
+        style.textContent = `
+.vr-xhs-btn{position:fixed;right:18px;bottom:20px;z-index:2147483001;border:0;border-radius:10px;background:#ff2442;color:#fff;font:600 12px/1 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;padding:11px 14px;box-shadow:0 8px 24px rgba(255,36,66,.28);cursor:pointer}
+.vr-xhs-btn:hover{background:#e11d38}
+.vr-xhs-panel{position:fixed;right:18px;bottom:68px;z-index:2147483002;width:350px;max-height:min(70vh,560px);display:flex;flex-direction:column;background:#fff;color:#1d2129;border:1px solid #e5e8ef;border-radius:12px;box-shadow:0 18px 48px rgba(15,23,42,.2);font:12px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;overflow:hidden}
+.vr-xhs-panel.hidden{display:none}
+.vr-xhs-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #eef1f6;font-size:13px}
+.vr-xhs-head button{border:0;background:transparent;color:#86909c;font-size:16px;cursor:pointer}
+.vr-xhs-tip{padding:8px 14px;color:#86909c;font-size:10.5px;background:#f7f9fc}
+.vr-xhs-actions{display:flex;gap:7px;padding:10px 14px}
+.vr-xhs-actions button,.vr-xhs-foot button{border:1px solid #e5e8ef;background:#fff;color:#344054;border-radius:6px;padding:6px 9px;font-size:11px;cursor:pointer}
+.vr-xhs-actions button.primary{background:#1677ff;border-color:#1677ff;color:#fff}
+.vr-xhs-actions button:hover,.vr-xhs-foot button:hover{border-color:#bcd7ff;color:#1677ff}
+.vr-xhs-auto{display:flex;gap:7px;align-items:flex-start;padding:0 14px 9px;color:#86909c;font-size:10.5px;cursor:pointer}
+.vr-xhs-auto input{accent-color:#ff2442;margin-top:2px}
+.vr-xhs-list{max-height:260px;overflow:auto;border-top:1px solid #eef1f6;border-bottom:1px solid #eef1f6}
+.vr-xhs-row{display:flex;align-items:center;gap:7px;padding:7px 11px;border-bottom:1px solid #f4f6f9}
+.vr-xhs-row:last-child{border-bottom:0}
+.vr-xhs-row .dot{width:6px;height:6px;border-radius:50%;background:#1677ff;flex:0 0 6px}
+.vr-xhs-row .dot.video{background:#ff2442}
+.vr-xhs-row .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#344054}
+.vr-xhs-row .ty{color:#a0a8b4;font-size:9.5px}
+.vr-xhs-empty{padding:22px 14px;color:#a0a8b4;text-align:center}
+.vr-xhs-foot{display:flex;align-items:center;gap:8px;padding:10px 14px}
+.vr-xhs-foot span{flex:1;color:#86909c;font-size:10.5px}
+.vr-xhs-foot button{background:#1677ff;border-color:#1677ff;color:#fff}
+.vr-xhs-foot button:disabled{opacity:.45;cursor:default}
+@media(max-width:520px){.vr-xhs-panel{right:10px;left:10px;width:auto}.vr-xhs-btn{right:10px;bottom:12px}}
+`;
+        document.documentElement.appendChild(style);
+
+        btn = document.createElement('button');
+        btn.className = 'vr-xhs-btn';
+        btn.type = 'button';
+        btn.textContent = '小红书批量 (0)';
+        btn.addEventListener('click', () => {
+            panel.classList.toggle('hidden');
+        });
+        document.documentElement.appendChild(btn);
+
+        panel = document.createElement('div');
+        panel.className = 'vr-xhs-panel hidden';
+        panel.innerHTML =
+            '<div class="vr-xhs-head"><b>小红书主页收集</b><button type="button" data-close>×</button></div>' +
+            '<div class="vr-xhs-tip">手动滚动页面，只收集已渲染卡片；不自动翻页、不点赞/收藏。</div>' +
+            '<div class="vr-xhs-actions"><button type="button" class="primary" data-collect>收集当前页</button>' +
+            '<button type="button" data-clear>清空</button></div>' +
+            '<label class="vr-xhs-auto"><input type="checkbox" data-auto> 自动补全详情（默认关闭；会逐篇打开详情，有风控风险）</label>' +
+            '<div class="vr-xhs-list" data-list></div>' +
+            '<div class="vr-xhs-foot"><span data-status>共 0 条；手动滚动不会自动翻页</span>' +
+            '<button type="button" data-download>下载队列</button></div>';
+        document.documentElement.appendChild(panel);
+
+        listEl = panel.querySelector('[data-list]');
+        statusEl = panel.querySelector('[data-status]');
+        autoEl = panel.querySelector('[data-auto]');
+        downloadBtn = panel.querySelector('[data-download]');
+
+        panel.querySelector('[data-close]').addEventListener('click', () => panel.classList.add('hidden'));
+        panel.querySelector('[data-collect]').addEventListener('click', collect);
+        panel.querySelector('[data-clear]').addEventListener('click', () => {
+            if (queue.length && confirm('清空已收集的 ' + queue.length + ' 条笔记？')) {
+                queue = []; save(); setStatus('已清空'); render();
+            }
+        });
+        downloadBtn.addEventListener('click', download);
+        render();
+    }
+
+    function collect() {
+        const found = cardsOnPage();
+        let added = 0;
+        found.forEach(n => {
+            if (!queue.some(q => q.noteId === n.noteId)) {
+                queue.push(n);
+                added++;
+            }
+        });
+        save();
+        render();
+        setStatus('本页识别 ' + found.length + ' 条，新增 ' + added + ' 条，共 ' + queue.length + ' 条');
+    }
+
+    function download() {
+        if (!queue.length || running) { return; }
+        if (!autoEl || !autoEl.checked) {
+            setStatus('请手动逐篇打开笔记；开启「自动补全详情」可批量（有风控风险）');
+            return;
+        }
+        running = true;
+        downloadBtn.disabled = true;
+        setStatus('自动补全中：最多 ' + MAX + ' 条，3–5 秒/篇…');
+        try {
+            chrome.runtime.sendMessage({
+                Message: 'vrXhsAuto',
+                notes: queue.slice(0, MAX),
+                max: MAX
+            }, res => {
+                running = false;
+                downloadBtn.disabled = false;
+                if (chrome.runtime.lastError || !res || !res.ok) {
+                    setStatus('自动补全失败：' + (res && res.reason ? res.reason : '请查看扩展日志'));
+                    return;
+                }
+                setStatus('完成：' + (res.files || 0) + ' 个文件，' + (res.errors || 0) + ' 篇失败' +
+                    (res.stopped ? '；' + res.stopped : ''));
+                render();
+            });
+        } catch (e) {
+            running = false;
+            downloadBtn.disabled = false;
+            setStatus('无法连接后台：' + String(e).slice(0, 80));
+        }
+    }
+
+    try {
+        chrome.runtime.onMessage.addListener(msg => {
+            if (!msg || msg.Message !== 'vrXhsAutoProgress') { return; }
+            setStatus('自动补全 ' + msg.done + '/' + msg.total +
+                '，已下载 ' + (msg.files || 0) + ' 个' +
+                (msg.errors ? '，失败 ' + msg.errors + ' 篇' : '') +
+                (msg.stop ? '；' + msg.stop : ''));
+        });
+    } catch (e) { /* ignore */ }
+
+    ensureUI();
+    load();
+})();
