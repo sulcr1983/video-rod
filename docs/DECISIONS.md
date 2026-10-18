@@ -385,6 +385,19 @@
 - **验证**：微博主页滚动记录 4 张图；点开一个视频后记录到第 5 项（`🎬 @史老柒 视频 …`）；面板/全选/保存按钮正常；OPFS 等价目录写入 125,443 B JPEG 成功；微博 CDN 仍需页面上下文（downloads/DNR 403）。
 - **边界**：原生目录选择器需要用户点一次（浏览器安全要求）；微博文件不进 `Downloads/video-rod/`，而是写入用户选的目录下的 `作者(@UID)/`；X/Instagram 尚未接入该面板。
 
+### ADR-033 实施补记 2（2026-10-19）：X 主页 P1（照 XBD）
+
+- **XBD 5.9 逆向补充**：`dlFilter` 默认 `["ignoreDownloaded"]`；`onlyHimself` 同时忽略 `is_rt`（转帖）和 `is_quote`（引用）；`only_image` / `only_video` 媒体类型过滤；范围 `current/recent/all`；每条媒体有 `is_download`，本地任务库记录 `tweet_id/media_id/media_type/media_url/tweet_text/is_retweet/local_download_status`；已下载缓存键 `sk_download_user_history_cache_key_<uid>`；保存目录/文件名模板在 Web App 配置。
+- **实现**：`js/bulk-profile.js` 扩展到 `x.com` / `twitter.com` 用户主页（`/`、`/media`、`/photo`）：
+  - 按 `article[data-testid="tweet"]` 提取作者/文案（`naming.extractTwitter(article,'x.com')`）；图片记录 `pbs.twimg.com/media/...?name=orig`；视频记录 `statusId/mediaId/poster`，保存时通过 `vrResolveX` 调 fxtwitter 解析完整 MP4。
+  - **忽略转载**：`socialContext` 或 `ref.user != profileUser`；**忽略已下载**：`chrome.storage.local['vrBulkDone:x:<user>']` 记录 `x:video:<statusId>` / 图片 URL，保存成功才写入；面板可「清除已下载」。
+  - 抄 XBD 的 `只图片/只视频` 筛选、反选、下载进度。
+  - 保存仍走 File System Access（一次选目录 → `作者(@handle)/`）；不支持时走 `vrBulkDownload` 回退，X 用 downloads + `video-rod/` 子目录（X CDN 允许）。
+- **X 单条按钮修复**：`mediaIdFromArticle` 支持 `pbs.twimg.com/media/<字母数字ID>`；无 mediaId 也可按推文用 fxtwitter 解析；有 `<video>` 就注入按钮（NASA `/media` 按钮从 4 个变 7 个）。
+- **稳妥模式（反爬）**：保存与后台批量全部串行，1.4–2.6 秒随机间隔；429/5xx 按 `Retry-After`/指数退避重试（403 不重试）；连续 3 次失败自动暂停；X 视频等每个 `downloads` 任务落定后再下一条。不自动翻页/滚动。
+- **验证**：`/NASA/media` 记录 7 条视频、7 个按钮；批量视频 `video-rod/NASA(@NASA)_TEST X BULK_01.mp4`（8,401,119 B）、图片 `video-rod/NASA(@NASA)_TEST X IMAGE_01.jpg`（232,912 B）；合成图片推文被记录为 `@NASA 图片 测试图片文案`；X 单条按钮下载 8,401,119 B。
+- **边界（如实记录）**：自动化下 `x.com/NASA/photo` 会被重定向，图片分支用合成推文验证；主页懒加载导致「忽略已下载」数量需手动确认；引用推文暂未单独过滤（只过滤转帖）。
+
 ---
 
 ## ADR-034 YouTube/Instagram 下载可行性调研（2026-10-19）
@@ -401,6 +414,40 @@
   - 分期：P1 单帖/已加载媒体扫描 + 批量下载（1–2 天）；P2 主页/Explore 全量 GraphQL 分页（2–3 天）；Stories/Highlights 需登录态，最后做。
   - 风险：登录墙/限流、GraphQL query hash 会变、CDN 签名/Referer、Stories 需登录、批量下载要限速。
 - **影响**：YouTube 不投入；Instagram 作为 ADR-033 批量框架的第二个站点，优先级低于微博/X 主页批量。
+
+---
+
+## ADR-035 媒体库：固定目录 + HTML 管理页（含增删改查）（待实施）
+
+- **日期**：2026-10-19 ｜ **状态**：📋 已计划未开工
+- **背景**：苏哥要下载文件固定在一个目录，按「平台 → 博主 → 图片/视频」分层；用 HTML 页面直接查看、搜索、播放，并能对文件做增删改查。
+- **结论**：可行，且是下载器自然演进成「个人媒体库」；推荐**扩展托管的 library.html + File System Access API + IndexedDB + index.json**，先不做本地服务器。
+- **目录规范**：
+  ```
+  video-rod/
+    weibo/<作者(@UID)>/images|videos/
+    x/<作者(@handle)>/images|videos/
+    douyin/<作者(@UID)>/videos/
+    instagram/<作者(@handle)>/images|videos/
+    _index/index.json
+    _thumbs/<hash>.jpg
+    _trash/...
+  ```
+- **技术方案**：
+  1. **管理页**：`library.html` 由扩展托管（`chrome-extension://`），不依赖外部服务；首次点「选择媒体根目录」→ `showDirectoryPicker({mode:'readwrite'})`，把 `FileSystemDirectoryHandle` 存进 IndexedDB（扩展 origin）。下次打开检查 `queryPermission`，失效时在用户手势里 `requestPermission`。
+  2. **索引**：根目录 `_index/index.json` 为可移植主索引；IndexedDB 做内存/查询缓存。字段：`id, platform, author, authorId, type, title, ext, bytes, duration, width, height, savedAt, pageUrl, sourceUrl, filePath, thumb, tags`。写入用「临时文件 + 覆盖」避免半截 JSON。
+  3. **CRUD**：`getDirectoryHandle/getFileHandle/createWritable/removeEntry`；重命名优先 `FileSystemHandle.move()`，不支持则「复制 + 删除」；删除先移到 `_trash/` 并二次确认；改标题/标签只改索引（可选写 sidecar `.json`）。
+  4. **播放/预览**：`getFile()` → `URL.createObjectURL` → `<img>/<video>`；大文件 P2 用 Service Worker 做 Range 流式（避免整段 blob 进内存）。HEVC 能否播放取决于系统解码器（B站 1080P 产物是 h264，无此问题）。
+  5. **缩略图**：图片用 `createImageBitmap`/canvas；视频用已有 poster 或首帧；存 `_thumbs/`，懒加载。
+  6. **搜索**：先纯前端内存索引 + 过滤（平台/作者/类型/关键词/日期）；数据量大再考虑 SQLite WASM 或 MiniSearch（新依赖先给苏哥过目）。
+  7. **下载落盘统一**：X/抖音/B站走 `chrome.downloads` + `platform/author/type/` 子目录；微博必须页面 fetch，建议由**扩展页/离屏上下文**写入同一根目录（因为 File System Access 的 handle 与 origin 绑定，内容脚本在 `m.weibo.cn` 选中的目录不能直接给扩展页复用），或先落根目录由 library 整理。
+- **分期**：
+  - P1：目录规范 + `index.json` 元数据（下载时写）。
+  - P2：library 只读：扫描/搜索/筛选/网格/预览/播放。
+  - P3：CRUD：重命名/移动/删除（trash）/改标题标签；重建索引；重复检测。
+  - P4：大文件 Range 流式、缩略图缓存、收藏/标签。
+- **风险/边界**：File System Access handle 的 origin 绑定；`file://` 读取限制；大目录扫描性能；删除误操作；索引并发写；HEVC 解码；浏览器重装/换机后需重新授权目录。
+- **参考**：XBD 的 Web App + 本地任务库/媒体归档；Eagle、PhotoPrism、Immich、Stash 的资产库交互；gallery-dl 的 archive 记录。
 
 ---
 

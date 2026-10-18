@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.7 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.8 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -8,6 +8,7 @@
 > v1.5 变更：B站 1080P 高清路线（DASH + 页面内 mp4box 合成）产出物登记；新增 `lib/mp4box.all.min.js`（第三方库已登记）、`tools/bili-mux-lab.py`+`mux-attempt.js` 合成实验室、`tools/bili-1080-probe.py` 清晰度扫描器、`tools/test-bili-1080.py` 双路线端到端脚本。
 > v1.6 变更：页内悬浮下载按钮（ADR-030：右上角/矩形命中）与抖音取流命名（ADR-031：详情接口 + DNR Referer 回放）产出物登记；新增 `js/video-overlay.js`、`js/douyin.js`、`js/bili-whole.js`、overlay 测试脚本与 `assets/overlay-douyin.png`；决策记录主线更新至 ADR-031。同日补微博：通用直链优先页面 fetch→blob→`<a download>`（微博 Referer ACL），失败回退 downloads+DNR；微博 `$render_data` 取作者/正文命名（ADR-031 补记）。
 > v1.7 变更：ADR-034 YouTube/Instagram 调研；ADR-033 P1 微博主页「半手动批量」落地（`js/bulk-profile.js`：滚动记录图片、播放记录视频、File System Access 按作者建目录写盘）；登记主页批量产出物与 TESTING §10.4。
+> v1.8 变更：ADR-033 P1 扩展到 X 主页（照 XBD：忽略转载/已下载、图片视频筛选、反选、清除记录、稳妥限速）；修复 X 单条按钮 mediaId；新增 ADR-035 媒体库（固定目录 + HTML 管理页 + CRUD）方案。
 
 ---
 
@@ -81,7 +82,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.7 | 进行中 | ADR-001~034，追加式；ADR-028 = M11 离屏直连管线；ADR-029 = B站完整视频/1080P；ADR-030 = 页内悬浮按钮；ADR-031 = 抖音/微博取流与 Referer；ADR-032 = 暂不引入服务端代理；ADR-033 = 主页批量（微博 P1 半手动已实施，X/Instagram 待做）；ADR-034 = YouTube/Instagram 调研（YouTube 不做，Instagram 待实施） |
+| 决策记录 | `docs/DECISIONS.md` | v1.8 | 进行中 | ADR-001~035，追加式；ADR-028 = M11 离屏直连管线；ADR-029 = B站完整视频/1080P；ADR-030 = 页内悬浮按钮；ADR-031 = 抖音/微博取流与 Referer；ADR-032 = 暂不引入服务端代理；ADR-033 = 主页批量（微博/X P1 已实施，Instagram 待做）；ADR-034 = YouTube/Instagram 调研；ADR-035 = 媒体库（固定目录 + HTML 管理页 + CRUD，待实施） |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
 | popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 已定稿 | 浅色 A/B/C 三方案可点原型；苏哥拍板方案 A「收网」（ADR-025），已全量整合进产品代码 |
@@ -158,9 +159,9 @@ video-rod/
 | B站清晰度扫描器 | `tools/bili-1080-probe.py` | v1.0 | 已定稿 | 扫 `fnval × qn` 组合，列出每条路是 durl 还是 dash、实际 quality/尺寸，用于判断「B站给不给 1080P」 |
 | B站双路线端到端脚本 | `tools/test-bili-1080.py` | v1.0 | 已定稿 | `VR_MODE=durl/dash` 选路线：重载扩展→开 popup→读横幅→点按钮→盯进度→ffprobe 验落盘文件 |
 | 页内悬浮下载按钮（ADR-030） | `js/video-overlay.js` + `manifest.json` content_scripts | v1.0 | 已定稿 | 全局一个 `position:fixed` 浮层；`document.mousemove` 60ms 节流 + 矩形命中（解决微博/抖音/B站覆盖层导致按钮不出现）；右上角定位、右缘 14px、top 让开 12%；主按钮 44×40 + 箭头 26×40；一键最高清/菜单选档；全屏隐藏；X 站让给 `x-button.js` |
-| 主页半手动批量（ADR-033 P1） | `js/bulk-profile.js` + `manifest.json` content_scripts + `js/background.js`(vrBulkDownload) | v1.0 | 评审中 | 人工滚动自动记录微博图片；视频播放时记录 currentSrc；`__vrFeedMeta` 关联作者/文案；右下角面板勾选；File System Access 一次选目录 → `作者(@UID)/` 子目录写盘；不自动翻页；不支持时回退页面 fetch 队列。已验证记录/面板/OPFS 写盘，原生目录选择待苏哥手动确认 |
+| 主页半手动批量（ADR-033 P1） | `js/bulk-profile.js` + `manifest.json` content_scripts + `js/background.js`(vrBulkDownload/vrResolveX) | v1.1 | 评审中 | 微博：滚动记录图片、播放记录视频；X：article 扫描图片/视频，作者/文案，视频走 fxtwitter；XBD 同款忽略转载/忽略已下载、只图片/只视频、反选、清除已下载；File System Access 按 `作者(@ID)/` 写盘；稳妥模式 1.4–2.6s 随机间隔 + 429/5xx 退避 + 连续 3 次失败暂停。已验证记录、视频/图片落盘、X 按钮修复；原生目录选择待苏哥手动确认 |
 | 抖音取流模块（ADR-031） | `js/douyin.js` + `js/background.js`(抖音分支/DNR) + `js/naming.js`(extractDouyin) | v1.1 | 已定稿 | 页面主世界同源 `aweme/v1/web/aweme/detail/`；URL `/video/<id>` 或 `?modal_id=<id>` 定位作品；按短边分辨率降序选最高档；DNR session rule set Referer/Origin 解决 CDN 403。v1.1 增加微博同类问题：通用直链优先页面 fetch→blob→`<a download>`，失败回退 downloads+DNR；微博 `$render_data` 取作者/正文命名 |
 | B站取流模块 | `js/bili-whole.js` | v1.0 | 已定稿 | popup 与 SW 共用的 B站主世界取流核心（ADR-029/补记），从 `popup-videorod.js` 抽出；background `importScripts` 加载 |
 | 悬浮按钮测试脚本 | `tools/overlay-pos.py`、`tools/overlay-check.py`、`tools/test-video-overlay.py`、`tools/shot-overlay.py` | v1.0 | 已定稿 | 位置诊断/通用站点体检/端到端验证/早期截图；CDP 截图统一 `fromSurface:false`，避免白底破图伪影 |
 | 悬浮按钮截图 | `deliverables/assets/overlay-douyin.png` | 2026-10-19 | 已定稿 | 抖音 1920×887 实拍：按钮在右上角（right gap 14px、top 76px），不与播放器控件重叠 |
-| 抖音/微博真机验收记录 | `docs/TESTING.md` §10 | v1.6 | 已定稿 | 按钮 O1-O6、抖音 D1-D10、微博 W1-W6、主页批量 B1-B7；4K hevc+aac 7,260,920 B；99MB 大文件 complete；微博 540×960+aac 5,817,304 B；主页记录 4 图+1 视频，目录写盘 125,443 B；无 Referer 403 / 带 Referer 206 |
+| 抖音/微博/X 真机验收记录 | `docs/TESTING.md` §10 | v1.7 | 已定稿 | 按钮 O1-O6、抖音 D1-D10、微博 W1-W6、主页批量 B1-B7、X 主页 X1-X9；4K hevc+aac 7,260,920 B；99MB 大文件 complete；微博 540×960+aac 5,817,304 B；X 视频 8,401,119 B、图片 232,912 B；稳妥限速/失败暂停 |

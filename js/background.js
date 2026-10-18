@@ -816,6 +816,15 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             });
         return true;
     }
+    // 钓鱼竿：X 主页批量里视频是 blob，内容脚本按推文坐标来解析直链
+    if (Message.Message == "vrResolveX") {
+        fetchXVideo(Message.user, Message.statusId, Message.mediaId, true)
+            .then(function (url) { sendResponse({ ok: !!url, url: url || '' }); })
+            .catch(function (e) {
+                sendResponse({ ok: false, reason: String(e).slice(0, 120) });
+            });
+        return true;
+    }
     // 钓鱼竿：X(推特) 推文内联按钮下载（M8），js/x-button.js 发起
     // 取 X 的「已合并音视频」完整 MP4 直链 → 直接下载。不下载分片、不合成、不走在线 FFmpeg。
     // 页面只传 user/statusId/mediaId 和文件名，直链由后台查——页面无法借道下载任意地址。
@@ -1329,30 +1338,63 @@ function vrBulkName(item, index) {
 }
 
 /** 主页批量：逐条页面 fetch → blob → <a download>（微博 CDN 只认页面上下文）。
- *  串行 + 间隔，避免触发反爬；进度通过 vrBulkProgress 推给内容脚本。 */
+ *  稳妥模式：串行 + 1.4~2.6 秒随机间隔；连续 3 次失败自动暂停，避免触发风控。 */
+function vrBulkSleep(ms) {
+    return new Promise(function (res) { setTimeout(res, ms); });
+}
+function vrBulkDelay() {
+    return 1400 + Math.floor(Math.random() * 1200);
+}
+
 async function vrBulkDownload(items, tabId) {
     const list = (items || []).slice(0, 500);
     let done = 0;
+    let failStreak = 0;
+    let paused = false;
     for (let i = 0; i < list.length; i++) {
         const it = list[i] || {};
-        if (!it.url || !/^https?:/i.test(it.url)) { continue; }
-        const name = vrBulkName(it, i);
-        let r = null;
-        if (tabId != null) {
-            r = await vrTryPageDownload(tabId, it.url, name);
+        // X 主页视频是 blob，按推文坐标用 fxtwitter 解析完整 MP4
+        if (!it.url && it.kind === 'video' && it.site === 'x') {
+            it.url = await fetchXVideo(it.user, it.statusId, it.mediaId, true);
         }
-        if (!r || !r.ok) {
-            // 回退：downloads + 子目录（微博会 403，但其他站点可能可用）
-            const id = await vrDownloadWithName(it.url, 'video-rod/' + name);
-            r = { ok: id !== null };
+        if (!it.url || !/^https?:/i.test(it.url)) {
+            failStreak++;
+        } else {
+            const name = vrBulkName(it, i);
+            let ok = false;
+            if (it.site === 'x') {
+                // X CDN 允许 downloads；带子目录，文件名保护复用 ADR-027
+                const id = await vrDownloadWithName(it.url, 'video-rod/' + name);
+                if (id !== null) {
+                    const outcome = await vrWaitDownload(id, 15000);
+                    if (outcome && outcome.state === 'interrupted') {
+                        try { vrDropDownload(id); } catch (e) { /* ignore */ }
+                    } else {
+                        ok = true;
+                    }
+                }
+            } else if (tabId != null) {
+                const r = await vrTryPageDownload(tabId, it.url, name);
+                ok = !!(r && r.ok);
+                if (!ok) {
+                    const id = await vrDownloadWithName(it.url, 'video-rod/' + name);
+                    ok = id !== null;
+                }
+            }
+            if (ok) { done++; failStreak = 0; } else { failStreak++; }
         }
-        if (r && r.ok) { done++; }
+        if (failStreak >= 3) { paused = true; break; }
         try {
-            chrome.tabs.sendMessage(tabId, { Message: 'vrBulkProgress', done: done, total: list.length });
+            chrome.tabs.sendMessage(tabId, {
+                Message: 'vrBulkProgress', done: done, total: list.length, paused: paused
+            });
         } catch (e) { /* 页面关了 */ }
-        await new Promise(function (res) { setTimeout(res, 700); });
+        await vrBulkSleep(vrBulkDelay());
     }
-    return { ok: true, total: list.length, done: done };
+    return {
+        ok: true, total: list.length, done: done,
+        paused: paused, reason: paused ? '连续失败 3 次，已暂停（可能触发风控）' : ''
+    };
 }
 
 async function vrPageMetaInTab(tabId) {
