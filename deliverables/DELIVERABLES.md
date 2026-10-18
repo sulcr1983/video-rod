@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.11 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.12 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -12,6 +12,7 @@
 > v1.9 变更：ADR-036 小红书反爬评估：不做主页自动批量，建议只做「详情页单篇」；新增主页网格/详情 state/CORS/461/471 实探结论。
 > v1.10 变更：媒体库方案 `docs/MEDIA-LIBRARY-PLAN.md` + 可交互 HTML 原型 `deliverables/prototypes/media-library-v1.html` 登记；ADR-035 状态更新为「方案+原型完成，待实施」。
 > v1.11 变更：ADR-036 A 方案落地——小红书详情页单篇适配（`vrXhsScan` 只读 `__INITIAL_STATE__`，图片/视频记录，`video-rod/小红书/作者/` 下载，3–5 秒限速、单次 20 条、失败暂停）。
+> v1.12 变更：媒体库原型 v2（独立图片/视频预览页 + 鼠标/键盘快捷方式 + 资源树搜索/懒展开）；开源组件选型与大量数据管理方案登记。
 
 ---
 
@@ -86,7 +87,8 @@ video-rod/
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
 | 决策记录 | `docs/DECISIONS.md` | v1.11 | 进行中 | ADR-001~036，追加式；ADR-030 = 页内悬浮按钮；ADR-031 = 抖音/微博取流与 Referer；ADR-032 = 暂不引入服务端代理；ADR-033 = 主页批量（微博/X P1 已实施）；ADR-034 = YouTube/Instagram 调研；ADR-035 = 媒体库（方案+原型完成，待实施）；ADR-036 = 小红书详情页单篇（A 方案已实施） |
-| 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD |
+| 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD；§10 开源组件选型（PhotoSwipe/Plyr/Filebrowser/Immich…）；§11 大量博主/内容管理（懒加载/虚拟滚动/分片索引/游标分页） |
+| 媒体库原型 v2 | `deliverables/prototypes/media-library-v2.html` | v1.0 | 评审中 | 资源树 平台→博主→图片/视频；独立图片/视频预览页；鼠标两侧箭头/底部胶片/滚轮缩放/双击/拖拽；键盘 ←→↑↓、Space、M、F、I、+/-/0、Esc、Home/End；树内搜索 + 每平台懒展开 |
 | 媒体库 HTML 原型 | `deliverables/prototypes/media-library-v1.html` | v1 | 评审中 | 可交互高保真原型：平台/博主/类型筛选、搜索、网格/列表、批量选择、详情检查器、上一张/下一张、最大化、图片缩放、视频播放、重命名/改标签/移动/删除/复制路径；已浏览器实开验证 |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
