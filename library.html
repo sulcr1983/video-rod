@@ -29,6 +29,7 @@
     <div class="topbar">
       <div class="search"><span>⌕</span><input id="search" placeholder="搜索标题、博主、平台、路径…"><kbd>⌘ K</kbd></div>
       <div class="actions">
+        <button class="btn" id="selectBtn">☑ 选择</button>
         <button class="btn" id="rescanBtn">↻ 重新扫描</button>
         <button class="btn primary" id="pickBtn">📁 选择目录</button>
       </div>
@@ -68,6 +69,15 @@
       </div>
     </div>
 
+    <div class="batchbar hidden" id="batchbar">
+      <b id="batchCount">已选 0</b>
+      <button class="btn small" id="batchAll">全选</button>
+      <button class="btn small" id="batchInvert">反选</button>
+      <button class="btn small" id="batchClear">清除</button>
+      <span class="spacer"></span>
+      <button class="btn small" id="batchMove">移动到…</button>
+      <button class="btn small danger" id="batchDelete">删除到回收站</button>
+    </div>
     <div class="grid" id="grid"></div>
     <div class="empty hidden" id="empty">
       <b>还没有可显示的素材</b><br>
@@ -101,8 +111,11 @@
       <div class="pv-authorRow"><span class="avatar" id="pvAvatar">?</span><span id="pvAuthor"></span></div>
       <div class="pv-meta" id="pvMeta"></div>
       <div class="pv-path" id="pvPath"></div>
+      <div class="pv-tagRow"><b>标签</b><div class="pv-tags" id="pvTags"></div></div>
+      <div class="pv-tagAdd"><input id="pvTagInput" placeholder="添加标签…" autocomplete="off"><button class="pv-btn" id="pvTagAdd">添加</button></div>
       <div class="pv-infoActions">
         <button class="pv-btn" id="pvRename">✎ 重命名</button>
+        <button class="pv-btn" id="pvMove">↪ 移动</button>
         <button class="pv-btn" id="pvReveal">📂 在文件夹中显示</button>
         <button class="pv-btn danger" id="pvDelete">🗑 删除到回收站</button>
         <button class="pv-btn" id="pvClose">关闭</button>
@@ -122,6 +135,28 @@
     <div class="modalActions">
       <button class="btn small" id="modalCancel">取消</button>
       <button class="btn primary small" id="modalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="moveModal">
+  <div class="modalCard">
+    <h3>移动到平台 / 博主</h3>
+    <div class="field"><label>平台</label>
+      <select id="movePlatform">
+        <option value="x">X / Twitter</option>
+        <option value="weibo">微博</option>
+        <option value="douyin">抖音</option>
+        <option value="xiaohongshu">小红书</option>
+        <option value="instagram">Instagram</option>
+        <option value="other">其他</option>
+      </select>
+    </div>
+    <div class="field"><label>博主目录</label><input id="moveAuthor" placeholder="作者(@ID)" autocomplete="off"></div>
+    <div class="modalHint">图片/视频会自动放入 images / videos；同名文件自动加序号。</div>
+    <div class="modalActions">
+      <button class="btn small" id="moveCancel">取消</button>
+      <button class="btn primary small" id="moveSave">移动</button>
     </div>
   </div>
 </div>

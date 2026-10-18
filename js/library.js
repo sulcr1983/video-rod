@@ -30,6 +30,10 @@
     let zoom = 1, panX = 0, panY = 0;
     let dragging = false, dragStart = null;
     let modalSave = null;
+    let selectMode = false;
+    let selected = new Set();
+    let tags = {};
+    let pendingMove = [];
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -218,6 +222,7 @@
                 }
             }
             await writeIndex();
+            await loadTags();
         } catch (e) {
             $('#statusText').textContent = '扫描失败：' + String(e).slice(0, 80);
             toast('扫描失败：' + String(e).slice(0, 80));
@@ -244,6 +249,54 @@
         } catch (e) { /* index is optional */ }
     }
 
+    /* ---------------- 标签 ---------------- */
+    async function loadTags() {
+        tags = {};
+        if (!rootHandle) { return; }
+        try {
+            const dir = await rootHandle.getDirectoryHandle('_index');
+            const fh = await dir.getFileHandle('tags.json');
+            const text = await (await fh.getFile()).text();
+            const obj = JSON.parse(text);
+            if (obj && typeof obj === 'object') { tags = obj; }
+        } catch (e) { /* no tags yet */ }
+        const valid = new Set(files.map(f => f.id));
+        let changed = false;
+        Object.keys(tags).forEach(k => {
+            if (!valid.has(k)) { delete tags[k]; changed = true; }
+        });
+        if (changed) { await saveTags(); }
+    }
+    async function saveTags() {
+        if (!rootHandle) { return; }
+        try {
+            const dir = await rootHandle.getDirectoryHandle('_index', { create: true });
+            const fh = await dir.getFileHandle('tags.json', { create: true });
+            const w = await fh.createWritable();
+            await w.write(JSON.stringify(tags, null, 2));
+            await w.close();
+        } catch (e) { toast('标签保存失败：' + String(e).slice(0, 60)); }
+    }
+    function tagsOf(id) { return Array.isArray(tags[id]) ? tags[id] : []; }
+    async function addTag(id, value) {
+        const t = String(value || '').trim().replace(/^#/, '');
+        if (!id || !t) { return; }
+        const list = tagsOf(id).slice();
+        if (!list.includes(t)) { list.push(t); }
+        tags[id] = list.slice(0, 12);
+        await saveTags();
+        render();
+        if (cur() && cur().id === id) { renderPreview(); }
+    }
+    async function removeTag(id, value) {
+        if (!id) { return; }
+        tags[id] = tagsOf(id).filter(t => t !== value);
+        if (!tags[id].length) { delete tags[id]; }
+        await saveTags();
+        render();
+        if (cur() && cur().id === id) { renderPreview(); }
+    }
+
     function revokeUrls() {
         urls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
         urls.clear();
@@ -266,7 +319,7 @@
         );
         if (state.q) {
             const q = state.q.toLowerCase();
-            rows = rows.filter(f => [f.title, f.name, f.author, f.authorId, f.platformName, f.path]
+            rows = rows.filter(f => [f.title, f.name, f.author, f.authorId, f.platformName, f.path, (tags[f.id] || []).join(' ')]
                 .join(' ').toLowerCase().includes(q));
         }
         rows.sort((a, b) => {
@@ -285,7 +338,7 @@
         );
         if (state.q) {
             const q = state.q.toLowerCase();
-            base = base.filter(f => [f.title, f.name, f.author, f.authorId, f.platformName, f.path]
+            base = base.filter(f => [f.title, f.name, f.author, f.authorId, f.platformName, f.path, (tags[f.id] || []).join(' ')]
                 .join(' ').toLowerCase().includes(q));
         }
         const counts = {
@@ -392,7 +445,12 @@
     function cardHTML(f) {
         const meta = platformOf(f.platform);
         const isVideo = f.kind === 'video';
-        return '<article class="card" data-id="' + esc(f.id) + '" data-platform="' + esc(f.platform) + '">' +
+        const tagHtml = tagsOf(f.id).slice(0, 3).map(t =>
+            '<span class="tag">' + esc(t) + '</span>').join('');
+        return '<article class="card' + (selected.has(f.id) ? ' selected' : '') +
+            '" data-id="' + esc(f.id) + '" data-platform="' + esc(f.platform) + '">' +
+            '<input type="checkbox" class="selbox" data-sel="' + esc(f.id) + '"' +
+            (selected.has(f.id) ? ' checked' : '') + '>' +
             '<div class="thumb">' +
             (isVideo
                 ? '<div class="videoThumb" style="background:linear-gradient(135deg,' + meta.color + ',#0f172a)">▶</div>'
@@ -406,12 +464,33 @@
             '<div class="metarow"><span class="author"><span class="avatar">' +
             esc((f.author || '?').slice(0, 1)) + '</span>' + esc(f.author) + '</span><span>' + fmtSize(f.size) + '</span></div>' +
             '<div class="path">' + esc(f.path) + '</div>' +
+            (tagHtml ? '<div class="tags">' + tagHtml + '</div>' : '') +
             '</div></article>';
+    }
+
+    function renderBatch() {
+        const bar = $('#batchbar');
+        if (!bar) { return; }
+        bar.classList.toggle('hidden', !selectMode);
+        $('#selectBtn').classList.toggle('active', selectMode);
+        $('#batchCount').textContent = '已选 ' + selected.size;
+        $$('.card').forEach(c => {
+            const on = selected.has(c.dataset.id);
+            c.classList.toggle('selected', on);
+            const cb = c.querySelector('.selbox');
+            if (cb) { cb.checked = on; }
+        });
+    }
+    function toggleSelection(id) {
+        if (!id) { return; }
+        if (selected.has(id)) { selected.delete(id); } else { selected.add(id); }
+        renderBatch();
     }
 
     function renderGrid(rows) {
         const grid = $('#grid');
         grid.classList.toggle('list', state.view === 'list');
+        grid.classList.toggle('selecting', selectMode);
         grid.innerHTML = rows.map(cardHTML).join('');
         $('#empty').classList.toggle('hidden', rows.length > 0);
         grid.classList.toggle('hidden', rows.length === 0);
@@ -431,6 +510,7 @@
         renderTabs();
         renderHeader(rows);
         renderGrid(rows);
+        renderBatch();
     }
 
     /* ---------------- 预览 ---------------- */
@@ -481,6 +561,11 @@
             '<div>大小<b>' + fmtSize(d.size) + '</b></div>' +
             '<div>保存时间<b>' + fmtDate(d.lastModified) + '</b></div>';
         $('#pvPath').textContent = d.path;
+        const ts = tagsOf(d.id);
+        $('#pvTags').innerHTML = ts.length
+            ? ts.map(t => '<span class="pv-tag">' + esc(t) +
+                '<button data-untag="' + esc(t) + '" title="移除标签">×</button></span>').join('')
+            : '<span class="pv-tag empty">暂无标签</span>';
         $('#pvType').textContent = d.kind === 'image' ? '图片预览' : '视频预览';
         const img = $('#pvImg'), video = $('#pvVideo');
         video.pause();
@@ -561,8 +646,18 @@
             const v = $('#modalInput').value.trim();
             if (!v || v === item.name) { closeModal(); return; }
             try {
+                const oldId = item.id;
+                const parts = String(item.path || '').split('/').filter(Boolean);
+                parts.pop();
+                parts.push(v);
+                const newId = parts.join('/');
                 const dir = await parentDir(item);
                 await item.handle.move(dir, v);
+                if (tags[oldId]) {
+                    tags[newId] = tags[oldId];
+                    delete tags[oldId];
+                    await saveTags();
+                }
                 closeModal();
                 toast('已重命名');
                 closePreview();
@@ -587,6 +682,99 @@
         } catch (e) {
             toast('删除失败：' + String(e).slice(0, 80));
         }
+    }
+
+    /* ---------------- P3：移动 / 批量 ---------------- */
+    function authorFolderOf(f) {
+        return (f.author || '未分类') + (f.authorId ? '(@' + f.authorId + ')' : '');
+    }
+    async function ensureDir(parts) {
+        let dir = rootHandle;
+        for (const p of parts) {
+            dir = await dir.getDirectoryHandle(p, { create: true });
+        }
+        return dir;
+    }
+    function selectedItems() {
+        return files.filter(f => selected.has(f.id));
+    }
+    async function performMove(items, platform, authorFolder) {
+        const list = (items || []).filter(Boolean);
+        if (!list.length) { return; }
+        const author = String(authorFolder || '').trim().replace(/[\\/]/g, '_') || '未分类';
+        let ok = 0, fail = 0;
+        for (const item of list) {
+            const kindDir = item.kind === 'image' ? 'images' : 'videos';
+            const targetId = platform + '/' + author + '/' + kindDir + '/' + item.name;
+            if (targetId === item.id) { continue; }
+            try {
+                const dir = await ensureDir([platform, author, kindDir]);
+                let name = item.name;
+                const dot = name.lastIndexOf('.');
+                const base = dot > 0 ? name.slice(0, dot) : name;
+                const ext = dot > 0 ? name.slice(dot) : '';
+                let moved = false;
+                for (let n = 0; n < 60 && !moved; n++) {
+                    const candidate = n === 0 ? name : base + '_' + n + ext;
+                    try {
+                        await item.handle.move(dir, candidate);
+                        moved = true;
+                        name = candidate;
+                    } catch (e) {
+                        // 只对同名冲突重试；权限/路径错误立即失败，避免空转 60 次
+                        if (e && e.name === 'InvalidModificationError' && n < 59) { continue; }
+                        throw e;
+                    }
+                }
+                if (tags[item.id]) {
+                    tags[platform + '/' + author + '/' + kindDir + '/' + name] = tags[item.id];
+                    delete tags[item.id];
+                }
+                ok++;
+            } catch (e) { fail++; }
+        }
+        await saveTags();
+        selected.clear();
+        selectMode = false;
+        closeMoveModal();
+        closePreview();
+        await scan();
+        toast('已移动 ' + ok + ' 个' + (fail ? '，失败 ' + fail : ''));
+    }
+    function authorDefault(items) {
+        const f = (items || [])[0];
+        return f ? authorFolderOf(f) : '';
+    }
+    function openMoveModal(items) {
+        pendingMove = (items || []).slice();
+        if (!pendingMove.length) { return; }
+        const first = pendingMove[0];
+        $('#movePlatform').value = first.platform || 'other';
+        $('#moveAuthor').value = authorDefault(pendingMove);
+        $('#moveModal').classList.remove('hidden');
+        setTimeout(() => $('#moveAuthor').focus(), 30);
+    }
+    function closeMoveModal() {
+        $('#moveModal').classList.add('hidden');
+        pendingMove = [];
+    }
+    async function batchTrash(items) {
+        const list = (items || []).filter(Boolean);
+        if (!list.length) { return; }
+        if (!confirm('把选中的 ' + list.length + ' 个文件移到 _trash/？')) { return; }
+        const dir = await rootHandle.getDirectoryHandle('_trash', { create: true });
+        let ok = 0, fail = 0;
+        for (let i = 0; i < list.length; i++) {
+            try {
+                await list[i].handle.move(dir, Date.now() + '_' + i + '_' + list[i].name);
+                ok++;
+            } catch (e) { fail++; }
+        }
+        selected.clear();
+        selectMode = false;
+        closePreview();
+        await scan();
+        toast('已移到回收站 ' + ok + ' 个' + (fail ? '，失败 ' + fail : ''));
     }
 
     /* ---------------- 事件 ---------------- */
@@ -636,6 +824,31 @@
         render();
     });
     $('#rescanBtn').addEventListener('click', scan);
+    $('#selectBtn').addEventListener('click', () => {
+        selectMode = !selectMode;
+        if (!selectMode) { selected.clear(); }
+        render();
+    });
+    $('#batchAll').addEventListener('click', () => {
+        filtered().forEach(f => selected.add(f.id));
+        renderBatch();
+    });
+    $('#batchInvert').addEventListener('click', () => {
+        filtered().forEach(f => {
+            if (selected.has(f.id)) { selected.delete(f.id); } else { selected.add(f.id); }
+        });
+        renderBatch();
+    });
+    $('#batchClear').addEventListener('click', () => {
+        selected.clear();
+        renderBatch();
+    });
+    $('#batchMove').addEventListener('click', () => {
+        const items = selectedItems();
+        if (!items.length) { toast('先选择媒体'); return; }
+        openMoveModal(items);
+    });
+    $('#batchDelete').addEventListener('click', () => batchTrash(selectedItems()));
     $('#search').addEventListener('input', e => { state.q = e.target.value.trim(); render(); });
     $('#treeSearch').addEventListener('input', e => { state.treeQ = e.target.value; render(); });
     $('#sort').addEventListener('change', e => { state.sort = e.target.value; render(); });
@@ -685,7 +898,14 @@
     }));
     $('#grid').addEventListener('click', e => {
         const card = e.target.closest('.card');
-        if (card) { openPreview(card.dataset.id); }
+        if (!card) { return; }
+        if (e.target.closest('.selbox')) { return; }
+        if (selectMode) { toggleSelection(card.dataset.id); return; }
+        openPreview(card.dataset.id);
+    });
+    $('#grid').addEventListener('change', e => {
+        const cb = e.target.closest('.selbox');
+        if (cb) { toggleSelection(cb.dataset.sel); }
     });
     $('#pvBack').addEventListener('click', closePreview);
     $('#pvClose').addEventListener('click', closePreview);
@@ -705,8 +925,37 @@
     });
     $('#pvHelpBtn').addEventListener('click', () => toast('↑↓ 切换媒体；←→ 视频进度/图片同专辑；Space 播放；F 全屏；Esc 返回'));
     $('#pvRename').addEventListener('click', () => rename(cur()));
+    $('#pvMove').addEventListener('click', () => { if (cur()) { openMoveModal([cur()]); } });
     $('#pvDelete').addEventListener('click', () => trash(cur()));
     $('#pvReveal').addEventListener('click', () => toast('请在系统资源管理器中打开：' + (cur() ? cur().path : '')));
+    $('#pvTagAdd').addEventListener('click', () => {
+        const d = cur();
+        if (!d) { return; }
+        const input = $('#pvTagInput');
+        if (input.value.trim()) {
+            addTag(d.id, input.value);
+            input.value = '';
+        }
+    });
+    $('#pvTagInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); $('#pvTagAdd').click(); }
+    });
+    $('#pvTags').addEventListener('click', e => {
+        const b = e.target.closest('[data-untag]');
+        if (b && cur()) { removeTag(cur().id, b.dataset.untag); }
+    });
+    $('#moveCancel').addEventListener('click', closeMoveModal);
+    $('#moveSave').addEventListener('click', () => {
+        const items = pendingMove.slice();
+        if (!items.length) { return; }
+        const platform = $('#movePlatform').value;
+        const author = $('#moveAuthor').value.trim();
+        closeMoveModal();
+        performMove(items, platform, author);
+    });
+    $('#moveModal').addEventListener('click', e => {
+        if (e.target === $('#moveModal')) { closeMoveModal(); }
+    });
     $('#modalCancel').addEventListener('click', closeModal);
     $('#modalSave').addEventListener('click', () => { if (modalSave) { modalSave(); } });
     $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) { closeModal(); } });
@@ -738,6 +987,10 @@
         if ($('#preview').classList.contains('hidden')) { return; }
         if (!$('#modal').classList.contains('hidden')) {
             if (e.key === 'Escape') { closeModal(); }
+            return;
+        }
+        if (!$('#moveModal').classList.contains('hidden')) {
+            if (e.key === 'Escape') { closeMoveModal(); }
             return;
         }
         const d = cur();
