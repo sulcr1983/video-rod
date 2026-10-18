@@ -161,3 +161,62 @@ Downloads/video-rod/                 # 用户可选根目录
 `deliverables/prototypes/media-library-v1.html`：可交互高保真原型（模拟数据），
 包含平台/博主/类型筛选、搜索、网格/列表、批量选择、详情查看器、上一张/下一张、
 最大化、图片缩放、视频播放、重命名/移动/删除等 CMS 操作。
+
+## 11. 大量博主 / 内容的管理
+
+目标：1 万级素材仍然顺滑，10 万级可检索；不把整库一次性塞进 DOM。
+
+- **资源树懒加载**：平台默认折叠；展开后每平台先显示 Top 6 博主（按数量/最近更新），
+  其余用「显示更多」；提供树内搜索（平台/博主/ID），输入 150ms 防抖。
+- **收藏/置顶/最近**：常用博主可 Pin 到树顶；首页提供「最近下载 / 未看 / 收藏 / 重复」智能视图。
+- **网格虚拟滚动**：只渲染视口附近卡片（windowing），滚动加载下一页；缩略图 `IntersectionObserver` 懒加载。
+- **分页/游标**：按 `savedAt + id` 做游标分页（每页 100），不使用 offset 深分页。
+- **索引分片**：`_index/platforms.json`（平台/博主计数）+ `_index/<platform>/<author>.json`（素材索引）；
+  全局搜索另建 MiniSearch/FlexSearch 倒排索引；增量更新，不每次重扫全库。
+- **搜索**：标题/描述/标签/博主/ID/路径；支持 `platform:weibo author:史老柒 type:video` 语法；防抖 + 结果高亮。
+- **预览**：上一张/下一张只预取相邻 1–2 个（图片预加载、视频只取 metadata），避免批量拉流。
+- **去重**：下载前按稳定媒体标识（平台+作品 ID+媒体 ID，URL 去签名参数）查账本；
+  已存在直接跳过；同内容不同 URL 在入库/扫描时用 SHA-256 二次判定（详见 ADR-037）。
+- **性能预算**：1 万素材首屏 < 1s、滚动 60fps；10 万素材用虚拟列表 + 分片索引 + 服务端式游标。
+- **批量操作**：选择模式、全选当前结果、批量移动/删除；长任务显示进度，可暂停/继续。
+
+
+
+> 结论：**不把完整 CMS 塞进扩展**。完整媒体库项目当 UX 参考；查看器/上传等小件用 MIT/Apache 组件。
+> 新依赖按项目规则先给苏哥过目。
+
+### 完整媒体库（参考，不直接嵌）
+
+| 项目 | License | 适合参考什么 |
+|---|---|---|
+| **Immich**（immich-app/immich，116k★） | AGPL-3.0 | 照片/视频时间线、搜索、相册、移动端；最接近“个人媒体库” |
+| **PhotoPrism**（photoprism/photoprism，40k★） | AGPL-3.0 | 搜索/标签/地图/去重；媒体索引思路 |
+| **Stash**（stashapp/stash，13k★） | AGPL-3.0 | 视频场景库、播放器、上一/下一、元数据编辑 |
+| **Lychee**（LycheeOrg/Lychee，4.3k★） | MIT | 轻量照片 CMS；相册/权限/分享 |
+| **Pimcore / ResourceSpace** | GPL/自定义（以仓库为准） | 重型 DAM/PIM 的元数据/权限模型；个人项目过重 |
+
+### 文件管理 / 浏览器（可独立部署）
+
+| 项目 | License | 用途 |
+|---|---|---|
+| **Filebrowser**（filebrowser/filebrowser，36k★） | Apache-2.0 | 直接对文件夹做 Web 文件管理；如果不想自己写 CRUD，可先用它 |
+| **Filestash**（mickael-kerjean/filestash，15k★） | AGPL-3.0 | 多存储 Web 文件管理器 |
+| **elFinder**（Studio-42/elFinder，4.8k★） | LGPL-3.0 | 经典文件管理器 UI；需要后端 connector |
+
+### 可直接引用的前端组件（推荐）
+
+| 组件 | License | 用途 |
+|---|---|---|
+| **PhotoSwipe** | MIT | 图片灯箱：缩放、滑动、上一张/下一张、手势；可替换原型自研 viewer |
+| **Plyr** | MIT | 视频播放器：播放/进度/全屏/快捷键 |
+| **Video.js** | Apache-2.0 | 备选视频播放器，插件生态更重 |
+| **Uppy** | MIT | 拖拽导入/上传（如果加“导入文件夹”） |
+| **TanStack Table** | MIT | 列表/表格视图（如果资源量大） |
+
+### 选型建议
+
+1. **媒体库本体**：保持自研的资源树 + index.json；UX 参考 Immich/PhotoPrism/Stash，不复制 AGPL 代码。
+2. **查看器**：优先接 **PhotoSwipe + Plyr**（MIT，许可证宽松，直接解决缩放/手势/播放/全屏）。
+3. **文件浏览**：如果只想“打开文件夹看”，系统资源管理器足够；要 Web 文件管理可外挂 Filebrowser。
+4. **不推荐**：把 Immich/PhotoPrism/Stash 嵌进扩展——它们有自己的数据库/导入/服务端，和“普通文件夹 + 可脱离插件浏览”的第一性原理冲突。
+5. **许可证**：AGPL 项目只做参考；直接复用代码会带来网络 copyleft；MIT/Apache 组件可放心用。
