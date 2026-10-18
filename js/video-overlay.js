@@ -261,6 +261,56 @@
         setState('busy', msg.pct || 0);
     });
 
+    /* 微博 feed：点击视频卡片时先记下这条微博的作者/文案。
+       播放后 <video> 会被搬到全屏播放层，就再也找不到它属于哪条微博了；
+       所以必须在点击时从原卡片抓，存到 window.__vrFeedMeta（后台 executeScript 可读）。 */
+    if (/(^|\.)(weibo\.com|weibo\.cn)$/i.test(location.hostname)) {
+        document.addEventListener('click', function (ev) {
+            try {
+                const t = ev.target;
+                const card = t && t.closest &&
+                    t.closest('.card-video, .wb-item, article, [class*="card-wrap"]');
+                if (!card) { return; }
+                const item = card.closest('.wb-item') || card.closest('article') ||
+                    card.closest('[class*="card-wrap"]') || card;
+                // 发布者昵称在 header（头像旁边），不要在正文里找——正文里的 @ 是转发对象
+                let authorA = null;
+                const headLinks = item.querySelectorAll(
+                    'header a[href*="/profile/"], header a[href*="/u/"], ' +
+                    '.m-text-box a[href*="/profile/"], .m-text-box a[href*="/u/"]');
+                for (let i = 0; i < headLinks.length; i++) {
+                    if ((headLinks[i].innerText || '').trim()) { authorA = headLinks[i]; break; }
+                }
+                if (!authorA) {
+                    const links = item.querySelectorAll('a[href*="/profile/"], a[href*="/u/"]');
+                    for (let i = 0; i < links.length; i++) {
+                        if ((links[i].innerText || '').trim()) { authorA = links[i]; break; }
+                    }
+                }
+                let author = authorA
+                    ? (authorA.innerText || '').replace(/^@/, '').replace(/\s+/g, ' ').trim()
+                    : '';
+                let authorId = '';
+                if (authorA) {
+                    const m = (authorA.getAttribute('href') || '').match(/\/(?:profile|u)\/(\d+)/);
+                    if (m) { authorId = m[1]; }
+                }
+                // 正文优先取发布者正文（article.weibo-main 的第一段），纯转发再退到转发区
+                const textEl = item.querySelector('article.weibo-main .weibo-text') ||
+                    item.querySelector('.weibo-text') || item.querySelector('.txt') ||
+                    item.querySelector('[class*="text"]');
+                let title = textEl ? (textEl.innerText || '').replace(/\s+/g, ' ').trim() : '';
+                title = title.replace(/^@[^:：]+[:：]\s*/, '').slice(0, 200);
+                if (author || title) {
+                    window.__vrFeedMeta = {
+                        author: author, authorId: authorId,
+                        title: title, post: title, site: 'weibo', at: Date.now()
+                    };
+                }
+            } catch (e) { /* DOM 抖动，忽略 */ }
+        }, true);
+    }
+
     /* ---------- 扫描页面里的 video ---------- */
     const BOUND = [];            // 已经认领的 video，鼠标命中判定用
 
