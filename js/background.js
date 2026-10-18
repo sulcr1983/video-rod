@@ -1227,6 +1227,106 @@ async function vrSetMediaHeadersFor(url, referer) {
     } catch (e) { /* 非法 URL 不处理 */ }
 }
 
+/** 等 downloads 任务落定（识别 CDN 403 这类快速失败，再决定是否走页面 fetch）。
+ *  返回 complete/interrupted 的 item；还在下载则返回 null（视为已开始，不打断）。 */
+function vrWaitDownload(id, ms) {
+    return new Promise(function (resolve) {
+        const until = Date.now() + ms;
+        function tick() {
+            chrome.downloads.search({ id: id }, function (items) {
+                const it = items && items[0];
+                if (!it) { resolve(null); return; }
+                if (it.state === 'complete' || it.state === 'interrupted') { resolve(it); return; }
+                if (Date.now() >= until) { resolve(null); return; }
+                setTimeout(tick, 250);
+            });
+        }
+        tick();
+    });
+}
+
+/** 清掉快速失败的下载记录和残留文件（微博 403 会落一个 .htm） */
+function vrDropDownload(id) {
+    try {
+        chrome.downloads.removeFile(id, function () {
+            try { chrome.downloads.erase({ id: id }); } catch (e) { /* ignore */ }
+        });
+    } catch (e) { /* ignore */ }
+}
+
+/** 页面主世界 fetch → blob → <a download>。
+ *  与 B站 durl 同一套路（ADR-029）：页面自己发请求，Referer/Cookie 天然正确，
+ *  绕开 downloads API 不带 Referer 被 CDN 403 的问题（微博实测必须走这条）。
+ *  CocoCut 也是在内容脚本/页面里 fetch（myContent.js 的 fetchByCsAB）。
+ *  跨域 CORS 不允许时返回 ok:false，由调用方回退 downloads + DNR。 */
+async function vrTryPageDownload(tabId, url, name) {
+    try {
+        const r = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            args: [url, name],
+            func: async function (u, n) {
+                try {
+                    const res = await fetch(u, { credentials: 'include' });
+                    if (!res.ok) {
+                        return { ok: false, status: res.status, reason: 'http-' + res.status };
+                    }
+                    const blob = await res.blob();
+                    if (!blob || blob.size < 1024) {
+                        return { ok: false, status: res.status, size: blob ? blob.size : 0, reason: 'too-small' };
+                    }
+                    const a = document.createElement('a');
+                    const bu = URL.createObjectURL(blob);
+                    a.href = bu;
+                    a.download = n || 'video.mp4';
+                    (document.body || document.documentElement).appendChild(a);
+                    a.click();
+                    a.remove();
+                    // 大 blob 别急着回收：给浏览器落盘留时间（B站踩过的坑）
+                    setTimeout(function () { URL.revokeObjectURL(bu); }, 180000);
+                    return { ok: true, bytes: blob.size, type: blob.type || '' };
+                } catch (e) {
+                    return { ok: false, reason: String(e).slice(0, 160) };
+                }
+            }
+        });
+        return (r && r[0] && r[0].result) || { ok: false, reason: 'no-result' };
+    } catch (e) {
+        return { ok: false, reason: String(e).slice(0, 160) };
+    }
+}
+
+/** 页面主世界里的站点元数据（目前：微博 $render_data）。
+ *  内容脚本是 isolated world，读不到页面的 $render_data；这里用 MAIN world 读。
+ *  拿不到就返回 null，命名继续走 naming.js 的页面提取。 */
+async function vrPageMetaInTab(tabId) {
+    try {
+        const r = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            func: function () {
+                try {
+                    const rd = window.$render_data;
+                    let s = rd && rd.status;
+                    if (Array.isArray(s)) { s = s[0]; }
+                    if (!s) { return null; }
+                    let text = s.text || '';
+                    text = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                    const u = s.user || {};
+                    return {
+                        title: text.slice(0, 200),
+                        post: text.slice(0, 200),
+                        author: u.screen_name || '',
+                        authorId: u.id ? String(u.id) : '',
+                        site: 'weibo'
+                    };
+                } catch (e) { return null; }
+            }
+        });
+        return (r && r[0] && r[0].result) || null;
+    } catch (e) { return null; }
+}
+
 try {
     chrome.alarms.onAlarm.addListener(function (a) {
         if (a && a.name === VR_MEDIA_HEADER_ALARM) {
@@ -1321,6 +1421,16 @@ async function vrVideoOptions(tabId) {
         return (ap - bp) || ((b.size || 0) - (a.size || 0));
     });
 
+    // 嗅探缓存里没有当前正在播的 URL 时，直接把它补进来。
+    // 页面自己播放的地址一定是最准的（微博刷新/扩展重载后缓存可能为空）。
+    if (playing && /^https?:/i.test(playing) &&
+        !list.some(function (m) { return m.url === playing; })) {
+        const pExt = (playing.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
+        if (VR_VIDEO_EXT.test(pExt)) {
+            list.unshift({ url: playing, ext: pExt, size: 0 });
+        }
+    }
+
     out.options = list.slice(0, 6).map(function (m, i) {
         return {
             id: 'm' + i, kind: 'url', url: m.url,
@@ -1372,13 +1482,36 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
             pageUrl = (tab && tab.url) || '';
         } catch (e) { /* ignore */ }
         const ext = (pick.url.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
-        const filename = await vrNameInTab(tabId, VR_VIDEO_EXT.test(ext) ? ext : 'mp4');
-        // 通用 CDN 也经常校验 Referer（CocoCut 同款做法）：下载前按目标 host 回放页面地址
+        // 微博等站点：页面 $render_data 里有作者/正文，优先用它命名
+        const meta = await vrPageMetaInTab(tabId);
+        const filename = await vrNameInTab(tabId, VR_VIDEO_EXT.test(ext) ? ext : 'mp4', meta || null);
+
+        // 路线 1（默认）：downloads API + DNR 回放页面 Referer。
+        // 保留子目录和文件名保护；普通站点/抖音都走这条。
         if (pageUrl) { await vrSetMediaHeadersFor(pick.url, pageUrl); }
         const id = await vrDownloadWithName(pick.url, filename);
-        if (id === null) { return { ok: false, reason: 'download-failed' }; }
-        vrMarkDownloaded(filename);
-        return { ok: true, kind: 'url', filename: filename };
+        let pageDl = null;
+        if (id !== null) {
+            const outcome = await vrWaitDownload(id, 2500);
+            if (!outcome || outcome.state !== 'interrupted') {
+                vrMarkDownloaded(filename);
+                return { ok: true, kind: 'url', filename: filename };
+            }
+            // CDN 403 快速失败：撤账、清掉 .htm 残留，改走页面 fetch
+            try { vrAbortFilename(pick.url, filename); } catch (e) { /* ignore */ }
+            vrDropDownload(id);
+        }
+
+        // 路线 2（回退）：页面主世界 fetch → blob → <a download>。
+        // 页面请求天然带 Referer/Cookie，微博这类 Referer ACL 站点只有这条能过；
+        // 与 B站 durl 的成熟路线一致，CocoCut 也是在页面/内容脚本里 fetch。
+        pageDl = await vrTryPageDownload(tabId, pick.url, filename.split('/').pop());
+        if (pageDl && pageDl.ok) {
+            const saved = filename.split('/').pop();   // <a download> 只认文件名，不支持子目录
+            vrMarkDownloaded(saved);
+            return { ok: true, kind: 'page-blob', filename: saved, bytes: pageDl.bytes || 0 };
+        }
+        return { ok: false, reason: 'download-failed', page: pageDl || null };
     }
 
     // ---- B站：走页面主世界 ----
