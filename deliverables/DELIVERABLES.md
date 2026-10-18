@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.25 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.26 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -26,6 +26,7 @@
 > v1.23 变更：媒体库目录选择修复——移除 `showDirectoryPicker` 固定 `id`（被记忆到 F 盘空目录），改 `startIn:'downloads'`；新增目录内容校验、无效句柄清除和明确路径提示（ADR-040）。
 > v1.24 变更：对照抖珍藏 2.8.44，确认同为 File System Access；媒体库改独立 popup 窗口触发选择器，补 `requestPermission({mode:'readwrite'})` 与“等待系统窗口”状态。
 > v1.25 变更：移除媒体库目录白名单硬校验（`hasMediaEntries`）；任何有读写权限的目录都可选，空目录显示 0 个文件，不再弹“目录不对”。
+> v1.26 变更：媒体库根目录定为 F；排除 `xbd-downloader`/`老黄的分享` 外部目录；修复 `FileSystemFileHandle.move` 重命名；新增复盘 `docs/INCIDENT-20261019-LIBRARY-DIR.md` 与 `assets/library-after.png`。
 
 ---
 
@@ -190,3 +191,6 @@ video-rod/
 | 悬浮按钮测试脚本 | `tools/overlay-pos.py`、`tools/overlay-check.py`、`tools/test-video-overlay.py`、`tools/shot-overlay.py` | v1.0 | 已定稿 | 位置诊断/通用站点体检/端到端验证/早期截图；CDP 截图统一 `fromSurface:false`，避免白底破图伪影 |
 | 悬浮按钮截图 | `deliverables/assets/overlay-douyin.png` | 2026-10-19 | 已定稿 | 抖音 1920×887 实拍：按钮在右上角（right gap 14px、top 76px），不与播放器控件重叠 |
 | 抖音/微博/X/小红书真机验收记录 | `docs/TESTING.md` §10 | v1.8 | 已定稿 | 按钮 O1-O6、抖音 D1-D10、微博 W1-W6、主页批量 B1-B7、X 主页 X1-X9、小红书 H1-H6；4K hevc+aac 7,260,920 B；99MB complete；微博 540×960+aac 5,817,304 B；X 视频 8,401,119 B、图片 232,912 B；小红书 webp 64,510 B；稳妥限速/失败暂停 |
+| 媒体库目录复盘（2026-10-19） | `docs/INCIDENT-20261019-LIBRARY-DIR.md` | v1.0 | 已定稿 | 解释 `hasMediaEntries` 白名单、E/F 混淆、原生选择器窗口、外部目录污染与重命名 API；含修复提交和当前状态 |
+| 媒体库修复后截图 | `deliverables/assets/library-after.png` | 2026-10-19 | 已定稿 | F 盘 22 项：X 10 / 小红书 7 / 其他 5；`xbd-downloader` 与“老黄的分享”已隔离 |
+| 媒体库扫描/CRUD 修复 | `js/library.js`（walk/rename/parentDir） | v1.1 | 已定稿 | 跳过 `xbd-downloader`、`老黄的分享`、`_index/_trash/_thumbs`；`move(parentDir,newName)` 修复星愿重命名 `NotAllowedError`；临时文件实测重命名/删除通过 |
