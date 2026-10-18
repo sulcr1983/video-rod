@@ -592,4 +592,22 @@
 
 ---
 
+## ADR-042 Instagram P1：单帖/Reel 已加载媒体
+
+- **日期**：2026-10-19 ｜ **状态**：✅ 代码完成；真实 Instagram 登录态下载待验
+- **范围**：只处理 `instagram.com/p|reel|tv/<shortcode>` 当前 DOM 已加载的图片/视频；不自动翻页、不点开评论、不做写操作。
+- **实现**：
+  - `js/instagram.js`：帖子页注入「⬇ 下载当前帖」；读取 `article/main` 下图片/视频、作者、文案、shortcode；按 URL 去重；blob 视频跳过。
+  - `manifest.json` 注入 `*://www.instagram.com/*`。
+  - `js/background.js` `vrIgDownload`：落 `video-rod/instagram/<作者>/images|videos/<shortcode>_NN.<ext>`；`vrSetMediaHeadersFor` 回放 Referer；1.2–2 秒/条。
+- **验证**：
+  - `/p/test/` 页面按钮注入 ✅（帖子不可访问，按钮仍按路径注入）。
+  - 本地 fixture：`cover.jpg` → `video-rod/instagram/fixtureauthor/images/test_01.jpg`，15,324 B ✅。
+- **边界（如实记录）**：
+  - 没有 Instagram 登录态，真实帖子/Reel 未做端到端下载验证；不能宣称真实站已通过。
+  - 视频如果是 blob/MSE，当前跳过；轮播只收集已加载到 DOM 的媒体。
+  - 文件名只用 shortcode 序号，未接 `naming.js` 的作者/文案模板。
+
+---
+
 *新增决策在此追加，编号顺延。*
