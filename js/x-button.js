@@ -35,16 +35,18 @@
         '<path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>';
     const STYLE = document.createElement('style');
     STYLE.textContent = [
-        '.vr-xbtn-wrap{display:flex;align-items:center;justify-content:center}',
-        '.vr-xbtn{width:38px;height:38px;border:none;border-radius:50%;background:transparent;',
-        'color:rgb(113,118,123);cursor:pointer;display:flex;align-items:center;justify-content:center;',
-        'transition:background .15s,color .15s;padding:0}',
-        '.vr-xbtn svg{width:18px;height:18px;pointer-events:none}',
-        '.vr-xbtn:hover{background:rgba(194,65,12,.12);color:#c2410c}',
-        '.vr-xbtn.vr-busy{opacity:.45;pointer-events:none}',
-        '.vr-xbtn.vr-done{color:#00ba7c}',
-        '.vr-xbtn.vr-link{color:#1d9bf0}',
-        '.vr-xbtn.vr-warn{color:#f4212e}'
+        '.vr-xbtn-wrap{display:flex;align-items:center;justify-content:center;margin-left:4px}',
+        '.vr-xbtn{height:32px;min-width:42px;border:none;border-radius:999px;',
+        'background:linear-gradient(135deg,#1d9bf0,#0a7bd1);color:#fff;cursor:pointer;',
+        'display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 10px;',
+        'box-shadow:0 2px 8px rgba(29,155,240,.32);transition:background .15s,box-shadow .15s,opacity .15s;',
+        'font:600 12px/1 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;white-space:nowrap}',
+        '.vr-xbtn svg{width:16px;height:16px;pointer-events:none;flex:0 0 16px}',
+        '.vr-xbtn span{pointer-events:none}',
+        '.vr-xbtn:hover{background:linear-gradient(135deg,#1a8cd8,#0868b4);box-shadow:0 3px 10px rgba(29,155,240,.42)}',
+        '.vr-xbtn.vr-busy{opacity:.65;pointer-events:none}',
+        '.vr-xbtn.vr-done{background:#00ba7c;box-shadow:0 2px 8px rgba(0,186,124,.32)}',
+        '.vr-xbtn.vr-warn{background:#f4212e;box-shadow:0 2px 8px rgba(244,33,46,.32)}'
     ].join('');
     document.documentElement.appendChild(STYLE);
 
@@ -102,17 +104,24 @@
         btn.className = 'vr-xbtn';
         btn.setAttribute('aria-label', '钓鱼竿下载此视频');
         btn.title = '钓鱼竿：下载这个视频';
-        btn.innerHTML = ICON;
+        btn.innerHTML = ICON + '<span>下载</span>';
         wrap.appendChild(btn);
+
+        function setLabel(text) {
+            const span = btn.querySelector('span');
+            if (span) { span.textContent = text; }
+        }
 
         btn.addEventListener('click', ev => {
             ev.stopPropagation();
             ev.preventDefault();
+            if (btn.classList.contains('vr-busy')) { return; }
             const mediaId = mediaIdFromArticle(article);
             const ref = tweetRef(article);
-            if (!ref) { flash(btn, 'warn'); return; }
+            if (!ref) { flash(btn, 'warn'); setLabel('失败'); return; }
             const filename = buildFilename(article, 'mp4');
             btn.classList.add('vr-busy');
+            setLabel('下载中…');
             chrome.runtime.sendMessage(
                 {
                     Message: 'vrQuickDownX',
@@ -123,10 +132,19 @@
                 },
                 res => {
                     btn.classList.remove('vr-busy');
-                    if (chrome.runtime.lastError || !res) { flash(btn, 'warn'); return; }
-                    // mp4：完整音视频已直接落盘
-                    if (res.ok) { flash(btn, res.kind == 'mp4' ? 'done' : 'link'); }
-                    else { flash(btn, 'warn'); }
+                    if (chrome.runtime.lastError || !res) {
+                        flash(btn, 'warn'); setLabel('失败');
+                        setTimeout(() => setLabel('下载'), 2200);
+                        return;
+                    }
+                    if (res.ok) {
+                        flash(btn, res.kind == 'mp4' ? 'done' : 'link');
+                        setLabel('已保存');
+                    } else {
+                        flash(btn, 'warn');
+                        setLabel('失败');
+                    }
+                    setTimeout(() => setLabel('下载'), 2200);
                 });
         });
         return wrap;
