@@ -203,7 +203,18 @@
             $('#syncText').textContent = '刚刚扫描 · ' + files.length + ' 个文件';
             $('#statusText').textContent = '扫描完成';
             if (!files.length) {
-                $('#statusText').textContent = '扫描完成：0 个文件（目录可以正常使用）';
+                let names = [];
+                try {
+                    for await (const [n] of rootHandle.entries()) {
+                        names.push(n);
+                        if (names.length >= 6) { break; }
+                    }
+                } catch (e) { /* ignore */ }
+                if (names.length === 1 && names[0] === '_index') {
+                    $('#statusText').textContent = '当前目录只有 _index：这是 F 盘“下载”里的 video-rod。请改选 E:\\personal\\Downloads\\video-rod（里面有 x、小红书）';
+                } else {
+                    $('#statusText').textContent = '扫描完成：0 个文件（目录可以正常使用）';
+                }
             }
             await writeIndex();
         } catch (e) {
