@@ -508,3 +508,7 @@
 - 抖音 CDN 的 403 是**请求头**问题，不是 URL 失效：无 Referer 返回 `403 text/html`，带 `Referer: https://www.douyin.com/` 返回 `206 video/mp4`。
 - 页面内 `fetch(currentSrc)` 会被 CORS/CSP 拦；`<a download>` 跨域时 `download` 属性会被忽略、变成导航。所以下载必须走 `chrome.downloads` + DNR 补 Referer。
 - 详情接口失败时不要硬失败：回退通用嗅探分支，保证「永远有得下」。
+
+### 10.12 媒体库逐按钮全量（lib_full_test）
+
+完整记录见 `docs/LIBRARY-FULL-TEST.md`。实测 27 项：搜索、平台筛选、类型 tab、排序、网格/列表、预览/键盘、标签、重扫、设置均通过；`_index` 27 条、`hashes.json` 27 条、`thumbs/` 12 张。全屏按钮在 CDP trusted click 下未进入（需真实点击复验）；`#pickBtn/#rootBtn` 原生 picker 与 `#resetRoot` 未在自动验收中执行。
