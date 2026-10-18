@@ -354,4 +354,25 @@
 
 ---
 
+## ADR-033 微博/X 主页批量下载：复用页面分页接口 + 批量队列（待实施）
+
+- **日期**：2026-10-19 ｜ **状态**：📋 已计划未开工
+- **背景**：苏哥要「进入某人的主页，可以下载这个人的全部视频和图片」，参考 XBD。
+- **XBD 5.9 逆向结论（只支持 X）**：
+  1. `injected.js` 在页面主世界拦截 X 自己的 GraphQL（`UserTweets` / `UserMedia` / `UserPhotoTimeline` / `UserVideoTimeline`），拿到 `queryId`、请求头和 `cursor`；再按 `userId + cursor + count=500` 分页拉全量，`fetchAllProgress` 记录进度。
+  2. 每条推文解析 `medias`：`media_type`（image/video）、`photoDownloadUrl` / `video`、`entityId`；`user_profile` 带 `name` / `screen_name` / `rest_id`。
+  3. 下载走 `chrome.downloads.download` + URL 预记账 + `onDeterminingFilename`（与我们 ADR-027 同款）；`buildFilePath` 失败时 `buildFallbackFilePath`。
+  4. 目录/文件名模板：`baseSaveDirectory`（默认 `/xbd-downloader`）、`directoryName`（支持 `{{UserName}}` / `{{@UserId}}`）、`fileName`（支持 `{{Text Summary}}` / `{{Published Time}}` / `{{DownloadDate}}`）；图片/视频可合并或分目录。
+  5. UI：范围（当前列表 / 最近 N 条 / 全部）、类型（视频/图片/全部）、全选/忽略已下载/进度/停止。
+- **我们的方案**：
+  1. 新增 `js/bulk-profile.js`（内容脚本，按站点注入）：微博/X 用户主页、`/media` 页显示「批量下载」浮层；面板含范围/类型/全选/目录预览。
+  2. **微博**：页面内复用微博自己的分页接口（`m.weibo.cn/api/container/getIndex?containerid=107603<uid>&page=N`，PC 侧 `/ajax/statuses/mymblog`），解析 `pic_infos`（图片大图）和 `page_info.media_info`（视频直链）；视频用页面 fetch→blob（已实现），图片直链走 `vrDownloadWithName`；接口失败回退 DOM 已加载卡片扫描。
+  3. **X**：照 XBD 拦截 `UserTweets` / `UserMedia` 的 GraphQL（queryId/headers/cursor 动态拿）；图片 `pbs.twimg.com` 直链，视频用现有 `fetchXVideo`（fxtwitter）或 GraphQL `video_info.variants` 选最高码率；失败回退 `/media` 页 DOM 扫描。
+  4. 队列/命名/目录：复用 `vrDownloadWithName` + `naming.js`；目录 `作者(@UID)/`，文件名模板 `${author}_${title}_${index}`；限速、重试、跳过已下载。
+  5. **分两期**：P1 当前已加载媒体扫描 + 批量下载（低风险）；P2 全量分页（微博 API / X GraphQL）+ 自动滚动/停止。
+- **工作量**：微博 P1 0.5–1 天、P2 1–2 天；X P1 0.5–1 天、P2 1–2 天；共用 UI/队列约 1 天。建议先微博（页面 fetch/命名已通），再做 X。
+- **风险**：微博 API 风控/cookie、视频 URL 需页面上下文；X GraphQL queryId 会变、429/登录态；大批量限速与重名；自动滚动有副作用（ADR-010 只抓已加载，需要用户显式点「加载全部」）。
+
+---
+
 *新增决策在此追加，编号顺延。*
