@@ -375,4 +375,21 @@
 
 ---
 
+## ADR-034 YouTube/Instagram 下载可行性调研（2026-10-19）
+
+- **日期**：2026-10-19 ｜ **状态**：📋 已调研：YouTube 不做，Instagram 待实施
+- **YouTube：纯扩展不可行（不建议做）**
+  - yt-dlp 官方 PO Token Guide（2026-07 更新）：`web` 客户端**只提供 SABR 格式**，GVS/Subs 需要 PO Token；PO Token 绑定视频 ID，每个视频都要重新生成；官方已不建议手动提取，推荐 PO Token Provider 插件。
+  - 2026 年 YouTube 反爬是「协议层 + 令牌层 + TLS 层」叠加，yt-dlp 也频繁 403，需要 PO token provider、JS runtime、住宅 IP；纯 MV3 扩展无法完成 attestation/PO token。
+  - CocoCut 3.89 代码里 `DISABLE_DOWNLOADING_FROM_YOUTUBE_REGEXP=/^https?:\/\/www\.youtube\.com\//`，popup/background 主动拒绝 YouTube（提示“不支持此网页”）。
+  - **结论**：不做纯扩展 YouTube 下载。若将来必须支持，只能走外部 yt-dlp/cobalt 服务（违背 ADR-008/032 的纯浏览器端原则，且仍可能 403）；面板继续保留“YouTube 仅嗅探/提示限制”。
+- **Instagram：可行，参考成熟 MV3 实现**
+  - 开源项目 `mcanti/Instagram-Downloader`（MV3）已支持 posts、carousel、reels、TV、stories、highlights，覆盖 home feed / profile grids / Explore / post modal；manifest 用两组 content scripts，其中一组 `world:"MAIN"`（home-scroll/stories/post-modal/reels handlers + overlay injector），说明它读页面 React props/GraphQL 并注入下载按钮。
+  - 方案：内容脚本扫描 `article` / `img[src*="cdninstagram"]` / `video` / `a[href*="/p/"]`、`/reel/`；MAIN world 读 React props 或拦截 GraphQL（`PolarisProfilePostsQuery`、`/api/v1/media/<id>/info/`）拿 `image_versions2.candidates` / `video_versions`；CDN 下载用页面 fetch→blob（同微博，已验证）或 downloads+DNR；按作者/短代码建目录，批量队列复用 ADR-033 的 `bulk-profile.js` 框架。
+  - 分期：P1 单帖/已加载媒体扫描 + 批量下载（1–2 天）；P2 主页/Explore 全量 GraphQL 分页（2–3 天）；Stories/Highlights 需登录态，最后做。
+  - 风险：登录墙/限流、GraphQL query hash 会变、CDN 签名/Referer、Stories 需登录、批量下载要限速。
+- **影响**：YouTube 不投入；Instagram 作为 ADR-033 批量框架的第二个站点，优先级低于微博/X 主页批量。
+
+---
+
 *新增决策在此追加，编号顺延。*
