@@ -517,8 +517,9 @@
                 } else if (res.paused) {
                     statusEl.textContent = res.reason || '已暂停（连续失败）';
                 } else {
-                    statusEl.textContent = '完成：' + res.done + '/' + res.total;
-                    if (res.done === res.total) {
+                    const skipped = res.skipped || 0;
+                    statusEl.textContent = '完成：' + res.done + '/' + res.total + (skipped ? '，跳过重复 ' + skipped : '');
+                    if (res.done + skipped === res.total) {
                         chosen.forEach(function (it) { markDone(it.key); });
                     }
                 }
@@ -547,8 +548,9 @@
             } else if (res.paused) {
                 statusEl.textContent = res.reason || '已暂停（连续失败）';
             } else {
-                statusEl.textContent = '完成：' + res.done + '/' + res.total;
-                if (res.done === res.total) {
+                const skipped = res.skipped || 0;
+                statusEl.textContent = '完成：' + res.done + '/' + res.total + (skipped ? '，跳过重复 ' + skipped : '');
+                if (res.done + skipped === res.total) {
                     chosen.forEach(function (it) { markDone(it.key); });
                 }
             }
@@ -560,7 +562,7 @@
         if (statusEl) {
             statusEl.textContent = msg.paused
                 ? '已暂停：连续失败（可能触发风控）'
-                : '下载中 ' + msg.done + '/' + msg.total;
+                : '下载中 ' + msg.done + '/' + msg.total + (msg.skipped ? '（已跳过重复 ' + msg.skipped + '）' : '');
         }
     });
 
