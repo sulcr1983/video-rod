@@ -131,11 +131,42 @@
         return { title, author, authorId, post: '', pageType: 'bilibili' };
     }
 
+    /** 抖音：描述取详情区 h1，作者取 user-info（昵称 + 抖音号/UID）
+     *  选择器只用 data-e2e 锚点，抖音的 class 是哈希值，随时会变。 */
+    function extractDouyin(doc, host) {
+        // 视频描述：详情区 h1（实测 [data-e2e="detail-video-info"] 稳定）
+        let post = textOf(q(doc, '[data-e2e="detail-video-info"] h1'))
+            || textOf(q(doc, '[data-e2e="video-detail"] h1'))
+            || '';
+        // 作者昵称：头像 alt 最稳；其次作者链接里的文本
+        const author = attrOf(q(doc, '[data-e2e="user-info"] img[alt]'), 'alt')
+            || textOf(q(doc, '[data-e2e="user-info"] a[href*="/user/"]'))
+            || '';
+        // 作者 ID：作者链接里的 author_id（数字 UID）；没有就退 sec_uid。
+        // 注意：抖音号（unique_id）不在详情页 DOM 里，下载时由后台详情接口补上。
+        let authorId = '';
+        const userA = q(doc, '[data-e2e="user-info"] a[href*="/user/"]');
+        const href = attrOf(userA, 'href');
+        const mUid = href.match(/[?&]author_id=(\d+)/);
+        if (mUid) { authorId = mUid[1]; }
+        else {
+            const mSec = href.match(/\/user\/([A-Za-z0-9_-]+)/);
+            if (mSec) { authorId = mSec[1]; }
+        }
+        // 标题：描述优先；没有就从 document.title 剥「 - 抖音」
+        let title = post;
+        if (!title && doc && doc.title) {
+            title = doc.title.replace(/\s*[-_|—–]\s*抖音\s*$/, '').trim();
+        }
+        return { title, author, authorId, post, pageType: 'douyin' };
+    }
+
     /** 站点规则表：按 hostname 匹配，article 是兜底 */
     const SITE_RULES = [
         { name: 'twitter', match: /(^|\.)(twitter\.com|x\.com)$/, extract: extractTwitter },
         { name: 'xiaohongshu', match: /(^|\.)(xiaohongshu\.com|xhslink\.com)$/, extract: extractXiaohongshu },
         { name: 'bilibili', match: /(^|\.)(bilibili\.com|b23\.tv)$/, extract: extractBilibili },
+        { name: 'douyin', match: /(^|\.)(douyin\.com|iesdouyin\.com)$/, extract: extractDouyin },
         { name: 'article', match: /.*/, extract: extractArticle }
     ];
 
@@ -352,6 +383,7 @@
     return {
         // 页面识别
         extractPageInfo, extractArticle, extractTwitter, extractXiaohongshu, extractBilibili,
+        extractDouyin,
         stripSiteTail, buildAuthorFull, SITE_RULES,
         // 模板与清洗
         fillTemplate, sanitizeName, dedupeNames, truncate,

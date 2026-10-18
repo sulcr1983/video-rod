@@ -326,3 +326,47 @@
 - **Chrome 可能拦截同一页面的多次自动下载**：`<a download>` 由脚本触发、不带真实用户手势。
   实测首次下载正常；连续多次下载建议刷新页面。真机测试脚本里用 `Browser.setDownloadBehavior` 放行。
 - M3 plan 中的 B2（DASH 合并）**现已实现**（高清路线）。
+
+## 10. 页内悬浮按钮 + 抖音取流（2026-10-19 真机，ADR-030/031）
+
+### 10.1 页内悬浮下载按钮
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| O1 | 鼠标移到视频上出现下载按钮 | ✅ 抖音/B站/普通页均出现 |
+| O2 | 按钮位于视频**右上角**、不遮挡播放器控件 | ✅ 抖音 1920×887：`right=1906`（距视频右缘 14px）、`top=76` |
+| O3 | 覆盖层场景仍能命中（不用 `video.mouseenter`） | ✅ `document.mousemove` + 矩形判定；抖音播放器覆盖层不影响 |
+| O4 | 清晰度菜单右对齐、不顶出屏幕 | ✅ 菜单 `right:0`，在按钮下方展开 |
+| O5 | 全屏/滚出视口/切标签页自动收起 | ✅ 逻辑覆盖 |
+| O6 | X/Twitter 不重复加按钮 | ✅ `video-overlay.js` 在 x.com/twitter.com 直接 return，走 `x-button.js` |
+
+- 证据：`deliverables/assets/overlay-douyin.png`（右上角按钮实拍）。
+- 脚本：`tools/overlay-pos.py`（B站位置诊断）、`tools/overlay-check.py`（通用站点体检）、`tools/test-video-overlay.py`（端到端）。
+- 截图必须用 CDP `fromSurface:false`；`fromSurface:true` 在窗口被遮时会拍出白底破图残影（测试伪影，不是 UI）。
+
+### 10.2 抖音命名与取流
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| D1 | 识别抖音站点 | ✅ `naming.js` 新增 `extractDouyin` + `douyin.com` 规则 |
+| D2 | 作者昵称 + 抖音号进文件名 | ✅ `东方街拍(@22994771145)_...mp4` |
+| D3 | 描述作为标题 | ✅ `放慢脚步，幸福会追上你！ #瑜伽裤穿搭 #散步随拍 #户外拍摄` |
+| D4 | 不选错视频（详情页多 `<video>`） | ✅ 按 URL `/video/<id>` / `?modal_id=<id>` 调详情接口，不走嗅探缓存 |
+| D5 | 一键最高清 | ✅ `bit_rate` 按短边分辨率降序；实测 2160P 档 |
+| D6 | 下载落盘且含音轨 | ✅ hevc 2160×3840 + aac，16.35s，7,260,920 B |
+| D7 | 大文件连续下载 | ✅ 99,973,037 B，`state=complete`，mime `video/mp4` |
+| D8 | CDN Referer | ✅ 无 Referer 403；DNR set Referer/Origin 后 206 |
+| D9 | 通用选流回归 | ✅ 「当前在播」优先、体积兜底；选项标注「当前播放」 |
+| D10 | 起名引擎单测 | ✅ `node tools/test-naming.js` 32/32（新增 5 条抖音断言） |
+
+- 详情接口：页面主世界同源 `GET /aweme/v1/web/aweme/detail/?aweme_id=<id>&aid=6383&device_platform=webapp`，返回 `status_code:0`、`aweme_detail.author.{nickname,unique_id,uid}`、`desc`、`video.bit_rate[]`。
+- 下载请求头：`chrome.declarativeNetRequest.updateSessionRules` 规则 id `91001`，对 `douyinvod.com` set `referer`/`origin`，`resourceTypes:["other","media","xmlhttprequest","image"]`，10 分钟 alarm 清理。
+- 通用直链：`vrSetMediaHeadersFor(pick.url, pageUrl)` 按目标 host 回放页面 Referer（CocoCut 同款通用能力）。
+
+### 10.3 复现与坑
+
+- 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。
+- 抖音详情页必须在已登录标签页里打开；CDP 新建标签会掉登录态/白页。`/video/<id>` 与 `?modal_id=<id>` 两种地址都要支持。
+- 抖音 CDN 的 403 是**请求头**问题，不是 URL 失效：无 Referer 返回 `403 text/html`，带 `Referer: https://www.douyin.com/` 返回 `206 video/mp4`。
+- 页面内 `fetch(currentSrc)` 会被 CORS/CSP 拦；`<a download>` 跨域时 `download` 属性会被忽略、变成导航。所以下载必须走 `chrome.downloads` + DNR 补 Referer。
+- 详情接口失败时不要硬失败：回退通用嗅探分支，保证「永远有得下」。

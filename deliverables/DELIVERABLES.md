@@ -1,11 +1,12 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.5 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.6 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
 > v1.4 变更：B站「完整视频」下载入口产出物登记（ADR-029，参考 b站视频下载助手）；决策记录主线更新至 ADR-029。
 > v1.5 变更：B站 1080P 高清路线（DASH + 页面内 mp4box 合成）产出物登记；新增 `lib/mp4box.all.min.js`（第三方库已登记）、`tools/bili-mux-lab.py`+`mux-attempt.js` 合成实验室、`tools/bili-1080-probe.py` 清晰度扫描器、`tools/test-bili-1080.py` 双路线端到端脚本。
+> v1.6 变更：页内悬浮下载按钮（ADR-030：右上角/矩形命中）与抖音取流命名（ADR-031：详情接口 + DNR Referer 回放）产出物登记；新增 `js/video-overlay.js`、`js/douyin.js`、`js/bili-whole.js`、overlay 测试脚本与 `assets/overlay-douyin.png`；决策记录主线更新至 ADR-031。
 
 ---
 
@@ -79,7 +80,7 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.2 | 进行中 | ADR-001~029，追加式；ADR-025 = popup 浅色重设计定案（方案 A 全量整合）；ADR-026 = X 按钮预混流直链；ADR-027 = 下载文件名保护（抄 XBD/CocoCut/Imageye 的 onDeterminingFilename 套路）；ADR-028 = M11 放弃驱动猫抓 m3u8 页、改离屏直连管线 |
+| 决策记录 | `docs/DECISIONS.md` | v1.4 | 进行中 | ADR-001~031，追加式；ADR-028 = M11 放弃驱动猫抓 m3u8 页、改离屏直连管线；ADR-029 = B站完整视频/1080P 路线；ADR-030 = 页内悬浮按钮（右上角/矩形命中）；ADR-031 = 抖音详情接口取流 + DNR Referer 回放（参考 CocoCut/yt-dlp） |
 | 智能起名引擎 | `js/naming.js` | v0.2 | 已定稿 | M0 产物；27/27 测试通过；M1 已接入 popup（新增 buildNameFromInfo） |
 | 起名引擎测试 | `tools/test-naming.js` | v1.0 | 已定稿 | 27 条断言全绿；真实网址验证延至 M1 |
 | popup 重设计三方向 | `deliverables/prototypes/popup-redesign-options-v2.html` | v2 | 已定稿 | 浅色 A/B/C 三方案可点原型；苏哥拍板方案 A「收网」（ADR-025），已全量整合进产品代码 |
@@ -155,3 +156,9 @@ video-rod/
 | mp4box 合成实验室 | `tools/bili-mux-lab.py` + `tools/mux-attempt.js` | v1.0 | 已定稿 | 缓冲缓存在页面(`window.__vrDash`)、合成代码单独放 JS，改算法不用重下 27MB；`VR_LIMIT` 限量模式、`VR_REFETCH` 强制重取。踩坑留证：appendBuffer 两文件不可行、getBuffer 才是导出方法 |
 | B站清晰度扫描器 | `tools/bili-1080-probe.py` | v1.0 | 已定稿 | 扫 `fnval × qn` 组合，列出每条路是 durl 还是 dash、实际 quality/尺寸，用于判断「B站给不给 1080P」 |
 | B站双路线端到端脚本 | `tools/test-bili-1080.py` | v1.0 | 已定稿 | `VR_MODE=durl/dash` 选路线：重载扩展→开 popup→读横幅→点按钮→盯进度→ffprobe 验落盘文件 |
+| 页内悬浮下载按钮（ADR-030） | `js/video-overlay.js` + `manifest.json` content_scripts | v1.0 | 已定稿 | 全局一个 `position:fixed` 浮层；`document.mousemove` 60ms 节流 + 矩形命中（解决微博/抖音/B站覆盖层导致按钮不出现）；右上角定位、右缘 14px、top 让开 12%；主按钮 44×40 + 箭头 26×40；一键最高清/菜单选档；全屏隐藏；X 站让给 `x-button.js` |
+| 抖音取流模块（ADR-031） | `js/douyin.js` + `js/background.js`(抖音分支/DNR) + `js/naming.js`(extractDouyin) | v1.0 | 已定稿 | 页面主世界同源 `aweme/v1/web/aweme/detail/`；URL `/video/<id>` 或 `?modal_id=<id>` 定位作品；按短边分辨率降序选最高档；DNR session rule set Referer/Origin 解决 CDN 403；通用直链也按目标 host 回放页面 Referer |
+| B站取流模块 | `js/bili-whole.js` | v1.0 | 已定稿 | popup 与 SW 共用的 B站主世界取流核心（ADR-029/补记），从 `popup-videorod.js` 抽出；background `importScripts` 加载 |
+| 悬浮按钮测试脚本 | `tools/overlay-pos.py`、`tools/overlay-check.py`、`tools/test-video-overlay.py`、`tools/shot-overlay.py` | v1.0 | 已定稿 | 位置诊断/通用站点体检/端到端验证/早期截图；CDP 截图统一 `fromSurface:false`，避免白底破图伪影 |
+| 悬浮按钮截图 | `deliverables/assets/overlay-douyin.png` | 2026-10-19 | 已定稿 | 抖音 1920×887 实拍：按钮在右上角（right gap 14px、top 76px），不与播放器控件重叠 |
+| 抖音真机验收记录 | `docs/TESTING.md` §10 | v1.5 | 已定稿 | 按钮 O1-O6、抖音 D1-D10；4K hevc+aac 7,260,920 B；99MB 大文件 complete；无 Referer 403 / 带 Referer 206 |
