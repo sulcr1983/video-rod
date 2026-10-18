@@ -52,10 +52,10 @@
 
     function normalizePlatform(raw) {
         const s = String(raw || '').toLowerCase();
-        if (s.includes('weibo')) { return 'weibo'; }
-        if (s === 'x' || s.includes('twitter')) { return 'x'; }
-        if (s.includes('douyin')) { return 'douyin'; }
-        if (s.includes('xiaohongshu') || s.includes('xhs')) { return 'xiaohongshu'; }
+        if (s.includes('weibo') || s.includes('微博')) { return 'weibo'; }
+        if (s === 'x' || s.includes('twitter') || s.includes('推特')) { return 'x'; }
+        if (s.includes('douyin') || s.includes('抖音')) { return 'douyin'; }
+        if (s.includes('xiaohongshu') || s.includes('xhs') || s.includes('小红书')) { return 'xiaohongshu'; }
         if (s.includes('instagram') || s === 'ig') { return 'instagram'; }
         return 'other';
     }

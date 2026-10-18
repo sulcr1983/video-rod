@@ -86,7 +86,9 @@
             'https://x.com/', { tpl: settings.template, ext: ext });
         const dir = String(settings.defaultDir || 'video-rod')
             .replace(/[<>:"|?*\\]/g, '').replace(/^\/+|\/+$/g, '') || 'video-rod';
-        return dir + '/' + name;
+        const author = String(i.authorFull || 'x')
+            .replace(/[<>:"/\\|?*]/g, '_').trim().slice(0, 60) || 'x';
+        return dir + '/x/' + author + '/videos/' + name;
     }
 
     /* ---------- 交互 ---------- */

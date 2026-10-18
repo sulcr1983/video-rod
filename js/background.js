@@ -1516,6 +1516,19 @@ function vrBulkDelay() {
     return 1400 + Math.floor(Math.random() * 1200);
 }
 
+/** 媒体库路径：video-rod/<平台>/<作者(@ID)>/images|videos/<文件名> */
+function vrMediaPath(item, name) {
+    const i = item || {};
+    const site = i.site === 'x' ? 'x'
+        : i.site === 'weibo' ? 'weibo'
+            : i.site === 'xhs' ? 'xiaohongshu' : 'other';
+    const author = String(i.author || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 60);
+    const id = String(i.authorId || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 40);
+    const folder = author ? (id ? author + '(@' + id + ')' : author) : site;
+    const kind = i.kind === 'video' ? 'videos' : 'images';
+    return 'video-rod/' + site + '/' + folder + '/' + kind + '/' + name;
+}
+
 /** 去重标识：不依赖 URL 的签名/token 参数。同作品同媒体视为重复。
  *  statusId/noteId/awemeId/mediaId 优先，URL 只保留 origin+pathname。 */
 function vrMediaIdentity(it) {
@@ -1583,8 +1596,8 @@ async function vrBulkDownload(items, tabId) {
             const name = vrBulkName(it, i);
             let ok = false;
             if (it.site === 'x') {
-                // X CDN 允许 downloads；带子目录，文件名保护复用 ADR-027
-                const id = await vrDownloadWithName(it.url, 'video-rod/' + name);
+                // X CDN 允许 downloads；按媒体库平台/作者/类型落盘
+                const id = await vrDownloadWithName(it.url, vrMediaPath(it, name));
                 if (id !== null) {
                     const outcome = await vrWaitDownload(id, 15000);
                     if (outcome && outcome.state === 'interrupted') {
@@ -1594,8 +1607,8 @@ async function vrBulkDownload(items, tabId) {
                     }
                 }
             } else if (it.site === 'xhs') {
-                // 小红书页面 fetch 被 CORS 拒绝，只能 downloads；进 小红书/作者 子目录
-                const id = await vrDownloadWithName(it.url, 'video-rod/小红书/' + name);
+                // 小红书页面 fetch 被 CORS 拒绝，只能 downloads；统一进媒体库目录
+                const id = await vrDownloadWithName(it.url, vrMediaPath(it, name));
                 if (id !== null) {
                     const outcome = await vrWaitDownload(id, 20000);
                     if (outcome && outcome.state === 'interrupted') {
@@ -1605,10 +1618,10 @@ async function vrBulkDownload(items, tabId) {
                     }
                 }
             } else if (tabId != null) {
-                const r = await vrTryPageDownload(tabId, it.url, name);
+                const r = await vrTryPageDownload(tabId, it.url, vrMediaPath(it, name));
                 ok = !!(r && r.ok);
                 if (!ok) {
-                    const id = await vrDownloadWithName(it.url, 'video-rod/' + name);
+                    const id = await vrDownloadWithName(it.url, vrMediaPath(it, name));
                     ok = id !== null;
                 }
             }
