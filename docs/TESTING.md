@@ -481,6 +481,8 @@
 | LIB7 | 选中后请求读写权限 | ✅ `requestPermission({mode:'readwrite'})` |
 | LIB8 | 外部目录隔离 | ✅ 跳过 `xbd-downloader`(704)、`老黄的分享`(17)；文件保留 |
 | LIB9 | 重命名 API | ✅ `move(parentDir,newName)`，不再读 `move()` 返回值 |
+| LIB10 | P3 选择/标签/批量 | ✅ 临时文件：标签、全选 23、清除 0、移动 1、删除 1，回到 22 项 |
+| LIB11 | P3 移动冲突 | ✅ `performMove` 仅对 `InvalidModificationError` 重试，其他错误立即失败 |
 
 - 参考：MDN `showDirectoryPicker` 的 `id` 记忆行为；Chromium issue 关于 `id`/`startIn` 被忽略的报告。
 
