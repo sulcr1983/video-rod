@@ -1190,6 +1190,118 @@ body.popupBody {
     margin-top: 16px;
 }
 
+/* ---------- 下载历史视图（M9） ---------- */
+.setview .hcount {
+    margin-left: auto;
+    font-size: 10.5px;
+    color: var(--vr-text-mute);
+    font-weight: 400;
+}
+
+.hlist { display: flex; flex-direction: column; }
+
+.hrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--vr-line);
+}
+
+.hrow .hmain { flex: 1; min-width: 0; }
+
+.hrow .hname {
+    font-size: 11.5px;
+    color: var(--vr-text);
+    font-family: ui-monospace, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.hrow .hdir {
+    font-size: 9.5px;
+    color: var(--vr-text-mute);
+    font-family: ui-monospace, monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.hrow .htime {
+    flex: none;
+    font-size: 9.5px;
+    color: var(--vr-text-mute);
+    font-family: ui-monospace, monospace;
+}
+
+.hrow .hbtn {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    color: var(--vr-text-dim);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    transition: .15s;
+}
+
+.hrow .hbtn:hover { background: var(--vr-hover); color: var(--vr-text); }
+.hrow .hbtn svg { width: 13px; height: 13px; }
+.hrow .hbtn.del:hover { color: #dc2626; background: #fef2f2; }
+
+.hempty {
+    display: none;
+    text-align: center;
+    color: var(--vr-text-mute);
+    font-size: 11.5px;
+    padding: 44px 0 24px;
+}
+
+.hempty.on { display: block; }
+
+.hfoot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.hfoot .hnote {
+    flex: 1;
+    font-size: 9.5px;
+    color: var(--vr-text-mute);
+    line-height: 1.6;
+}
+
+.ghostbtn.danger { color: #dc2626; border-color: #fecaca; white-space: nowrap; }
+.ghostbtn.danger:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
+
+/* ---------- 多段合并徽标（M11） ---------- */
+.vr-multibadge {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 4px;
+    margin-left: 6px;
+    vertical-align: middle;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.vr-multibadge.idle { background: #eef2ff; color: #4f46e5; cursor: default; }
+.vr-multibadge.running { background: #fff0e6; color: #c2410c; cursor: default; }
+.vr-multibadge.ready { background: #dcfce7; color: #15803d; cursor: pointer; }
+.vr-multibadge.ready:hover { background: #bbf7d0; }
+.vr-multibadge.saved { background: #f0f1f3; color: #646a73; cursor: default; }
+.vr-multibadge.error { background: #fef2f2; color: #dc2626; cursor: default; }
+
 /* ---------- 站点增强横幅（M3 B站分P / M4 YouTube 提示） ---------- */
 .vr-banner {
     margin: 0;

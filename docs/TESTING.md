@@ -237,3 +237,24 @@
 5. **星愿浏览器必须 `run_in_background` 启动**：用 `&` 后台起的进程会被工具会话回收（端口 9223 静默死亡）；taskkill 全部进程后等 3-4 秒再带参重拉（老实例在跑时新启动的参数被单例锁吞掉）
 6. **hook 检测假阴性**：popup.html 同时加载 `vr-download-hook.js`（`__vrNameHooked`）和 `popup-videorod.js` 的 `hookDownloadsApi`（`__vrHooked`），后者后包装会盖住前者的标记属性——检测 hook 是否装上要看功能（落盘名），不能看最外层 wrapper 的属性
 7. 改扩展代码后星愿里重载：`chrome://extensions` → 找「钓鱼竿」卡片 → `#dev-reload-button`（shadow DOM 里，JS `el.click()` 可靠）；重载后 SW 里 `typeof vrDownloadWithName === 'function'` 可验证新代码上线
+8. **系统代理会骗过 curl 探活**：本机设了 `http_proxy=127.0.0.1:5576`，curl 探 `127.0.0.1:9223/18080` 会被代理截走报 "upstream connect failed"——探活要用 `curl --noproxy '*'` 或 `netstat -ano | grep :<port>`；但 `tools/cdp_client.py` 用 `ProxyHandler({})` 显式绕过代理，Python 测试连 CDP 不受影响。测试服务器（python -m http.server 18080）在本会话里反复无故退出，跑 M11 测试前务必 `netstat` 确认 18080 在监听，否则 sniff 全 0
+9. **单例锁吞调试端口**：twinkstar 进程没清干净就带 `--remote-debugging-port=9223` 重拉，会报「另一个会话中打开」、调试端口不绑定；必须 `taskkill //F //IM twinkstar.exe` 全杀 + 删 `SingletonLock`（`AppData\Local\Twinkstar\User Data\SingletonLock`）+ 等 4-5 秒再拉
+
+## 8. M9/M10/M11 星愿真机验收记录（2026-10-18）
+
+### M9 下载历史面板（tools/test-m9-history.py，6 项全过）
+- 下载完成后 `chrome.storage.local` 历史表写入（标题/来源/大小/时间/缩略图/状态）
+- popup 设置抽屉历史入口可进；列表按时间分组渲染；缩略图显示；点重下复用既有下载管线；一键清空
+- 待办：真实站点实测（装机后苏哥验）
+
+### M10 侧边栏模式（tools/test-m10-sidepanel.py，7 项全过）
+- `manifest.json` 加 `side_panel`；工具条按钮/右键菜单开侧边栏；窄宽 320px 适配
+- 侧栏里下载走 `vrDownloadWithName` → 文件名保护不丢名（不复苏哥星愿 13 扩展冲突坑，ADR-027）
+- 待办：真实站点实测
+
+### M11 多段自动合并（tools/test-m11-automerge.py，5 项全过，ADR-028）
+- 对抗：hls.html 双清晰度（master+变体）不误归组 → 徽标 0（PASS）
+- 正向：multi.html 两段自动归组 → 徽标「2 段·将合并」→ 后台离屏直连管线合并 → 徽标「已拼好·点我保存」→ 点保存 → 「已保存」，落盘 `video-rod/split1.mp4`
+- ffprobe 验：h264 640×360、duration 8.000s，有效（两段各 2 个 2 秒分片全拼对）
+- 重构要点：删「驱动猫抓 m3u8 页」约 150 行；offscreen 文档内解析+下载+解密+转码；SW 仅编排+落盘（离屏无 `chrome.downloads`）
+- 待办：**AES-128 解密仅在裸 TS 测试站验过，真实加密 HLS 未验**（真实站点多为 AES-128，漏了真机上拼乱码）；仅 HLS 不支持 DASH

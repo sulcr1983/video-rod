@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <title>钓鱼竿合并Worker</title>
+</head>
+
+<body>
+  <!--
+    M11 多段合并离屏文档（offscreen，reason: BLOBS）
+    存在理由：MV3 service worker 里建不出可靠的 blob URL 给 downloads API 用，
+    且 SW 可能被系统回收——合并这种重活 + 等保存的 blob 必须在能稳定存活的
+    文档上下文里做。Chromium 官方的 offscreen「BLOBS」理由正是为这个场景设计。
+    职责：拼接各段字节 → 转码 MP4 → 持有 blob 等保存 → 执行落盘下载。
+    编排（开标签收字节）在 background.js，本文件只做合并与保存。
+  -->
+  <script src="lib/mux.min.js"></script>
+  <script src="js/vr-download-hook.js"></script>
+  <script src="js/m3u8-merge.js"></script>
+</body>
+
+</html>

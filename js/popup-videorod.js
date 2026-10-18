@@ -175,8 +175,48 @@
     function bindDrawers() {
         var btnSettings = el('btnSettings');
         var btnAdvTools = el('vrAdvTools');
+        var btnSidePanel = el('vrSidePanel');
         if (btnSettings) { btnSettings.addEventListener('click', function () { openDrawer('vrSettings'); }); }
         if (btnAdvTools) { btnAdvTools.addEventListener('click', function () { openDrawer('vrTools'); }); }
+        if (btnSidePanel) {
+            btnSidePanel.addEventListener('click', function () {
+                // 侧边栏（M10）：不影响图标行为，随时把面板挪到浏览器侧边。
+                // 注意：sidePanel.open() 必须传真实 windowId——WINDOW_ID_CURRENT(-2)
+                // 会被拒（"No window with id: -2"，官方文档要求 windowId/tabId 至少一个）。
+                // windows.getCurrent 的异步间隙在用户激活 5 秒窗口内，手势仍有效
+                // （星愿真机 Input 真点击实测通过）。
+                if (!chrome.sidePanel || !chrome.sidePanel.open) {
+                    tip('当前浏览器不支持侧边栏');
+                    return;
+                }
+                var doOpen = function (wid) {
+                    if (wid === undefined || wid === null) { tip('打不开侧边栏：找不到窗口'); return; }
+                    try {
+                        // 必须用 Promise 形态：星愿（Twinkstar）实测 callback 形态
+                        // 静默不生效，Promise 形态才真正打开面板
+                        var ret = chrome.sidePanel.open({ windowId: wid });
+                        if (ret && typeof ret.then === 'function') {
+                            ret.then(null, function (e) {
+                                tip('打不开侧边栏：' + ((e && e.message) || e));
+                            });
+                        }
+                    } catch (e2) { tip('打不开侧边栏：' + e2); }
+                };
+                try {
+                    chrome.windows.getCurrent(function (win) {
+                        if (!chrome.runtime.lastError && win && win.id !== undefined) {
+                            doOpen(win.id);
+                            return;
+                        }
+                        // 兜底：拿焦点窗口或任意窗口
+                        chrome.windows.getAll(function (wins) {
+                            var w = wins && (wins.filter(function (x) { return x.focused; })[0] || wins[0]);
+                            doOpen(w && w.id);
+                        });
+                    });
+                } catch (e) { tip('打不开侧边栏：' + e); }
+            });
+        }
 
         document.querySelectorAll('[data-close]').forEach(function (x) {
             x.addEventListener('click', function () { closeDrawers(); });
@@ -215,6 +255,16 @@
             var box = el(id);
             if (box) { box.checked = !!settings[toggles[id]]; }
         });
+        // 侧边栏开关是猫抓底座设置（storage.sync 的 sidePanel 键，init.js 接管
+        // setPanelBehavior），不走 vrSettings，单独异步读
+        var spBox = el('vrSetSidePanel');
+        if (spBox) {
+            try {
+                chrome.storage.sync.get('sidePanel', function (res) {
+                    if (!chrome.runtime.lastError) { spBox.checked = !!res.sidePanel; }
+                });
+            } catch (e) { /* 老版本无 sync 时忽略 */ }
+        }
     }
 
     function bindSettingsInputs() {
@@ -257,6 +307,21 @@
                 if (toggles[id] === 'badge') { applyBadgeVisibility(); }
             });
         });
+
+        // 侧边栏开关（M10）：写 storage.sync 的 sidePanel 键，init.js 的
+        // storage.onChanged 监听会自动调 setPanelBehavior 改变图标行为
+        var spBox = el('vrSetSidePanel');
+        if (spBox) {
+            spBox.addEventListener('change', function () {
+                var on = this.checked;
+                try {
+                    chrome.storage.sync.set({ sidePanel: on }, function () {
+                        tip(on ? '已开：点工具栏图标进侧边栏（想回弹窗模式就关掉）'
+                            : '已关：点工具栏图标还是弹小面板');
+                    });
+                } catch (e) { tip('设置失败：' + e); }
+            });
+        }
     }
 
     function refreshDirChips(oldDefault) {
@@ -730,10 +795,23 @@
         var items = vrCheckedData();
         if (!items.length) { return; }
 
+        // M11：勾选里含多段组的，整组走后台合并，不进普通下载列表
+        var groups = vrScanGroups();
+        vrMergeGroups = groups;   // 与模块级账本同步：合并消息回来后按 taskId 找组靠它
+        var groupOf = new Map();
+        groups.forEach(function (g) {
+            g.items.forEach(function (d) { groupOf.set(d, g); });
+        });
+        var mergeGroups = [];
         var skipped = 0;
         var planned = [];
 
         items.forEach(function (d) {
+            var g = groupOf.get(d);
+            if (g) {
+                if (mergeGroups.indexOf(g) < 0) { mergeGroups.push(g); }
+                return;
+            }
             var full = vrFullPath(d);
             if (isDownloaded(full)) {
                 skipped++;
@@ -748,7 +826,23 @@
         if (skipped) {
             tip('跳过 ' + skipped + ' 个已下载过的文件');
         }
+
+        // 组内卡片取消勾选（猫抓批量循环不再单独下它们），整组发起合并
+        mergeGroups.forEach(function (g) {
+            g.items.forEach(function (d) {
+                d.checked = false;
+                if (d.html && d.html.length) {
+                    var box = d.html.find('.DownCheck');
+                    if (box && box.length) { box.prop('checked', false); }
+                }
+            });
+            vrStartGroupMerge(g);
+        });
+
         if (!planned.length) {
+            if (mergeGroups.length) {
+                return false;           // 只有合并任务：拦下猫抓批量循环
+            }
             tip('选中的都下载过了，换个页面或清空下载记录');
             return false;               // 调用方决定是否拦下
         }
@@ -874,6 +968,362 @@
             });
             tip('下载记录已清空，之前下过的可以重下了');
         });
+    }
+
+    /* ==========================================================
+     * 九·补、下载历史视图（M9）
+     * 数据源 = 去重记账（downloaded: {hash: {p, t}}），同一份数据两个用途：
+     * 既当「下过没有」的去重依据，也当「下过什么」的历史清单。
+     * ========================================================== */
+
+    var HISTORY_VIEW_MAX = 200;   // 视图最多渲染条数，防长列表卡顿
+    var VR_ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    var VR_ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+    function vrFmtTime(t) {
+        if (!t) { return ''; }
+        var d = new Date(t);
+        var p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    function vrCopyText(text) {
+        var done = function () { tip('已复制完整路径'); };
+        var fallback = function () {
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                done();
+            } catch (e) { tip('复制失败，请手动复制'); }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, fallback);
+        } else {
+            fallback();
+        }
+    }
+
+    /** 记录变动后，把列表卡片的「已完成」态按最新去重账本刷新一遍 */
+    function refreshCardDoneStates() {
+        try {
+            vrAllData().forEach(function (d) {
+                if (!d || !d.html || !d.html.length) { return; }
+                if (isDownloaded(vrFullPath(d))) {
+                    markCardDone(d, '已下载过');
+                } else {
+                    d.html.removeClass('done');
+                    d.html.removeAttr('data-vr-state');
+                }
+            });
+        } catch (e) { /* 忽略：列表结构异常时不影响记录操作 */ }
+    }
+
+    function renderHistory() {
+        var list = el('vrHistoryList');
+        if (!list) { return; }
+        var rows = Object.keys(downloaded).map(function (k) { return downloaded[k]; })
+            .filter(function (r) { return r && r.p; })
+            .sort(function (a, b) { return (b.t || 0) - (a.t || 0); });
+
+        var cnt = el('vrHistoryCnt');
+        if (cnt) { cnt.textContent = rows.length + ' 条'; }
+        var empty = el('vrHistoryEmpty');
+        if (empty) { empty.classList.toggle('on', rows.length === 0); }
+        var note = el('vrHistoryNote');
+        if (note) {
+            note.textContent = rows.length > HISTORY_VIEW_MAX
+                ? '仅显示最近 ' + HISTORY_VIEW_MAX + ' 条，共 ' + rows.length + ' 条'
+                : '删记录只是取消「已下载」标记，文件还在磁盘上';
+        }
+
+        list.innerHTML = '';
+        rows.slice(0, HISTORY_VIEW_MAX).forEach(function (r) {
+            var p = String(r.p);
+            var slash = p.lastIndexOf('/');
+            var name = slash >= 0 ? p.slice(slash + 1) : p;
+            var dir = slash >= 0 ? p.slice(0, slash + 1) : '';
+            var row = document.createElement('div');
+            row.className = 'hrow';
+            row.innerHTML =
+                '<div class="hmain"><div class="hname"></div><div class="hdir"></div></div>' +
+                '<span class="htime"></span>' +
+                '<button class="hbtn copy" title="复制完整路径">' + VR_ICON_COPY + '</button>' +
+                '<button class="hbtn del" title="删除这条记录（该文件可重新下载）">' + VR_ICON_TRASH + '</button>';
+            row.querySelector('.hname').textContent = name;
+            row.querySelector('.hdir').textContent = dir;
+            row.querySelector('.htime').textContent = vrFmtTime(r.t);
+            row.querySelector('.copy').addEventListener('click', function () { vrCopyText(p); });
+            row.querySelector('.del').addEventListener('click', function () {
+                var key = hashKey(p);
+                if (!downloaded[key]) { return; }
+                delete downloaded[key];
+                saveDownloaded();
+                refreshCardDoneStates();
+                renderHistory();
+                tip('已删除 1 条记录，该文件可重新下载');
+            });
+            list.appendChild(row);
+        });
+    }
+
+    function bindHistoryView() {
+        var openBtn = el('vrOpenHistory');
+        if (openBtn) {
+            openBtn.addEventListener('click', function () {
+                openDrawer('vrHistory');
+                renderHistory();
+            });
+        }
+        // 历史视图的返回键回设置视图（不是一关到底）
+        document.querySelectorAll('#vrHistory [data-back]').forEach(function (x) {
+            x.addEventListener('click', function () { openDrawer(x.getAttribute('data-back')); });
+        });
+        var clearBtn = el('vrHistoryClear');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                var rows = Object.keys(downloaded).length;
+                if (!rows) { tip('下载历史本来就是空的'); return; }
+                // 二次确认：第一下改文案，第二下才真清（防手残）
+                if (clearBtn.dataset.armed !== '1') {
+                    clearBtn.dataset.armed = '1';
+                    clearBtn.textContent = '再点一次，清空 ' + rows + ' 条';
+                    setTimeout(function () {
+                        clearBtn.dataset.armed = '';
+                        clearBtn.textContent = '清空全部';
+                    }, 3000);
+                    return;
+                }
+                downloaded = {};
+                saveDownloaded();
+                refreshCardDoneStates();
+                clearBtn.dataset.armed = '';
+                clearBtn.textContent = '清空全部';
+                renderHistory();
+                tip('下载历史已清空');
+            });
+        }
+    }
+
+    /* ==========================================================
+     * 九·补二、M11 多段自动合并（认组 → 后台拼 → 点保存）
+     * 苏哥原则：不让人选段、不让人填顺序，后台默认自己完成，人只点保存。
+     * 识别：同标签页的多个 m3u8，网址只有序号不同、类型相同、标题相同 →
+     * 判为「一个视频的多段」，列表打徽标；勾选下载时整组走合并。
+     * ========================================================== */
+
+    var vrMergeGroups = [];   // [{key, items:[data], taskId, state, ext}]
+
+    /** 分组键：只认 m3u8；网址数字段归一后同 host 同路径同类型同标题 */
+    function vrM3u8GroupKey(data) {
+        if (!data || data.parsing !== 'm3u8' || !data.url) { return null; }
+        try {
+            var u = new URL(data.url);
+            var path = u.pathname;
+            if (!/\d/.test(path)) { return null; }   // 路径里没序号的不可能是分段
+            var norm = path.replace(/\d+/g, '#');
+            return (data.tabId ?? -1) + '|' + u.host + '|' + norm + '|' + (data.type || '') + '|' + (data.title || '');
+        } catch (e) { return null; }
+    }
+
+    /**
+     * 组内序号：路径名的数字段按位比，取第一处有差异的字段值。
+     * 不能图省事取「URL 最后一个数字」——.m3u8 里的 8 会把所有序号都变成 8。
+     * 返回 null = 路径数字段完全没差异（不是序号型分段，不认）。
+     */
+    function vrGroupSeqs(items) {
+        var runs = items.map(function (d) {
+            try { return new URL(d.url).pathname.match(/\d+/g) || []; } catch (e) { return []; }
+        });
+        var first = runs[0];
+        for (var pos = 0; pos < first.length; pos++) {
+            var vals = runs.map(function (r) { return parseInt(r[pos], 10); });
+            var allSame = vals.every(function (v) { return v === vals[0]; });
+            if (!allSame) { return vals; }
+        }
+        return null;
+    }
+
+    /** 扫当前列表，返回多段组（≥2 个同键 m3u8，序号严格连续；同 URL 先祛重） */
+    function vrScanGroups() {
+        var buckets = {};
+        var seenUrl = {};
+        try {
+            vrAllData().forEach(function (d) {
+                var key = vrM3u8GroupKey(d);
+                if (!key) { return; }
+                // 页面刷新/重复请求会把同一地址嗅探多次，先按 URL 祛重
+                if (seenUrl[d.url]) { return; }
+                seenUrl[d.url] = 1;
+                (buckets[key] = buckets[key] || []).push(d);
+            });
+        } catch (e) { /* 列表异常时退化为不合并 */ }
+        var groups = [];
+        Object.keys(buckets).forEach(function (key) {
+            var items = buckets[key];
+            if (items.length < 2) { return; }
+            var seqs = vrGroupSeqs(items);
+            if (!seqs) { return; }   // 路径数字段没差异——不是序号型分段
+            // 按序号排序，且必须严格连续（1,2,3…）：排掉同页多清晰度变体
+            // （variant_180p/360p → 序号差 180）和大部分同页多视频误判
+            var order = items.map(function (d, i) { return { d: d, s: seqs[i] }; });
+            order.sort(function (a, b) { return a.s - b.s; });
+            for (var i = 1; i < order.length; i++) {
+                if (order[i].s - order[i - 1].s !== 1) { return; }
+            }
+            groups.push({
+                key: key,
+                items: order.map(function (x) { return x.d; }),
+                taskId: null, state: 'idle', ext: 'mp4'
+            });
+        });
+        return groups;
+    }
+
+    /** 给多段组卡片打静态徽标（列表变化时调用） */
+    function vrMarkGroupBadges() {
+        vrMergeGroups = vrScanGroups();
+        vrMergeGroups.forEach(function (g) {
+            g.items.forEach(function (d, i) {
+                if (!d.html || !d.html.length) { return; }
+                var panel = d.html[0];
+                if (panel.querySelector('.vr-multibadge')) { return; }   // 已打过
+                var badge = document.createElement('span');
+                badge.className = 'vr-multibadge idle';
+                badge.textContent = (i === 0 ? (g.items.length + ' 段 · 将合并') : g.items.length + ' 段');
+                badge.title = '这 ' + g.items.length + ' 个是同一视频的分段，下载时自动拼成一个';
+                var nameEl = panel.querySelector('.name') || panel.querySelector('.filename');
+                if (nameEl && nameEl.parentNode) {
+                    nameEl.parentNode.insertBefore(badge, nameEl.nextSibling);
+                } else {
+                    panel.appendChild(badge);
+                }
+            });
+        });
+    }
+
+    /** 合并任务状态回写到卡片徽标 */
+    function vrMergeBadge(data, state, taskId) {
+        if (!data || !data.html || !data.html.length) { return; }
+        var panel = data.html[0];
+        var badge = panel.querySelector('.vr-multibadge');
+        if (!badge) { return; }
+        var map = {
+            running: ['合并中…', 'running'],
+            ready: ['已拼好 · 点我保存', 'ready'],
+            saving: ['保存中…', 'running'],
+            saved: ['已保存', 'saved'],
+            error: ['合并失败', 'error']
+        };
+        var s = map[state] || map.error;
+        badge.textContent = s[0];
+        badge.className = 'vr-multibadge ' + s[1];
+        if (state === 'ready') {
+            badge.onclick = function () {
+                var g = vrMergeGroups.filter(function (x) { return x.taskId === taskId; })[0];
+                var name = g ? vrMergedName(g) : '';
+                if (!name) { tip('找不到文件名，请刷新面板重试'); return; }
+                vrMergeBadge(data, 'saving', taskId);
+                markDownloaded(name);   // 保存即记账去重
+                chrome.runtime.sendMessage({
+                    Message: 'vrMergeSave', taskId: taskId, filename: name
+                }, function () { void chrome.runtime.lastError; });
+            };
+        } else {
+            badge.onclick = null;
+        }
+    }
+
+    /** 合并输出文件名：组内第一条的模板名，扩展名按合并结果（mp4/ts） */
+    function vrMergedName(g) {
+        var full = vrFullPath(g.items[0]);
+        return full.replace(/\.(m3u8|mp4|ts)$/i, '') + '.' + (g.ext || 'mp4');
+    }
+
+    /** 发起一个组的后台合并 */
+    function vrStartGroupMerge(g) {
+        if (g.state === 'running' || g.state === 'ready') { return; }
+        g.taskId = 'mg' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+        g.state = 'running';
+        g.items.forEach(function (d) { vrMergeBadge(d, 'running', g.taskId); });
+        chrome.runtime.sendMessage({
+            Message: 'vrMergeStart',
+            taskId: g.taskId,
+            urls: g.items.map(function (d) { return d.url; })
+        }, function () { void chrome.runtime.lastError; });
+        tip('检测到 ' + g.items.length + ' 段，后台自动合并中，拼好点保存');
+    }
+
+    /** 合并相关的后台消息 */
+    function bindMergeMessages() {
+        chrome.runtime.onMessage.addListener(function (Message) {
+            if (!Message) { return; }
+            if (Message.Message === 'vrMergeProgress') {
+                vrMergeGroups.forEach(function (g) {
+                    if (g.taskId === Message.taskId && g.items[0]) {
+                        var badge = g.items[0].html && g.items[0].html.length
+                            ? g.items[0].html[0].querySelector('.vr-multibadge') : null;
+                        if (badge && Message.text) { badge.textContent = Message.text; }
+                    }
+                });
+            }
+            if (Message.Message === 'vrMergeDone') {
+                vrMergeGroups.forEach(function (g) {
+                    if (g.taskId !== Message.taskId) { return; }
+                    g.state = 'ready';
+                    g.ext = Message.ext || 'mp4';
+                    g.items.forEach(function (d, i) {
+                        vrMergeBadge(d, i === 0 ? 'ready' : 'ready', g.taskId);
+                    });
+                });
+                tip('多段已拼好（' + (Message.bytes ? (Message.bytes / 1048576).toFixed(1) : '?') + ' MB），点卡片上的「保存」落盘');
+            }
+            if (Message.Message === 'vrMergeSaved') {
+                vrMergeGroups.forEach(function (g) {
+                    if (g.taskId !== Message.taskId) { return; }
+                    g.state = 'saved';
+                    g.items.forEach(function (d) {
+                        vrMergeBadge(d, 'saved', g.taskId);
+                        markCardDone(d, '已完成');
+                    });
+                });
+                tip(Message.ok ? '合并文件已保存' : ('保存失败：' + (Message.error || '未知')));
+            }
+            if (Message.Message === 'vrMergeError') {
+                vrMergeGroups.forEach(function (g) {
+                    if (g.taskId !== Message.taskId) { return; }
+                    g.state = 'error';
+                    g.items.forEach(function (d) { vrMergeBadge(d, 'error', g.taskId); });
+                });
+                tip('合并失败：' + (Message.error || '未知错误'));
+            }
+        });
+        // 面板重开：问 SW 有没有拼好等保存的活（SW 重启会丢，属已知限制）
+        try {
+            chrome.runtime.sendMessage({ Message: 'vrMergeStatus' }, function (res) {
+                if (chrome.runtime.lastError || !res || !res.tasks) { return; }
+                res.tasks.forEach(function (t) {
+                    if (t.state !== 'ready') { return; }
+                    // 按 urls 找回本面板的组
+                    vrMarkGroupBadges();
+                    vrMergeGroups.forEach(function (g) {
+                        var same = g.items.length === t.urls.length &&
+                            g.items.every(function (d, i) { return d.url === t.urls[i]; });
+                        if (same) {
+                            g.taskId = t.taskId;
+                            g.state = 'ready';
+                            g.ext = t.ext;
+                            g.items.forEach(function (d, i) { vrMergeBadge(d, 'ready', g.taskId); });
+                        }
+                    });
+                });
+            });
+        } catch (e) { /* 老版本忽略 */ }
     }
 
 
@@ -1250,6 +1700,7 @@
         if (!list || typeof MutationObserver === 'undefined') { return; }
         var obs = new MutationObserver(function () {
             updateCounts();
+            vrMarkGroupBadges();
             if (settings.smartName && pageInfo) { scheduleSmart(); }
         });
         obs.observe(list, { childList: true, subtree: false });
@@ -1266,6 +1717,8 @@
             bindDirMenu();
             bindRenameModal();
             bindClearDownloaded();
+            bindHistoryView();
+            bindMergeMessages();
             bindImageScan();
             watchList();
 
@@ -1278,10 +1731,12 @@
 
             // 先按现有数据刷一遍，再等 tabId 落地做页面信息 + 智能起名
             updateCounts();
+            vrMarkGroupBadges();   // M11：已渲染的卡片立即归组打徽标（观察者只抓后续新增）
             waitTabId(function (id) {
                 if (id < 0) { return; }
                 fillPageInfo();
                 detectSite();
+                vrMarkGroupBadges();   // tabId 落地后数据可能才到齐，再归组一遍
                 if (!settings.smartName) { return; }
                 fetchPageInfo().then(function (info) {
                     pageInfo = info;

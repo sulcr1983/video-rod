@@ -8,7 +8,9 @@
  * 下载不走网络，onDeterminingFilename 几乎立即触发，fire-and-forget 式记账赛不过它。
  * 幂等：重复加载只包一层；守卫属性用 __vrNameHooked，与 popup-videorod.js 的
  * hookDownloadsApi（__vrHooked）错开，两个 hook 可叠加互不冲突。
- * 由 popup.html / options.html / m3u8.html / downloader.html 加载。
+ * 由 popup.html / options.html / m3u8.html / downloader.html / m3u8-multi.html /
+ * offscreen.html 加载。
+ * （M11 曾在此加过「多段合并」分支——直连管线重构后不再需要，已移除。）
  */
 (function () {
     'use strict';
