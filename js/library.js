@@ -754,8 +754,17 @@
             img.classList.add('hidden');
             video.classList.remove('hidden');
             // 本地 File 的 object URL 可 seek；浏览器直接流式读取，不需要额外 HTTP Range
-            video.preload = 'metadata';
+            video.preload = 'auto';
+            video.muted = false;
             video.src = await fileUrl(d);
+            // 进入预览即自动播放（预览由点击/按键打开，带用户手势，通常允许带声播放）。
+            // 个别策略下带声自动播放被拦，退一步静音自动播，保证「进入即播」。
+            try {
+                await video.play();
+            } catch (e) {
+                video.muted = true;
+                try { await video.play(); } catch (e2) { /* 兜底：交给 controls 手点 */ }
+            }
         } else {
             video.classList.add('hidden');
             video.removeAttribute('src');
