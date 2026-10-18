@@ -1586,3 +1586,188 @@ body.popupBody {
     font-size: 9.5px;
     color: var(--vr-text-mute);
 }
+
+/* ==========================================================
+   设置页 UX/UI 重构（语义分组色 + 卡片层级）
+   ========================================================== */
+#vrSettings {
+    background: #f5f7fb;
+    z-index: 10050;
+}
+#vrSettings .sethead {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #fff;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e5e8ef;
+}
+#vrSettings .sethead .ttl {
+    font-size: 15px;
+    font-weight: 650;
+    color: #1d2129;
+}
+#vrSettings .sethead .back {
+    color: #4e5969;
+    background: #f7f9fc;
+    border: 1px solid #e5e8ef;
+}
+#vrSettings .sethead .back:hover {
+    color: #1677ff;
+    border-color: #bcd7ff;
+    background: #f7fbff;
+}
+#vrSettings .setbody {
+    background: #f5f7fb;
+    padding: 10px 14px 24px;
+}
+#vrSettings .setbody::-webkit-scrollbar { width: 6px; }
+#vrSettings .setbody::-webkit-scrollbar-thumb {
+    background: #d9dee8;
+    border-radius: 99px;
+}
+#vrSettings .sgroup {
+    --sg: #1677ff;
+    --sgsoft: #eef5ff;
+    --sgline: #d6e8ff;
+    margin: 10px 0;
+    padding: 10px 12px 2px;
+    background: #fff;
+    border: 1px solid #e5e8ef;
+    border-left: 3px solid var(--sg);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+#vrSettings .sgroup[data-group="path"] { --sg:#1677ff; --sgsoft:#eef5ff; --sgline:#d6e8ff; }
+#vrSettings .sgroup[data-group="naming"] { --sg:#722ed1; --sgsoft:#f5efff; --sgline:#e5d8ff; }
+#vrSettings .sgroup[data-group="quality"] { --sg:#ff7d00; --sgsoft:#fff4e8; --sgline:#ffe0bd; }
+#vrSettings .sgroup[data-group="panel"] { --sg:#00b42a; --sgsoft:#edfcf3; --sgline:#c9f2d8; }
+#vrSettings .sgroup[data-group="library"] { --sg:#0f766e; --sgsoft:#e6f7f5; --sgline:#bfe8e3; }
+#vrSettings .glabel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--sg);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: .02em;
+    text-transform: none;
+    margin: 0 0 2px;
+}
+#vrSettings .glabel::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sg);
+    box-shadow: 0 0 0 3px var(--sgsoft);
+}
+#vrSettings .srow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f2f6;
+}
+#vrSettings .srow:last-child { border-bottom: 0; }
+#vrSettings .srow .txt { flex: 1; min-width: 0; }
+#vrSettings .srow .slabel {
+    font-size: 12px;
+    font-weight: 500;
+    color: #1d2129;
+}
+#vrSettings .srow .shint {
+    font-size: 10px;
+    color: #86909c;
+    margin-top: 2px;
+    line-height: 1.5;
+    word-break: break-all;
+}
+#vrSettings .srow input[type=text] {
+    width: 100%;
+    background: #f7f9fc;
+    border: 1px solid #e5e8ef;
+    border-radius: 7px;
+    color: #1d2129;
+    font-size: 11.5px;
+    padding: 8px 9px;
+    outline: none;
+    font-family: ui-monospace, monospace;
+    box-sizing: border-box;
+}
+#vrSettings .srow input[type=text]:focus {
+    border-color: var(--sg);
+    box-shadow: 0 0 0 3px var(--sgsoft);
+    background: #fff;
+}
+#vrSettings .toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f2f6;
+    font-size: 12px;
+    color: #1d2129;
+}
+#vrSettings .toggle:last-child { border-bottom: 0; }
+#vrSettings .toggle span { flex: 1; line-height: 1.5; }
+#vrSettings .sw {
+    width: 34px;
+    height: 20px;
+    flex: 0 0 34px;
+    border-radius: 20px;
+    background: #d9dee8;
+    border: 0;
+    margin: 0;
+}
+#vrSettings .sw::after {
+    width: 16px;
+    height: 16px;
+    top: 2px;
+    left: 2px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .22);
+}
+#vrSettings .sw:checked {
+    background: var(--sg);
+    box-shadow: 0 2px 6px var(--sgsoft);
+}
+#vrSettings .sw:checked::after { left: 16px; }
+#vrSettings .gbtn,
+#vrSettings .ghostbtn {
+    flex: none;
+    font-size: 11px;
+    padding: 6px 11px;
+    border-radius: 7px;
+    border: 1px solid var(--sgline);
+    background: var(--sgsoft);
+    color: var(--sg);
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 500;
+    transition: .15s;
+}
+#vrSettings .ghostbtn:hover {
+    background: #fff;
+    border-color: var(--sg);
+}
+#vrSettings .ghostbtn.danger {
+    background: #fff7f7;
+    border-color: #ffd3d3;
+    color: #f53f3f;
+}
+#vrSettings .ghostbtn.danger:hover {
+    background: #fff0f0;
+    border-color: #f53f3f;
+}
+#vrSettings .note {
+    background: #fff;
+    border: 1px solid #e5e8ef;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #86909c;
+    font-size: 9.5px;
+    line-height: 1.8;
+    margin-top: 12px;
+}

@@ -236,7 +236,7 @@
         <span class="ttl">设置</span>
       </div>
       <div class="setbody">
-        <div class="sgroup">
+        <div class="sgroup" data-group="path">
           <div class="glabel">下载位置</div>
           <div class="srow">
             <div class="txt">
@@ -246,7 +246,7 @@
           </div>
           <div class="srow"><input type="text" id="vrSetDefaultDir" value="video-rod" spellcheck="false"></div>
         </div>
-        <div class="sgroup">
+        <div class="sgroup" data-group="naming">
           <div class="glabel">命名</div>
           <div class="srow">
             <div class="txt">
@@ -258,12 +258,12 @@
           <div class="toggle"><span>智能识别取名（标题/正文/作者）</span><input type="checkbox" class="sw" id="vrSetSmart"></div>
           <div class="toggle"><span>去重检测（跳过已下载）</span><input type="checkbox" class="sw" id="vrSetDedupe"></div>
         </div>
-        <div class="sgroup">
+        <div class="sgroup" data-group="quality">
           <div class="glabel">画质</div>
           <div class="toggle"><span>清晰度默认选最高档</span><input type="checkbox" class="sw" id="vrSetQuality"></div>
           <div class="toggle"><span>m3u8 自动合并为 MP4</span><input type="checkbox" class="sw" id="vrSetMerge"></div>
         </div>
-        <div class="sgroup">
+        <div class="sgroup" data-group="panel">
           <div class="glabel">面板</div>
           <div class="toggle"><span>图片嗅探（批量保存网页图片）</span><input type="checkbox" class="sw" id="vrSetImg"></div>
           <div class="toggle"><span>显示嗅探数字徽章</span><input type="checkbox" class="sw" id="vrSetBadge"></div>
@@ -273,7 +273,7 @@
               <div class="slabel">清空下载记录</div>
               <div class="shint">清掉「已下载」标记，所有文件可重下</div>
             </div>
-            <button id="vrClearDownloaded" class="ghostbtn">清空</button>
+            <button id="vrClearDownloaded" class="ghostbtn danger">清空</button>
           </div>
           <div class="srow">
             <div class="txt">
@@ -288,6 +288,17 @@
               <div class="shint">在线合并 · 复制链接 · 反选 · 筛选 · 深度搜索 · 缓存捕捉</div>
             </div>
             <button id="vrAdvTools" class="ghostbtn">打开</button>
+          </div>
+        </div>
+        <div class="sgroup" data-group="library">
+          <div class="glabel">媒体库</div>
+          <div class="toggle"><span>启用媒体库（顶部显示入口）</span><input type="checkbox" class="sw" id="vrSetLibrary"></div>
+          <div class="srow">
+            <div class="txt">
+              <div class="slabel">媒体库目录</div>
+              <div class="shint">首次打开媒体库后选择 Downloads/video-rod，之后自动记住</div>
+            </div>
+            <button id="vrOpenLibrarySettings" class="ghostbtn">打开 / 选目录</button>
           </div>
         </div>
         <div class="note">「下载到文件夹」= 浏览器下载目录 / 默认目录 / 每条的子目录。<br>
