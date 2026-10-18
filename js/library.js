@@ -109,20 +109,6 @@
         });
     }
 
-    /** 目录里是否有可管理的媒体结构；用来拦截空 video-rod / 选错目录 */
-    async function hasMediaEntries(handle) {
-        if (!handle) { return false; }
-        const names = new Set();
-        try {
-            for await (const [name] of handle.entries()) {
-                names.add(name);
-                if (names.size > 40) { break; }
-            }
-        } catch (e) { return false; }
-        return ['x', 'weibo', 'douyin', 'xiaohongshu', 'instagram', '小红书', '微博', '抖音']
-            .some(n => names.has(n)) || names.has('video-rod');
-    }
-
     /** 如果选中的是 Downloads，自动下钻到 video-rod 子目录 */
     async function resolveRoot(handle) {
         if (!handle) { return null; }
@@ -217,7 +203,7 @@
             $('#syncText').textContent = '刚刚扫描 · ' + files.length + ' 个文件';
             $('#statusText').textContent = '扫描完成';
             if (!files.length) {
-                $('#statusText').textContent = '扫描完成但 0 个文件；请确认选择 E:\\personal\\Downloads\\video-rod';
+                $('#statusText').textContent = '扫描完成：0 个文件（目录可以正常使用）';
             }
             await writeIndex();
         } catch (e) {
@@ -604,12 +590,6 @@
                 return;
             }
             rootHandle = await resolveRoot(picked);
-            if (!(await hasMediaEntries(rootHandle))) {
-                rootHandle = null;
-                $('#statusText').textContent = '选中的目录里没有媒体；请选择 E:\\personal\\Downloads\\video-rod';
-                toast('目录不对：里面没有 x/微博/小红书 等媒体目录');
-                return;
-            }
             await idbSet('root', rootHandle);
             $('#rootPath').textContent = rootHandle.name;
             await scan();
@@ -778,19 +758,13 @@
             const h = await idbGet('root');
             if (h) {
                 rootHandle = await resolveRoot(h);
-                if (!(await hasMediaEntries(rootHandle))) {
-                    rootHandle = null;
-                    try { await idbDel('root'); } catch (e) { /* ignore */ }
-                    $('#statusText').textContent = '当前目录没有媒体；请重新选择 E:\\personal\\Downloads\\video-rod';
-                } else {
-                    if (rootHandle !== h) { await idbSet('root', rootHandle); }
-                    $('#rootPath').textContent = rootHandle.name;
-                    try {
-                        const p = await rootHandle.queryPermission({ mode: 'readwrite' });
-                        if (p === 'granted') { await scan(); }
-                        else { $('#statusText').textContent = '目录权限已失效，请重新选择'; }
-                    } catch (e) { /* ignore */ }
-                }
+                if (rootHandle !== h) { await idbSet('root', rootHandle); }
+                $('#rootPath').textContent = rootHandle.name;
+                try {
+                    const p = await rootHandle.queryPermission({ mode: 'readwrite' });
+                    if (p === 'granted') { await scan(); }
+                    else { $('#statusText').textContent = '目录权限已失效，请重新选择'; }
+                } catch (e) { /* ignore */ }
             }
         } catch (e) { /* ignore */ }
         render();

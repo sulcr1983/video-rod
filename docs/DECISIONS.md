@@ -564,10 +564,10 @@
   - Chromium issue：`showDirectoryPicker()` 的 `id`/`startIn` 行为不一致；浏览器不允许网页直接指定绝对路径，`startIn` 只能给已知目录或已持有的 handle。
 - **决策**：
   1. **移除固定 `id: 'vrLibrary'`**，改为 `startIn: 'downloads'`，避免被记忆目录拖回 F 盘。
-  2. 选中目录后校验 `hasMediaEntries`：必须存在 `x/weibo/douyin/xiaohongshu/instagram/小红书/微博/抖音` 或 `video-rod` 子目录；空目录直接拒绝，不写入 IndexedDB。
-  3. 已存的无效句柄自动清除，回到“选择媒体目录”；提供「重置目录」。
+  2. **移除 `hasMediaEntries` 硬校验**：任何用户授予读写权限的目录都可选；空目录也允许，只显示“0 个文件”。`resolveRoot` 仍会自动下钻到 `video-rod` 子目录。
+  3. 已存句柄不再因为内容不符被自动清除；仅在权限失效时提示重新选择；保留「重置目录」。
   4. 期望路径明确提示 `E:\personal\Downloads\video-rod`。
-- **边界**：仍然必须由用户完成一次原生目录授权；浏览器安全模型不允许扩展直接写绝对路径。
+- **边界**：仍然必须由用户完成一次原生目录授权；浏览器安全模型不允许扩展直接写绝对路径。目录内容不做白名单限制。
 - **验证**：`node --check js/library.js` 通过；目录校验与句柄清除逻辑已接入。
 - **抖珍藏 2.8.44 对照（2026-10-19）**：
   - `c.js` 在抖音页注入 `<aside>` + iframe `rl.html`（侧栏），`s.js` 在 iframe 中执行 `showDirectoryPicker({startIn: 已保存句柄 || 'videos', mode:'readwrite'})`。
