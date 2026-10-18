@@ -394,6 +394,24 @@
 - 操作：右下角「批量下载 (N)」→ 勾选 →「保存到文件夹」→ 选一次目录（默认 Downloads）→ 按作者 UID 建子目录。
 - 注意：原生目录选择器必须由用户点击触发；自动化只验证到 OPFS 等价写盘。
 
+### 10.5 X 主页半手动批量（ADR-033 P1）
+
+| # | 验收项 | 结果 |
+|---|---|---|
+| X1 | `/NASA/media` 自动记录视频 | ✅ 7 条视频（statusId/mediaId/poster） |
+| X2 | 作者/文案提取 | ✅ `@NASA` + 推文正文，面板显示正确 |
+| X3 | 忽略转载 | ✅ 有 `socialContext` 或 `ref.user != profileUser` 标记；真机测试页无转帖，逻辑待手动确认 |
+| X4 | 忽略已下载 | ✅ `chrome.storage.local['vrBulkDone:x:<user>']`；写入后过滤（真机懒加载数量需手动确认），可「清除已下载」 |
+| X5 | 只图片/只视频 + 反选 | ✅ 面板下拉/按钮 |
+| X6 | 批量视频落盘 | ✅ `video-rod/NASA(@NASA)_TEST X BULK_01.mp4`，8,401,119 B |
+| X7 | 批量图片落盘 | ✅ `video-rod/NASA(@NASA)_TEST X IMAGE_01.jpg`，232,912 B |
+| X8 | X 单条按钮 mediaId 修复 | ✅ `/NASA/media` 按钮 4→7；单条下载 8,401,119 B |
+| X9 | 稳妥模式/反爬 | ✅ 串行 1.4–2.6s 随机间隔、429/5xx 退避、连续 3 次失败暂停 |
+
+- 视频保存：内容脚本按推文坐标请求后台 `vrResolveX` → fxtwitter 完整 MP4；图片 `pbs.twimg.com/media?name=orig`。
+- 保存目录：File System Access 一次选目录 → `作者(@handle)/`；fallback 用 downloads + `video-rod/` 子目录。
+- 注意：自动化下 `x.com/NASA/photo` 会被重定向，图片分支用合成 `article` 验证；X 主页懒加载导致过滤数量不稳定。
+
 ### 10.3 复现与坑
 
 - 星愿调试端口 `9223`；扩展 ID `bilfgmaaplmlfgpmjfhdaillmnonjlbj`；改代码后在 `chrome://extensions` 卡片里点 `#dev-reload-button` 重载，并**刷新抖音页**（内容脚本只在页面加载时注入）。

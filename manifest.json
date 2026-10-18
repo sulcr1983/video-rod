@@ -91,7 +91,8 @@
       ],
       "js": [
         "js/naming.js",
-        "js/x-button.js"
+        "js/x-button.js",
+        "js/bulk-profile.js"
       ],
       "run_at": "document_idle"
     },

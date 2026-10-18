@@ -52,7 +52,9 @@
     function mediaIdFromArticle(article) {
         const v = article.querySelector('video');
         const poster = v ? (v.poster || '') : '';
-        const m = poster.match(/(?:thumb|video)\/(\d{8,})\//);
+        // 多数视频封面是 amplify_video_thumb/<数字ID>/；也有 pbs.twimg.com/media/<字母数字ID>.jpg
+        const m = poster.match(/(?:thumb|video)\/(\d{8,})\//) ||
+            poster.match(/\/media\/([A-Za-z0-9_-]{8,})\./);
         return m ? m[1] : '';
     }
 
@@ -108,7 +110,7 @@
             ev.preventDefault();
             const mediaId = mediaIdFromArticle(article);
             const ref = tweetRef(article);
-            if (!mediaId || !ref) { flash(btn, 'warn'); return; }
+            if (!ref) { flash(btn, 'warn'); return; }
             const filename = buildFilename(article, 'mp4');
             btn.classList.add('vr-busy');
             chrome.runtime.sendMessage(
@@ -136,7 +138,7 @@
         const group = article.querySelector('[role="group"]');
         if (!group) { return; }
         // 只给带视频的推文注入；图片推文走右键秒存/抓图
-        if (!mediaIdFromArticle(article)) { return; }
+        if (!article.querySelector('video')) { return; }
         group.appendChild(makeButton(article));
     }
 
