@@ -483,6 +483,9 @@
 | LIB9 | 重命名 API | ✅ `move(parentDir,newName)`，不再读 `move()` 返回值 |
 | LIB10 | P3 选择/标签/批量 | ✅ 临时文件：标签、全选 23、清除 0、移动 1、删除 1，回到 22 项 |
 | LIB11 | P3 移动冲突 | ✅ `performMove` 仅对 `InvalidModificationError` 重试，其他错误立即失败 |
+| LIB12 | P4 图片缩略图 | ✅ `_index/thumbs` 8 张；刷新后仍显示 |
+| LIB13 | P4 SHA-256 查重 | ✅ 22 文件；3 组/9 个重复标记；`hashes.json` 持久化，刷新后保持 |
+| LIB14 | P4 本地视频流式 | ✅ `preload=metadata`；duration 61.5s、readyState 4，可 seek；本地 object URL 不需要 HTTP Range |
 
 - 参考：MDN `showDirectoryPicker` 的 `id` 记忆行为；Chromium issue 关于 `id`/`startIn` 被忽略的报告。
 
