@@ -28,7 +28,8 @@
         qualityAuto: true,
         dedupe: true,
         m3u8Merge: true,
-        badge: true
+        badge: true,
+        libraryEnabled: true
     };
 
     var settings = Object.assign({}, DEFAULTS);
@@ -234,6 +235,11 @@
         });
     }
 
+    function applyLibraryVisibility() {
+        var b = el('vrOpenLibrary');
+        if (b) { b.style.display = settings.libraryEnabled === false ? 'none' : ''; }
+    }
+
     function syncSettingsUI() {
         var map = {
             vrSetDefaultDir: settings.defaultDir,
@@ -249,12 +255,14 @@
             vrSetQuality: 'qualityAuto',
             vrSetDedupe: 'dedupe',
             vrSetMerge: 'm3u8Merge',
-            vrSetBadge: 'badge'
+            vrSetBadge: 'badge',
+            vrSetLibrary: 'libraryEnabled'
         };
         Object.keys(toggles).forEach(function (id) {
             var box = el(id);
             if (box) { box.checked = !!settings[toggles[id]]; }
         });
+        applyLibraryVisibility();
         // 侧边栏开关是猫抓底座设置（storage.sync 的 sidePanel 键，init.js 接管
         // setPanelBehavior），不走 vrSettings，单独异步读
         var spBox = el('vrSetSidePanel');
@@ -295,7 +303,8 @@
             vrSetQuality: 'qualityAuto',
             vrSetDedupe: 'dedupe',
             vrSetMerge: 'm3u8Merge',
-            vrSetBadge: 'badge'
+            vrSetBadge: 'badge',
+            vrSetLibrary: 'libraryEnabled'
         };
         Object.keys(toggles).forEach(function (id) {
             var box = el(id);
@@ -305,6 +314,7 @@
                 saveSettings();
                 if (toggles[id] === 'smartName') { applySmartNaming(true); }
                 if (toggles[id] === 'badge') { applyBadgeVisibility(); }
+                if (toggles[id] === 'libraryEnabled') { applyLibraryVisibility(); }
             });
         });
 
@@ -2005,10 +2015,15 @@
         boot();
     }
 
-    var vrLibBtn = document.getElementById('vrOpenLibrary');
-    if (vrLibBtn) {
-        vrLibBtn.addEventListener('click', function () {
+    function openMediaLibrary() {
+        try {
             chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
-        });
+        } catch (e) {
+            tip('打开媒体库失败：' + e);
+        }
     }
+    ['vrOpenLibrary', 'vrOpenLibrarySettings'].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b) { b.addEventListener('click', openMediaLibrary); }
+    });
 })();
