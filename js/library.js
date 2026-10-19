@@ -35,7 +35,7 @@
     let tags = {};
     let pendingMove = [];
     let thumbs = new Map();
-    let thumbBusy = new Set();
+    let thumbPending = new Map();   // id -> Promise：同一文件并发只生成一次，失败可重试
     let hashes = {};
     let dupIds = new Set();
     let hashing = false;
@@ -234,6 +234,7 @@
             toast('扫描失败：' + String(e).slice(0, 80));
         }
         render();
+        fillMissingThumbs();   // 扫描后后台自动补齐缩略图（不阻塞首屏，不用手动）
     }
 
     async function writeIndex() {
@@ -404,7 +405,7 @@
             const url = URL.createObjectURL(file);
             const video = document.createElement('video');
             let settled = false;
-            const timer = setTimeout(() => settle(null), 8000);
+            const timer = setTimeout(() => settle(null), 20000);
             function settle(blob) {
                 if (settled) { return; }
                 settled = true;
@@ -440,37 +441,74 @@
         });
     }
 
-    async function thumbUrl(item) {
-        if (item.kind !== 'image' && item.kind !== 'video') { return ''; }
-        if (thumbs.has(item.id)) { return thumbs.get(item.id); }
-        if (thumbBusy.has(item.id)) { return ''; }
-        thumbBusy.add(item.id);
+    // 视频抽帧要解码 + seek，比图片重得多；一张一张来，别让一屏视频同时解码把浏览器拖垮。
+    let videoQueue = Promise.resolve();
+    function enqueueVideo(task) {
+        const run = videoQueue.then(task, task);
+        videoQueue = run.catch(() => {});
+        return run;
+    }
+
+    async function generateThumb(item) {
+        const idx = await rootHandle.getDirectoryHandle('_index', { create: true });
+        const dir = await idx.getDirectoryHandle('thumbs', { create: true });
+        const name = keyOf(item.id) + '.jpg';
         try {
-            const idx = await rootHandle.getDirectoryHandle('_index', { create: true });
-            const dir = await idx.getDirectoryHandle('thumbs', { create: true });
-            const name = keyOf(item.id) + '.jpg';
-            try {
-                const fh = await dir.getFileHandle(name);
-                const tf = await fh.getFile();
-                const url = URL.createObjectURL(tf);
-                thumbs.set(item.id, url);
-                return url;
-            } catch (e) { /* generate */ }
-            const file = await item.handle.getFile();
-            const blob = item.kind === 'image'
-                ? await imageThumbBlob(file)
-                : await videoFrameBlob(file);
-            const fh = await dir.getFileHandle(name, { create: true });
-            const fw = await fh.createWritable();
-            await fw.write(blob);
-            await fw.close();
-            const url = URL.createObjectURL(blob);
+            const fh = await dir.getFileHandle(name);
+            const tf = await fh.getFile();
+            const url = URL.createObjectURL(tf);
             thumbs.set(item.id, url);
             return url;
+        } catch (e) { /* 无缓存，现生成 */ }
+        const file = await item.handle.getFile();
+        const blob = item.kind === 'image'
+            ? await imageThumbBlob(file)
+            : await enqueueVideo(() => videoFrameBlob(file));
+        const fh = await dir.getFileHandle(name, { create: true });
+        const fw = await fh.createWritable();
+        await fw.write(blob);
+        await fw.close();
+        const url = URL.createObjectURL(blob);
+        thumbs.set(item.id, url);
+        return url;
+    }
+
+    // 同一文件并发请求共用一次生成；失败返回 '' 且不缓存 —— 下次渲染（切筛选/滚动/重扫）会自动重试
+    function thumbUrl(item) {
+        if (item.kind !== 'image' && item.kind !== 'video') { return Promise.resolve(''); }
+        if (thumbs.has(item.id)) { return Promise.resolve(thumbs.get(item.id)); }
+        if (thumbPending.has(item.id)) { return thumbPending.get(item.id); }
+        const p = generateThumb(item).catch(() => '').finally(() => thumbPending.delete(item.id));
+        thumbPending.set(item.id, p);
+        return p;
+    }
+
+    // 扫描后自动补齐缺失缩略图（苏哥要求：入库/下载后不用手动，预览图自动生出来）。
+    // 首屏先渲染不等待；后台补，每生成一张就即时贴到已渲染的卡片上。视频串行、图片并发。
+    // 生成结果写入 _index/thumbs，下次打开直接命中缓存。
+    let thumbsFilling = false;
+    async function fillMissingThumbs() {
+        if (thumbsFilling) { return; }
+        thumbsFilling = true;
+        const sync = $('#syncText');
+        try {
+            const todo = files.filter(f => !thumbs.has(f.id) && (f.kind === 'image' || f.kind === 'video'));
+            if (!todo.length) { return; }
+            let done = 0;
+            await Promise.all(todo.map(async function (item) {
+                const url = await thumbUrl(item);
+                if (url) {
+                    const img = document.querySelector('#grid .card[data-id="' + CSS.escape(item.id) + '"] img');
+                    if (img && !img.getAttribute('src')) { img.src = url; }
+                }
+                done++;
+                if (sync) { sync.textContent = '自动生成缩略图 ' + done + '/' + todo.length + ' …'; }
+            }));
+            if (sync) { sync.textContent = '刚刚扫描 · ' + files.length + ' 个文件'; }
         } catch (e) {
-            return '';
+            /* 单个失败不影响其他 */
         } finally {
-            thumbBusy.delete(item.id);
+            thumbsFilling = false;
         }
     }
 
@@ -721,6 +759,15 @@
             location.hash = 'preview=' + encodeURIComponent(album[n].id);
         }
     }
+    // 自动播放被拦、被迫静音时：用户第一次点击/按键就把声音恢复（苏哥要求默认有声）
+    let autoMuted = false;
+    function resumeSoundFromAutoMute() {
+        const v = $('#pvVideo');
+        if (autoMuted && v) { v.muted = false; autoMuted = false; }
+    }
+    document.addEventListener('pointerdown', resumeSoundFromAutoMute, true);
+    document.addEventListener('keydown', resumeSoundFromAutoMute, true);
+
     async function renderPreview() {
         const d = cur();
         if (!d) { closePreview(); return; }
@@ -757,13 +804,16 @@
             video.preload = 'auto';
             video.muted = false;
             video.src = await fileUrl(d);
-            // 进入预览即自动播放（预览由点击/按键打开，带用户手势，通常允许带声播放）。
-            // 个别策略下带声自动播放被拦，退一步静音自动播，保证「进入即播」。
+            // 进入预览即自动播放，默认**带声**（苏哥要求）。预览由点击/按键打开，带用户手势，通常允许带声播放。
+            // 万一被策略拦下：先静音自动播保证「进入即播」，并在你下一次点击/按键时自动恢复声音。
+            video.muted = false;
+            autoMuted = false;
             try {
                 await video.play();
             } catch (e) {
                 video.muted = true;
-                try { await video.play(); } catch (e2) { /* 兜底：交给 controls 手点 */ }
+                autoMuted = true;
+                try { await video.play(); } catch (e2) { autoMuted = false; }
             }
         } else {
             video.classList.add('hidden');
