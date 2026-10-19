@@ -1339,10 +1339,10 @@
 
 
     /* ==========================================================
-     * 十一、站点增强（M3 的 B站分P / M4 的 YouTube 提示）
+     * 十一、站点增强（M3 的 B站分P）
      * ========================================================== */
 
-    var siteInfo = { bili: null, youtube: false };
+    var siteInfo = { bili: null };
     var biliExpanded = false;
 
     /** 当前标签页网址。G.webUrl 只在 background 上下文存在，面板里必须走 chrome.tabs.get */
@@ -1469,30 +1469,12 @@
         });
     }
 
-    function buildYoutubeBanner() {
-        if (el('vrYtBanner')) { return; }
-        var box = document.createElement('div');
-        box.id = 'vrYtBanner';
-        box.className = 'vr-banner vr-banner-warn';
-        box.innerHTML =
-            '<div class="vr-banner-head">' +
-            '<span class="vr-banner-tag warn">YouTube</span>' +
-            '<span class="vr-banner-txt">2026 起 YT 强制 SABR + poToken，纯扩展多半抓不到。<br>' +
-            '能抓到就直接下；抓不到属已知限制，不折腾签名对抗。</span>' +
-            '</div>';
-        var anchor = el('Tips');
-        anchor.parentNode.insertBefore(box, anchor);
-    }
-
     function detectSite() {
         var tabId = (window.G && G.tabId) || -1;
         if (tabId < 0) { return; }
 
-        currentPageUrl().then(function (url) {
-            if (/youtube\.com/i.test(url)) {
-                siteInfo.youtube = true;
-                buildYoutubeBanner();
-            }
+        currentPageUrl().then(function () {
+            // YouTube 明确不做（ADR-019/022/034）：页面/面板不再给任何入口或提示横幅
 
             // B站：不看域名看数据——页面里有 __INITIAL_STATE__.videoData 就是分P页
             // （顺带兼容镜像站；非 B站页面注入后直接返回 null，成本几毫秒）

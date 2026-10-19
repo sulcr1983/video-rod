@@ -1302,7 +1302,7 @@ body.popupBody {
 .vr-multibadge.saved { background: #f0f1f3; color: #646a73; cursor: default; }
 .vr-multibadge.error { background: #fef2f2; color: #dc2626; cursor: default; }
 
-/* ---------- 站点增强横幅（M3 B站分P / M4 YouTube 提示） ---------- */
+/* ---------- 站点增强横幅（M3 B站分P） ---------- */
 .vr-banner {
     margin: 0;
     background: var(--vr-cyan-tint);
@@ -1312,11 +1312,6 @@ body.popupBody {
     padding: 8px 14px;
     flex: none;
     box-sizing: border-box;
-}
-
-.vr-banner-warn {
-    background: #fdf3e3;
-    border-bottom-color: #f3d9b8;
 }
 
 .vr-banner-head {
@@ -1336,8 +1331,6 @@ body.popupBody {
     border: none;
     flex: none;
 }
-
-.vr-banner-tag.warn { background: var(--vr-orange); color: #fff; }
 
 .vr-banner-txt {
     font-size: 10px;
