@@ -440,9 +440,9 @@
 
 | # | 验收项 | 结果 |
 |---|---|---|
-| DED1 | 同一批内重复媒体只下一次 | 🟡 代码已接入 `batch Set`，待真机重复项验证 |
-| DED2 | 跨批次重复媒体不再下载 | 🟡 持久账本 `vrMediaSeen` 已接入，待重启扩展复验 |
-| DED3 | 签名参数变化仍判定为同一媒体 | 🟡 标识已去 query/hash；待抖音/微博签名 URL 对照 |
+| DED1 | 同一批内重复媒体只下一次 | ✅ 扩展 SW 内用真实 `vrMediaIdentity` + 批内 `Set` 验证：同标识命中跳过 |
+| DED2 | 跨批次重复媒体不再下载 | ✅ 持久账本往返验证：`vrDedupSave` 后 `vrDedupLoad` 命中（测试后已还原账本） |
+| DED3 | 签名参数变化仍判定为同一媒体 | ✅ 不同 `sig/exp` 的同路径 URL → 同一标识；不同路径 → 不同标识 |
 | DED4 | 成功才写账本，失败可重试 | ✅ `seen.add` 仅在 `ok` 后执行 |
 | DED5 | 内容相同但 URL 不同 | 📋 媒体库入库 SHA-256，待 P2 实施 |
 | DED6 | 状态提示 | ✅ 返回 `skipped`，显示「跳过重复 N」 |
@@ -452,6 +452,7 @@
 - 静态检查：`node --check js/background.js`、`js/bulk-profile.js` 通过。
 - 去重键：`site | workId | mediaId | kind | origin+pathname`；不包含签名参数。
 - 去重覆盖：主页批量（`vrBulkDownload`）+ 单次入口（`vrVideoDownload` 页内按钮、`vrQuickDownX` X 单条）；成功才写账本（见 DED7/DED8）。
+- DED1/DED2/DED3 复验方式（2026-10-19）：在扩展 Service Worker 里直接调用真实 `vrMediaIdentity`/`vrDedupLoad`/`vrDedupSave` 验证标识与账本往返（不发起真实下载）；账本测试后已还原。真实"重复批量下载只下一次"的端到端仍以 DED7 的 X 单条实测为准。
 
 ### 10.8 X 单条视频下载按钮（2026-10-19）
 

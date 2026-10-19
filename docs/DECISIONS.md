@@ -610,4 +610,30 @@
 
 ---
 
+## ADR-043 YouTube 入口彻底移除（苏哥拍板 2026-10-19）
+
+- **日期**：2026-10-19 ｜ **状态**：✅ 已实施（代码 + CSS）
+- **背景**：苏哥明确「YouTube 还是不做了」；既有的「YouTube 页面悬浮按钮 + popup 限制横幅」成了无意义入口，一并撤掉（延续 ADR-019/022/034）。
+- **改动**：
+  - `js/video-overlay.js`：站点排除加 `youtube.com` / `youtu.be`（含子域），YouTube 页面不再挂下载按钮。
+  - `js/popup-videorod.js`：删 `buildYoutubeBanner()` 与 `siteInfo.youtube`，`detectSite` 不再对 YouTube 分支。
+  - `css/videorod.css`：删只被该横幅使用的 `.vr-banner-warn`、`.vr-banner-tag.warn`。
+- **影响**：`tools/cdp-m4-test.py`（断言 YT 横幅）、`test-site/yt-fake.html` 随之作废（保留归档备查，不再作为回归项）。B站分P横幅保留。
+- **验证**：`node --check js/video-overlay.js`、`js/popup-videorod.js` 通过；YouTube 站点排除逻辑同 X 的既有排除套路。
+
+---
+
+## ADR-044 小红书图片「去 CDN 处理后缀取更大图」（尝试，未真机验证）
+
+- **日期**：2026-10-19 ｜ **状态**：🟡 已实施；**未真机验证**
+- **背景**：ADR-036 实探结论——详情 SSR `imageList` 只有 `urlPre`/`urlDefault`（webp，约 1200×1600），原始 `url` 为空；**真原图需详情接口签名**，风险高、不做。
+- **决策**：不做签名接口；改为对拿到的图片 URL **去掉 CDN 处理预设后缀**（`!nd_dft_...` / `!nc_n_...` 或 `?imageView2/...`）当首选地址，通常能拿到更大版本；下载失败自动回退到带后缀的原地址。
+- **实现**：
+  - `js/background.js` `vrXhsScanInPage`：图片项产出 `url`（去后缀）、`ext`；当去后缀改变了 URL 时附带 `urlFallback`/`extFallback`。
+  - `vrBulkDownload` 的 `xhs` 分支：先试 `url`，失败（含 interrupted）再试 `urlFallback`，文件名按实际使用的 ext 重算。
+- **验证**：`node --check js/background.js` 通过；去后缀 + 取扩展名逻辑 node 单测符合预期。
+- **未验证（如实记录）**：**没有任何真实图文笔记样本**，去后缀地址是否真能下到更大图、是否会 404，均未真机确认。需苏哥给一条真实图文笔记实测；若失败/扩展名不符，回退本次改动即可。
+
+---
+
 *新增决策在此追加，编号顺延。*
