@@ -51,6 +51,7 @@
 ## 4. 未完成 / 环境限制（如实记录）
 
 1. **全屏按钮**：CDP trusted mouse click 下 `document.fullscreenElement` 仍为空；可能是扩展页/自动化环境的 user-activation 限制，需真实用户点击复验。预览本身已覆盖整个视口。
+   - **补记（2026-10-19）**：已复验通过。真正原因是**标签页在后台未聚焦**（全屏要求文档处于活动状态）。做法：`Page.bringToFront` 聚焦 + `Runtime.evaluate` 带 `userGesture:true` 点击 `#pvFullBtn` → `fullscreenElement=#preview`，再点一次正常退出，控制台 0 报错。
 2. **原生目录选择**：`#pickBtn`/`#rootBtn` 的 `showDirectoryPicker` 仍受浏览器用户手势限制；本轮未重复打开原生窗口（此前 `lib_manual` 已验证）。
 3. **`#resetRoot`**：破坏性重置，未在自动验收中执行。
 4. **排序「文件最大」**依赖 `lastModified/size` 元数据，已验证首个是 31MB 视频；未做逐项全排序核对。

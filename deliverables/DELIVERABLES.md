@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.36 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.37 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -37,6 +37,7 @@
 > v1.34 变更：媒体库预览「进入视频自动播放」——`js/library.js` 预览视频分支 `preload='auto'` + `video.play()`；带声被拦则退静音自动播兜底；切图/关闭仍暂停。2026-10-19 苏哥实测通过。
 > v1.35 变更：YouTube 入口彻底移除（ADR-043：页面悬浮按钮 + popup 限制横幅）；小红书图片「去 CDN 后缀取更大图」尝试（ADR-044，失败回退原地址，未真机验证）；F 库整理（`小红书/` 并入 `xiaohongshu/`、测试残留清空）；媒体库视频首帧缩略图端到端真机通过、去重 DED1/2/3 真机验证通过。
 > v1.36 变更：媒体库缩略图**自动补缺**（`scan()` 收尾 `fillMissingThumbs()` 自动生成缺失缩略图写 `_index/thumbs`，视频串行/图片并发，无需手动）；抽帧超时 8s→20s、多视频不再同时解码、失败不缓存可重试；预览视频**默认带声**（被策略拦才静音，下次点击自动恢复）。
+> v1.37 变更：媒体库**全屏按钮复验通过**（此前失败因标签页在后台未聚焦）；LIBRARY-FULL-TEST §4.1 补记、HANDOFF §4.8/§5 同步。
 
 ---
 
@@ -209,7 +210,7 @@ video-rod/
 | 小红书 token/视频/计数修复 | `js/xhs-batch.js`（cardsOnPage）+ `js/background.js`（vrXhsScanInTab/vrXhsScanInPage/vrXhsAutoQueue） | v1.0 | 已定稿 | 卡片同时读 `/user/profile/...?xsec_token`；详情 state 最多 8 次等待；`mediaV2.stream` 优先带音轨 mp4；files/skipped/errors 分开计数。实测图片 files=1/errors=0，视频 done=1/skipped=1/errors=0，mp4 31,344,820 B；收藏/点赞 token 20/20、30/30（`1e93106`） |
 | Instagram P1 | `js/instagram.js` + `manifest.json` + `js/background.js`（vrIgDownload） | v1.0 | 评审中 | 帖子/Reel 按钮；当前 DOM 图片/视频；作者/文案/shortcode；落 `video-rod/instagram/<作者>/images|videos`；fixture 15,324 B。真实登录态下载待验，blob 视频未做（`6bd6d19`，ADR-042） |
 | 单次下载去重 | `js/background.js`（vrVideoDownload/vrQuickDownX）+ `js/x-button.js` | v1.0 | 已定稿 | 查 `vrMediaSeen`，成功后记账；B站按页面+清晰度，直链按去签名 URL；X 按钮显示「已存在」。实测同一 X 视频第一次 1,336,765 B、第二次 `skipped`，无第二次文件（`24b59e2`） |
-| 媒体库逐按钮全量验收 | `docs/LIBRARY-FULL-TEST.md` | v1.0 | 已定稿 | 27 项：搜索 8、平台小红书 12、图片 12/视频 15、排序/视图/预览/标签/重扫/设置通过；`_index` 27、hashes 27、thumbs 12；全屏/原生 picker 环境限制已记录 |
+| 媒体库逐按钮全量验收 | `docs/LIBRARY-FULL-TEST.md` | v1.0 | 已定稿 | 27 项：搜索 8、平台小红书 12、图片 12/视频 15、排序/视图/预览/标签/重扫/设置通过；`_index` 27、hashes 27、thumbs 12；**全屏按钮 2026-10-19 已复验通过**（后台未聚焦才是此前失败原因）；原生 picker 环境限制仍在 |
 | 媒体库视频首帧缩略图 | `js/library.js`(videoFrameBlob/thumbUrl/renderGrid) + `css/library.css`(.thumb.is-video) | v1.0 | 已定稿 | 本地 mp4 首帧 480px JPEG 持久化 `_index/thumbs`；失败退回渐变占位；隔离环境 + 媒体库真机端到端均通过（480×270 / 270×480，2026-10-19）；扫描后 `fillMissingThumbs()` 自动补缺（视频串行/图片并发，无需手动） |
 | YouTube 入口移除（ADR-043） | `js/video-overlay.js` + `js/popup-videorod.js` + `css/videorod.css` | v1.0 | 已定稿 | 移除 YouTube 页面悬浮下载按钮与 popup 限制横幅；站点排除加 youtube.com/youtu.be（含子域）；`cdp-m4-test.py`/`yt-fake.html` 作废 |
 | 小红书图片去后缀取更大图（ADR-044） | `js/background.js`(vrXhsScanInPage/vrBulkDownload) | v1.0 | 评审中 | 图片优先去 CDN 处理后缀（`!nd_`/`!nc_`/`?imageView2`），失败回退带后缀原地址；**未真机验证**（需真实图文笔记） |
