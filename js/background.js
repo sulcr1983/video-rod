@@ -1422,6 +1422,10 @@ function vrXhsScanInPage(noteId) {
             .replace(/\s+/g, ' ').slice(0, 100);
         const items = [];
 
+        function xhsImgExt(u) {
+            const e = (String(u).split('#')[0].split('?')[0].split('!')[0].split('.').pop() || '').toLowerCase();
+            return /^(jpg|jpeg|png|webp|gif|heic)$/.test(e) ? (e === 'jpeg' ? 'jpg' : e) : 'webp';
+        }
         (note.imageList || []).forEach(function (im, i) {
             let url = im.url || '';
             if (!url && im.infoList) {
@@ -1430,9 +1434,17 @@ function vrXhsScanInPage(noteId) {
                 url = (dft && dft.url) || (any && any.url) || '';
             }
             url = url || im.urlDefault || im.urlPre || '';
-            if (url) {
-                items.push({ kind: 'image', url: url, ext: 'webp', index: i });
+            if (!url) { return; }
+            // 原图尝试：小红书 CDN 图上常带尺寸/格式预设后缀（`!nd_dft_...` / `!nc_n_...` 或 `?imageView2/...`），
+            // 去掉后缀通常能拿到更大版本。若这个地址下不动，下载侧会用 urlFallback 自动回退到原始地址（不劣于现状）。
+            const bare = String(url).split('#')[0].split('?')[0].split('!')[0];
+            const best = (bare && bare !== url) ? bare : url;
+            const item = { kind: 'image', url: best, ext: xhsImgExt(best), index: i };
+            if (best !== url) {
+                item.urlFallback = url;
+                item.extFallback = xhsImgExt(url);
             }
+            items.push(item);
         });
 
         const vids = new Map();
@@ -1709,16 +1721,24 @@ async function vrBulkDownload(items, tabId) {
                     }
                 }
             } else if (it.site === 'xhs') {
-                // 小红书页面 fetch 被 CORS 拒绝，只能 downloads；统一进媒体库目录
-                const id = await vrDownloadWithName(it.url, vrMediaPath(it, name));
-                if (id !== null) {
+                // 小红书页面 fetch 被 CORS 拒绝，只能 downloads；统一进媒体库目录。
+                // 图片优先试「去后缀原图」，失败自动回退带后缀的原始地址。
+                const attempt = async function (u, ext) {
+                    const saved = it.ext;
+                    if (ext) { it.ext = ext; }
+                    const nm = vrBulkName(it, i);
+                    it.ext = saved;
+                    const id = await vrDownloadWithName(u, vrMediaPath(it, nm));
+                    if (id === null) { return false; }
                     const outcome = await vrWaitDownload(id, 20000);
                     if (outcome && outcome.state === 'interrupted') {
                         try { vrDropDownload(id); } catch (e) { /* ignore */ }
-                    } else {
-                        ok = true;
+                        return false;
                     }
-                }
+                    return true;
+                };
+                ok = await attempt(it.url, it.ext);
+                if (!ok && it.urlFallback) { ok = await attempt(it.urlFallback, it.extFallback); }
             } else if (tabId != null) {
                 const r = await vrTryPageDownload(tabId, it.url, vrMediaPath(it, name));
                 ok = !!(r && r.ok);

@@ -26,6 +26,9 @@
 
     // X/Twitter 已有专门的推文按钮（x-button.js），别在人家地盘上重复加
     if (/^https?:\/\/(x\.com|twitter\.com)\//i.test(location.href)) { return; }
+    // YouTube 明确不做（ADR-019/022：SABR+poToken 死局），页面不挂下载按钮
+    if (/(^|\.)youtube\.com$/i.test(location.hostname) ||
+        /(^|\.)youtu\.be$/i.test(location.hostname)) { return; }
 
     const MIN_W = 200, MIN_H = 120;      // 太小的 video（广告/装饰）不加按钮
 
