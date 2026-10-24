@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 B：HLS 流媒体</title>
+</head>
+<body>
+  <h1>HLS master playlist 夹具</h1>
+  <p>页面主动请求两个 master playlist，用来触发 webRequest 嗅探。</p>
+  <script>
+    // 只请求 master playlist：扩展解析后应产出 2 张流媒体卡，每张带清晰度下拉
+    fetch('hls/a.m3u8').then(r => r.text()).then(t => console.log('a.m3u8', t.length));
+    fetch('hls/b.m3u8').then(r => r.text()).then(t => console.log('b.m3u8', t.length));
+    // 额外拉一个分片，模拟播放器行为
+    fetch('hls/v1/seg0.ts');
+  </script>
+</body>
+</html>
