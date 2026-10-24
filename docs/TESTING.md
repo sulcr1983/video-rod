@@ -355,3 +355,64 @@ D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4
 2. **「校验落盘」会留一个空目录**：`video-rod/_verify/` 里的文件已用 `downloads.removeFile` 删除，但目录本身保留。索引阶段需忽略 `_` 开头目录（与 `_回收站` 同一规则）。
 3. **单卡下载按钮是 SVG**：CDP 合成点击不稳定，端到端测试改用「勾选 + 批量下载」入口，两条路径最终都走 `vrFullPath`，落位逻辑一致。
 4. **FSA 拿不到绝对路径**：设置页「选择文件夹并授权」只能存句柄，自定义目录的完整路径要手填；「校验落盘」反推的才是真实路径。
+
+---
+
+## 11. 图片下载自动入库验收（2026-10-24，14/14 通过）
+
+> 对应 IMAGE-AUTO-INDEX-RESEARCH 的「预登记 + 完成确认」链路：`js/library/db.js`（IDB 索引）
+> + `js/library/sw-library.js`（SW 侧记账与落库）+ `vrQueueFilename` 透传 meta + options 索引状态 UI。
+
+### 11.1 环境
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147，**全新 profile** `.work/profiles/ext-test2` / `ext-test3`，调试端口 **9343 / 9344** |
+| 测试页 | `http://127.0.0.1:18080/index.html`（`test-site` + `python -m http.server 18080`） |
+| 下载根目录 | `D:\Users\liq21\Downloads\video-rod` |
+| 脚本 | `tools/cdp-index-test.py`（`VR_CDP=http://127.0.0.1:9344`） |
+| 单测 | `tools/test-path.js` **57/57**（新增 9 条 `parseRelPath` 往返断言） |
+| 稳定性 | 连跑 **3 轮全绿**（`ext-test2` 首次含 uniquify 改名场景；`ext-test3` 复跑两轮干净落盘） |
+
+### 11.2 结果
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A 准备 | 扩展加载、`vrLib.clear` 后 count=0 | 2/2 |
+| B 嗅探 | popup 出现媒体卡片 | 1/1 |
+| C 入库 | 下载完成 → 索引出现条目；relPath 含三段目录、platform=web、平台名「其他网页」、type=video、size>0、absPath 非空、fileName 非空、count=1 | 9/9 |
+| C UI | `vrLib.added` 广播后设置页「已入库 1 条」+ 最近入库含该 relPath（无需手动刷新） | 1/1 |
+| D 控制台 | 无 error / exception | 1/1 |
+
+**入库实拍**（`chrome.downloads.onChanged → complete` 后由 SW 落 IDB）：
+
+```json
+{"relPath":"video-rod/其他网页/127.0.0.1/视频/test2 (1).mp4","platform":"web",
+ "creatorFull":"127.0.0.1","type":"video","size":1128375,"mime":"video/mp4"}
+```
+
+### 11.3 本轮踩到并解决的坑
+
+1. **SW 脚本缓存**：旧 profile（`.work/profiles/ext-test`）上运行的仍是缓存版 background —— `VRDB`/`VRLib` undefined、`vrQueueFilename.length=3`（旧签名）。
+   `chrome://serviceworker-internals` 重注册、扩展重载均无效；**换全新 profile** 后立刻正常（`length=4`、`VRDB`/`VRLib` = object）。
+   → **改 SW 引入的 importScripts 列表后，测试必须用新 profile**。
+2. **运行期 `importScripts` 不可补救**：SW 已安装后再调 `importScripts()` 直接抛 `importScripts() of new scripts after service worker installation is not allowed`。
+   所以 `background.js` 顶部那些 try 补载只对「首次求值已包含」的场景兜底，不能指望热补。
+3. **`uniquify` 改名让相对路径算不出来**：`test2.mp4` 已存在 → 实际落盘 `test2 (1).mp4`，而预登记 meta 里的文件名是 `test2.mp4`。
+   兜底逻辑：`detectedRoot` 缺失或前缀不匹配时，用「预登记 meta 的目录 + 实际 absPath 文件名」拼接相对路径——本轮 C2 就是用这条路径通过的。
+4. **只认根目录内的下载**：`onChanged` 里算不出相对路径的下载直接忽略；反之落在 `video-rod` 根目录内、即使没预登记的也会收录（与 S2 全量扫描口径一致）。日常浏览器下载落在下载目录根部，不会被吸进资源库。
+
+### 11.4 尚未覆盖
+
+1. **图片/网址类下载未真机验证**：本轮只跑通视频（`type=video`）。图片链路的 `type=image`、EXIF/尺寸字段要等 I 系列（图片下载）落地后补测。
+2. **缩略图未生成**：`thumb` store 已建但为空，懒缩略图由页面侧生成（SW 无 DOM），随 S2/灯箱一起做。
+3. **SW 休眠恢复**：`chrome.storage.session` 存预登记表，理论上跨 SW 重启不丢；本轮 30 秒内完成下载，未构造「下载中途 SW 被杀」的极端场景。
+4. **并发写入**：本次只有单条下载，多文件批量入库的 IDB 事务并发未压测。
+
+### 11.5 对抗性复核加固（同轮补的两处）
+
+| 隐患 | 触发条件 | 处理 |
+|---|---|---|
+| IDB 连接泄漏 / 版本升级被 blocked | 每次读写都 `indexedDB.open` 一条新连接，SW 长跑会累积；将来升 v2 会被老连接卡住 | `db.js` 缓存单条连接，`onversionchange` 主动关闭并置空 |
+| 重下同名文件丢星标/标签 | `putFiles` 是覆盖写，`starred:0 / tags:[]` 会把用户之前标的星冲掉 | `sw-library.js` 落库前 `getFile(rel)` 读旧记录，保留非空 `starred`/`tags` |
+| 未知 `vrLib.*` 动作无应答 | 消息前缀匹配上但 `handleMessage` 返回 false，调用方回调永不触发 | 统一回 `LIB_E_ACTION` 错误应答，并把预登记 key 按命中键删除（`url` / `finalUrl` 分别记账） |

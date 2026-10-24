@@ -1,7 +1,8 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.7 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
+> 版本：v1.8 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
+> v1.8 变更：登记自动入库三件套（`db.js` / `sw-library.js` / `cdp-index-test.py`）+ `parseRelPath` 与 SW 消息转发；`test-path.js` 升 v1.1（57/57）；自动入库调研文档转「已实现」。
 > v1.7 变更：资源库方案升 v1.7（根目录改为系统下载目录下的 `video-rod` 子目录，零拷贝、不混日常下载）；登记表同步；P0 探针与回归脚本已登记。
 
 ---
@@ -116,12 +117,15 @@ video-rod/
 | P0 探针扩展（file:// 直读 + downloads 绝对路径） | `tools/probe-file-access/` | v1.0 | 已定稿 | 最小 MV3 扩展：`probe.html` + `probe.js`，结果写 `window.__PROBE__` 供 CDP 读取；三项全过（TESTING §9）。配套 `run-probe.py` 为 CDP 执行器，媒体默认在 `.work/media/probe` |
 | 资源库原型回归脚本（CDP） | `tools/cdp-library-test.py` | v1.0 | 已定稿 | 原型 v1.3 的 A–I 九组共 42 条断言；2026-10-24 实测 **42/42 通过、控制台 0 错误**。端口 `CDP` 环境变量可覆盖（默认 9333） |
 | 资源库原型验收截图 | `deliverables/assets/library-v13-{grid,lightbox,video}.png` | v1.3 | 已定稿 | 三态实拍：网格（星标+标签+键盘高亮）、灯箱（缩略图带）、视频弹层（进度时间气泡）；1440×900 |
-| 资源库路径引擎 | `js/library/path.js` | v1.0 | 已定稿 | 平台识别 / 类型推断 / 博主段 / 三段目录拼装 / 长度保护 / `file://` 编码；被 popup、background（秒存）、x-button（X 按钮）三处下载链路复用 |
-| 资源库设置页脚本 | `js/library/settings.js` | v1.0 | 已定稿 | options.html「资源库」分区：子目录名、落盘模式、FSA 授权、**校验落盘**（微下载反推真实根目录）；迁移按钮 S1b 启用 |
-| 路径引擎单测 | `tools/test-path.js` | v1.0 | 已定稿 | **48/48**：覆盖 4 个平台识别、类型推断、博主段、长度截断、`file://` 往返编码 |
+| 资源库路径引擎 | `js/library/path.js` | v1.1 | 已定稿 | 平台识别 / 类型推断 / 博主段 / 三段目录拼装 / 长度保护 / `file://` 编码；被 popup、background（秒存）、x-button（X 按钮）三处下载链路复用；v1.1 新增 `parseRelPath()` 反解（relPath → 平台/博主/类型），供预登记 meta 与入库兜底使用 |
+| 资源库设置页脚本 | `js/library/settings.js` | v1.1 | 已定稿 | options.html「资源库」分区：子目录名、落盘模式、FSA 授权、**校验落盘**（微下载反推真实根目录）；迁移按钮 S1b 启用；v1.1 新增「索引状态」（已入库条数 + 刷新）与「最近入库」，监听 `vrLib.added` 自动刷新 |
+| 资源库索引层（IDB） | `js/library/db.js` | v1.0 | 已定稿 | 新建。库 `vr-library` v1，五个 store：`file`（keyPath relPath，索引 platform/creatorId/type/mtime/starred）、`thumb`、`setting`、`handle`、`oplog`；SW 与页面共用，API 挂 `self.VRDB`；单连接缓存 + `onversionchange` 让路 |
+| 资源库 SW 入库服务 | `js/library/sw-library.js` | v1.0 | 已定稿 | 新建。预登记表存 `chrome.storage.session`（TTL 10 分钟、上限 500、200ms 节流），`downloads.onChanged` complete → 反查绝对路径 → 合并 meta 落 IDB → 广播 `vrLib.added`；处理 `vrLib.record/list/stats/clear`；忽略 `_verify/`、`_回收站/`；无根目录时用「预登记目录 + 实际文件名」兜底（覆盖 uniquify 改名）；重下同名文件保留星标/标签 |
+| 自动入库端到端验收脚本 | `tools/cdp-index-test.py` | v1.0 | 已定稿 | **14/14**：清空索引 → 批量下载 → 轮询索引出现 → 字段校验（三段目录/平台/类型/大小/绝对路径/文件名/计数）+ 设置页索引状态自动刷新 + 控制台零错误；测完自动删文件+擦记录+清索引（TESTING §11） |
+| 路径引擎单测 | `tools/test-path.js` | v1.1 | 已定稿 | **57/57**：4 个平台识别、类型推断、博主段、长度截断、`file://` 往返编码；v1.1 新增 9 条 `parseRelPath` 反解往返断言 |
 | S1a 端到端验收脚本 | `tools/cdp-s1a-test.py` | v1.0 | 已定稿 | **17/17**：扩展加载 + 设置页 7 项 + 三段目录落盘 6 项 + 控制台零错误（TESTING §10） |
 | 图片悬停下载调研 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` | v0.1（已拍板） | 已定稿 | 参考 ClickSave / Imageye / Image Swooper / Cxrompix；三项拍板（双入口 / 清单面板 / 优先原图）+ 防盗链回退补强 |
-| 图片下载后自动入库调研 | `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | v0.1 | 待评审 | Downloads API 完成事件 + 预登记元数据（session storage）+ 懒缩略图；三方案对比、7 个坑与解法、数据契约、8 条验收 |
+| 图片下载后自动入库调研 | `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | v0.1 | 已实现 | Downloads API 完成事件 + 预登记元数据（session storage）+ 懒缩略图；三方案对比、7 个坑与解法、数据契约、8 条验收。**已按方案落地并通过 14/14 验收**（TESTING §11） |
 | 图片悬停下载方案 | `docs/IMAGE-DOWNLOAD-PLAN.md` | v1.2 | 待评审 | 三态交互、原图五级候选 + SW 校验回退 + DNR 补 Referer、批量队列；**v1.2 新增**尺寸档位（小/中/大/超大/自定义，按短边判定并显示命中数）与图集模式（自动滚动 + 分页翻页，10 页上限/可停止/连续 2 页失败中止） |
 | 图片悬停下载原型 | `deliverables/prototypes/image-hover-prototype-v1.html` | v1.2 | 待评审 | 单文件零依赖：SVG 封面、悬停 300ms 出按钮、单张/全部/确认条/进度、浮标 + 清单面板（**尺寸档位**、图集加载下一页、过滤/勾选/批量）、键盘操作；**CDP 24/24** |
 | 图片悬停原型截图 | `deliverables/assets/image-hover-v1-{hover,confirm,progress,panel,album}.png` | v1.2 | 已定稿 | 五态实拍：悬停按钮 / 全下确认条 / 批量进度 / 清单面板（档位+图集条） / 图集加载后 24 张 |

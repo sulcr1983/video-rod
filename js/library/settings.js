@@ -89,6 +89,38 @@
         });
     }
 
+    /* ---------------- 索引状态（验证自动入库） ---------------- */
+
+    function escHtml(s) {
+        return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function refreshIndex() {
+        chrome.runtime.sendMessage({ Message: 'vrLib.stats' }, function (r) {
+            if (chrome.runtime.lastError || !r || !r.ok) {
+                text('vrLibIndex', '未就绪（SW 未响应）', '#b26a00');
+                return;
+            }
+            text('vrLibIndex', '已入库 ' + r.count + ' 条', r.count > 0 ? '#2e7d32' : '#666');
+        });
+        chrome.runtime.sendMessage({ Message: 'vrLib.list' }, function (r) {
+            if (chrome.runtime.lastError || !r || !r.ok) { return; }
+            var el = $('vrLibRecent');
+            if (!el) { return; }
+            var list = (r.list || []).slice().sort(function (a, b) {
+                return (b.mtime || 0) - (a.mtime || 0);
+            }).slice(0, 5);
+            el.innerHTML = list.length
+                ? list.map(function (it) {
+                    return '<div style="font-family:Consolas,monospace;font-size:10.5px;line-height:1.6">' +
+                        escHtml(it.relPath) + '</div>';
+                }).join('')
+                : '—';
+        });
+    }
+
     /* ---------------- 渲染 ---------------- */
 
     function render() {
@@ -251,6 +283,16 @@
 
         var verifyBtn = $('vrLibVerify');
         if (verifyBtn) { verifyBtn.addEventListener('click', verify); }
+
+        var refresh = $('vrLibRefresh');
+        if (refresh) { refresh.addEventListener('click', refreshIndex); }
+
+        // 资源库页面/SW 广播有新条目时自动刷新
+        try {
+            chrome.runtime.onMessage.addListener(function (msg) {
+                if (msg && msg.Message === 'vrLib.added') { refreshIndex(); }
+            });
+        } catch (e) { /* 忽略 */ }
     }
 
     /* ---------------- 启动 ---------------- */
@@ -260,6 +302,7 @@
         load(function () {
             render();
             bind();
+            refreshIndex();
         });
     }
 
