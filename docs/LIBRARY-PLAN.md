@@ -944,13 +944,135 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 |---|---|---|---|---|
 | **S0** ✅ | P0 探针 | 探测扩展 + 结果记录 | **已完成 2026-10-24，三项全过**（§13.7） | `chore: P0 探针——file:// 直读与 downloads 绝对路径实测` |
 | **S1a** ✅ | `path.js` + 下载路径接管 + 设置页「资源库」分区 | **已完成 2026-10-24**：新下载落 `<下载目录>/video-rod/平台/博主/类型/`；设置页可改子目录名、切模式、校验落盘 | 单测 **48/48** + 端到端 **17/17**（TESTING §10）；实落 `Download\video-rod\其他网页\127.0.0.1\视频\test.mp4` | `feat(library): 三段中文目录（下载目录子目录）+ 根目录设置与落盘校验` |
-| **S1b** | 迁移（结构迁移 + 换根迁移） | dry-run 预览、执行、日志、回滚 | 迁移前后数量/大小一致；中断可回滚；同名不覆盖 | `feat(library): 迁移到新根目录——dry-run/复制/校验/回滚` |
-| **S2** | `db.js` + `indexer.js` + `sw-library.js` | 索引可建、可重建、有快照 | 1k 文件首屏 < 2s；清空下载历史后仍能列出 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
+| **S1b** ✅ | 迁移（结构迁移 + 换根迁移 + 改子目录名） | **已完成 2026-10-24**：`migrate.js` 引擎 + `migrate-ui.js` 面板；dry-run / 复制 / 校验（size + 首尾 64KB）/ 删源 / 日志 / 回滚 | 端到端 **39/39**（TESTING §12）；S1a 回归 17/17、自动入库回归 14/14 | `feat(library): 迁移——dry-run/复制/校验/回滚（FSA 句柄）` |
+| **S2** | `db.js` ✅ + `sw-library.js` ✅ + `indexer.js` 待做 | 索引可建、可重建、有快照 | 1k 文件首屏 < 2s；清空下载历史后仍能列出 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
 | **S3** | `library.html` + `ui.js` + `thumbs.js` | 可浏览、可筛选、可搜索 | TESTING §8 的 A/C/D 组 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
 | **S4** | `lightbox.js` + `video.js` + `keyboard.js` | 看图/看视频/键盘 | TESTING §8 的 E/F/H/I 组 | `feat(library): 灯箱与视频弹层——缩略图带 + 自绘控件键盘` |
 | **S5** | `trash.js` + 右键菜单 + 删除/回收站 UI | 删除、恢复、清空、重命名 | TESTING §8 的 B/G 组 | `feat(library): 删除回收站与右键菜单——可恢复、二次确认` |
 
 > 每一档都必须：`git status` 干净 → 测试通过 → 截图归档 → 才进下一档。**不允许一次提交跨两档。**
+
+### 13.10 S1b 迁移实现规格（v1.8 新增，开工前定死）
+
+**第一性原理：扩展没有「任意文件读写」权限。** 写用户磁盘只有三条路——
+
+| 路径 | 能力 | 能否用于迁移 |
+|---|---|---|
+| `chrome.downloads.download()` | 只能从 URL 写，**读不了本地文件** | ❌ 不能读源 |
+| **FSA 目录句柄**（`showDirectoryPicker`） | 授权目录内可读可写可删 | ✅ **唯一可行** |
+| OPFS（`navigator.storage.getDirectory`） | 沙箱虚拟盘，不是用户目录 | 仅测试用 |
+
+推论（三条硬约束）：
+
+1. **§13.4 的 `VRMigrate.planRebase(oldRoot, newRoot)` 参数是 `FileSystemDirectoryHandle`，不是路径字符串**。路径字符串拿不到写权限。
+2. 迁移只能在**扩展页面上下文**跑（SW 不能 `showDirectoryPicker`、不能拿句柄），即 options.html / 未来 library.html。
+3. 三种迁移共用一套「扫描 → 预演 → 复制 → 校验 → 删源 → 日志 → 回滚」，差别只在**目标路径怎么算**。
+
+**文件与挂载**
+
+| 文件 | 职责 |
+|---|---|
+| `js/library/migrate.js`（新增） | 引擎：walk / plan / run / rollback / 索引同步；纯 FSA IO，无 UI |
+| `js/library/migrate-ui.js`（新增） | 设置页迁移面板：选目录、预演、执行、进度、回滚 |
+| `options.html`（改） | 「迁移…」按钮解锁 + `#vrLibMigPanel`；额外挂 `db.js` / `migrate.js` / `migrate-ui.js` |
+| `js/library/settings.js`（改） | 只留入口与 `vrLibSettings` 读写，不掺迁移逻辑 |
+
+**数据契约**
+
+```js
+PlanItem = { from, to, action: 'move'|'skip'|'conflict'|'blocked', size, reason? }
+Plan     = { id, kind: 'restructure'|'rename-subdir'|'rebase',
+             srcName, dstName, items[], counts{move,skip,conflict,blocked},
+             totalBytes, at }
+Log      = { id, planId, kind, at, srcName, dstName,
+             srcHandle, dstHandle,                       // 句柄可结构化克隆进 IDB
+             done[{from,to,size}], failed[{from,to,code}],
+             aborted, rolledBack, preBytes, postBytes }
+```
+
+存 IDB `vr-library` 的 `setting` store：`migrateLog:last`、`migrateLog:<id>`、`migrate:src` / `migrate:dst`（最近一次授权的句柄）。
+
+**扫描与跳过（三形态共用）**
+
+- 只收 `VRPath.typeOf(fileName) !== 'other'` 的媒体文件
+- 跳过目录/文件：`.` 开头、`_migration`、`_回收站`、`_verify`、`.part`、`.crdownload`、`~$*`
+- 深度 ≤ 8、条目上限 20000（防御性）
+- 规划阶段逐个 `getFile()` 取 `size`（预演要显示总大小）
+
+**三种目标路径**
+
+| 形态 | 签名 | 目标 |
+|---|---|---|
+| 改子目录名 | `planRenameSubdir(parentHandle, oldName, newName)` | `newName/<原相对路径>`；旧目录不存在 → 空计划 + reason |
+| 换根 | `planRebase(srcHandle, dstHandle)` | 相对路径完全不变 |
+| 整理旧文件 | `planRestructure(srcHandle, history)` | `VRPath.buildRelPath({platform, creatorFull:'', creatorId:'', type, fileName})`；平台由 `history`（`[{filename, url}]`，页面取 `downloads.search({limit:5000})`）按 basename 反查，查不到 → `web`；博主段 → `待整理` |
+
+**冲突判定（不覆盖原则）**
+
+| 条件 | action |
+|---|---|
+| 目标不存在 | `move` |
+| 目标已存在且 `size` 相同 | `skip`（视为同一文件；**不覆盖、不删源**） |
+| 目标已存在且 `size` 不同 | `conflict`（跳过并记录，交用户人工处理） |
+| `to === from` | `skip` |
+| `VRPath.checkLength(to).ok === false` | `blocked` |
+
+> 不比 `mtime`：流式复制不保留时间戳，拿 mtime 判定会自相矛盾。
+
+**执行（run，逐条串行）**
+
+1. 逐段 `getDirectoryHandle(seg, {create:true})` 建目标目录
+2. `srcFile.stream().pipeTo(await dst.createWritable())`，中间插 `TransformStream` 计字节做进度
+3. **校验**：`dst.getFile().size === srcFile.size`；默认再比对**首尾各 64KB**（`slice().arrayBuffer()` 逐字节）；`deepVerify` 时全量 SHA-256（`crypto.subtle.digest`）
+4. 校验通过才 `srcParent.removeEntry(name)`（**不 move，避免半途丢文件**）
+5. 每完成一条立刻把 Log 写回 IDB（页面崩了也能回滚）
+6. 任一条失败：记 `failed` → **停止后续 → 不删任何源 → `aborted=true`**
+7. 成功后 `rename-subdir` 额外清理空目录（递归删空子目录，只删空）
+
+**异常 → 错误码**
+
+| 异常 | 码 |
+|---|---|
+| `QuotaExceededError` | `LIB_E_ENOSPC` |
+| `NoModificationAllowedError` / `NotReadableError` | `LIB_E_EBUSY`（立即中止，不删源；用户关掉占用程序后可重跑） |
+| `NotAllowedError` / `SecurityError` | `LIB_E_NO_PERM`（立即中止） |
+| 校验不一致 | `LIB_E_HASH_MISMATCH`（不删源） |
+| 其余 | `LIB_E_UNKNOWN`（立即中止） |
+
+**回滚（rollback）**：按 `done` **逆序**复制 `to → from` → 校验 → 删 `to`；任一条失败即停，`rolledBack=false`，日志保留。
+
+**迁移后索引同步**
+
+| 形态 | relPath | absPath |
+|---|---|---|
+| rename-subdir | `old/…` 前缀替换为 `new/…` | `detectedRoot` 已知时同步替换 |
+| rebase | 不变 | 按 `customRoot`（目标）重算；算不出置空，交 S2 校对 |
+| restructure | 按 `to` 重写 | 同上 |
+
+每次迁移在 `oplog` 记一条 `migrate`（含 planId、counts）。
+
+**设置页 UI（`#vrLibMigPanel`）**
+
+| 控件 | 行为 |
+|---|---|
+| 迁移方式 | 三选一，按选中项显示对应的目录选择按钮 |
+| 选择父目录 / 源目录 / 目标目录 | `showDirectoryPicker({mode:'readwrite'})`；句柄进内存 + IDB `migrate:src` / `migrate:dst` |
+| 预演 | 生成计划：显示「可迁移 / 跳过 / 冲突 / 阻断」计数 + 总大小 + 前 50 行 `from → to` |
+| 执行 | 二次确认；进度条（已处理字节 / 总数）+ 逐条状态 |
+| 回滚 | 仅当 `migrateLog:last` 存在且有 `done` 条目时可用；二次确认 |
+
+**验收（S1b，8 条）**
+
+1. `plan` 只列媒体文件；`.part` / `_migration` / `_回收站` / `_verify` / 点文件不出现
+2. 三种形态各跑一遍：文件数 + 总字节数迁移前后一致
+3. 目标同名 size 相同 → `skip` 且源不被删；size 不同 → `conflict`
+4. 执行成功后源侧不再有已迁移文件；日志 `done` 条数 == 计划 `move` 条数
+5. 人为让一条失败（配额/权限）→ 后续不执行、源全部还在、`aborted=true`
+6. 回滚 → 文件回到源位置、目标侧清理干净、`rolledBack=true`
+7. 迁移后索引 relPath 与新位置一致
+8. 设置页迁移面板可点、进度可见、控制台零 error
+
+**测试怎么绕开原生选择器**：目录选择器无法用 CDP 自动点。用 `navigator.storage.getDirectory()`（OPFS）造真实 FSA 目录树，直接把句柄喂给 `VRMigrate.plan*/run/rollback`——走的是同一套 `createWritable` / `getFile` / `removeEntry` 代码路径。脚本 `tools/cdp-migrate-test.py`。
 
 ---
 
@@ -966,4 +1088,5 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | v1.5 | 2026-10-24 | **S0 探针实测通过**：`<img>`/`<video src="file://">` 直读、视频 seek、`downloads.search` 返回绝对路径三项全过（Chrome for Testing 147）；§2.4/§4.4/§8/§11.1/§11.4/§12.2/§13.7/§13.9 同步关闭待实测项；对抗性结论中的"条件性阻断 1"解除；记录正式 Chrome 需手动开"允许访问文件网址" |
 | v1.6 | 2026-10-24 | **确定根目录与落盘模式**：新增 §4.5——rootDir 定为 `E:\test\video-rod\download`；给出直写（默认，零拷贝）与归档（不动 Chrome 设置）两种模式及代价；设置页六件事（显示/选择文件夹/打开 Chrome 下载设置/校验落盘/模式切换/换根迁移）；迁移拆为"结构迁移"与"换根迁移"；§10 已拍板更新；§13.3/§13.4/§13.1/§13.9 同步（新增 archive.js、settings-page API、S1a/S1b 切分） |
 | v1.7 | 2026-10-24 | **根目录方案改为「系统下载目录下的 video-rod 子目录」**：§4.5 重写——A 模式（默认，零拷贝、不改 Chrome 设置、自动跟随下载目录变化）与 B 模式（自定义目录，需搬移）；新增「探测真实下载根目录」算法（微下载 + 反推，顺带解决 OneDrive 重定向）；迁移扩为三种（结构迁移 / 改子目录名 / A↔B 换根）；§10 已拍板与 §13.1/§13.3/§13.4/§13.9 同步 |
+| v1.8 | 2026-10-24 | **S1b 迁移规格定死**：新增 §13.10——扩展无通用文件写权限，迁移只能走 FSA 句柄（`planRebase` 参数由路径改为 DirectoryHandle）；三种形态共用扫描/预演/复制/校验/删源/日志/回滚；冲突只比 size 不比 mtime；异常→错误码映射；迁移后索引同步口径；8 条验收；测试用 OPFS 句柄注入绕开原生目录选择器 |
 

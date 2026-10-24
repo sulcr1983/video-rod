@@ -90,9 +90,67 @@
           <span id="vrLibVerifyMsg" class="explain"></span>
         </div>
 
-        <div class="item">
-          <button type="button" id="vrLibMigrate" class="button2" disabled>迁移…</button>
-          <span class="explain">（S1b 实现：结构迁移 / 改子目录名 / 换根）</span>
+        <div class="item" style="align-items:flex-start">
+          <label>迁移</label>
+          <div style="flex:1">
+            <button type="button" id="vrLibMigrate" class="button2">迁移…</button>
+            <span class="explain">改子目录名 / 换根（A↔B） / 整理旧文件；预演后可回滚</span>
+
+            <div id="vrLibMigPanel" hidden style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">
+              <div class="item">
+                <label>迁移方式</label>
+                <select id="vrLibMigKind">
+                  <option value="rename-subdir">改子目录名（同一父目录内）</option>
+                  <option value="rebase">换根（源目录 → 目标目录，相对路径不变）</option>
+                  <option value="restructure">整理旧文件（散文件 → 平台/博主/类型）</option>
+                </select>
+              </div>
+
+              <div class="item" data-kind="rename-subdir">
+                <button type="button" id="vrLibMigPickParent" class="button2">选择父目录并授权</button>
+                <input type="text" id="vrLibMigOld" placeholder="旧子目录名" style="width:120px" />
+                <span>→</span>
+                <input type="text" id="vrLibMigNew" placeholder="新子目录名" style="width:120px" />
+              </div>
+
+              <div class="item" data-kind="rebase" style="display:none">
+                <button type="button" id="vrLibMigPickSrc" class="button2">选择源目录</button>
+                <button type="button" id="vrLibMigPickDst" class="button2">选择目标目录</button>
+              </div>
+
+              <div class="item" data-kind="restructure" style="display:none">
+                <button type="button" id="vrLibMigPickSrc2" class="button2">选择要整理的目录</button>
+                <span class="explain">散落的媒体文件会按下载历史归入「子目录/平台/待整理/类型」</span>
+              </div>
+
+              <div class="item">
+                <span id="vrLibMigDirMsg" class="explain"></span>
+              </div>
+
+              <div class="item">
+                <button type="button" id="vrLibMigPlan" class="button2">预演（dry-run）</button>
+                <button type="button" id="vrLibMigRun" class="button2" disabled>执行迁移</button>
+                <button type="button" id="vrLibMigRollback" class="button2" disabled>回滚上次</button>
+              </div>
+
+              <div class="item">
+                <span id="vrLibMigState" class="explain"></span>
+              </div>
+
+              <div class="item">
+                <progress id="vrLibMigBar" max="100" value="0" style="width:260px"></progress>
+                <span id="vrLibMigProgTxt" class="explain"></span>
+              </div>
+
+              <div class="item" style="align-items:flex-start">
+                <div id="vrLibMigPreview" class="explain" style="max-height:240px;overflow:auto;flex:1"></div>
+              </div>
+
+              <div class="item">
+                <span id="vrLibMigRollbackMsg" class="explain"></span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -922,7 +980,10 @@
 
   <script src="lib/base64.js" defer></script>
   <script src="js/library/path.js" defer></script>
+  <script src="js/library/db.js" defer></script>
+  <script src="js/library/migrate.js" defer></script>
   <script src="js/library/settings.js" defer></script>
+  <script src="js/library/migrate-ui.js" defer></script>
   <script src="js/vr-download-hook.js" defer></script>
   <script src="js/options.js" defer></script>
   <script src="js/i18n.js" defer></script>
