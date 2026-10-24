@@ -9,3 +9,7 @@ dist/
 # 敏感文件（含 GitHub token 等凭据，严禁提交）
 .env
 *.local
+
+# Python 缓存（tools/ 下的 CDP 测试脚本会生成）
+__pycache__/
+*.pyc
