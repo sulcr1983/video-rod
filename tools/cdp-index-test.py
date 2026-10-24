@@ -44,7 +44,7 @@ def main():
     osid = cdp.attach(otid)
     cdp.send("Runtime.enable", {}, osid)
     cdp.send("Page.enable", {}, osid)
-    time.sleep(2.0)
+    cdp.wait_js(osid, "typeof chrome !== 'undefined' && !!chrome.downloads", 8.0)
 
     # 清空索引，确保从零开始
     send_msg(cdp, osid, "vrLib.clear")

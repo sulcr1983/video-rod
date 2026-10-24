@@ -122,8 +122,7 @@ def main():
     for m in ("Runtime.enable", "Page.enable", "Network.enable"):
         cdp.send(m, {}, sid)
     cdp.send("Network.setCacheDisabled", {"cacheDisabled": True}, sid)
-    cdp.send("Page.navigate", {"url": f"chrome-extension://{ext_id}/library.html"}, sid)
-    time.sleep(2.0)
+    cdp.navigate(sid, f"chrome-extension://{ext_id}/library.html")
 
     mods = ev(cdp, sid, "({b: typeof VRBatch, r: typeof VRRename, t: typeof VRTrash, u: typeof VRTrashUI})")
     check("A2 S5b 模块已加载", mods,
@@ -132,8 +131,8 @@ def main():
         return finish(cdp)
 
     check("A3 OPFS + 索引 3 条", ev(cdp, sid, SETUP), 3)
-    cdp.send("Page.reload", {"ignoreCache": True}, sid)
-    time.sleep(2.2)
+    cdp.reload(sid)
+    cdp.wait_js(sid, "document.querySelectorAll('#libGrid .lib-card').length === 3", 8.0)
     check("A4 页面渲染 3 张卡", ev(cdp, sid, "document.querySelectorAll('#libGrid .lib-card').length"), 3)
     check("A5 顶栏有「批量」按钮",
           ev(cdp, sid, "!!document.getElementById('libBatch') && "

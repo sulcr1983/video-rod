@@ -75,8 +75,7 @@ def main():
     for m in ("Runtime.enable", "Page.enable", "Network.enable"):
         cdp.send(m, {}, sid)
     cdp.send("Network.setCacheDisabled", {"cacheDisabled": True}, sid)
-    cdp.send("Page.navigate", {"url": f"chrome-extension://{ext_id}/library.html"}, sid)
-    time.sleep(2.0)
+    cdp.navigate(sid, f"chrome-extension://{ext_id}/library.html")
 
     mods = ev(cdp, sid, "({l: typeof VRLibrary, d: typeof VRDB, t: typeof VRThumbs, p: typeof VRPath})")
     check("A2 页面模块已加载", mods, {"l": "object", "d": "object", "t": "object", "p": "object"})
@@ -84,8 +83,8 @@ def main():
         return finish(cdp)
 
     check("A3 种子数据 6 条", ev(cdp, sid, SEED), 6)
-    cdp.send("Page.reload", {"ignoreCache": True}, sid)
-    time.sleep(2.0)
+    cdp.reload(sid)
+    cdp.wait_js(sid, "document.querySelectorAll('#libGrid .lib-card').length === 6", 8.0)
 
     base = ev(cdp, sid, r"""(function(){
       return {
