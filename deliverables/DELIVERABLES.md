@@ -121,9 +121,9 @@ video-rod/
 | 路径引擎单测 | `tools/test-path.js` | v1.0 | 已定稿 | **48/48**：覆盖 4 个平台识别、类型推断、博主段、长度截断、`file://` 往返编码 |
 | S1a 端到端验收脚本 | `tools/cdp-s1a-test.py` | v1.0 | 已定稿 | **17/17**：扩展加载 + 设置页 7 项 + 三段目录落盘 6 项 + 控制台零错误（TESTING §10） |
 | 图片悬停下载调研 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` | v0.1（已拍板） | 已定稿 | 参考 ClickSave / Imageye / Image Swooper / Cxrompix；三项拍板（双入口 / 清单面板 / 优先原图）+ 防盗链回退补强 |
-| 图片悬停下载方案 | `docs/IMAGE-DOWNLOAD-PLAN.md` | v1.1 | 待评审 | 三态交互、原图五级候选 + SW 校验回退 + DNR 补 Referer、批量队列（并发 3/上限 200/可取消）、9 条消息协议、10 条验收、I1–I5 分阶段 |
-| 图片悬停下载原型 | `deliverables/prototypes/image-hover-prototype-v1.html` | v1 | 待评审 | 单文件零依赖：12 张本地 SVG 封面、悬停 300ms 出按钮、单张/全部/确认条/进度、浮标 + 清单面板（过滤/勾选/批量）、键盘操作；**CDP 18/18** |
-| 图片悬停原型截图 | `deliverables/assets/image-hover-v1-{hover,confirm,progress,panel}.png` | v1 | 已定稿 | 四态实拍：悬停按钮 / 全下确认条 / 批量进度 / 清单面板 |
+| 图片悬停下载方案 | `docs/IMAGE-DOWNLOAD-PLAN.md` | v1.2 | 待评审 | 三态交互、原图五级候选 + SW 校验回退 + DNR 补 Referer、批量队列；**v1.2 新增**尺寸档位（小/中/大/超大/自定义，按短边判定并显示命中数）与图集模式（自动滚动 + 分页翻页，10 页上限/可停止/连续 2 页失败中止） |
+| 图片悬停下载原型 | `deliverables/prototypes/image-hover-prototype-v1.html` | v1.2 | 待评审 | 单文件零依赖：SVG 封面、悬停 300ms 出按钮、单张/全部/确认条/进度、浮标 + 清单面板（**尺寸档位**、图集加载下一页、过滤/勾选/批量）、键盘操作；**CDP 24/24** |
+| 图片悬停原型截图 | `deliverables/assets/image-hover-v1-{hover,confirm,progress,panel,album}.png` | v1.2 | 已定稿 | 五态实拍：悬停按钮 / 全下确认条 / 批量进度 / 清单面板（档位+图集条） / 图集加载后 24 张 |
 | 本地资源库方案（评审版） | `docs/LIBRARY-PLAN.md` | v1.7 | 待二次评审 | 调研 + 架构选型 + 中文目录命名 + 数据模型 + 删除/迁移 + 开源 UX 取舍 + §11 审计指北 + §12 审计复核 + §13 实现规格 + §13.7 S0 实测；v1.7 = 根目录定为 `<下载目录>\video-rod` 子目录（零拷贝、不混日常下载）、custom 自定义目录模式、三种迁移 |
 | 本地资源库交互原型 | `deliverables/prototypes/library-prototype-v1.html` | v1.3 | 待二次评审 | 单文件可交互原型（27 条演示数据）；视频键盘 ↑↓/←→ 与连播（**自绘播放控件**，解决原生 controls 吞键）；时间线视图、右键菜单、悬停预览、回收站；**v1.3 新增**：星标+只看星标、轻量标签 chips+标签筛选、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条悬停时间气泡；内建「评审说明」 |
 | M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 已定稿 | M7 回归时重拍为浅色版（12 分P横幅 + 展开态），与 final-m7-bili.png 同内容 |
