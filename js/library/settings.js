@@ -126,8 +126,8 @@
             }).slice(0, 5);
             el.innerHTML = list.length
                 ? list.map(function (it) {
-                    return '<div style="font-family:Consolas,monospace;font-size:10.5px;line-height:1.6">' +
-                        escHtml(it.relPath) + '</div>';
+                    var rel = escHtml(it.relPath);
+                    return '<div class="recent-item" title="' + rel + '">' + rel + '</div>';
                 }).join('')
                 : '—';
         });

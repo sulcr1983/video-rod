@@ -55,7 +55,7 @@
 | `js/popup.js` | 猫抓面板内核（只做了 3 处最小改动，见 ADR-025） |
 | `js/init.js` / `js/function.js` / `js/templates.js` / `js/polyfill.js` | 猫抓公共层 |
 | `js/background.js` | 嗅探 + 下载记账 + 文件名保护 + 右键菜单 + **资源库三个脚本的 importScripts 与消息转发** |
-| `popup.html` / `css/*` | 浅色重设计外壳（M7 已完成） |
+| `popup.html` / `css/*` | 浅色重设计外壳（M7 已完成）；**2026-10 设置页重设计**：四组侧栏 + 卡片化分区 + 响应式，方案见 `docs/OPTIONS-REDESIGN.md`（TESTING §14） |
 
 ### 3.2 资源库（本项目的核心增量）
 
@@ -255,9 +255,10 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 | 文档 | 地位 |
 |---|---|
 | `docs/LIBRARY-PLAN.md` | **主线权威方案 v2.0**：架构、目录命名、数据模型、删除/迁移、§11 审计指北、§12 审计复核、§13 实现规格、§13.10 S1b 规格、**§13.11 S2 索引规格** |
-| `docs/TESTING.md` | **验收记录**：§8 原型 42/42、§9 P0、§10 S1a、§11 自动入库、§12 S1b、**§13 S2 索引 35/35**；含环境限制与坑 |
+| `docs/TESTING.md` | **验收记录**：§8 原型 42/42、§9 P0、§10 S1a、§11 自动入库、§12 S1b、**§13 S2 索引 35/35**、§14 设置页重设计；含环境限制与坑 |
+| `docs/OPTIONS-REDESIGN.md` | 设置页重设计：现状审计、四组信息架构、视觉/组件规范、响应式、实施记录（ADR-031） |
 | `deliverables/DELIVERABLES.md` | **产出物登记宪法**（新增文件先读 §1.1 落点规则，落地当天登记） |
-| `docs/DECISIONS.md` | ADR-001~030（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、**ADR-030 索引三源与缺失不删**） |
+| `docs/DECISIONS.md` | ADR-001~031（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、ADR-030 索引三源与缺失不删、ADR-031 设置页信息架构） |
 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` / `IMAGE-DOWNLOAD-PLAN.md` | 图片线调研（已拍板）与方案 v1.2 |
 | `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | 自动入库方案的落地映射（已实现） |
 | `docs/LIBRARY-PLAN-审计方案.md` | 给评审人/审计 AI 的找茬手册（已执行过一轮，结论在 §12） |
