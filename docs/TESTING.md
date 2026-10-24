@@ -265,10 +265,17 @@
 1. 视频样本走公网（MDN CC0，5.055 秒），首次加载可能需数秒——断言前先轮询 `readyState >= 1 && duration > 0`，最多等 30 秒
 2. 图片样本走 `trae-api-cn.mchost.guru` 文生图接口，弱网会出现灰块（原型已有裂图兜底，不算失败）
 3. 原型是单文件 `file://` 页面，与真实扩展页面的 CSP/权限行为不同——**§4.4 的 P0 探针不能由本测试替代**
+4. **浏览器进程跑久了媒体管道会卡死**：表现为 `<video>` `networkState=2`、`readyState=0`、无 `error`，等待 30 秒也不恢复；本地文件与公网 URL 都一样卡。**重启浏览器即恢复**（不是产品缺陷，也不是网络问题）。同时 `Page.captureScreenshot` 也可能超时，同样重启解决。正常情况下视频约 10 秒内到 `readyState=4`
 
-### 8.3 状态
+### 8.3 执行结果（2026-10-24）
 
-- [ ] A–I 全组跑通（待执行，执行后在此填「日期 + 通过数/总数 + 控制台错误数」）
+- [x] A–I 全组跑通：**42/42 通过**，控制台 **0 error / 0 warning**
+- 脚本：`tools/cdp-library-test.py`（端口用 `CDP` 环境变量覆盖，默认 `http://127.0.0.1:9333`）
+- 截图：`deliverables/assets/library-v13-grid.png`、`library-v13-lightbox.png`、`library-v13-video.png`
+- 环境：Chrome 155 + profile `.work/profiles/chrome-prototype`，视口 1440×900
+- 首轮 2 项失败的根因是**测试脚本自身**，非产品缺陷：
+  - S32 右键菜单：dispatch 前未清理上次菜单状态、未加 `cancelable:true`、未等一帧 → 已修
+  - S38 时间气泡：`mousemove` 监听绑在 `#vSeek`（input）上，脚本却 dispatch 到父容器 `.vseek` → 已改为 dispatch 到 input
 
 ---
 

@@ -1,8 +1,12 @@
-"""原型 v1.3 新增交互验收（CDP）。临时脚本，不属于项目交付物。"""
-import json, re, sys, time, urllib.request
+"""资源库原型 v1.3 CDP 回归（TESTING §8 的 A–I 九组）。
+用法：先启动 Chrome（--remote-debugging-port=9333，profile 在 .work/profiles/chrome-prototype），
+      打开 deliverables/prototypes/library-prototype-v1.html，再运行本脚本。
+端口可用环境变量 CDP 覆盖（默认 http://127.0.0.1:9333）。
+"""
+import json, os, re, sys, time, urllib.request
 from websocket import create_connection
 
-CDP = "http://127.0.0.1:9333"
+CDP = os.environ.get("CDP", "http://127.0.0.1:9333")
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 tabs = json.load(opener.open(CDP + "/json/list"))
 page = next((t for t in tabs if t.get("type") == "page" and "library-prototype" in (t.get("url") or "")), None)
@@ -134,7 +138,10 @@ ev("document.getElementById('lbClose').click()")
 check("S30 关闭按钮收起灯箱", ev("document.getElementById('lightbox').classList.contains('on')"), False)
 
 # ---------- 右键菜单 ----------
-ev("(()=>{const c=document.querySelector('#mediaWrap .card');c.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:300,clientY:300}))})()")
+ev("typeof closeCtx === 'function' && closeCtx()")
+time.sleep(0.15)
+ev("(()=>{const c=document.querySelector('#mediaWrap .card');c.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:300,clientY:300}))})()")
+time.sleep(0.15)
 check("S32 右键菜单出现", ev("document.getElementById('ctxMenu').classList.contains('on')"), True)
 check("S33 右键菜单含星标项", ev("document.getElementById('ctxMenu').textContent.includes('星标')"), True)
 ev("document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
@@ -154,8 +161,11 @@ for _ in range(30):
     time.sleep(1)
 check("S37 视频元数据已加载（可算时间）", ready, True)
 if ready:
-    ev("""(()=>{const b=document.getElementById('vSeek').getBoundingClientRect();
-      document.querySelector('.vseek').dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:b.left+b.width*0.5,clientY:b.top+b.height/2}))})()""")
+    # 注意：mousemove 监听绑在 #vSeek（input）上，必须 dispatch 到 input，不能 dispatch 到父容器 .vseek
+    ev("""(()=>{const inp=document.getElementById('vSeek');
+      const b=inp.getBoundingClientRect();
+      inp.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:b.left+b.width*0.5,clientY:b.top+b.height/2}))})()""")
+    time.sleep(0.1)
     check("S38 悬停显示时间气泡", ev("document.getElementById('vSeekTip').classList.contains('on')"), True)
     check("S39 气泡文本是时间格式", ev("/^\\d{2}:\\d{2}$/.test(document.getElementById('vSeekTip').textContent)"), True)
 
