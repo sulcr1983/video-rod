@@ -67,6 +67,10 @@
 | 7 | 文档漂移未修 | `DESIGN.md` 规划的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 均不存在，能力实际在 `popup-videorod.js` / `x-button.js` |
 | 8 | Deploy Key 写权限未知 | 若后续要 push，需在仓库 Settings → Deploy keys 勾选 Allow write access |
 
+> **工作区约定（2026-10-24 起）**：交付物 → `deliverables/`；文档 → `docs/`；可复用脚本 → `tools/`；
+> 本机临时件（Chrome profile、测试媒体、草稿）→ `.work/`（不进 git、可整体删除）。仓库外不再散落本项目文件。
+> 详见 `deliverables/DELIVERABLES.md` §1.1、`.work/README.md`、ADR-029。
+
 ---
 
 ## 6. 下次开工的关键命令

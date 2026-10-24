@@ -282,9 +282,9 @@
 | 项 | 值 |
 |---|---|
 | 浏览器 | Chrome for Testing 147.0.7727.15（`C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe`） |
-| 启动参数 | `--remote-debugging-port=9341 --user-data-dir=E:\test\_vr-probe-ct --load-extension=...\tools\probe-file-access --disable-extensions-except=...` |
+| 启动参数 | `--remote-debugging-port=9341 --user-data-dir=...\profiles\cft-147-probe --load-extension=...\tools\probe-file-access --disable-extensions-except=...` |
 | 扩展 ID | `bjfplhnnaanfpgioicjlnenplcpdblnm` |
-| 测试文件 | `E:\test\_vr-probe-media\probe.jpg`（3803 B）、`probe.mp4`（1,128,375 B，MDN CC0，5.055s） |
+| 测试文件 | `.work\media\probe\probe.jpg`（3803 B）、`probe.mp4`（1,128,375 B，MDN CC0，5.055s） |
 | 文件访问开关 | `chrome.extension.isAllowedFileSchemeAccess() === true` |
 
 ### 9.2 结果
@@ -306,3 +306,6 @@
 3. **unpacked 扩展 ID 不等于路径 SHA256 推算值**：实测推算出的两个候选 ID 都是错误页，必须以 `extensions-internals` 里的 `path` 为准。
 4. **探针造的下载记录会落在 Chrome 默认下载目录**（本机为 `D:\Users\liq21\Downloads`），测试后需手动清理。
 5. **Chrome for Testing 默认允许文件访问**（`isAllowedFileSchemeAccess=true`），正式版默认关闭——不能把探针环境结论直接当成"正式版开箱即用"。
+6. **临时目录已规范化**（2026-10-24）：本节当初的 `E:\test\_vr-probe-ct` 与 `E:\test\_vr-probe-media`
+   已归入项目内的 `.work/profiles/cft-147-probe` 与 `.work/media/probe`（`.work/` 不进 git、可整体删除）。
+   仓库外不再保留本项目文件，规则见 `deliverables/DELIVERABLES.md` §1.1。

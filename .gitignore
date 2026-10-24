@@ -13,3 +13,6 @@ dist/
 # Python 缓存（tools/ 下的 CDP 测试脚本会生成）
 __pycache__/
 *.pyc
+
+# 本机临时工作区（浏览器 profile / 测试媒体 / 一次性草稿，可整体删除）
+/.work/

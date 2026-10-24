@@ -45,6 +45,13 @@
   }
   R.fileUrl = fileUrl;
 
+  // 默认测试媒体位置：项目内 .work/media/probe（可用输入框或 ?dir= 改成任意目录）
+  function defaultDir() {
+    const q = new URLSearchParams(location.search).get("dir");
+    return q || "E:/test/video-rod/.work/media/probe";
+  }
+  document.getElementById("dir").value = defaultDir();
+
   function testImage(dir) {
     return new Promise(resolve => {
       const url = fileUrl(dir, "probe.jpg");
