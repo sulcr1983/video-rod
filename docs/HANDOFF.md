@@ -1,119 +1,279 @@
 # 钓鱼竿 Video Rod — 交接文档
 
-> 日期：2026-10-24 ｜ 交接时状态：仓库已就位、环境已配好、移动端调研已留档、**资源库方案与原型 v1.3 待评审**
-> 用途：下次继续时先读本文，再读 `docs/LIBRARY-PLAN.md`（当前主线）与 `docs/MOBILE-RESEARCH.md`（已封存）
+> 更新：2026-10-24 ｜ HEAD：`93b24d2`（`master`，工作区干净）
+> 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§12（已验收记录）。
+> 本文只写「现在是什么状态、怎么跑、别踩什么坑」，设计论证在 LIBRARY-PLAN 里。
+
+---
+
+## 0. 先遵守这三条项目规则
+
+1. **每次任务开始先称呼用户「Sunny 姐姐」**（用户明确要求）。
+2. **先文档后代码**：所有技术细节、前后端分工必须先写进文档，禁止边写边研究；**每次改代码前先把已有的改动 git commit + push**。
+3. **私有自用库，能抄就抄**：本项目不上架、不分发，GPL-3.0 不产生分发义务；可复用开源实现，但保留下游能追溯的来源说明（ADR-028）。
 
 ---
 
 ## 1. 一句话现状
 
-仓库已完整克隆到 `E:\test\video-rod`（`master`，HEAD `8527dec`），Deploy Key 与本机 git 已配好。**产品代码未改**；
-当前主线是**本地资源库**：方案 `docs/LIBRARY-PLAN.md` v1.3 + 可交互原型 `deliverables/prototypes/library-prototype-v1.html` v1.3 已完成，等二次评审。
-移动端已按苏哥指示封存（调研留档，不继续投入）。
-
----
-
-## 2. 本机环境变更（已生效，勿重复安装）
-
-| 项 | 内容 |
-|---|---|
-| Git | 2.55.0.5，`C:\Program Files\Git\cmd\git.exe`（winget 安装） |
-| OpenSSH | 9.5p2（系统自带） |
-| Deploy Key 私钥 | `C:\Users\XPENG\.ssh\id_ed25519_video-rod_deploy`（**无口令**） |
-| Deploy Key 公钥 | 同名 `.pub`，指纹 `SHA256:cu9oIptg9UnyWeehYkdPK3Y1eQmgFecmDbYi2mR0018` |
-| SSH 别名 | `github-video-rod`（`ssh.github.com:443`，仅用此密钥），已写入 `C:\Users\XPENG\.ssh\config` |
-| 账号级 key 现状 | `id_ed25519_sunnyauto` 实际是 `sulcr1983/hotnews-local` 的 Deploy Key，**不能**访问 video-rod |
-
-**注意**：`C:\Users\XPENG\AppData\Local\Programs\Git\...` 下还有第二条 git 路径，本次统一用 Program Files 那条，未改系统 PATH。
-
----
-
-## 3. 仓库状态
+这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 下载完成自动入库**，四套回归全绿；
+图片悬停下载只完成了**调研 + 方案 v1.2 + 可交互原型 v1.2**，**代码一行未写**。
+下一步是 **S2 索引服务**（`indexer.js`），它是 S3 资源库页面的数据底座。
 
 | 项 | 值 |
 |---|---|
-| 位置 | `E:\test\video-rod` |
-| 分支 | `master` → `origin/master` |
-| HEAD | `75a2d5f docs: 根目录改为系统下载目录下的 video-rod 子目录（零拷贝、不混日常下载）` |
-| 文件数 | 174（不含 `.git`）；pack 约 9.2 MiB |
-| 完整性 | `git fsck` 退出码 0 |
-| 工作区 | **干净**（`git status` 无输出）；`docs/MOBILE-RESEARCH.md` 已于 `3c7f409` 提交 |
+| 仓库 | `E:\test\video-rod`（`origin` = `github-video-rod:sulcr1983/video-rod.git`） |
+| 分支 / HEAD | `master` / `93b24d2 feat(library): 迁移——dry-run/复制/校验/回滚（FSA 句柄）` |
+| 形态 | Chrome MV3 扩展（猫抓 cat-catch 的 fork），Service Worker 版 background |
+| 下载根目录 | `<Chrome 下载目录>\video-rod\<平台>\<博主(@ID)>\<类型>\<文件名>`（本机实测 `D:\Users\liq21\Downloads\video-rod`） |
+| 索引 | IndexedDB `vr-library` v1（5 个 store） |
+| 构建链 | **本机不可用**：无 `package.json`，`bash/just/zip/crx3/openssl` 全缺；只能「加载已解压的扩展程序」 |
 
 ---
 
-## 4. 已完成
+## 2. 环境（都已配好，别重复安装、别改）
 
-1. 生成并修复 Deploy Key（曾因 PowerShell 引号把口令写成字面 `""`，已清除口令，密钥对未变）
-2. 配置 SSH 别名并验证通过：`Hi sulcr1983/video-rod!`
-3. 完整克隆仓库，`git fsck` 通过
-4. 项目结构审计（目录、三层架构、构建链、隐私点）
-5. 冒烟测试：`node tools/test-naming.js` → **27 通过 / 0 失败**
-6. 移动端可行性调研，结论留档 [MOBILE-RESEARCH.md](MOBILE-RESEARCH.md)（**已封存，不继续**）
-7. 本地资源库方案 v1.4 + 可交互原型 v1.3（含 8 项开源 UX 落地、视频键盘、删除/回收站/迁移、§12 审计复核、**§13 实现规格：文件清单/签名/数据契约/状态机/S0–S5 切分**）
-8. 复用策略确认：**私有库、本机自用、不分发**（上游 GPL-3.0 不产生分发义务）；**开源代码能抄就抄**，按引入成本择优，保留原版权声明（ADR-028）
+| 项 | 内容 |
+|---|---|
+| git push | 必须走 SSH 别名 `github-video-rod`（`ssh.github.com:443`，专用 Deploy Key） |
+| Deploy Key | `C:\Users\XPENG\.ssh\id_ed25519_video-rod_deploy`（**无口令**，勿改勿外发），指纹 `SHA256:cu9oIptg9UnyWeehYkdPK3Y1eQmgFecmDbYi2mR0018` |
+| **git 提交身份** | **仓库没有本地 user.name/user.email**，直接 `git commit` 会报 `Author identity unknown`。请用一次性参数，**不要改 git config**：<br>`git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."` |
+| 测试浏览器 | **Chrome for Testing 147**：`C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe`<br>（Chrome 137+ 正式版已移除 `--load-extension`，正式 Chrome 无法命令行加载扩展） |
+| 测试 profile | `.work/profiles/ext-test*`（`.work/` 不进 git，可整体删除） |
+| 测试站 | `test-site/`（`python -m http.server 18080 --bind 127.0.0.1`） |
+| Python 依赖 | `websocket-client`（`tools/cdp_client.py` 用），已装 |
 
 ---
 
-## 5. 未完成 / 待办（按优先级）
+## 3. 代码地图
 
-| # | 事项 | 说明 |
+### 3.1 内核（上游猫抓，**不要大改**）
+
+| 文件 | 说明 |
+|---|---|
+| `manifest.json` | MV3；后台 `js/background.js`；权限含 `tabs/webRequest/downloads/storage/webNavigation/alarms/declarativeNetRequest/scripting/sidePanel/contextMenus`；**未加 `unlimitedStorage`**（S3 缩略图落地时再补） |
+| `js/popup.js` | 猫抓面板内核（只做了 3 处最小改动，见 ADR-025） |
+| `js/init.js` / `js/function.js` / `js/templates.js` / `js/polyfill.js` | 猫抓公共层 |
+| `js/background.js` | 嗅探 + 下载记账 + 文件名保护 + 右键菜单 + **资源库三个脚本的 importScripts 与消息转发** |
+| `popup.html` / `css/*` | 浅色重设计外壳（M7 已完成） |
+
+### 3.2 资源库（本项目的核心增量）
+
+| 文件 | 职责 | 状态 |
 |---|---|---|
-| 1 | **资源库方案二次评审** | 方案 **v1.7** + 原型 v1.3 已就绪；审计手册见 `docs/LIBRARY-PLAN-审计方案.md` |
-| 2 | ~~**P0 前置探针**~~ | ✅ **已于 2026-10-24 完成，三项全过**（`file://` 直读 + 视频 seek + `downloads.search` 绝对路径），详见 TESTING §9 |
-| 3 | ~~**原型 v1.3 回归测试**~~ | ✅ **2026-10-24 完成：42/42 通过、控制台 0 错误**；截图见 `deliverables/assets/library-v13-*.png`（TESTING §8.3） |
-| 4 | 根目录方案已定（v1.7） | 默认 `<Chrome 下载目录>\video-rod`——系统下载目录下的子目录，**零拷贝、不与日常下载混放、不改 Chrome 设置**；自定义目录为 B 模式（`E:\test\video-rod\download` 保留作可选目标） |
-| 5 | ~~**S1a**~~ | ✅ **2026-10-24 完成**：三段中文目录落盘 + 设置页「资源库」分区 + 校验落盘；单测 48/48、端到端 17/17（TESTING §10）。实落 `Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4` |
-| 6 | **S1b 待开工** | 迁移（结构 / 改子目录名 / 换根），规格见 LIBRARY-PLAN §4.5、§5.4、§13 |
-| 7 | 构建链在本机不可用 | `just / bash / zip / crx3 / openssl` 全缺，且仓库无 `package.json`；当前只能「加载已解压的扩展程序」，无法产出 .crx/.zip |
-| 8 | 文档漂移未修 | `DESIGN.md` 规划的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 均不存在，能力实际在 `popup-videorod.js` / `x-button.js` |
-| 9 | Deploy Key 写权限未知 | 若后续要 push，需在仓库 Settings → Deploy keys 勾选 Allow write access |
+| `js/library/path.js` | `VRPath`：平台识别 / 类型推断 / 博主段 / 三段路径拼装 / 长度保护 / `file://` 编码 / `parseRelPath()` 反解 | ✅ 单测 57/57 |
+| `js/library/db.js` | `VRDB`：IDB `vr-library` v1（`file/thumb/setting/handle/oplog`），单连接缓存，SW 与页面共用 | ✅ |
+| `js/library/sw-library.js` | `VRLib`：预登记表（`chrome.storage.session`）→ `downloads.onChanged(complete)` → 反查绝对路径 → 落 IDB → 广播 `vrLib.added`；处理 `vrLib.record/list/stats/clear` | ✅ |
+| `js/library/settings.js` | `VRSettings`：`vrLibSettings` 读写、设置页渲染、校验落盘、索引状态 UI、`setSubdir()` | ✅ |
+| `js/library/migrate.js` | `VRMigrate`：三种迁移（改子目录名 / 换根 / 整理旧文件）；扫描 → dry-run → 流式复制 → 校验（size + 首尾 64KB，可选 SHA-256）→ 删源 → 日志 → 回滚 | ✅ 39/39 |
+| `js/library/migrate-ui.js` | 设置页 `#vrLibMigPanel`：选目录 / 预演表格 / 进度 / 回滚 | ✅ |
+| `js/vr-download-hook.js` | 页面侧包装 `chrome.downloads.download`：先记账（含资源库 meta）再下载，解决 Chromium bug 579563 丢文件名 | ✅（ADR-027） |
+| **`js/library/indexer.js`** | **尚未创建**（S2）：三源建索引 + 快照 + 校对 | ❌ 待做 |
+| `library.html` / `css/library.css` / `ui.js` / `thumbs.js` / `lightbox.js` / `video.js` / `keyboard.js` / `trash.js` / `archive.js` | S3–S5 的文件，**均不存在** | ❌ |
 
-> **工作区约定（2026-10-24 起）**：交付物 → `deliverables/`；文档 → `docs/`；可复用脚本 → `tools/`；
-> 本机临时件（Chrome profile、测试媒体、草稿）→ `.work/`（不进 git、可整体删除）。仓库外不再散落本项目文件。
-> 详见 `deliverables/DELIVERABLES.md` §1.1、`.work/README.md`、ADR-029。
+### 3.3 关键数据流（别绕开）
+
+```
+页面点下载
+  → vr-download-hook.js 生成 meta（relPath/platform/creatorFull/type…）
+  → sendMessage{Message:'vrQueueName', url, filename, meta}
+  → SW: vrQueueFilename(url, filename, conflictAction, meta)
+        ├─ 文件名记账（onDeterminingFilename 用）
+        └─ VRLib.record() 预登记（chrome.storage.session，TTL 10min，上限 500）
+  → downloads.onChanged(state=complete)
+  → downloads.search({id}) 取「最终」绝对路径（uniquify 改名后的真名）
+  → relPath = 绝对路径 - detectedRoot；算不出则用「预登记目录 + 实际文件名」兜底
+  → VRDB.putFiles([item])（保留旧 starred/tags）
+  → 广播 {Message:'vrLib.added'} → 设置页/未来资源库页面增量刷新
+```
+
+**迁移**：`showDirectoryPicker()` 拿目录句柄 → `VRMigrate.plan*/run/rollback`。全程 FSA，不经 `chrome.downloads`（它读不了本地文件）。
 
 ---
 
-## 6. 下次开工的关键命令
+## 4. 已经完成什么（都有实测记录）
+
+| 步骤 | 内容 | 验收 |
+|---|---|---|
+| **S0** | P0 探针：`<img>/<video src="file://">` 直读、视频 seek、`downloads.search` 返回绝对路径 | 三项全过（TESTING §9） |
+| **原型** | 资源库交互原型 v1.3（27 条演示数据、视频键盘、灯箱、回收站） | CDP **42/42**（TESTING §8） |
+| **S1a** | 三段中文目录落盘 + 设置页「资源库」分区 + 校验落盘反推真实根目录 | **17/17**（TESTING §10） |
+| **自动入库** | 预登记 + 完成确认 + 索引落库 + 设置页索引状态/最近入库 | **14/14**（TESTING §11） |
+| **S1b** | 三种迁移 + dry-run + 流式复制 + 校验 + 回滚 + 迁移后索引同步 | **39/39**（TESTING §12） |
+| 单测 | `tools/test-path.js` | **57/57** |
+| 图片线 | 调研 v0.1（已拍板双入口/清单面板/优先原图）、方案 v1.2（尺寸档位 + 图集分页）、原型 v1.2 | 原型 CDP **24/24**；**实现 0 行** |
+
+已拍板的产品口径（不要擅自改）：
+- 双入口：图片悬停按钮 + 页面浮标；清单面板形态照 Imageye。
+- 原图优先，五级候选；防盗链回退 + SW 侧校验。
+- 尺寸用「小/中/大/超大」档位（按短边判定），不让用户手写像素。
+- 图集支持「顺着下一页抓全部」（自动滚动 / 分页翻页 / 站点 API）。
+
+---
+
+## 5. 测试基线（改完必跑）
+
+### 5.1 起环境
 
 ```powershell
-# 新终端若 git 不在 PATH 里，先补（当前 shell 环境可能仍是安装前的）
-$env:Path = 'C:\Program Files\Git\cmd;' + $env:Path
+# 1) 测试站（18080）
+Start-Process python -ArgumentList '-m','http.server','18080','--bind','127.0.0.1' `
+  -WorkingDirectory 'E:\test\video-rod\test-site'
 
-cd E:\test\video-rod
-git status
-node tools/test-naming.js          # 冒烟测试，应为 27/27
-git fetch origin && git log -1 --oneline origin/master
+# 2) 浏览器（改了 SW 引入的脚本就必须换新 profile + 新端口，见 §6.1）
+$chrome = "C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
+Start-Process $chrome -ArgumentList @(
+  '--remote-debugging-port=9345',
+  '--user-data-dir=E:\test\video-rod\.work\profiles\ext-test5',
+  '--load-extension=E:\test\video-rod',
+  '--no-first-run','--no-default-browser-check','about:blank')
 ```
 
-> 远程是私有库，`origin` 已固定为 `github-video-rod` 别名。
+### 5.2 四套回归（按顺序跑）
+
+```powershell
+$env:VR_CDP='http://127.0.0.1:9345'
+
+node tools/test-path.js            # 57/57   纯 Node，无浏览器
+python tools/cdp-s1a-test.py       # 17/17   设置页 + 三段目录真落盘（会留下一个下载文件）
+python tools/cdp-index-test.py     # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
+python tools/cdp-migrate-test.py   # 39/39   OPFS 句柄注入，三种迁移 + 回滚
+```
+
+原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
+
+```powershell
+# 页面：deliverables/prototypes/library-prototype-v1.html
+$env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
+```
+
+> 图片悬停原型的断言脚本是临时件 `.work/scripts/test-image-proto.py`（24/24），**没进 tools/**；`.work/` 被清理后需重写。原型本身是静态单文件，可直接打开复核。
+
+### 5.3 跑测试前必看
+
+- **测试会真下载到 `D:\Users\liq21\Downloads\video-rod\...`**：S1a 脚本不自动删，`cdp-index-test` / `cdp-migrate-test` 会自清理。
+- 记一次基线：**四条命令全绿**才算环境正常。任何一条失败先看 §6，不要先改代码。
+- 测试产生的空目录（`video-rod\_verify\`、`其他网页\127.0.0.1\视频\`）属正常残留，不删也不影响。
 
 ---
 
-## 7. 踩过的坑（别重犯）
+## 6. 踩过的坑（按危险程度，全部实测过）
 
-1. **PowerShell 下 `ssh-keygen -N '""'` 会把字面两引号写成口令**。要空口令请用精确 argv 方式（`ProcessStartInfo.ArgumentList`）或生成后用 `-p` 清口令，并验证 `ssh-keygen -y -f <key>` 能直接输出公钥。
-2. **不要把 `origin` 改成 `github.com`**，会命中 `hotnews-local` 的 Deploy Key 而报 `Permission denied`。
-3. **克隆被中断后**目录会留下残缺 `.git`（`your current branch appears to be broken`），删掉 `.git` 重克隆即可，不要在原 `.git` 上 `git pull`。
-4. **m3u8 合并默认走远程服务**（`js/init.js:213`，`ffmpeg.bmmmd.com` / `ffmpeg.94cat.com`），视频分片会离开本机 —— 已记入 ADR-021，属真实隐私点。
-5. 私钥无口令，仅本机使用，勿外发。
+### 6.1 SW 脚本缓存 —— 最坑的一个
+
+改了 `js/background.js` 顶部 `importScripts` 列表后，**老 profile 会继续跑缓存版脚本**：表现为 `VRLib`/`VRDB` undefined、`vrQueueFilename.length` 还是旧值。
+扩展重载、`chrome://serviceworker-internals` 重注册**都无效**。
+
+> **规则：改 SW 引入脚本 → 换全新 profile（+ 新端口）跑测试。** 已用 `ext-test2/3/4` 验证过。
+
+另外：`importScripts()` **只能在 SW 首次求值**时调用，运行期调用抛
+`importScripts() of new scripts after service worker installation is not allowed`。
+`background.js` 里那些 try 补载只对 Firefox 首求值场景兜底，不能指望热补。
+
+### 6.2 扩展没有任意文件读写权限
+
+- `chrome.downloads.download()` 只能**从 URL 写**，读不了本地文件；
+- 写/删/移动本地文件只有 **FSA 目录句柄**一条路，且只能在**扩展页面**（options / 未来 library）里做，SW 拿不到句柄；
+- 所以 `VRMigrate.planRebase()` 参数是 **DirectoryHandle**，不是路径字符串（LIBRARY-PLAN §13.10）。
+
+### 6.3 原生控件与键盘
+
+- 原生 `<video controls>` 会吞掉 ↑↓/←→/空格，资源库视频弹层必须**自绘控件**（原型已按此实现）。
+
+### 6.4 下载与命名
+
+- `chromium bug 579563`：只要有扩展注册 `onDeterminingFilename`，`downloads.download` 的 `filename` 就会被忽略 → 已有 ADR-027 三道防线，**不要绕开 `vrDownloadWithName()` 直接下载**。
+- `conflictAction: uniquify` 会把 `a.mp4` 变成 `a (1).mp4`：索引以 `downloads.search` 的实际文件名为准，不要用预登记名。
+
+### 6.5 环境类
+
+- Chrome 137+ 正式版没有 `--load-extension`，测试一律用 Chrome for Testing。
+- 正式 Chrome 读 `file://` 需在 `chrome://extensions` 手动开「允许访问文件网址」；P0 探针环境默认为 true，正式版不默认。
+- 浏览器进程跑久了媒体管道会卡死（`readyState=0`、`networkState=2`）：**先重启浏览器**，别排查网络/代码。
+- FSA 句柄跨浏览器会话可能回到 `prompt` 状态：读文件（`file://`）不受影响，删除/迁移前需重新授权（`LIB_E_AUTH_LOST`）。
 
 ---
 
-## 8. 建议的下一步顺序
+## 7. 未完成（按建议顺序）
 
-1. 先看方案 v1.3 与原型 v1.3（`docs/LIBRARY-PLAN.md` + `deliverables/prototypes/library-prototype-v1.html`）
-2. 做 P0 前置探针（第 5 节 #2）——这是唯一挡在实现前的技术未知项
-3. 确认资源库根目录盘符（第 5 节 #4）
-4. 评审通过后：P1 目录与命名 → P2 资源库 MVP → P3 增强与迁移
-5. 移动端维持封存，不再投入
+### 7.1 S2 索引服务（下一步）
+
+要做 `js/library/indexer.js`（`VRIndex`），三源：
+
+| 源 | 做法 | 前置 |
+|---|---|---|
+| downloads | `chrome.downloads.search()` 增量补齐 | 无 |
+| 快照 | 读写 `<根>/_library/index-<日期>.json` | **需 FSA 根句柄** |
+| 全量扫描 | 遍历根目录（与 `VRMigrate.listFiles` 同一套遍历） | **需 FSA 根句柄** |
+
+`VRIndex.build({mode}) / reconcile() / snapshot()` 签名见 LIBRARY-PLAN §13.4。
+**开工前先想清楚这三点**（方案里已有答案，别临场发挥）：
+
+1. 没有 FSA 句柄时只能跑 downloads + 内存里的 IDB，**不要假装能全量扫描**；
+2. `reconcile()`（文件是否还在）在纯路径下无法判断，只能靠 FSA `getFile()` 或 `file://` fetch；
+3. `absPath` 依赖 `detectedRoot`（设置页「校验落盘」才会填），没跑过的 profile 里它是空的——索引要能容忍这种状态。
+
+### 7.2 S3–S5（资源库页面与交互）
+
+- S3：`library.html` + `css/library.css` + `ui.js` + `thumbs.js`（缩略图并发 2、懒生成、WebP 缓存；届时 `manifest.json` 补 `unlimitedStorage`），并在 popup/options 加「打开资源库」入口。
+- S4：`lightbox.js` + `video.js` + `keyboard.js`（自绘控件；↑↓ 切队列、←→ ±5s、Shift ±30s、空格、连播）。
+- S5：`trash.js` + 右键菜单 + 回收站 UI（`_回收站/` 已约定；索引要忽略 `_` 开头目录）。
+
+交互与验收对照原型 `deliverables/prototypes/library-prototype-v1.html`（v1.3）与 LIBRARY-PLAN §6。
+
+### 7.3 图片下载实现（I1–I6，一条未写）
+
+顺序：`lib-image-util.js`（原图候选/尺寸档位）→ `image-hover.js`（悬停按钮 + 事件委托 + Shadow DOM）→ 批量队列 → 浮标 + 清单面板 → 设置/快捷键 → 图集模式。
+方案 `docs/IMAGE-DOWNLOAD-PLAN.md` v1.2 已经把交互、候选链、失败回退写死；原型 v1.2 可直接对照。**注意**：图片落库走的是已经跑通的自动入库链路，不要再另写一套。
+
+### 7.4 已知缺口 / 技术债（先认账，别当成新发现）
+
+1. **B 模式（自定义目录）还不完整**：`archive.js` 未实现。现在切到 `custom` 只改设置，**新下载仍落系统下载目录**；`VRMigrate` 只能搬存量文件。
+2. **没有资源库页面**：目前只能在设置页看到「索引状态 / 最近入库」文字列表。
+3. **缩略图未生成**：`thumb` store 建了但为空，S3 才做。
+4. **深校验开关未进 UI**：`vrLibSettings.deepVerify` 引擎已支持，设置页没有控件。
+5. **文档漂移**：`docs/DESIGN.md` 里写的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 不存在，能力实际在 `popup-videorod.js` / `x-button.js`。
+6. **构建链缺失**：产不出 `.crx/.zip`，只能开发者模式加载。
+7. **自动入库的未覆盖项**：批量并发、SW 中途被杀、图片类型（`type=image`）真机未验（TESTING §11.4）。
+8. **迁移的未覆盖项**：原生目录选择器未自动化（只剩「拿句柄」一步）、配额不足/文件占用分支未构造（TESTING §12.5）。
 
 ---
 
-## 9. 恢复上下文提示词（下次直接复制）
+## 8. 文档索引（谁说了算）
+
+| 文档 | 地位 |
+|---|---|
+| `docs/LIBRARY-PLAN.md` | **主线权威方案 v1.8**：架构、目录命名、数据模型、删除/迁移、§11 审计指北、§12 审计复核、§13 实现规格、**§13.10 S1b 规格** |
+| `docs/TESTING.md` | **验收记录**：§8 原型 42/42、§9 P0、§10 S1a、§11 自动入库、§12 S1b；含环境限制与坑 |
+| `deliverables/DELIVERABLES.md` | **产出物登记宪法**（新增文件先读 §1.1 落点规则，落地当天登记） |
+| `docs/DECISIONS.md` | ADR-001~029（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界） |
+| `docs/IMAGE-DOWNLOAD-RESEARCH.md` / `IMAGE-DOWNLOAD-PLAN.md` | 图片线调研（已拍板）与方案 v1.2 |
+| `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | 自动入库方案的落地映射（已实现） |
+| `docs/LIBRARY-PLAN-审计方案.md` | 给评审人/审计 AI 的找茬手册（已执行过一轮，结论在 §12） |
+| `deliverables/prototypes/library-prototype-v1.html` | 资源库交互基准（v1.3） |
+| `deliverables/prototypes/image-hover-prototype-v1.html` | 图片悬停交互基准（v1.2） |
+| `docs/MOBILE-RESEARCH.md` | **已封存**，不要继续投入移动端 |
+
+---
+
+## 9. 接手第一小时清单
+
+1. `git status` 应干净；`git log -1` 应为 `93b24d2`。
+2. 读本文 §3（代码地图）与 §7（未完成）。
+3. 起环境（§5.1），按 §5.2 跑四条命令，**确认 57/57、17/17、14/14、39/39**。
+4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区，点一次「校验落盘」确认根目录探测正常。
+5. 再动 S2：先补 `indexer.js` 的实现细节到 LIBRARY-PLAN（如有新增决策），再写代码。
+6. 每次代码改动前后都 `git commit + push`（用 §2 的身份参数）。
+
+---
+
+## 10. 恢复上下文提示词（直接复制给下一个 AI）
 
 ```
-读 docs/HANDOFF.md 和 docs/LIBRARY-PLAN.md，继续本地资源库。
-我的资源库根目录是：<盘符:\路径>。
-先做 P0 探针，再按 P1→P2→P3 推进；不要引入第三方源码，交互自己实现。
+你是接手「钓鱼竿 Video Rod」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§12。
+项目是私有自用 Chrome MV3 扩展，主线是本地资源库；S0/S1a/S1b/自动入库已完成并全绿，下一步 S2 索引服务（js/library/indexer.js）。
+规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
+git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。
+改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome。
+开始前先按 docs/HANDOFF.md §5 跑一遍四套回归，确认全绿再动代码。
 ```
