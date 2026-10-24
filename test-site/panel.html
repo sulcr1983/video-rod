@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 F：图片清单面板</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; }
+    h1 { font-size: 18px; }
+    .grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+    .grid img { width: 160px; height: 160px; object-fit: cover; border-radius: 8px; }
+    .note { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>图片清单面板夹具</h1>
+  <p class="note">
+    真实尺寸（按短边）：480/300/320/400/300/300 → 小档 6 张；
+    1200/1200/480 → 中档（≥500）3 张，其中 1200/1200 也进大档（≥1200）2 张；
+    超大档（≥2000）0 张。另有 1 张 16px 小图、1 张重复 URL、1 张坏图应被过滤。
+  </p>
+  <div class="grid">
+    <!-- 小档（短边 100–499） -->
+    <img id="s1" src="media/cover.jpg" width="160" height="160" alt="cover 640x480">
+    <img id="s2" src="media/sprite.png" width="160" height="160" alt="sprite 300x300">
+    <img id="s3" src="media/thumb-320.png" width="160" height="160" alt="thumb 320x320">
+    <img id="s4" src="media/srcset-400.png" width="160" height="160" alt="srcset400">
+    <img id="s5" src="media/placeholder.png" width="160" height="160" alt="placeholder 600x300">
+    <img id="s6" src="media/data-300.png" width="160" height="160" alt="data300">
+    <!-- 中档（短边 ≥500） -->
+    <img id="m1" src="media/original-1200.png" width="160" height="160" alt="1200">
+    <img id="m2" src="media/srcset-1200.png" width="160" height="160" alt="srcset1200">
+    <img id="m3" src="media/cover.jpg?v=m3" width="160" height="160" alt="cover dup url">
+    <!-- 应被过滤 -->
+    <img id="x1" src="media/tiny.png" width="16" height="16" alt="小图">
+    <img id="x2" src="media/cover.jpg" width="160" height="160" alt="重复 URL">
+    <img id="x3" src="media/test.mp4" width="160" height="160" alt="坏图">
+  </div>
+</body>
+</html>

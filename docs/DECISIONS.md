@@ -402,6 +402,86 @@
 - **影响**：新增 `docs/YT-FEASIBILITY.md`；新增五个探针脚本 `tools/yt-probe.py` / `yt-clients.py` /
   `yt-dl-test.py` / `yt-feasibility.py` / `yt-sabr.py`；待建 `js/yt/`（page-bridge / nsig-sandbox / sabr-ump / downloader）。
 
+### ADR-039 实施补充（同日）
+
+- **已落地**：`js/yt/`（内容脚本注入 / 下载小窗 / n 沙箱 / fMP4 合并）、`lib/youtubei.min.js`、
+  `background.js` 的 `ytCollectFormats`。详见 `docs/YT-IMPLEMENTATION.md`。
+- **新增决策**：
+  1. **取格式按 MWEB → ANDROID → IOS → TVHTML5 依次试**，取第一个有直链的。单一客户端太脆（灰度按客户端+地区+时间走）。
+  2. **合并自己写，不调 ffmpeg**：googlevideo 的 `sparams` 含 `ip`，签名把 IP 绑死，
+     在线 FFmpeg（ADR-021 那条）换个 IP 去拉必然 403；ffmpeg.wasm 30MB+ 不划算。
+     分片 MP4 合并只需改 `track_ID` + 重建 `moov` + 按 `tfdt` 交织，约 200 行无依赖。
+- **验证状态**：容器合并已用公开 DASH 真实双轨验证（Chrome 解出双轨、时长正确、无 MediaError）；
+  注入按钮 / 开窗 / 消息链路已 CDP 真机验证。**活链路取格式尚未通过**——研究阶段对同一出口 IP
+  打了约 40 次接口，触发风控（`UNPLAYABLE：The page needs to be reloaded.`，四客户端一致），
+  待真实账号环境复验。若长期不通，退回路线 B（SABR 复放）。
+
+
+## ADR-038 尺寸档位按「短边」判定，并在档位上直接显示命中数
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：主流扩展（Imageye/Fatkun）都让用户手填「最小宽×高」。实测这是最不直观的一项：
+  用户不知道页面上有什么尺寸，只能瞎填再试，填 500 可能一张都筛不出来也不知道为什么。
+- **决策**：
+  1. 提供 **小≥100 / 中≥500 / 大≥1200 / 超大≥2000 / 自定义** 五个档位；
+  2. **按短边判定**——竖图 600×2000 算「中」而不是「大」，符合「这图清不清楚」的直觉；
+  3. 每个档位上**直接显示命中张数**（`中 8`），一眼看出该选哪档，不用试错；
+  4. 命中为 0 的档位置灰禁用，避免点进空列表。
+- **理由**：档位把「我不知道该填多少」变成「我看看哪个档有我想要的」，这是本项目相对现有扩展的改进点。
+- **影响**：`js/lib-image-util.js`（`shortSide`/`tierCounts`/`filterByTier`）、`js/image-panel.js`；TESTING §22。
+
+## ADR-039 面板下载复用 I3 队列，不另起一套
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：I3 的 `startDownload()` 自己扫描全页再跑队列，I4 需要「只下勾选的那几张」。
+  若复制一份队列逻辑，并发/去重/取消/进度就会有两套实现，必然走偏。
+- **决策**：把 I3 的队列抽成 `runQueue(items, opts)`，两条路径共用：
+  - `VRImgBridge.download(items)` → 面板用（不弹确认条，进度仍走底部进度条）；
+  - 「全部 N」按钮 → 仍走 `collectItems()` + `runQueue()`（行为不变）。
+- **理由**：队列是有状态、易出错的部分（并发池、取消标志、进度节流），只允许存在一份实现。
+- **影响**：`js/image-batch.js`（`runQueue`）、`js/image-panel.js`；回归 `cdp-image-batch-test.py` 35/35 未变。
+
+## ADR-040 自定义阈值用面板内联输入，不用 prompt
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：`prompt()` / `alert()` 在内容脚本里可能被站点 CSP 拦截，且样式无法控制、会打断视觉。
+- **决策**：点「自定义」在过滤区下方展开一行内联输入（`短边 ≥ [___] 确定 取消`），
+  回车生效、Esc 取消、非法值就地红字提示。
+- **理由**：可控、不会被 CSP 拦、与面板视觉一致；还能在输入时就提示格式错误。
+- **影响**：`js/image-panel.js`（`askCustomTier`）；TESTING §22 C8/C9。
+
+---
+
+## ADR-040 `onDeterminingFilename` 在 Chrome 147 失效：文件名保护改走 FSA
+
+- **日期**：2026-10-24 ｜ **状态**：✅（已实测，影响面待评估）
+- **背景**：YouTube 下载要做「按模板起名 + 三段目录落盘」，沿用项目原来的文件名保护套路：
+  下载前经 `vr-download-hook.js` 把 `url → filename` 预记账给 SW，
+  再由 SW 的 `chrome.downloads.onDeterminingFilename` 监听 `suggest()` 回来
+  （Chromium bug 579563 的官方 workaround，写法抄自 XBD/CocoCut/Imageye）。
+- **实测结果（Chrome for Testing 147）**：**这套不再生效。**
+
+  | 下载源 | 期望文件名 | 实际落盘 |
+  |---|---|---|
+  | `blob:` URL | `…_1080p.mp4` | `997b0753-…-ef4f343e356e.mp4`（UUID） |
+  | `http:` URL | `probe/http-name-test.mp4` | `_video.mp4`（URL 末段） |
+
+  钩子确实装上了（`downloads.download.__vrNameHooked === true`）、预记账也确实发了，
+  **但 `suggest()` 的结果被忽略**。连 http 都不生效 → 不是 blob 特例，是机制整体失效。
+- **决策**：
+  1. 新功能（YouTube 下载）**主通道改为 File System Access**：拿 `VRDB.getHandle('root')`
+     根句柄，按 `relPath` 建子目录、`createWritable()` 直写。文件名 100% 归我们管，
+     顺带消掉「整包塞进 blob 再交下载管理器」的内存峰值。这也解释了 Tubly 为什么开
+     「另存为」小窗用 `showDirectoryPicker`——同一个原因。
+  2. 无授权句柄 / 不支持 FSA 时退回 `chrome.downloads`，并在完成文案里
+     **如实告知「文件名可能被浏览器改成随机名」**，不假装成功。
+  3. **存量功能（弹窗下载、图片批量、m3u8 合并）暂不动**，但记为待办：
+     它们同样受此影响，只是以前没人注意落盘名不对。
+- **理由**：`downloads` API 没有改名口子，onDeterminingFilename 一旦失效就没有替代品；
+  FSA 是唯一能同时解决「名字」和「大文件内存」的正路，而且项目已经在用它做资源库迁移。
+- **影响**：`js/yt/yt-download.js`（`save()` 双通道）、`js/yt/yt-download.html`（引入 `library/db.js`）；
+  `docs/YT-IMPLEMENTATION.md` §4④；**待办：评估存量下载路径是否整体迁移到 FSA**。
+
 ---
 
 *新增决策在此追加，编号顺延。*
