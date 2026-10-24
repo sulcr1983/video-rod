@@ -5,7 +5,8 @@
  */
 if (typeof G === 'undefined') {
     importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js",
-        "/js/library/path.js", "/js/library/db.js", "/js/library/sw-library.js");
+        "/js/library/path.js", "/js/library/db.js", "/js/library/sw-library.js",
+        "/js/lib-image-util.js");
 }
 // 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用
 if (typeof self.VRPath === 'undefined') {
@@ -16,6 +17,9 @@ if (typeof self.VRDB === 'undefined') {
 }
 if (typeof self.VRLib === 'undefined') {
     try { importScripts("/js/library/sw-library.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+if (typeof self.VRImageUtil === 'undefined') {
+    try { importScripts("/js/lib-image-util.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
 
 // Service Worker 5分钟后会强制终止扩展
@@ -402,6 +406,7 @@ function vrDownloadWithName(url, filename, extra) {
         { url: url, filename: filename, saveAs: false, conflictAction: "uniquify" },
         extra || {}
     );
+    delete opts.meta;   // meta 只用于资源库预登记，不是 chrome.downloads 的合法参数
     return new Promise(function (resolve) {
         chrome.downloads.download(opts, function (id) {
             if (chrome.runtime.lastError || id === undefined) {
@@ -412,6 +417,230 @@ function vrDownloadWithName(url, filename, extra) {
             }
         });
     });
+}
+
+/* ==========================================================
+ * 图片悬停下载（I1/I2）：原图校验 + 单张落位
+ * 协议见 docs/IMAGE-I1I2-IMPL.md §4
+ * ========================================================== */
+
+var VR_IMG_EXT_OK = /^(jpg|jpeg|jpe|jfif|png|apng|webp|gif|avif|bmp|heic|heif|tif|tiff|ico)$/;
+
+/** 候选去重（保序） */
+function vrImgList(msg) {
+    const out = [];
+    const seen = Object.create(null);
+    const push = function (raw) {
+        const u = String(raw == null ? '' : raw).trim();
+        if (!u || seen[u]) { return; }
+        if (!/^(https?:|data:)/i.test(u)) { return; }
+        seen[u] = 1;
+        out.push(u);
+    };
+    const arr = Array.isArray(msg && msg.candidates) ? msg.candidates : [];
+    for (let i = 0; i < arr.length; i++) { push(arr[i]); }
+    if (msg) { push(msg.currentSrc); push(msg.url); }
+    return out;
+}
+
+/**
+ * 逐个候选 fetch：content-type 以 image/ 开头才算命中。
+ * 全失败不抛错，回退最后一个候选（fallback:true）——「绝不空点」。
+ */
+async function vrImgResolve(msg) {
+    const pageUrl = String((msg && msg.pageUrl) || '');
+    const list = vrImgList(msg);
+    if (!list.length) {
+        return { ok: false, url: '', tried: 0, fallback: true, code: 'IMG_E_NO_URL' };
+    }
+    let tried = 0;
+    for (let i = 0; i < list.length; i++) {
+        const url = list[i];
+        tried++;
+        if (/^data:/i.test(url)) {
+            // data URI 不需要网络校验；类型看前缀
+            if (/^data:image\//i.test(url) && !/^data:image\/svg/i.test(url)) {
+                return { ok: true, url: url, tried: tried, fallback: false, contentType: '' };
+            }
+            continue;
+        }
+        try {
+            const init = {
+                method: 'GET',
+                credentials: 'include',
+                cache: 'no-store',
+                headers: { 'Referer': pageUrl }
+            };
+            if (/^https?:/i.test(pageUrl)) { init.referrer = pageUrl; }
+            const r = await fetch(url, init);
+            const ct = String(r.headers.get('content-type') || '').toLowerCase();
+            try {
+                if (r.body && r.body.cancel) { r.body.cancel().catch(function () { /* ignore */ }); }
+            } catch (e) { /* ignore */ }
+            if (r.ok && ct.indexOf('image/') === 0) {
+                return { ok: true, url: url, tried: tried, fallback: false, contentType: ct };
+            }
+        } catch (e) { /* 换下一个候选 */ }
+    }
+    return {
+        ok: false,
+        url: list[list.length - 1],
+        tried: tried,
+        fallback: true,
+        code: 'IMG_E_FETCH'
+    };
+}
+
+/** 资源库子目录（vrLibSettings.subdir，缺省 video-rod） */
+function vrImgSubdir() {
+    return new Promise(function (resolve) {
+        try {
+            chrome.storage.local.get('vrLibSettings', function (obj) {
+                const s = obj && obj.vrLibSettings;
+                resolve((s && s.subdir) || 'video-rod');
+            });
+        } catch (e) { resolve('video-rod'); }
+    });
+}
+
+/** 本地日期 YYYYMMDD（图片线按本机直觉，不用 UTC） */
+function vrImgDate(d) {
+    const t = d || new Date();
+    const p = function (n) { return String(n).padStart(2, '0'); };
+    return String(t.getFullYear()) + p(t.getMonth() + 1) + p(t.getDate());
+}
+
+/* DNR 会话规则：给单个图片 URL 的下载请求补 Referer。
+ * 为什么不用 downloads.download 的 headers：Referer 属浏览器受控头，
+ * 传进去直接报 "Unsafe request header name"，下载根本发不出去。
+ * 规则按 urlFilter 精确匹配 + 一次性使用，用完即撤。 */
+var VR_IMG_RULE_BASE = 9000;
+
+function vrImgRuleId() {
+    // 9000 起，避开 function.js 用 tabId 当 id 的既有规则
+    return VR_IMG_RULE_BASE + (Date.now() % 900);
+}
+
+function vrImgRefererRule(url, pageUrl) {
+    return new Promise(function (resolve) {
+        if (!chrome.declarativeNetRequest) { resolve(0); return; }
+        const id = vrImgRuleId();
+        // urlFilter 用「去掉协议的完整 URL」做子串匹配：比 ||域名 更精确，
+        // 又不必处理 DNR 的锚点语法；同一张图的多次点击各自成规则，互不影响。
+        const filter = String(url).replace(/^https?:\/\//i, '');
+        try {
+            chrome.declarativeNetRequest.updateSessionRules({
+                removeRuleIds: [id],
+                addRules: [{
+                    id: id,
+                    priority: 1,
+                    action: {
+                        type: 'modifyHeaders',
+                        requestHeaders: [{ header: 'Referer', operation: 'set', value: pageUrl }]
+                    },
+                    condition: {
+                        urlFilter: filter,
+                        resourceTypes: ['image', 'xmlhttprequest', 'media', 'other']
+                    }
+                }]
+            }, function () {
+                resolve(chrome.runtime.lastError ? 0 : id);
+            });
+        } catch (e) {
+            resolve(0);
+        }
+    });
+}
+
+function vrImgClearRefererRule(id) {
+    try {
+        chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [id] });
+    } catch (e) { /* ignore */ }
+}
+
+function vrImgExt(url, contentType) {
+    const U = self.VRImageUtil;
+    let ext = U ? U.extFromContentType(contentType) : '';
+    if (!ext && U) { ext = U.extFromUrl(url); }
+    if (!ext) {
+        const m = String(url || '').split(/[?#]/)[0].match(/\.([a-z0-9]{2,5})$/i);
+        ext = m ? m[1].toLowerCase() : '';
+    }
+    if (!VR_IMG_EXT_OK.test(ext)) { ext = 'jpg'; }
+    return ext;
+}
+
+/**
+ * 单张下载：命名 <日期>_<标题>.<ext>，落 video-rod/<平台>/<博主>/图片/
+ * 走 vrDownloadWithName（ADR-027 文件名保护），并预登记资源库 meta。
+ */
+async function vrImgDownload(msg) {
+    const P = self.VRPath;
+    const url = String((msg && msg.url) || '').trim();
+    if (!url || !/^(https?:|data:)/i.test(url)) {
+        return { ok: false, code: 'IMG_E_NO_URL', message: '没找到可下载的图片' };
+    }
+    if (!P || !P.buildRelPath) {
+        return { ok: false, code: 'IMG_E_FETCH', message: '路径模块未加载' };
+    }
+
+    const pageUrl = String((msg && msg.pageUrl) || '');
+    const ext = vrImgExt(url, msg && msg.contentType);
+    let title = '';
+    try { title = P.cleanSeg(String((msg && msg.title) || '')) || ''; } catch (e) { title = ''; }
+    if (!title) { title = '图片'; }
+    if (title.length > 60) { title = title.slice(0, 60); }
+
+    const fileName = vrImgDate() + '_' + title + '.' + ext;
+    const subdir = await vrImgSubdir();
+    let relPath;
+    try {
+        relPath = P.buildRelPath({
+            pageUrl: pageUrl || url,
+            type: 'image',
+            ext: ext,
+            fileName: fileName,
+            subdir: subdir
+        });
+    } catch (e) {
+        return { ok: false, code: 'IMG_E_FETCH', message: '路径拼装失败' };
+    }
+
+    // 资源库预登记：平台/博主从最终相对路径反解，保证入库字段与磁盘一致
+    let meta = {
+        relPath: relPath,
+        platform: '', platformName: '',
+        creatorFull: '', creatorId: '',
+        type: 'image',
+        pageUrl: pageUrl,
+        title: String((msg && msg.title) || '')
+    };
+    try {
+        const p = P.parseRelPath(relPath) || {};
+        meta.platform = p.platform || '';
+        meta.platformName = p.platformName || '';
+        meta.creatorFull = p.creatorFull || '';
+        meta.creatorId = p.creatorId || '';
+        meta.type = p.type || 'image';
+    } catch (e) { /* 反解失败不影响下载 */ }
+
+    // 防盗链：chrome.downloads.download 不接受 Referer 这类受控头
+    // （实测直接报 "Unsafe request header name"），只能用 DNR 会话规则补。
+    const ruleId = /^https?:/i.test(pageUrl) ? await vrImgRefererRule(url, pageUrl) : 0;
+
+    let downloadId = null;
+    try {
+        downloadId = await vrDownloadWithName(url, relPath, { meta: meta });
+    } catch (e) {
+        downloadId = null;
+    } finally {
+        // 规则只服务这一笔下载，成功与否都要撤，避免规则堆积
+        if (ruleId) { vrImgClearRefererRule(ruleId); }
+    }
+    if (downloadId === null || downloadId === undefined) {
+        return { ok: false, code: 'IMG_E_FETCH', message: '下载发起失败，站点可能限制了直链', path: relPath };
+    }
+    return { ok: true, downloadId: downloadId, path: relPath };
 }
 
 // 文件名确定事件：官方约束每扩展只许注册一个监听器，suggest 必须同步调用。
@@ -478,6 +707,24 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             sendResponse({ ok: false, code: 'LIB_E_SW', message: String(e) });
             return true;
         }
+    }
+    // 图片悬停下载（I1/I2）：同样放在 init 检查之前——SW 冷启动时消息可能先到。
+    // 内容脚本同时带 Message 与 action，兼容两套命名。
+    if (Message && (Message.Message === 'vrImg.resolve' || Message.action === 'vrImg.resolve')) {
+        vrImgResolve(Message).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, url: '', tried: 0, fallback: true, code: 'IMG_E_FETCH', message: String(e) });
+        });
+        return true;
+    }
+    if (Message && (Message.Message === 'vrImg.download' || Message.action === 'vrImg.download')) {
+        vrImgDownload(Message).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
+        });
+        return true;
     }
     if (!G.initLocalComplete || !G.initSyncComplete) {
         sendResponse("error");
