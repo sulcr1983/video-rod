@@ -121,6 +121,7 @@ video-rod/
 | 路径引擎单测 | `tools/test-path.js` | v1.0 | 已定稿 | **48/48**：覆盖 4 个平台识别、类型推断、博主段、长度截断、`file://` 往返编码 |
 | S1a 端到端验收脚本 | `tools/cdp-s1a-test.py` | v1.0 | 已定稿 | **17/17**：扩展加载 + 设置页 7 项 + 三段目录落盘 6 项 + 控制台零错误（TESTING §10） |
 | 图片悬停下载调研 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` | v0.1（已拍板） | 已定稿 | 参考 ClickSave / Imageye / Image Swooper / Cxrompix；三项拍板（双入口 / 清单面板 / 优先原图）+ 防盗链回退补强 |
+| 图片下载后自动入库调研 | `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | v0.1 | 待评审 | Downloads API 完成事件 + 预登记元数据（session storage）+ 懒缩略图；三方案对比、7 个坑与解法、数据契约、8 条验收 |
 | 图片悬停下载方案 | `docs/IMAGE-DOWNLOAD-PLAN.md` | v1.2 | 待评审 | 三态交互、原图五级候选 + SW 校验回退 + DNR 补 Referer、批量队列；**v1.2 新增**尺寸档位（小/中/大/超大/自定义，按短边判定并显示命中数）与图集模式（自动滚动 + 分页翻页，10 页上限/可停止/连续 2 页失败中止） |
 | 图片悬停下载原型 | `deliverables/prototypes/image-hover-prototype-v1.html` | v1.2 | 待评审 | 单文件零依赖：SVG 封面、悬停 300ms 出按钮、单张/全部/确认条/进度、浮标 + 清单面板（**尺寸档位**、图集加载下一页、过滤/勾选/批量）、键盘操作；**CDP 24/24** |
 | 图片悬停原型截图 | `deliverables/assets/image-hover-v1-{hover,confirm,progress,panel,album}.png` | v1.2 | 已定稿 | 五态实拍：悬停按钮 / 全下确认条 / 批量进度 / 清单面板（档位+图集条） / 图集加载后 24 张 |
