@@ -34,10 +34,10 @@
 |---|---|
 | 位置 | `E:\test\video-rod` |
 | 分支 | `master` → `origin/master` |
-| HEAD | `8527dec M8 文件名保护：自注册 onDeterminingFilename + URL 预记账，修星愿忽略 filename` |
-| 文件数 | 166（不含 `.git`），pack 8.94 MiB |
+| HEAD | `75a2d5f docs: 根目录改为系统下载目录下的 video-rod 子目录（零拷贝、不混日常下载）` |
+| 文件数 | 174（不含 `.git`）；pack 约 9.2 MiB |
 | 完整性 | `git fsck` 退出码 0 |
-| 工作区 | 干净，唯一新增：`docs/MOBILE-RESEARCH.md`（未跟踪，**未提交**） |
+| 工作区 | **干净**（`git status` 无输出）；`docs/MOBILE-RESEARCH.md` 已于 `3c7f409` 提交 |
 
 ---
 
@@ -58,7 +58,7 @@
 
 | # | 事项 | 说明 |
 |---|---|---|
-| 1 | **资源库方案二次评审** | 方案 v1.5 + 原型 v1.3 已就绪；审计手册见 `docs/LIBRARY-PLAN-审计方案.md` |
+| 1 | **资源库方案二次评审** | 方案 **v1.7** + 原型 v1.3 已就绪；审计手册见 `docs/LIBRARY-PLAN-审计方案.md` |
 | 2 | ~~**P0 前置探针**~~ | ✅ **已于 2026-10-24 完成，三项全过**（`file://` 直读 + 视频 seek + `downloads.search` 绝对路径），详见 TESTING §9 |
 | 3 | **原型 v1.3 回归测试** | 新增 5 项交互（星标/标签/键盘导航/缩略图带/时间气泡）需 CDP 断言通过后再交付评审 |
 | 4 | 根目录方案已定（v1.7） | 默认 `<Chrome 下载目录>\video-rod`——系统下载目录下的子目录，**零拷贝、不与日常下载混放、不改 Chrome 设置**；自定义目录为 B 模式（`E:\test\video-rod\download` 保留作可选目标） |
