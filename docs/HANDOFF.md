@@ -122,14 +122,33 @@
 
 ## 5. 测试基线（改完必跑）
 
-### 5.1 起环境
+### 5.1 起环境（推荐：一键启动器）
+
+**不用再手动开浏览器。** `tools/cdp-run.py` 负责：自动挑空闲端口 → 起全新 profile 的浏览器
+→ 需要时拉起测试站 → 跑完（含失败/异常）一定关掉浏览器。
 
 ```powershell
-# 1) 测试站（18080）
+$py = "C:\Users\XPENG\AppData\Local\Programs\Python\Python312\python.exe"
+
+& $py tools/cdp-run.py --suite full          # 全部 11 套，约 2 分钟
+& $py tools/cdp-run.py --suite library       # 资源库 4 套
+& $py tools/cdp-run.py --suite image         # 图片线 2 套
+& $py tools/cdp-run.py tools/cdp-trash-test.py   # 单套
+& $py tools/cdp-run.py --keep tools/cdp-viewer-test.py   # 跑完保留浏览器（调试）
+```
+
+- 每次自动用**新 profile + 新端口**，天然规避 §6.1 的 SW 脚本缓存问题，不用再记端口号；
+- 跑完自动关闭浏览器；profile 目录留在 `.work/profiles/`（要清理就整个删掉，不要单个删）；
+- 退出码 0 = 全绿，1 = 有套件失败（失败的套件不会中断后续，便于一次看全）。
+
+手动起环境（只在需要排查启动问题时）：
+
+```powershell
+# 测试站（18080）
 Start-Process python -ArgumentList '-m','http.server','18080','--bind','127.0.0.1' `
   -WorkingDirectory 'E:\test\video-rod\test-site'
 
-# 2) 浏览器（改了 SW 引入的脚本就必须换新 profile + 新端口，见 §6.1）
+# 浏览器（改了 SW 引入的脚本就必须换新 profile + 新端口，见 §6.1）
 $chrome = "C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
 Start-Process $chrome -ArgumentList @(
   '--remote-debugging-port=9346',
@@ -137,6 +156,12 @@ Start-Process $chrome -ArgumentList @(
   '--load-extension=E:\test\video-rod',
   '--no-first-run','--no-default-browser-check','about:blank')
 ```
+
+### 5.1.1 标签不会残留
+
+所有脚本用 `Target.createTarget` 建的标签，由 `cdp_client.Cdp` **自动登记**，进程退出时
+（含 `sys.exit` / 异常）统一 `Target.closeTarget` 关掉——不用逐个脚本写 close。
+这是 `atexit` 兜的底，脚本里**不要**再手动关标签，重复关会报错但不影响结果。
 
 ### 5.2 十一套回归（按顺序跑）
 

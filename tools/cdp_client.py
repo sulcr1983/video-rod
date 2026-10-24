@@ -1,5 +1,9 @@
 # video-rod CDP 测试公用客户端
 # 供 cdp-m1-test.py / cdp-m2-test.py 等复用
+#
+# 标签生命周期：脚本用 Target.createTarget 建的标签全部登记在 cdp.created 里，
+# 进程退出（含 sys.exit / 异常）时由 atexit 统一关闭，避免测试跑完留下一堆标签页。
+import atexit
 import json
 import os
 import urllib.request
@@ -17,6 +21,9 @@ class Cdp:
                                     suppress_origin=True, timeout=60)
         self.mid = 0
         self.events = []
+        self.created = []          # 本进程自建的标签，退出时统一关闭
+        self._closed = False
+        atexit.register(self.close_created)
 
     def send(self, method, params=None, session=None):
         self.mid += 1
@@ -32,8 +39,31 @@ class Cdp:
             if r.get("id") == self.mid:
                 if "error" in r:
                     raise RuntimeError(f"{method}: {r['error']}")
-                return r.get("result", {})
+                res = r.get("result", {})
+                # 自动登记自建标签（脚本无需逐个调 close）
+                if method == "Target.createTarget" and res.get("targetId"):
+                    self.created.append(res["targetId"])
+                return res
             self.events.append(r)
+
+    def close_created(self):
+        """关闭本进程自建的全部标签。幂等；浏览器已关时静默跳过。"""
+        if self._closed:
+            return 0
+        self._closed = True
+        closed = 0
+        for tid in list(self.created):
+            try:
+                self.send("Target.closeTarget", {"targetId": tid})
+                closed += 1
+            except Exception:
+                pass          # 浏览器退出 / 标签已被脚本自己关掉
+        self.created = []
+        try:
+            self.ws.close()
+        except Exception:
+            pass
+        return closed
 
     def eval(self, expr, session, await_promise=True):
         r = self.send("Runtime.evaluate", {
