@@ -168,7 +168,7 @@
 - 全屏查看器：图片/视频单击打开，深色遮罩、`←/→` 翻页、`Esc` 关闭、底部信息条 +「在文件中打开」。
 - 真实缩略图：`VRThumbs` 并发 2、`Image`/`video` 抽帧、WebP 存 IDB；失败保留类型占位。
 - 新增文件：`library.html`、`css/library.css`、`js/library/ui.js`、`js/library/thumbs.js`；`manifest` 补 `unlimitedStorage`。
-- 截图：`library-page-grid.png`（1440）、`library-page-list.png`、`library-page-viewer.png`、`library-page-900.png`（860）。
+- 截图：v1 的网格/列表/查看器截图已由 §11.7 的 v2 截图替代（列表视图改为表格、查看器改为 v2）。
 
 ### 10.3 验收
 
@@ -278,7 +278,7 @@
 | 表格 | 8 列（预览/名称/平台/博主/类型/大小/下载时间/星标），表头底色、数字右对齐、行悬停 |
 | 响应式 | ≤1199 隐藏博主列、≤999 隐藏类型列、≤899 隐藏时间列 + 侧栏横条、≤699 单列 |
 | 验收 | **30/30**（TESTING §16）；回归 S1a 17/17、索引 35/35、自动入库 14/14、迁移 39/39 |
-| 截图 | `library-page-{grid,cards,table,900,dark,viewer}.png` |
+| 截图 | `library-page-{grid,overview,cards,table,900,dark}.png` |
 
 > 设计取舍：概览固定为「索引全局」，避免筛选时数字跳动；表格是管理视图，进入后自动收起图表区。
 
