@@ -57,12 +57,25 @@ def clear_seen(cdp, osid):
     return ev(cdp, osid, """new Promise(r => chrome.storage.local.remove('vrImgDownloaded', () => r(1)))""")
 
 
+# 只清「测试站」自己产生的文件。
+# 不要无差别删整个目录：一次删几十个文件会触发宿主的安全删除阈值，
+# 测试直接被拦掉（踩过）。按文件名前缀圈定范围，数量天然就小。
+TEST_PREFIXES = ("测试站", "20261024_测试站")
+
+
+def is_test_artifact(name):
+    low = name.lower()
+    if not low.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        return False
+    return any(name.startswith(pfx) for pfx in TEST_PREFIXES)
+
+
 def clean_disk(dl_dir):
     if not os.path.isdir(dl_dir):
         return 0
     n = 0
     for name in os.listdir(dl_dir):
-        if not name.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        if not is_test_artifact(name):
             continue
         try:
             os.remove(os.path.join(dl_dir, name))
@@ -73,10 +86,10 @@ def clean_disk(dl_dir):
 
 
 def disk_images(dl_dir):
+    """只统计测试站产生的图片，避免把用户已有文件算进增量。"""
     if not os.path.isdir(dl_dir):
         return set()
-    return {n for n in os.listdir(dl_dir)
-            if n.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))}
+    return {n for n in os.listdir(dl_dir) if is_test_artifact(n)}
 
 
 def wait_disk_growth(dl_dir, before, expect, timeout=25.0):

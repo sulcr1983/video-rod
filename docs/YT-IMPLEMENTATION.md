@@ -61,8 +61,10 @@ Service Worker
 下载小窗
    ↓ fetch 视频轨 + 音频轨（ReadableStream，带进度）
    ↓ VRFmp4.merge()  ← 容器级合并
-   ↓ chrome.downloads.download(blob)   ← 经 vr-download-hook 保住文件名
+   ↓ 落盘：FSA 直写资源库三段目录（无授权时退回 chrome.downloads）
 Downloads/video-rod/YouTube/<作者>_<标题>_<高>p.mp4
+   ↓ 写盘成功后调 vrLib.ingest  ← FSA 没有下载事件，必须显式入库（ADR-044）
+资源库立刻出现这张卡（不用等 indexer 全量扫描）
 ```
 
 ## 四、三个关键设计决定
@@ -158,7 +160,7 @@ Downloads/video-rod/YouTube/<作者>_<标题>_<高>p.mp4
 | 直链时效 | googlevideo 直链约 6 小时过期 | 已按需即时取 + 403 自动重解一次 |
 | 风控 | 短时间批量下载会被限流 | 已有四客户端轮替；后续加节流 |
 | 目录授权 | FSA 需要资源库根目录已授权，首次要手动授权 | 未授权时自动退回下载器并明示 |
-| 索引 | FSA 写入后不广播 `vrLib.record`（没有下载事件），靠 indexer 全量扫描纳入 | 写完后主动触发一次增量索引 |
+| 索引 | ~~FSA 写入后靠 indexer 全量扫描纳入~~ → **已修**：写盘成功后主动调 `vrLib.ingest` 直接入库（ADR-044），资源库立刻可见 | ✅ 已完成 |
 
 ## 七、复现
 

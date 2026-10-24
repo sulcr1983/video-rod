@@ -100,6 +100,67 @@
         return /^_verify\//.test(rel) || /^_回收站\//.test(rel) || /(^|\/)_verify\//.test(rel);
     }
 
+    /**
+     * 直接入库一条「已经写到磁盘上的文件」。
+     *
+     * 为什么需要这条：常规入库靠 chrome.downloads 的 complete 事件（writeOne 用 d.filename
+     * 反推相对路径）。但 YouTube 下载走 File System Access 直写（ADR-040），
+     * **根本没有下载事件**，等下载器那条链路永远等不到 —— 资源库里就不会出现这张卡。
+     *
+     * 入参由调用方给全（relPath 是相对资源库根的路径，已剥掉前缀），
+     * 这里只补 size/mtime 这类能从磁盘拿的信息。
+     *
+     * @param {object} info { relPath, platform, platformName, creatorFull, creatorId,
+     *                        type, title, pageUrl, size, mtime, mime, sourceUrl }
+     * @returns {Promise<object|null>} 入库后的 item（跳过则 null）
+     */
+    function ingestDirect(info) {
+        var m = info || {};
+        var rel = String(m.relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        if (!rel || skippedRel(rel)) { return Promise.resolve(null); }
+
+        var parsed = {};
+        if (root.VRPath && root.VRPath.parseRelPath) {
+            try { parsed = root.VRPath.parseRelPath(rel) || {}; } catch (e) { parsed = {}; }
+        }
+
+        var item = {
+            relPath: rel,
+            absPath: m.absPath || '',
+            platform: m.platform || parsed.platform || '',
+            platformName: m.platformName || parsed.platformName || '',
+            creatorFull: m.creatorFull || parsed.creatorFull || '',
+            creatorId: m.creatorId || parsed.creatorId || '',
+            type: m.type || parsed.type || '',
+            fileName: parsed.fileName || rel.split('/').pop(),
+            size: Number(m.size) || 0,
+            mtime: Number(m.mtime) || Date.now(),
+            mime: m.mime || '',
+            sourceUrl: m.sourceUrl || '',
+            pageUrl: m.pageUrl || '',
+            title: m.title || '',
+            downloadId: 0,
+            starred: 0,
+            tags: [],
+            state: 'ok'
+        };
+
+        // 同名重下时保留星标与标签（与 writeOne 同口径）
+        return root.VRDB.getFile(rel).then(function (old) {
+            if (old) {
+                if (old.starred) { item.starred = old.starred; }
+                if (old.tags && old.tags.length) { item.tags = old.tags; }
+            }
+            return root.VRDB.putFiles([item]);
+        }).then(function () {
+            notify(item);
+            return item;
+        }).catch(function (e) {
+            console.warn('[vrLib] 直接入库失败', e);
+            return null;
+        });
+    }
+
     function writeOne(meta, d, key) {
         return getRoot().then(function (rootDir) {
             var rel = relFromAbs(d.filename, rootDir);
@@ -208,6 +269,15 @@
             sendResponse({ ok: true });
             return true;
         }
+        // FSA 直写的文件没有下载事件，由写入方调这个直接入库（YouTube 用）
+        if (t === 'vrLib.ingest') {
+            ingestDirect(Message.info || {}).then(function (item) {
+                sendResponse({ ok: !!item, item: item });
+            }).catch(function (e) {
+                sendResponse({ ok: false, code: 'LIB_E_DB', message: String(e) });
+            });
+            return true;
+        }
         if (t === 'vrLib.list') {
             root.VRDB.getAllFiles().then(function (list) {
                 sendResponse({ ok: true, list: list });
@@ -239,6 +309,7 @@
 
     root.VRLib = {
         record: record,
+        ingestDirect: ingestDirect,
         handleMessage: handleMessage,
         // 测试用：清空 pending 缓存（不影响磁盘索引）
         _resetRootCache: function () { rootCache = null; }
