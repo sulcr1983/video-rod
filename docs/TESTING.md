@@ -569,3 +569,52 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），`
 2. 深色模式只做了 token 设计与截图，未逐项测对比度。
 3. 表格在 <640px 仍横向滚动（列多，堆叠会丢语义），属有意取舍。
 4. `lang="zh-CN"` 固定，i18n 切语言后不同步（原页面为 `en`，同样问题）。
+
+
+---
+
+## 15. popup 与资源库统一重设计验收（2026-10-24）
+
+### 15.1 环境
+
+Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），测试站 18080；资源库用 6 条种子数据（视频/图片/音频/两平台/星标/缺失）验证。
+
+### 15.2 popup
+
+| 项 | 结果 |
+|---|---|
+| 定宽 | 400px，无横向滚动 |
+| 主色 | 强调蓝 `#1a73e8`；批量下载按钮蓝底白字；筛选胶囊 chip |
+| 控件 | 勾选 17px、图标按钮 30px、`:focus-visible` 蓝环 |
+| M1 冒烟 | `errors: []`；卡片 1 张（图片夹具页）、设置视图开合、批量命名、全选正常 |
+| M2 下载 | 两条下载完成、去重生效、`errors: []` |
+
+> 视频页 `Page.captureScreenshot` 会卡死（CDP/媒体合成限制），不代表产品问题；截图改用图片夹具页。
+
+### 15.3 资源库
+
+| 项 | 结果 |
+|---|---|
+| 新增文件 | `library.html`、`css/library.css`、`js/library/ui.js`、`js/library/thumbs.js` |
+| 布局 | 全宽；侧栏 208px；卡片 `minmax(320px,1fr)`、4:3 缩略图；1280px 三列 |
+| 浏览 | 6 条渲染、类型/平台/星标筛选、搜索、排序、网格/列表切换 |
+| 查看器 | 单击打开、`←/→` 翻页、`Esc` 关闭、底部信息 +「在文件中打开」 |
+| 响应式 | 900px / 860px 无横向溢出；860px 侧栏折叠为顶部筛选 chips |
+| 端到端 | `tools/cdp-library-page-test.py` **22/22**，控制台 0 error |
+
+### 15.4 回归
+
+| 套件 | 结果 |
+|---|---|
+| `tools/cdp-s1a-test.py` | **17/17** |
+| `tools/cdp-index-test.py` | **14/14** |
+| `tools/cdp-indexer-test.py` | **35/35** |
+| `tools/cdp-m1-test.py` | `errors: []`（报告型） |
+| `tools/cdp-m2-test.py` | 2 条下载 + 去重，`errors: []` |
+
+### 15.5 未覆盖 / 边界
+
+1. 查看器视频暂用原生 `controls`；S4 再换自绘控件、↑↓ 队列与连播。
+2. 缩略图/预览依赖「允许访问文件网址」，正式 Chrome 需手动开启。
+3. 资源库尚未做 1k 条性能压测（缩略图懒加载已按 IntersectionObserver 实现）。
+4. 源文件被移动/删除时只标灰，重新定位留 S5。

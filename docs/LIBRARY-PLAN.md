@@ -706,15 +706,15 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 
 | # | 文件 | 类型 | 职责 | 依赖 |
 |---|---|---|---|---|
-| 1 | `library.html` | 新增 | 资源库独立页面：顶栏/侧栏/网格/列表/时间线/灯箱/视频弹层/右键菜单/批量条/回收站/迁移弹窗 | 下列全部 js + css |
-| 2 | `css/library.css` | 新增 | 页面样式（沿用 popup 浅色变量） | — |
+| 1 | `library.html` | 已建 | 资源库独立页面：全宽网格/列表 + 全屏查看器（S3 核心；灯箱/回收站/批量条留 S4–S5） | 下列 js + css |
+| 2 | `css/library.css` | 已建 | 页面样式：与设置页/popup 共用蓝灰 token、全宽大卡、响应式、全屏查看器 | — |
 | 3 | `js/library/path.js` | 已建 | 目录拼装、相对/绝对路径互转、`file://` URL 编码、长度与保留名校验 | `naming.js`（仅 `sanitizeName`） |
 | 4 | `js/library/db.js` | 新增 | IndexedDB 封装（file/thumb/setting/handle/oplog 五个 store） | — |
 | 5 | `js/library/indexer.js` | 已建 | 三源建索引（downloads.search / 快照 / FSA 全量扫描）+ 失效条目核对 + 快照写回 | `db.js`、`path.js` |
-| 6 | `js/library/thumbs.js` | 新增 | 缩略图队列（并发 2、懒生成、失败占位、WebP 缓存） | `db.js` |
+| 6 | `js/library/thumbs.js` | 已建 | 缩略图队列（并发 2、IntersectionObserver 懒触发、视频抽帧、失败占位、WebP 缓存） | `db.js`、`path.js` |
 | 7 | `js/library/trash.js` | 新增 | 软删除、恢复、清空、重命名（走 FSA 写权限） | `db.js`、`path.js` |
 | 8 | `js/library/migrate.js` | 新增 | 迁移 dry-run / 执行 / 校验 / 回滚（日志 JSON） | `db.js`、`path.js` |
-| 9 | `js/library/ui.js` | 新增 | 状态容器 + 过滤/排序/渲染（网格、列表、时间线、侧栏、博主速览） | `db.js` |
+| 9 | `js/library/ui.js` | 已建 | 状态容器 + 过滤/排序/渲染（网格、列表、侧栏、平台/博主、全屏查看器） | `db.js`、`thumbs.js` |
 | 10 | `js/library/lightbox.js` | 新增 | 图片灯箱：缩放、拖拽、切换、缩略图带、信息栏 | `ui.js` |
 | 11 | `js/library/video.js` | 新增 | 视频弹层：**自绘控件**、↑↓ 切换、←→ ±5s（Shift ±30s）、空格、连播、进度气泡 | `ui.js` |
 | 12 | `js/library/keyboard.js` | 新增 | 全局键盘路由：`/` `J/K` `Enter` `F` `Esc`，按弹层优先级分发 | `ui.js`、`lightbox.js`、`video.js` |
@@ -946,7 +946,7 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | **S1a** ✅ | `path.js` + 下载路径接管 + 设置页「资源库」分区 | **已完成 2026-10-24**：新下载落 `<下载目录>/video-rod/平台/博主/类型/`；设置页可改子目录名、切模式、校验落盘 | 单测 **48/48** + 端到端 **17/17**（TESTING §10）；实落 `Download\video-rod\其他网页\127.0.0.1\视频\test.mp4` | `feat(library): 三段中文目录（下载目录子目录）+ 根目录设置与落盘校验` |
 | **S1b** ✅ | 迁移（结构迁移 + 换根迁移 + 改子目录名） | **已完成 2026-10-24**：`migrate.js` 引擎 + `migrate-ui.js` 面板；dry-run / 复制 / 校验（size + 首尾 64KB）/ 删源 / 日志 / 回滚 | 端到端 **39/39**（TESTING §12）；S1a 回归 17/17、自动入库回归 14/14 | `feat(library): 迁移——dry-run/复制/校验/回滚（FSA 句柄）` |
 | **S2** ✅ | `db.js` ✅ + `sw-library.js` ✅ + `indexer.js` ✅ | **已完成 2026-10-24**：三源建索引（downloads/快照/全量）+ `reconcile()` + 快照落盘与恢复；设置页「索引维护」三个入口 | 端到端 **35/35**（TESTING §13）；回归 57/17/14/39 全绿；1k 首屏性能留 S3 页面实测 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
-| **S3** | `library.html` + `ui.js` + `thumbs.js` | 可浏览、可筛选、可搜索 | TESTING §8 的 A/C/D 组 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
+| **S3** ✅ | `library.html` + `ui.js` + `thumbs.js` | **已完成 2026-10-24**：全宽大卡网格/列表、类型/平台/星标筛选、搜索/排序、全屏查看器、懒缩略图 | 端到端 **22/22**（TESTING §15）；回归 17/14/35 全绿 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
 | **S4** | `lightbox.js` + `video.js` + `keyboard.js` | 看图/看视频/键盘 | TESTING §8 的 E/F/H/I 组 | `feat(library): 灯箱与视频弹层——缩略图带 + 自绘控件键盘` |
 | **S5** | `trash.js` + 右键菜单 + 删除/回收站 UI | 删除、恢复、清空、重命名 | TESTING §8 的 B/G 组 | `feat(library): 删除回收站与右键菜单——可恢复、二次确认` |
 
@@ -1208,4 +1208,4 @@ VRIndex.snapshot() -> Promise<string>       // 返回落盘绝对路径
 | v1.8 | 2026-10-24 | **S1b 迁移规格定死**：新增 §13.10——扩展无通用文件写权限，迁移只能走 FSA 句柄（`planRebase` 参数由路径改为 DirectoryHandle）；三种形态共用扫描/预演/复制/校验/删源/日志/回滚；冲突只比 size 不比 mtime；异常→错误码映射；迁移后索引同步口径；8 条验收；测试用 OPFS 句柄注入绕开原生目录选择器 |
 | v1.9 | 2026-10-24 | **S2 索引规格定死**：新增 §13.11——三源分工（downloads 只 upsert 不判缺失；snapshot/full 扫不到标 `missing` 不删除）；根解析三档（内存 → VRDB handle → 旧授权库）；快照不存 absPath、按当前根重算；reconcile 优先 `downloads.exists` 再 FSA；设置页三个维护入口；8 条验收；测试 `tools/cdp-indexer-test.py` |
 | v2.0 | 2026-10-24 | **S2 索引落地**：§13.11 按实现校订（句柄指向资源库根、`relPath` 首段固定 `subdir`；full 改为内置 walk）；§13.9 S2 标 ✅（端到端 35/35，回归 57/17/14/39 全绿）；TESTING 新增 §13；DELIVERABLES 登记 `indexer.js` 与 `cdp-indexer-test.py` |
-
+| v2.1 | 2026-10-24 | **S3 资源库页面落地**：全宽大卡（4:3、min 320px）+ 全屏查看器 + 懒缩略图；`library.html`/`library.css`/`ui.js`/`thumbs.js` 建成，端到端 22/22（TESTING §15）；`manifest` 补 `unlimitedStorage` |

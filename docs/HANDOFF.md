@@ -16,7 +16,7 @@
 
 ## 1. 一句话现状
 
-这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 下载完成自动入库 → S2 索引服务**，五套回归全绿；
+这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面**，六套回归全绿；
 图片悬停下载只完成了**调研 + 方案 v1.2 + 可交互原型 v1.2**，**代码一行未写**。
 下一步是 **S3 资源库页面**（`library.html` + `ui.js` + `thumbs.js`），索引数据底座已经就绪。
 
@@ -69,7 +69,8 @@
 | `js/library/migrate-ui.js` | 设置页 `#vrLibMigPanel`：选目录 / 预演表格 / 进度 / 回滚 | ✅ |
 | `js/vr-download-hook.js` | 页面侧包装 `chrome.downloads.download`：先记账（含资源库 meta）再下载，解决 Chromium bug 579563 丢文件名 | ✅（ADR-027） |
 | `js/library/indexer.js` | `VRIndex`：三源建索引（downloads / 快照 / FSA 全量）+ `reconcile()` + 快照落盘与恢复；根解析三档；缺失只标不删（ADR-030） | ✅ 35/35 |
-| `library.html` / `css/library.css` / `ui.js` / `thumbs.js` / `lightbox.js` / `video.js` / `keyboard.js` / `trash.js` / `archive.js` | S3–S5 的文件，**均不存在** | ❌ |
+| `library.html` / `css/library.css` / `js/library/ui.js` / `js/library/thumbs.js` | 资源库页面（S3 核心）：全宽大卡网格/列表、筛选/搜索/排序、全屏查看器、懒缩略图 | ✅ 22/22 |
+| `lightbox.js` / `video.js` / `keyboard.js` / `trash.js` / `archive.js` | S4–S5 的文件，**均不存在** | ❌ |
 
 ### 3.3 关键数据流（别绕开）
 
@@ -101,6 +102,7 @@
 | **自动入库** | 预登记 + 完成确认 + 索引落库 + 设置页索引状态/最近入库 | **14/14**（TESTING §11） |
 | **S1b** | 三种迁移 + dry-run + 流式复制 + 校验 + 回滚 + 迁移后索引同步 | **39/39**（TESTING §12） |
 | **S2** | `indexer.js`：三源建索引 + 快照破死锁 + reconcile + 设置页三个维护入口 | **35/35**（TESTING §13） |
+| **S3** | 资源库页面：全宽大卡 + 筛选/搜索/排序 + 全屏查看器 + 懒缩略图 | **22/22**（TESTING §15） |
 | 单测 | `tools/test-path.js` | **57/57** |
 | 图片线 | 调研 v0.1（已拍板双入口/清单面板/优先原图）、方案 v1.2（尺寸档位 + 图集分页）、原型 v1.2 | 原型 CDP **24/24**；**实现 0 行** |
 
@@ -130,7 +132,7 @@ Start-Process $chrome -ArgumentList @(
   '--no-first-run','--no-default-browser-check','about:blank')
 ```
 
-### 5.2 五套回归（按顺序跑）
+### 5.2 六套回归（按顺序跑）
 
 ```powershell
 $env:VR_CDP='http://127.0.0.1:9346'
@@ -143,6 +145,7 @@ node tools/test-path.js            # 57/57   纯 Node，无浏览器
 & $py tools/cdp-index-test.py      # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
 & $py tools/cdp-migrate-test.py    # 39/39   OPFS 句柄注入，三种迁移 + 回滚
 & $py tools/cdp-indexer-test.py    # 35/35   OPFS 句柄 + 真实下载，三源索引/快照/缺失语义
+& $py tools/cdp-library-page-test.py  # 22/22   资源库页面：筛选/搜索/排序/查看器/响应式
 ```
 
 原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
@@ -157,7 +160,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 ### 5.3 跑测试前必看
 
 - **测试会真下载到 `D:\Users\liq21\Downloads\video-rod\...`**：S1a 脚本不自动删，`cdp-index-test` / `cdp-migrate-test` / `cdp-indexer-test` 会自清理。
-- 记一次基线：**五条命令全绿**才算环境正常。任何一条失败先看 §6，不要先改代码。
+- 记一次基线：**六条命令全绿**才算环境正常。任何一条失败先看 §6，不要先改代码。
 - 测试产生的空目录（`video-rod\_verify\`、`其他网页\127.0.0.1\视频\`）属正常残留，不删也不影响。
 
 ---
@@ -222,9 +225,9 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 **唯一还要补的**：`library.html` 首次打开时如果还没有索引，应自动跑一次 `build({mode:'full'})`（需句柄）或 `build({mode:'snapshot'})`——这属于 S3 的启动逻辑，不要现在改 indexer。
 
-### 7.2 S3–S5（资源库页面与交互，下一步是 S3）
+### 7.2 S4–S5（S3 已完成）
 
-- S3：`library.html` + `css/library.css` + `ui.js` + `thumbs.js`（缩略图并发 2、懒生成、WebP 缓存；届时 `manifest.json` 补 `unlimitedStorage`），并在 popup/options 加「打开资源库」入口。**数据直接用 `VRIndex`/`VRDB`，不要再写一套索引逻辑。**
+- S3 ✅：`library.html` + `library.css` + `ui.js` + `thumbs.js` 已上线；全宽大卡、筛选/搜索/排序、全屏查看器、懒缩略图；popup/options 入口已加。**不要再写一套索引逻辑。**
 - S4：`lightbox.js` + `video.js` + `keyboard.js`（自绘控件；↑↓ 切队列、←→ ±5s、Shift ±30s、空格、连播）。
 - S5：`trash.js` + 右键菜单 + 回收站 UI（`_回收站/` 已约定；索引已忽略 `_` 开头目录）。
 
@@ -238,7 +241,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 ### 7.4 已知缺口 / 技术债（先认账，别当成新发现）
 
 1. **B 模式（自定义目录）还不完整**：`archive.js` 未实现。现在切到 `custom` 只改设置，**新下载仍落系统下载目录**；`VRMigrate` 只能搬存量文件。
-2. **没有资源库页面**：目前只能在设置页维护索引、看「索引状态 / 最近入库」文字列表；浏览界面是 S3。
+2. **资源库查看器是基础版**：图片/视频可全屏看、←/→ 翻页，但视频用原生 controls；自绘控件、↑↓ 队列与连播留 S4。
 3. **缩略图未生成**：`thumb` store 建了但为空，S3 才做。
 4. **深校验开关未进 UI**：`vrLibSettings.deepVerify` 引擎已支持，设置页没有控件。
 5. **文档漂移**：`docs/DESIGN.md` 里写的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 不存在，能力实际在 `popup-videorod.js` / `x-button.js`。
@@ -257,8 +260,9 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 | `docs/LIBRARY-PLAN.md` | **主线权威方案 v2.0**：架构、目录命名、数据模型、删除/迁移、§11 审计指北、§12 审计复核、§13 实现规格、§13.10 S1b 规格、**§13.11 S2 索引规格** |
 | `docs/TESTING.md` | **验收记录**：§8 原型 42/42、§9 P0、§10 S1a、§11 自动入库、§12 S1b、**§13 S2 索引 35/35**、§14 设置页重设计；含环境限制与坑 |
 | `docs/OPTIONS-REDESIGN.md` | 设置页重设计：现状审计、四组信息架构、视觉/组件规范、响应式、实施记录（ADR-031） |
+| `docs/FRONTEND-UI-SYSTEM.md` | 前端统一设计：popup + 资源库共用 token/组件、全屏查看器、验收记录（TESTING §15） |
 | `deliverables/DELIVERABLES.md` | **产出物登记宪法**（新增文件先读 §1.1 落点规则，落地当天登记） |
-| `docs/DECISIONS.md` | ADR-001~031（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、ADR-030 索引三源与缺失不删、ADR-031 设置页信息架构） |
+| `docs/DECISIONS.md` | ADR-001~032（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、ADR-030 索引三源与缺失不删、ADR-031 设置页信息架构、ADR-032 资源库媒体优先） |
 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` / `IMAGE-DOWNLOAD-PLAN.md` | 图片线调研（已拍板）与方案 v1.2 |
 | `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | 自动入库方案的落地映射（已实现） |
 | `docs/LIBRARY-PLAN-审计方案.md` | 给评审人/审计 AI 的找茬手册（已执行过一轮，结论在 §12） |
@@ -272,7 +276,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 1. `git status` 应干净；`git log -1` 应不早于 `b377aa2`（更名提交；其后是文档提交）。
 2. 读本文 §3（代码地图）与 §7（未完成）。
-3. 起环境（§5.1），按 §5.2 跑五条命令，**确认 57/57、17/17、14/14、39/39、35/35**。
+3. 起环境（§5.1），按 §5.2 跑六条命令，**确认 57/57、17/17、14/14、39/39、35/35、22/22**。
 4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区：点一次「校验落盘」确认根目录探测；再点「写快照」确认 `_library/index-*.json` 落盘。
 5. 再动 S3：先补 `library.html` / `ui.js` / `thumbs.js` 的实现细节到 LIBRARY-PLAN（如有新增决策），再写代码；索引直接复用 `VRIndex`/`VRDB`，不要重写。
 6. 每次代码改动前后都 `git commit + push`（用 §2 的身份参数）。
@@ -287,5 +291,5 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
 git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。
 改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome；CDP 脚本用系统 Python 3.12（装了 websocket-client）。
-开始前先按 docs/HANDOFF.md §5 跑一遍五套回归（57/17/14/39/35），确认全绿再动代码。
+开始前先按 docs/HANDOFF.md §5 跑一遍六套回归（57/17/14/39/35/22），确认全绿再动代码。
 ```

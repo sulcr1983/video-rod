@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>资源库 — 苏哥的钓鱼竿</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" type="text/css" href="css/public.css" media="all" />
+  <link rel="stylesheet" type="text/css" href="css/library.css" media="all" />
+  <script src="js/library/path.js" defer></script>
+  <script src="js/library/db.js" defer></script>
+  <script src="js/library/thumbs.js" defer></script>
+  <script src="js/library/ui.js" defer></script>
+</head>
+
+<body class="library-page">
+  <header class="lib-top">
+    <a class="brand" href="options.html#anchorLibrary" title="返回设置">
+      <span class="brand-mark" aria-hidden="true">VR</span>
+      <span class="brand-text">
+        <strong>苏哥的钓鱼竿</strong>
+        <small>资源库</small>
+      </span>
+    </a>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m20 20-3.2-3.2"></path>
+      </svg>
+      <input id="libSearch" type="search" placeholder="搜索文件名、标题、博主…" autocomplete="off" />
+      <kbd>/</kbd>
+    </div>
+
+    <div class="top-actions">
+      <button type="button" id="libRefresh" class="btn">刷新</button>
+      <button type="button" id="libOptions" class="btn">设置</button>
+    </div>
+  </header>
+
+  <div class="lib-body">
+    <aside class="lib-side" aria-label="资源筛选">
+      <nav class="side-nav" id="libTypeNav" aria-label="类型"></nav>
+
+      <div class="side-group">
+        <h3>平台</h3>
+        <div id="libPlatformNav"></div>
+      </div>
+
+      <div class="side-group">
+        <h3>博主</h3>
+        <div id="libCreatorNav"></div>
+      </div>
+
+      <div class="side-foot" id="libFoot">索引为空</div>
+    </aside>
+
+    <main class="lib-main">
+      <div class="lib-head">
+        <div>
+          <h1 id="libTitle">全部资源</h1>
+          <p id="libSub">共 0 项</p>
+        </div>
+
+        <div class="lib-tools">
+          <label class="sort">
+            <span>排序</span>
+            <select id="libSort">
+              <option value="new">最新</option>
+              <option value="name">名称</option>
+              <option value="size">大小</option>
+            </select>
+          </label>
+
+          <div class="viewtoggle" role="group" aria-label="视图切换">
+            <button type="button" id="libViewGrid" class="on" data-view="grid" title="网格视图" aria-label="网格视图">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+              </svg>
+            </button>
+            <button type="button" id="libViewList" data-view="list" title="列表视图" aria-label="列表视图">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="active-filters" id="libActiveFilters" hidden></div>
+
+      <div class="lib-empty" id="libEmpty" hidden>
+        <div class="empty-icon" aria-hidden="true">🎣</div>
+        <h2 id="libEmptyTitle">还没有资源</h2>
+        <p id="libEmptyText">资源库索引是空的。去设置页重建索引，或先下载一个文件。</p>
+        <div class="empty-actions">
+          <button type="button" id="libEmptyAction" class="btn primary" data-action="options">去设置页</button>
+        </div>
+      </div>
+
+      <div class="lib-grid" id="libGrid"></div>
+      <div class="lib-list" id="libList" hidden></div>
+    </main>
+  </div>
+
+  <div class="lib-viewer" id="libViewer" hidden>
+    <button type="button" class="viewer-close" id="libViewerClose" aria-label="关闭预览">✕</button>
+    <button type="button" class="viewer-nav prev" id="libViewerPrev" aria-label="上一个">‹</button>
+    <div class="viewer-stage" id="libViewerStage"></div>
+    <button type="button" class="viewer-nav next" id="libViewerNext" aria-label="下一个">›</button>
+    <div class="viewer-bar">
+      <div class="viewer-info">
+        <strong id="libViewerTitle"></strong>
+        <span id="libViewerMeta"></span>
+      </div>
+      <button type="button" id="libViewerOpen" class="btn">在文件中打开</button>
+    </div>
+  </div>
+</body>
+
+</html>

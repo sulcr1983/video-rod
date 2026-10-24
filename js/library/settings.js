@@ -368,6 +368,13 @@
         var refresh = $('vrLibRefresh');
         if (refresh) { refresh.addEventListener('click', refreshIndex); }
 
+        var openPage = $('vrLibOpenPage');
+        if (openPage) {
+            openPage.addEventListener('click', function () {
+                chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
+            });
+        }
+
         // 资源库页面/SW 广播有新条目时自动刷新
         try {
             chrome.runtime.onMessage.addListener(function (msg) {

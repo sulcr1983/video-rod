@@ -28,8 +28,9 @@
 - **本地资源库（S0–S2）**：`平台/博主/类型` 三段中文目录、下载完成自动入库、三种迁移（预演 / 复制 / 校验 / 回滚）、索引三源（下载记录 / 快照 / FSA 全量扫描）与缺失校对。
 - **桌面端下载链路**：文件名保护（绕开 Chromium 579563）、X 推文内联下载、右键秒存与快捷键、面板浅色化。
 - **设置页重设计**：18 个平铺分区收敛为 4 组导航，重做卡片层级、响应式与深色模式。
+- **资源库浏览页**：全宽大图 / 视频网格、筛选搜索、全屏查看器与懒生成缩略图。
 - **图片悬停下载**：调研、方案 v1.2、可交互原型（实现待排期）。
-- **工程化**：文档先行 + 每步验收；5 套 CDP 自动化回归，**162 条断言**（57 / 17 / 14 / 39 / 35）。
+- **工程化**：文档先行 + 每步验收；6 套 CDP 自动化回归，**184 条断言**（57 / 17 / 14 / 39 / 35 / 22）。
 
 > 验收记录见 `docs/TESTING.md`；每个选择为什么这么做见 `docs/DECISIONS.md`（31 条 ADR）。
 
@@ -154,6 +155,7 @@
 | [docs/TESTING.md](docs/TESTING.md) | 测试策略：用例表、验收标准、回归清单、已知限制 |
 | [docs/LIBRARY-PLAN.md](docs/LIBRARY-PLAN.md) | 本地资源库权威方案：目录规范、数据模型、迁移、索引（S0–S2 已实现） |
 | [docs/OPTIONS-REDESIGN.md](docs/OPTIONS-REDESIGN.md) | 设置页重设计：现状审计、四组信息架构、组件规范、实施记录 |
+| [docs/FRONTEND-UI-SYSTEM.md](docs/FRONTEND-UI-SYSTEM.md) | 前端统一设计：popup + 资源库的 token、组件、全屏查看器与验收 |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 交接文档：现状、环境、代码地图、测试基线、踩过的坑 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策记录（ADR）：每个重要选择为什么这么做 |
 | [deliverables/DELIVERABLES.md](deliverables/DELIVERABLES.md) | **产出物管理规范**：目录结构、命名、版本状态、登记表 |

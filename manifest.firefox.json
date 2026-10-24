@@ -34,7 +34,8 @@
     "alarms",
     "scripting",
     "declarativeNetRequest",
-    "contextMenus"
+    "contextMenus",
+    "unlimitedStorage"
   ],
   "commands": {
     "_execute_browser_action": {},
