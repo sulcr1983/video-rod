@@ -150,6 +150,14 @@ video-rod/
 | 图片工具单测 | `tools/test-image-util.js` | v1.0 | 已定稿 | **58/58**：候选顺序与去重、srcset、扫描过滤、URL 规范化、扩展名 |
 | 图片悬停验收脚本 | `tools/cdp-image-test.py` | v1.0 | 已定稿 | **34/34**：悬停出现/划过不出/移开隐藏、点击落盘 0.26s、路径与文件名、候选优先（a[href]/srcset/懒加载）、四类过滤、开关（TESTING §20） |
 | 图片悬停截图 | `deliverables/assets/{image-hover-button,image-hover-done}.png` | v1.0 | 已定稿 | 悬停态「下载原图」贴图片右上角、完成态「✓ 已存」 |
+| 图片批量下载实现规格 | `docs/IMAGE-I3-IMPL.md` | v1.0 | 已定稿 | I3 唯一口径：确认条/进度条状态机、`vrImg.batch` 协议、并发池/去重/上限、实测与 6 个产品坑 + 4 个测试坑 |
+| 图片批量 UI（I3） | `js/image-batch.js` | v1.0 | 已定稿 | VRImgBatch：确认条（张数/过滤数/只下前 N 张）、底部进度条（done/total/失败数）、取消、Toast；对外暴露 VRImgBridge 给悬停条 |
+| 悬停条扩展（I3） | `js/image-hover.js`（追加「全部 N」按钮） | v1.1 | 已定稿 | 同一 Shadow DOM 宿主内两个按钮；图宽 < 140px 时「全部 N」收成纯图标（数字在 aria-label）；修了 pending 未取消计时器与 CSS display 重复声明 |
+| 批量下载 SW 分支（I3） | `js/background.js`（`vrImg.batch` / `vrImg.batchCancel`） | v1.2 | 已定稿 | 并发池（缺省 3、上限 8）、200ms 节流进度广播、可取消、失败不中断；去重表 vrImgDownloaded（2000 条淘汰）；DNR 规则 id 改单调递增 + 等下载终态再撤 |
+| 批量队列单测 | `tools/test-image-batch.js` | v1.0 | 已定稿 | **27/27**：并发上限、只跑一次、失败/异常不中断、取消不再启动、去重跳过、上限截断、进度节流、去重键规范化、空批次 |
+| 批量端到端验收脚本 | `tools/cdp-image-batch-test.py` | v1.0 | 已定稿 | **35/35**：悬停条两按钮、确认条、5 张真下载、路径/文件名/字节数、去重、上限 2、30 张取消、开关（TESTING §21） |
+| 批量截图 | `deliverables/assets/{image-batch-hoverbar,image-batch-confirm,image-batch-progress}.png` | v1.0 | 已定稿 | 悬停条两个按钮、确认条（本页找到 5 张/已过滤 3 张）、进度条完成态 |
+| 批量测试夹具 | `test-site/batch.html` + `test-site/batch-many.html` | v1.0 | 已定稿 | 5 张大图 + 小图 + 重复 + 坏图；30 张用于验证取消链路 |
 | 前端统一设计方案 | `docs/FRONTEND-UI-SYSTEM.md` | v1.0 | 已定稿 | popup + 资源库共用 token/组件；现状审计、全宽布局、全屏查看器、响应式与实施记录 |
 | 前端统一改造截图 | `deliverables/assets/{popup-after,library-page-grid,library-page-overview,library-page-cards,library-page-table,library-page-900,library-page-dark}.png` | v2.1 | 已定稿 | popup 蓝色统一；资源库 1440 默认（概览收起）/ 展开概览 / 大卡 / 表格、860 横条、深色 |
 | 设置页重设计方案 | `docs/OPTIONS-REDESIGN.md` | v1.0 | 已定稿 | 现状审计（18 分区 / 151 个唯一 ID / 40 处内联样式 / 8 类问题）+ 四组信息架构 + 视觉 token + 组件规范 + 响应式断点 + 兼容清单 + 实施记录（TESTING §14） |

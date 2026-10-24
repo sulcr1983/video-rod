@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 D：图片批量下载</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; }
+    h1 { font-size: 18px; }
+    .grid { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
+    .grid img { width: 200px; height: 200px; object-fit: cover; border-radius: 8px; }
+    .note { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>图片批量下载夹具</h1>
+  <p class="note">5 张有效大图 + 1 张小图 + 1 张重复 + 1 张坏图（期望批量命中 5 张）</p>
+  <div class="grid">
+    <img id="b1" src="media/cover.jpg" width="200" height="200" alt="1">
+    <img id="b2" src="media/sprite.png" width="200" height="200" alt="2">
+    <img id="b3" src="media/thumb-320.png" width="200" height="200" alt="3">
+    <img id="b4" src="media/srcset-400.png" width="200" height="200" alt="4">
+    <img id="b5" src="media/original-1200.png" width="200" height="200" alt="5">
+    <!-- 小图：应被过滤 -->
+    <img id="btiny" src="media/tiny.png" width="16" height="16" alt="小图">
+    <!-- 重复 URL：应去重 -->
+    <img id="bdup" src="media/cover.jpg" width="200" height="200" alt="重复">
+    <!-- 坏图：加载失败应被过滤 -->
+    <img id="bbroken" src="media/test.mp4" width="200" height="200" alt="坏图">
+  </div>
+</body>
+</html>

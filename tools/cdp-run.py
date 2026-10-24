@@ -40,6 +40,7 @@ SUITES = {
     "full": [
         ("node", "tools/test-path.js"),
         ("node", "tools/test-image-util.js"),
+        ("node", "tools/test-image-batch.js"),
         ("cdp", "tools/cdp-s1a-test.py"),
         ("cdp", "tools/cdp-index-test.py"),
         ("cdp", "tools/cdp-migrate-test.py"),
@@ -49,6 +50,7 @@ SUITES = {
         ("cdp", "tools/cdp-trash-test.py"),
         ("cdp", "tools/cdp-batch-test.py"),
         ("cdp", "tools/cdp-image-test.py"),
+        ("cdp", "tools/cdp-image-batch-test.py"),
     ],
     "library": [
         ("cdp", "tools/cdp-library-page-test.py"),
@@ -58,7 +60,9 @@ SUITES = {
     ],
     "image": [
         ("node", "tools/test-image-util.js"),
+        ("node", "tools/test-image-batch.js"),
         ("cdp", "tools/cdp-image-test.py"),
+        ("cdp", "tools/cdp-image-batch-test.py"),
     ],
     "core": [
         ("node", "tools/test-path.js"),
@@ -156,8 +160,9 @@ def shutdown(proc):
 def run_one(kind, script, env, label):
     print(f"\n{'=' * 60}\n▶ {label}  {script}\n{'=' * 60}", flush=True)
     t0 = time.time()
-    cmd = ([sys.executable, script] if kind == "cdp"
+    cmd = ([sys.executable, "-u", script] if kind == "cdp"
            else [os.environ.get("VR_NODE", "node"), script])
+    # -u：不缓冲。否则子进程输出会被攒到结束才吐，卡住时看不到卡在哪一步。
     p = subprocess.run(cmd, cwd=ROOT, env=env)
     dt = time.time() - t0
     print(f"— {script} 退出码 {p.returncode}  耗时 {dt:.1f}s", flush=True)

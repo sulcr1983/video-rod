@@ -1,6 +1,6 @@
 # 苏哥的钓鱼竿 — 交接文档
 
-> 更新：2026-10-24 ｜ 代码 HEAD：`2a18d65`（S5b 批量重命名 + I1/I2 图片悬停下载已合并）
+> 更新：2026-10-24 ｜ 代码 HEAD：`a1a02dd` 之后的 I3 提交（图片批量下载已落地）
 > 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§13（已验收记录）。
 > 本文只写「现在是什么状态、怎么跑、别踩什么坑」，设计论证在 LIBRARY-PLAN 里。
 
@@ -17,8 +17,8 @@
 ## 1. 一句话现状
 
 这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2 → S5 删除与回收站 → S5b 批量选择/重命名**；
-图片线 **I1+I2（单张悬停下载）也已落地**，两条支线都已合并进 master，**十一套回归全绿（318 条断言）**。
-下一步是 **图片线 I3–I6**（批量队列 → 浮标 + 清单面板 → 设置/快捷键 → 图集），接口已按 I1/I2 预留。
+图片线 **I1+I2（单张悬停）+ I3（本页一键全下）** 也已落地，**十三套回归全绿（380 条断言）**。
+下一步是 **图片线 I4–I6**（浮标 + 清单面板 → 设置/快捷键 → 图集），接口已按 I1–I3 预留。
 
 | 项 | 值 |
 |---|---|
@@ -109,6 +109,7 @@
 | **S5** | 删除与回收站：软删除/清单/恢复/彻底删除/清空、右键菜单、抽屉、确认框 | **27/27**（TESTING §18） |
 | **S5b** | 批量选择（顶栏批量 / 底部浮条 / 全选 / 批量软删除）+ 单条重命名（复制校验删源） | **47/47**（TESTING §19） |
 | **I1+I2** | 图片悬停下载：五级候选 + SW 校验回退 + Shadow DOM 按钮 + DNR 补 Referer | 单测 **58/58**、CDP **34/34**（TESTING §20） |
+| **I3** | 图片批量下载：悬停条「全部 N」+ 确认条 + 并发队列 + 进度 + 取消 + 去重 + 上限 | 单测 **27/27**、CDP **35/35**（TESTING §21） |
 | 单测 | `tools/test-path.js` | **57/57** |
 | 图片线 | 调研 v0.1、方案 v1.2、原型 v1.2 | 原型 CDP **24/24** |
 
@@ -163,7 +164,7 @@ Start-Process $chrome -ArgumentList @(
 （含 `sys.exit` / 异常）统一 `Target.closeTarget` 关掉——不用逐个脚本写 close。
 这是 `atexit` 兜的底，脚本里**不要**再手动关标签，重复关会报错但不影响结果。
 
-### 5.2 十一套回归（按顺序跑）
+### 5.2 十三套回归（按顺序跑）
 
 ```powershell
 $env:VR_CDP='http://127.0.0.1:9346'
@@ -173,6 +174,7 @@ $py = "C:\Users\XPENG\AppData\Local\Programs\Python\Python312\python.exe"
 
 node tools/test-path.js            # 57/57   纯 Node，无浏览器
 node tools/test-image-util.js      # 58/58   纯 Node，图片候选链/扫描过滤
+node tools/test-image-batch.js     # 27/27   纯 Node，批量队列并发/取消/去重/上限
 & $py tools/cdp-s1a-test.py        # 17/17   设置页 + 三段目录真落盘（会留下一个下载文件）
 & $py tools/cdp-index-test.py      # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
 & $py tools/cdp-migrate-test.py    # 39/39   OPFS 句柄注入，三种迁移 + 回滚
@@ -182,9 +184,10 @@ node tools/test-image-util.js      # 58/58   纯 Node，图片候选链/扫描�
 & $py tools/cdp-trash-test.py        # 27/27   删除/回收站：OPFS 句柄注入 + 真实文件
 & $py tools/cdp-batch-test.py        # 47/47   批量选择 + 重命名：OPFS 句柄注入 + 真实文件
 & $py tools/cdp-image-test.py        # 34/34   图片悬停：悬停/下载/候选优先/过滤/开关（需测试站 18080）
+& $py tools/cdp-image-batch-test.py  # 35/35   图片批量：确认条/进度/取消/去重/上限（需测试站 18080）
 ```
 
-> **合计 11 套 / 318 条断言**。`cdp-image-test.py` 依赖 `test-site` 的图片夹具与 18080 端口，
+> **合计 13 套 / 380 条断言**。`cdp-image-test.py` 依赖 `test-site` 的图片夹具与 18080 端口，
 > 会真下载到 `Downloads\video-rod\其他网页\127.0.0.1\图片\`，脚本结束自行清理。
 
 原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
@@ -274,13 +277,17 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 交互与验收对照原型 `deliverables/prototypes/library-prototype-v1.html`（v1.3）与 LIBRARY-PLAN §6。
 
-### 7.3 图片下载实现（I1/I2 已完成，I3–I6 未做）
+### 7.3 图片下载实现（I1–I3 已完成，I4–I6 未做）
 
 - **I1 ✅** `js/lib-image-util.js`：纯函数（`self.VRImageUtil`，Node 可 require）。五级候选链（`a[href]` → srcset 最大 w → data-* 懒加载 → `data-ri` JSON → `currentSrc`）、`scanImages` 过滤（短边 <100 / data URI / SVG / 占位图）、`extFromContentType`。
 - **I2 ✅** `js/image-hover.js`：悬停 300ms 出「下载原图」，Shadow DOM 隔离，滚动/缩放/移开即隐藏；读 `vrLibSettings.imgHover`（缺省开），关闭即移除宿主节点。
 - **SW ✅** `vrImg.resolve` / `vrImg.download`：逐个候选 `fetch` 校验 `content-type: image/*`，全失败回退最后一个（**绝不空点**）。
 - **⚠️ 关键坑（已踩）**：`chrome.downloads.download` 的 `headers` **不接受 `Referer`**，直接报 `Unsafe request header name`，下载根本发不出去。必须用 **DNR 会话规则**补头（id 从 9000 起，一次性使用、`finally` 里撤销）。详见 `docs/IMAGE-I1I2-IMPL.md` §4.3.1。
-- **未做**：I3 批量队列、I4 浮标 + 清单面板、I5 设置/快捷键、I6 图集。消息协议与工具函数已预留，直接接入口即可。
+- **I3 ✅** `js/image-batch.js`（`VRImgBatch`）：悬停条追加「全部 N」→ 确认条 → 底部进度条 → 并发队列（缺省 3）→ 可取消。
+  SW 侧 `vrImg.batch` / `vrImg.batchCancel` 做并发池 + 进度广播（200ms 节流）；去重表 `vrImgDownloaded`（上限 2000 条）；单批上限 `imgBatchLimit`（缺省 200）。
+  - 图宽 < 140px 时「全部 N」收成纯图标（数字放 `aria-label`），避免两个按钮盖满小图。
+  - **又一个必踩的坑**：DNR 规则 id 不能用 `Date.now() % 900`——并发时同一毫秒会撞 id，先完成的把别人的规则删了，表现为「5 张只下到 3 张」。必须单调递增；且规则要等 `downloads.onChanged` 到终态再撤，`download()` 一返回就撤会丢 Referer。
+- **未做**：I4 浮标 + 清单面板、I5 设置 UI/快捷键、I6 图集。消息协议与工具函数已预留，直接接入口即可。
 - 图片落库走**已经跑通的自动入库链路**，不要再另写一套。
 
 ### 7.4 已知缺口 / 技术债（先认账，别当成新发现）
@@ -315,17 +322,18 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 | `deliverables/prototypes/image-hover-prototype-v1.html` | 图片悬停交互基准（v1.2） |
 | `docs/S5B-BATCH-RENAME.md` | **S5b 唯一实现口径**：批量选择状态机、重命名引擎 API、路径口径、错误码、验收标准 |
 | `docs/IMAGE-I1I2-IMPL.md` | **I1/I2 唯一实现口径**：候选链五级优先级、SW 消息协议、DNR 补 Referer 的原因与写法 |
+| `docs/IMAGE-I3-IMPL.md` | **I3 唯一实现口径**：批量交互状态机、`vrImg.batch` 协议、并发池/去重/上限、实测与踩坑 |
 | `docs/MOBILE-RESEARCH.md` | **已封存**，不要继续投入移动端 |
 
 ---
 
 ## 9. 接手第一小时清单
 
-1. `git status` 应干净；`git log -1` 应不早于 `2a18d65`（S5b + I1/I2 合并）。
+1. `git status` 应干净；`git log -1` 应不早于 `2a18d65`（S5b + I1/I2 合并，I3 在其后）。
 2. 读本文 §3（代码地图）与 §7（未完成）。
-3. 起环境（§5.1），按 §5.2 跑十一条命令，**确认 57/58/17/14/39/35/30/27/27/47/34 全绿**。
+3. 起环境（§5.1），按 §5.2 跑十三条命令，**确认 57/58/27/17/14/39/35/30/27/27/47/34/35 全绿**。
 4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区：点一次「校验落盘」确认根目录探测；再点「写快照」确认 `_library/index-*.json` 落盘。
-5. 再动图片线 I3（批量队列）：先补实现口径文档，再写代码；图片落库直接复用自动入库链路，候选/扫描复用 `VRImageUtil`，不要重写。
+5. 再动图片线 I4（浮标 + 清单面板）：先补实现口径文档，再写代码；候选/扫描复用 `VRImageUtil`，批量队列复用 `vrImg.batch`，不要重写。
 6. 每次代码改动前后都 `git commit + push`（用 §2 的身份参数）。
 
 ---
@@ -334,9 +342,9 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 ```
 你是接手「苏哥的钓鱼竿」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§13。
-项目是私有自用 Chrome MV3 扩展，主线是本地资源库 + 图片悬停下载；S0→S5b 与 I1/I2 已完成并全绿（11 套 318 条），下一步图片线 I3 批量队列。
+项目是私有自用 Chrome MV3 扩展，主线是本地资源库 + 图片下载；S0→S5b 与 I1–I3 已完成并全绿（13 套 380 条），下一步图片线 I4 浮标 + 清单面板。
 规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
 git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。
 改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome；CDP 脚本用系统 Python 3.12（装了 websocket-client）。
-开始前先按 docs/HANDOFF.md §5 跑一遍十一套回归（57/58/17/14/39/35/30/27/27/47/34），确认全绿再动代码。
+开始前先按 docs/HANDOFF.md §5 跑一遍十三套回归（57/58/27/17/14/39/35/30/27/27/47/34/35），确认全绿再动代码。
 ```

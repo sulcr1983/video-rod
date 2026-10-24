@@ -515,10 +515,14 @@ function vrImgDate(d) {
  * 传进去直接报 "Unsafe request header name"，下载根本发不出去。
  * 规则按 urlFilter 精确匹配 + 一次性使用，用完即撤。 */
 var VR_IMG_RULE_BASE = 9000;
+var VR_IMG_RULE_SEQ = 0;
 
 function vrImgRuleId() {
-    // 9000 起，避开 function.js 用 tabId 当 id 的既有规则
-    return VR_IMG_RULE_BASE + (Date.now() % 900);
+    // 9000 起，避开 function.js 用 tabId 当 id 的既有规则。
+    // 必须单调递增：批量并发 3 时若用 Date.now() % 900，同一毫秒内多个任务
+    // 会撞同一个 id，先完成的 finally 会把别人的规则删掉，导致下载失败（踩过）。
+    VR_IMG_RULE_SEQ = (VR_IMG_RULE_SEQ + 1) % 900;
+    return VR_IMG_RULE_BASE + VR_IMG_RULE_SEQ;
 }
 
 function vrImgRefererRule(url, pageUrl) {
@@ -556,6 +560,35 @@ function vrImgClearRefererRule(id) {
     try {
         chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [id] });
     } catch (e) { /* ignore */ }
+}
+
+/**
+ * 等这笔下载进入终态（complete / interrupted）再撤 DNR 规则。
+ * download() 返回时请求往往还没发出，立刻撤会导致请求丢 Referer；
+ * 批量并发时这个问题最明显（表现为只下到一两张）。
+ * 30 秒兜底，避免规则永久残留。
+ */
+function vrImgClearRuleAfterDownload(ruleId, downloadId) {
+    let cleared = false;
+    const clear = function () {
+        if (cleared) { return; }
+        cleared = true;
+        vrImgClearRefererRule(ruleId);
+        try { chrome.downloads.onChanged.removeListener(onChanged); } catch (e) { /* ignore */ }
+        clearTimeout(timer);
+    };
+    const onChanged = function (delta) {
+        if (!delta || delta.id !== downloadId) { return; }
+        if (delta.state && (delta.state.current === 'complete' || delta.state.current === 'interrupted')) {
+            clear();
+        }
+    };
+    const timer = setTimeout(clear, 30000);
+    try {
+        chrome.downloads.onChanged.addListener(onChanged);
+    } catch (e) {
+        clear();
+    }
 }
 
 function vrImgExt(url, contentType) {
@@ -633,14 +666,166 @@ async function vrImgDownload(msg) {
         downloadId = await vrDownloadWithName(url, relPath, { meta: meta });
     } catch (e) {
         downloadId = null;
-    } finally {
-        // 规则只服务这一笔下载，成功与否都要撤，避免规则堆积
-        if (ruleId) { vrImgClearRefererRule(ruleId); }
     }
     if (downloadId === null || downloadId === undefined) {
+        // 没发起下载，规则立刻撤
+        if (ruleId) { vrImgClearRefererRule(ruleId); }
         return { ok: false, code: 'IMG_E_FETCH', message: '下载发起失败，站点可能限制了直链', path: relPath };
     }
+    // 规则要覆盖到请求真正发出为止，不能 download() 一返回就删——
+    // 那时请求可能还没发，删早了下载就丢 Referer（批量并发时尤其明显）。
+    if (ruleId) { vrImgClearRuleAfterDownload(ruleId, downloadId); }
     return { ok: true, downloadId: downloadId, path: relPath };
+}
+
+/* ==========================================================
+ * 图片批量下载（I3）：并发池 + 进度广播 + 可取消
+ * 协议见 docs/IMAGE-I3-IMPL.md §3.1
+ * ========================================================== */
+
+var VR_IMG_BATCH = new Map();          // batchId -> {canceled:boolean}
+var VR_IMG_BATCH_MAX = 200;
+var VR_IMG_BATCH_CONC = 3;
+
+/** 进度节流：200ms 内多次完成只发一次 */
+function vrImgProgressThrottle(batchId, state) {
+    var now = Date.now();
+    if (now - (state.lastEmit || 0) < 200 && state.done < state.total) { return; }
+    state.lastEmit = now;
+    try {
+        chrome.runtime.sendMessage({
+            Message: 'vrImg.batchProgress',
+            batchId: batchId,
+            done: state.done,
+            ok: state.ok,
+            fail: state.fail,
+            total: state.total
+        }, function () {
+            // 必须读一次 lastError：content 页可能已关闭
+            void chrome.runtime.lastError;
+        });
+    } catch (e) { /* content 不在，忽略 */ }
+}
+
+/**
+ * 批量下载：每张走 vrImgDownload（复用 I2 的落位与 DNR 补头）。
+ * 失败不中断；取消只影响「还没开始的」任务。
+ */
+async function vrImgBatch(msg) {
+    const batchId = String((msg && msg.batchId) || ('b-' + Date.now()));
+    const raw = Array.isArray(msg && msg.items) ? msg.items : [];
+    const conc = Math.max(1, Math.min(8, Number(msg && msg.concurrency) || VR_IMG_BATCH_CONC));
+    const pageUrl = String((msg && msg.pageUrl) || '');
+    const pageTitle = String((msg && msg.pageTitle) || '');
+
+    const items = raw.slice(0, VR_IMG_BATCH_MAX);
+    const state = { canceled: false, done: 0, ok: 0, fail: 0, total: items.length, lastEmit: 0, failures: [] };
+    VR_IMG_BATCH.set(batchId, state);
+
+    if (!items.length) {
+        VR_IMG_BATCH.delete(batchId);
+        return { ok: true, batchId: batchId, done: 0, succeeded: 0, fail: 0, failures: [], canceled: false };
+    }
+
+    // 已下载去重表：同 URL 不再重复下
+    const seen = await vrImgSeenUrls();
+
+    let cursor = 0;
+    const worker = async function () {
+        while (true) {
+            if (state.canceled) { return; }
+            const idx = cursor++;
+            if (idx >= items.length) { return; }
+            const it = items[idx] || {};
+            const url = String(it.url || '');
+            const key = vrImgDedupeKey(url);
+
+            if (key && seen[key]) {
+                // 已经下过：算成功跳过，不重复落盘
+                state.done++; state.ok++;
+                vrImgProgressThrottle(batchId, state);
+                continue;
+            }
+            try {
+                const r = await vrImgDownload({
+                    url: url,
+                    candidates: it.candidates || [url],
+                    pageUrl: pageUrl,
+                    title: (it.title || pageTitle || '图片')
+                });
+                if (r && r.ok) {
+                    state.ok++;
+                    if (key) { seen[key] = 1; vrImgRememberUrl(key); }
+                } else {
+                    state.fail++;
+                    state.failures.push({ url: url, code: (r && r.code) || 'IMG_E_FETCH' });
+                }
+            } catch (e) {
+                state.fail++;
+                state.failures.push({ url: url, code: 'IMG_E_FETCH' });
+            }
+            state.done++;
+            vrImgProgressThrottle(batchId, state);
+        }
+    };
+
+    const runners = [];
+    const n = Math.min(conc, items.length);
+    for (let i = 0; i < n; i++) { runners.push(worker()); }
+    await Promise.all(runners);
+
+    vrImgProgressThrottle(batchId, state);
+    VR_IMG_BATCH.delete(batchId);
+    return {
+        ok: true,
+        batchId: batchId,
+        done: state.done,
+        succeeded: state.ok,
+        fail: state.fail,
+        failures: state.failures.slice(0, 50),
+        canceled: state.canceled
+    };
+}
+
+function vrImgBatchCancel(msg) {
+    const batchId = String((msg && msg.batchId) || '');
+    const st = VR_IMG_BATCH.get(batchId);
+    if (st) { st.canceled = true; }
+}
+
+/* 已下载去重表：chrome.storage.local 键 vrImgDownloaded，上限 2000 条按时间淘汰 */
+var VR_IMG_SEEN_MAX = 2000;
+
+function vrImgDedupeKey(url) {
+    const u = String(url || '').split('#')[0].trim();
+    return u || '';
+}
+
+function vrImgSeenUrls() {
+    return new Promise(function (resolve) {
+        try {
+            chrome.storage.local.get('vrImgDownloaded', function (o) {
+                resolve(Object.assign(Object.create(null), (o && o.vrImgDownloaded) || {}));
+            });
+        } catch (e) { resolve(Object.create(null)); }
+    });
+}
+
+function vrImgRememberUrl(key) {
+    if (!key) { return; }
+    try {
+        chrome.storage.local.get('vrImgDownloaded', function (o) {
+            const map = (o && o.vrImgDownloaded) || {};
+            map[key] = Date.now();
+            const keys = Object.keys(map);
+            if (keys.length > VR_IMG_SEEN_MAX) {
+                keys.sort(function (a, b) { return map[a] - map[b]; });
+                const drop = keys.length - VR_IMG_SEEN_MAX;
+                for (let i = 0; i < drop; i++) { delete map[keys[i]]; }
+            }
+            chrome.storage.local.set({ vrImgDownloaded: map });
+        });
+    } catch (e) { /* ignore */ }
 }
 
 // 文件名确定事件：官方约束每扩展只许注册一个监听器，suggest 必须同步调用。
@@ -688,6 +873,102 @@ try {
 /**
  * 监听 扩展 message 事件
  */
+/**
+ * 注入到 YouTube 页面主世界执行：用 MWEB 客户端取格式列表。
+ *
+ * 这段函数会被 chrome.scripting.executeScript 序列化后送到页面里跑，
+ * 所以不能引用任何外层变量（只能用它自己的参数和页面全局）。
+ *
+ * 为什么是 MWEB：实测九种客户端，只有 MWEB 还在返回带 url 的 adaptiveFormats
+ * （41/41，最高 2160p60，且不需要 poToken）；WEB 已全面 SABR 化，返回 0 条直链。
+ * 详见 docs/YT-FEASIBILITY.md。
+ */
+function ytCollectFormats(videoId) {
+    return (async function () {
+        try {
+            var cfg = window.ytcfg;
+            if (!cfg || !cfg.get) {
+                return { ok: false, error: '页面还没就绪（ytcfg 缺失），刷新一下再试' };
+            }
+            var key = cfg.get('INNERTUBE_API_KEY');
+            var ctx = cfg.get('INNERTUBE_CONTEXT') || {};
+            var client = ctx.client || {};
+            var visitor = client.visitorData || '';
+            var VER = client.clientVersion || '2.20261023.01.00';
+            var body = {
+                context: {
+                    client: {
+                        clientName: 'MWEB',
+                        clientVersion: VER,
+                        hl: cfg.get('HL') || 'en',
+                        gl: cfg.get('GL') || 'US',
+                        visitorData: visitor
+                    },
+                    user: { lockedSafetyMode: false },
+                    request: { useSsl: true }
+                },
+                videoId: videoId,
+                contentCheckOk: true,
+                racyCheckOk: true
+            };
+            var headers = {
+                'Content-Type': 'application/json',
+                'X-Youtube-Client-Name': '2',
+                'X-Youtube-Client-Version': VER
+            };
+            if (visitor) { headers['X-Goog-Visitor-Id'] = visitor; }
+
+            var resp = await fetch('/youtubei/v1/player?key=' +
+                encodeURIComponent(key) + '&prettyPrint=false', {
+                method: 'POST',
+                credentials: 'include',
+                headers: headers,
+                body: JSON.stringify(body)
+            });
+            var json = await resp.json();
+            var ps = json.playabilityStatus || {};
+            if (ps.status !== 'OK') {
+                return { ok: false, error: (ps.status || '未知状态') + '：' + (ps.reason || '') };
+            }
+            var sd = json.streamingData || {};
+            var progressive = sd.formats || [];
+            var adaptive = sd.adaptiveFormats || [];
+            var out = [];
+            adaptive.concat(progressive).forEach(function (f) {
+                if (!f.url) { return; }           // 没直链的（SABR-only）直接丢
+                var mt = f.mimeType || '';
+                out.push({
+                    itag: f.itag,
+                    mime: mt.split(';')[0],
+                    codec: (mt.split('codecs="')[1] || '').split('"')[0],
+                    height: f.height || 0,
+                    width: f.width || 0,
+                    fps: f.fps || 0,
+                    bitrate: +f.bitrate || 0,
+                    size: +f.contentLength || 0,
+                    qualityLabel: f.qualityLabel || f.audioQuality || '',
+                    audioQuality: f.audioQuality || '',
+                    hasAudio: progressive.indexOf(f) >= 0,
+                    url: f.url
+                });
+            });
+            var pjs = cfg.get('PLAYER_JS_URL') || '';
+            var m = String(pjs).match(/\/s\/player\/([^\/]+)\//);
+            var vd = json.videoDetails || {};
+            return {
+                ok: true,
+                formats: out,
+                title: vd.title || document.title,
+                author: vd.author || '',
+                durationSec: +vd.lengthSeconds || 0,
+                playerId: m ? m[1] : ''
+            };
+        } catch (e) {
+            return { ok: false, error: String((e && e.message) || e) };
+        }
+    })();
+}
+
 chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (chrome.runtime.lastError) { return; }
     // 苏哥的钓鱼竿：下载文件名记账（popup/options 等页面经 vr-download-hook.js 转发）。
@@ -696,6 +977,49 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message && Message.Message == "vrQueueName") {
         vrQueueFilename(Message.url, Message.filename, Message.conflictAction, Message.meta);
         sendResponse({ ok: true });
+        return true;
+    }
+    // YouTube：页面按钮点击 → 开下载窗口（单开小窗的理由见 js/yt/yt-download.js 抬头注释）
+    if (Message && Message.Message === 'ytOpen') {
+        var ytUrl = chrome.runtime.getURL('js/yt/yt-download.html') +
+            '?videoId=' + encodeURIComponent(Message.videoId || '') +
+            '&tabId=' + encodeURIComponent(String((sender.tab && sender.tab.id) || 0)) +
+            '&title=' + encodeURIComponent(Message.title || '') +
+            '&author=' + encodeURIComponent(Message.author || '');
+        chrome.windows.create({
+            url: ytUrl, type: 'popup', width: 480, height: 700, focused: true
+        }, function (w) {
+            if (chrome.runtime.lastError) {
+                sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+                return;
+            }
+            sendResponse({ ok: true, windowId: w && w.id });
+        });
+        return true;
+    }
+    // YouTube：在目标页主世界里同源取格式。
+    // 必须在页面里发（不是扩展进程）：MWEB 这条链的身份包括页面自己的 cookie 与
+    // visitorData，换个上下文就变成「陌生第三方」，直接 UNPLAYABLE。实测结论见
+    // docs/YT-FEASIBILITY.md 第二节。
+    if (Message && Message.Message === 'ytFormats') {
+        var ytTabId = parseInt(Message.tabId, 10) || 0;
+        if (!ytTabId) {
+            sendResponse({ ok: false, error: '拿不到标签页 ID（页面可能已关闭）' });
+            return true;
+        }
+        chrome.scripting.executeScript({
+            target: { tabId: ytTabId },
+            world: 'MAIN',
+            func: ytCollectFormats,
+            args: [String(Message.videoId || '')]
+        }, function (res) {
+            if (chrome.runtime.lastError) {
+                sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+                return;
+            }
+            var r = res && res[0] && res[0].result;
+            sendResponse(r || { ok: false, error: '页面没有返回数据' });
+        });
         return true;
     }
     // 资源库：入库查询/预登记（由 sw-library.js 处理）
@@ -724,6 +1048,20 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         }).catch(function (e) {
             sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
         });
+        return true;
+    }
+    // 图片批量下载（I3）：并发池 + 进度广播 + 可取消
+    if (Message && (Message.Message === 'vrImg.batch' || Message.action === 'vrImg.batch')) {
+        vrImgBatch(Message).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e), ok: 0, fail: 0 });
+        });
+        return true;
+    }
+    if (Message && (Message.Message === 'vrImg.batchCancel' || Message.action === 'vrImg.batchCancel')) {
+        vrImgBatchCancel(Message);
+        sendResponse({ ok: true, canceled: true });
         return true;
     }
     if (!G.initLocalComplete || !G.initSyncComplete) {

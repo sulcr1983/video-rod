@@ -35,6 +35,9 @@
     let wrap = null;
     let btn = null;
     let txt = null;
+    let allBtn = null;             // 「全部 N」批量入口（I3）
+    let allTxt = null;
+    let allNarrow = false;         // 图太窄时「全部 N」收成图标
     let currentImg = null;
     let state = 'hidden';          // hidden | pending | shown | busy | done | fail
     let showTimer = 0;
@@ -67,13 +70,16 @@
     const CSS = `
 :host { all: initial; }
 .vr-wrap {
-  position: fixed; left: 0; top: 0; display: none;
+  position: fixed; left: 0; top: 0;
+  /* 默认隐藏，靠 .on 切到 flex；这里只写一次 display，别重复声明（写两遍后者覆盖前者） */
+  display: none;
   pointer-events: none; z-index: 2147483000;
   font: 500 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
         "Microsoft YaHei", sans-serif;
   color: #fff;
+  gap: 6px; align-items: center;
 }
-.vr-wrap.on { display: block; }
+.vr-wrap.on { display: flex; }
 .vr-btn {
   pointer-events: auto;
   display: inline-flex; align-items: center; gap: 6px;
@@ -98,6 +104,13 @@
 .vr-btn.busy .vr-ico svg { display: none; }
 .vr-btn.done { background: rgba(22, 163, 74, .94); border-color: rgba(255, 255, 255, .55); }
 .vr-btn.fail { background: rgba(220, 38, 38, .94); border-color: rgba(255, 255, 255, .55); }
+/* 「全部 N」按钮：批量入口，视觉上比单张按钮弱一级 */
+.vr-btn.all { background: rgba(37, 99, 235, .9); border-color: rgba(255, 255, 255, .4); }
+.vr-btn.all:hover { background: rgba(29, 78, 216, .96); }
+.vr-btn.all[hidden] { display: none; }
+/* 图比按钮组窄时，「全部 N」收成纯图标，避免盖满小图 */
+.vr-btn.all.icon-only .vr-text { display: none; }
+.vr-btn.all.icon-only { padding: 0 8px; }
 @keyframes vr-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .vr-btn.busy .vr-ico { animation: none; } }
 `;
@@ -137,10 +150,55 @@
         btn.addEventListener('click', onClick);
         btn.addEventListener('mousedown', ev => { ev.stopPropagation(); }, true);
         wrap.appendChild(btn);
+
+        // 「全部 N」批量入口（I3）：同一个宿主里追加第二个按钮
+        allBtn = document.createElement('button');
+        allBtn.type = 'button';
+        allBtn.className = 'vr-btn all';
+        allBtn.title = '下载本页全部图片';
+        allBtn.setAttribute('aria-label', '下载本页全部图片');
+        const allIco = document.createElement('span');
+        allIco.className = 'vr-ico';
+        allIco.innerHTML = ICON;
+        allTxt = document.createElement('span');
+        allTxt.className = 'vr-text';
+        allTxt.textContent = '全部';
+        allBtn.appendChild(allIco);
+        allBtn.appendChild(allTxt);
+        allBtn.addEventListener('click', onAll);
+        allBtn.addEventListener('mousedown', ev => { ev.stopPropagation(); }, true);
+        wrap.appendChild(allBtn);
+
         root.appendChild(style);
         root.appendChild(wrap);
         document.documentElement.appendChild(host);
+        syncAllLabel();
         return true;
+    }
+
+    /** 刷新「全部 N」文案：数量为 0 时隐藏按钮 */
+    function syncAllLabel() {
+        if (!allBtn) { return; }
+        const B = self.VRImgBridge;
+        let n = 0;
+        try { n = B && B.count ? B.count() : 0; } catch (e) { n = 0; }
+        if (!n) {
+            allBtn.hidden = true;
+            return;
+        }
+        allBtn.hidden = false;
+        // 图窄时只显示图标，数字放 title / aria
+        allTxt.textContent = allNarrow ? '' : ('全部 ' + n);
+        allBtn.title = '下载本页全部 ' + n + ' 张图片';
+        allBtn.setAttribute('aria-label', '下载本页全部 ' + n + ' 张图片');
+    }
+
+    function onAll(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const B = self.VRImgBridge;
+        if (!B || !B.requestAll) { return; }
+        B.requestAll();
     }
 
     function teardown() {
@@ -149,7 +207,7 @@
         clearTimeout(resetTimer);
         showTimer = hideTimer = resetTimer = 0;
         if (host && host.parentNode) { host.parentNode.removeChild(host); }
-        host = shadow = wrap = btn = txt = null;
+        host = shadow = wrap = btn = txt = allBtn = allTxt = null;
         currentImg = null;
         state = 'hidden';
     }
@@ -157,6 +215,21 @@
     function place(img) {
         if (!wrap) { return; }
         const r = img.getBoundingClientRect();
+        // 图太窄时把「全部 N」收成纯图标，避免整条盖满小图。
+        // 两条触发条件：
+        //  1) 图宽 < 140（头像/图标那种）；
+        //  2) 完整按钮组（约 200px）超过图宽的 75%——否则鼠标停在图片中心
+        //     就已经落在按钮上，会触发 mouseout 把按钮自己藏起来（实测踩过）。
+        // 用固定估算值判断，不读 offsetWidth，否则收成图标后组变窄会来回抖。
+        if (allBtn && !allBtn.hidden) {
+            const estFullW = 200;
+            const narrow = r.width < 140 || (r.width < 320 && estFullW > r.width * 0.75);
+            if (narrow !== !!allNarrow) {
+                allNarrow = narrow;
+                allBtn.classList.toggle('icon-only', narrow);
+                syncAllLabel();
+            }
+        }
         const bw = wrap.offsetWidth || 96;
         const bh = wrap.offsetHeight || 30;
         const vw = document.documentElement.clientWidth || window.innerWidth;
@@ -187,8 +260,11 @@
         clickSeq++;               // 新图出现即作废上一张图的异步回调
         currentImg = img;
         wrap.classList.add('on');
+        // 先复位状态，再刷新「全部 N」文案：数量计算可能慢或抛错，
+        // 放在后面一旦失败，按钮就停在上一轮的 done/disabled 态（踩过）
         setState('shown', '下载原图');
         btn.title = '下载原图';
+        try { syncAllLabel(); } catch (e) { /* 数量算不出来不影响单张下载 */ }
         place(img);
         state = 'shown';
     }
@@ -199,7 +275,14 @@
         showTimer = hideTimer = 0;
         if (wrap) { wrap.classList.remove('on'); }
         currentImg = null;
-        if (state !== 'busy') { state = 'hidden'; }
+        if (state !== 'busy') {
+            state = 'hidden';
+            // 收起时把按钮态复位，避免下一张图继承 done/disabled
+            if (btn) {
+                btn.classList.remove('done', 'fail', 'busy');
+                btn.disabled = false;
+            }
+        }
     }
 
     function scheduleHide() {
@@ -208,6 +291,19 @@
             hideTimer = 0;
             if (state === 'shown') { hideNow(); }
         }, HIDE_DELAY);
+    }
+
+    /** 鼠标移开：shown 走延迟隐藏；pending 直接取消显示计时器。
+     * pending 阶段还没出按钮，用户已经移开了就不该再弹出来（快速划过不该闪）。 */
+    function onLeaveImage() {
+        if (state === 'pending') {
+            clearTimeout(showTimer);
+            showTimer = 0;
+            currentImg = null;
+            state = 'hidden';
+            return;
+        }
+        if (state === 'shown') { scheduleHide(); }
     }
 
     /* ---------------- 悬停判定 ---------------- */
@@ -287,7 +383,7 @@
         if (!img || img !== currentImg) { return; }
         const to = ev.relatedTarget;
         if (to && host && (to === host || (host.contains && host.contains(to)))) { return; }
-        if (state === 'shown' || state === 'pending') { scheduleHide(); }
+        onLeaveImage();
     }, true);
 
     window.addEventListener('scroll', () => { hideNow(); }, true);
