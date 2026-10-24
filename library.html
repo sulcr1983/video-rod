@@ -10,9 +10,12 @@
   <script src="js/library/path.js" defer></script>
   <script src="js/library/db.js" defer></script>
   <script src="js/library/thumbs.js" defer></script>
+  <script src="js/library/indexer.js" defer></script>
   <script src="js/library/keyboard.js" defer></script>
   <script src="js/library/video.js" defer></script>
   <script src="js/library/lightbox.js" defer></script>
+  <script src="js/library/trash.js" defer></script>
+  <script src="js/library/trash-ui.js" defer></script>
   <script src="js/library/ui.js" defer></script>
 </head>
 
@@ -80,6 +83,7 @@
         </div>
         <div class="foot-links">
           <button type="button" class="link-btn" id="libFootOptions">索引维护 / 迁移…</button>
+          <button type="button" class="link-btn" id="libTrashOpen">回收站 <span class="foot-count" id="libTrashCount" hidden>0</span></button>
         </div>
       </div>
     </aside>
@@ -278,6 +282,7 @@
         <div class="panel-acts">
           <button type="button" class="vbtn" id="libViewerCopyPath">复制路径</button>
           <button type="button" class="vbtn" id="libViewerOpen2">在文件中打开</button>
+          <button type="button" class="vbtn danger" id="libViewerTrash">移到回收站</button>
         </div>
       </aside>
     </div>
@@ -309,6 +314,47 @@
 
     <div class="viewer-strip" id="libViewerStrip"></div>
   </div>
+
+  <!-- 右键菜单 -->
+  <div class="ctxmenu" id="libCtxMenu" hidden role="menu">
+    <button type="button" data-act="preview" role="menuitem">预览</button>
+    <button type="button" data-act="open" role="menuitem">在文件中打开</button>
+    <button type="button" data-act="copy" role="menuitem">复制路径</button>
+    <button type="button" data-act="star" role="menuitem">加星标</button>
+    <div class="ctx-sep"></div>
+    <button type="button" data-act="trash" class="danger" role="menuitem">移到回收站</button>
+  </div>
+
+  <!-- 回收站抽屉 -->
+  <div class="trash-mask" id="libTrashMask" hidden></div>
+  <aside class="trash-drawer" id="libTrashDrawer" hidden aria-label="回收站">
+    <header class="trash-head">
+      <div>
+        <h2>回收站</h2>
+        <p id="libTrashMeta">—</p>
+      </div>
+      <button type="button" class="vbtn icon" id="libTrashClose" aria-label="关闭回收站">✕</button>
+    </header>
+    <div class="trash-list" id="libTrashList"></div>
+    <footer class="trash-foot">
+      <span class="trash-hint">恢复会写回原路径；彻底删除不可恢复。</span>
+      <button type="button" class="btn danger" id="libTrashEmpty">清空回收站</button>
+    </footer>
+  </aside>
+
+  <!-- 确认框 -->
+  <div class="confirm-mask" id="libConfirmMask" hidden>
+    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="libConfirmTitle">
+      <h3 id="libConfirmTitle">确认操作</h3>
+      <p id="libConfirmText"></p>
+      <div class="confirm-acts">
+        <button type="button" class="btn" id="libConfirmCancel">取消</button>
+        <button type="button" class="btn danger" id="libConfirmOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="lib-toast" id="libToast" hidden></div>
 </body>
 
 </html>

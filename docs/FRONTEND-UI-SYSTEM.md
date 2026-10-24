@@ -386,3 +386,14 @@
 ### 13.4 验收（`tools/cdp-trash-test.py`）
 
 OPFS 句柄注入 + 真实文件：删除移动、清单生成、索引移除、恢复、彻底删除、清空、无权限报错、右键菜单、确认框、抽屉恢复、徽标数字、控制台 0 error。
+
+### 13.5 实施记录（2026-10-24）
+
+| 项 | 结果 |
+|---|---|
+| 新增文件 | `js/library/trash.js`（VRTrash）、`js/library/trash-ui.js`（VRTrashUI） |
+| 页面接入 | 卡片右键与 `⋯`、查看器「移到回收站」、侧栏「回收站 N」、抽屉/确认框/Toast |
+| 索引联动 | 删除移除、恢复写回；缺失文件只清索引 |
+| 验收 | `tools/cdp-trash-test.py` **27/27**；资源库 30/30、查看器 27/27、其余 57/17/14/39/35 全绿 |
+| 截图 | `trash-menu.png`、`trash-confirm.png`、`trash-drawer.png` |
+| 未含 | 重命名、批量选择（S5b） |

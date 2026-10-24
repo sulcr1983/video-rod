@@ -340,6 +340,8 @@
             (e.duration ? '<span class="dur">' + formatDuration(e.duration) + '</span>' : '') +
             '<button type="button" class="star' + (e.starred ? ' on' : '') + '" data-star="' + esc(e.relPath) + '" ' +
             'aria-label="' + (e.starred ? '取消星标' : '加星标') + '">' + (e.starred ? '★' : '☆') + '</button>' +
+            '<button type="button" class="more" data-more="' + esc(e.relPath) + '" ' +
+            'aria-label="更多操作" title="更多操作">⋯</button>' +
             (e.state === 'missing' ? '<span class="missing-tag">文件缺失</span>' : '') +
             '</div>';
     }
@@ -376,9 +378,12 @@
             '<td class="c-type"><span class="row-type">' + esc(typeLabel(e.type)) + '</span></td>' +
             '<td class="c-size"><span class="row-size">' + formatBytes(e.size) + '</span></td>' +
             '<td class="c-date"><span class="row-date">' + formatDate(e.mtime, true) + '</span></td>' +
-            '<td class="c-act"><button type="button" class="star' + (e.starred ? ' on' : '') + '" ' +
+            '<td class="c-act"><div class="row-acts">' +
+            '<button type="button" class="more row-more" data-more="' + esc(e.relPath) + '" ' +
+            'aria-label="更多操作" title="更多操作">⋯</button>' +
+            '<button type="button" class="star' + (e.starred ? ' on' : '') + '" ' +
             'data-star="' + esc(e.relPath) + '" aria-label="' + (e.starred ? '取消星标' : '加星标') + '">' +
-            (e.starred ? '★' : '☆') + '</button></td>' +
+            (e.starred ? '★' : '☆') + '</button></div></td>' +
             '</tr>';
     }
 
@@ -559,6 +564,7 @@
         all.forEach(function (e) { map[e.relPath] = e; });
         renderRoot();
         apply();
+        if (root.VRTrashUI) { root.VRTrashUI.refreshBadge(); }
     }
 
     function setView(v) {
@@ -775,9 +781,22 @@
         });
     }
 
+    function initTrashUi() {
+        if (!root.VRTrashUI) { return; }
+        root.VRTrashUI.init({
+            openViewer: openViewer,
+            openEntry: openEntry,
+            toggleStar: toggleStar,
+            fileName: fileName,
+            getEntry: function (rel) { return map[rel]; },
+            reload: loadData
+        });
+    }
+
     function init() {
         if (!$('libGrid')) { return; }
         initViewer();
+        initTrashUi();
         bind();
         loadData();
     }

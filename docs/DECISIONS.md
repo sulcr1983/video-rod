@@ -285,6 +285,19 @@
 - **理由**：媒体库的竞争力是「看图爽不爽」；管理属性（标签、批量、回收站）是第二层。把空间让给内容，比在 220px 卡片里塞 5 行元数据更符合使用频率。
 - **影响**：`library.html` / `css/library.css` / `js/library/ui.js` / `js/library/thumbs.js`；popup token；TESTING §15。
 
+## ADR-033 删除走自建回收站：批次目录 + 清单，不依赖 chrome.downloads
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：Chrome 扩展没有通用文件删除能力；`chrome.downloads.removeFile()` 只能删本扩展经 Chrome 下载的文件，且不可恢复、对迁移进来的旧文件无效。
+- **决策**：
+  1. 软删除到 `<根>/_回收站/<YYYYMMDD-HHmmss-xxxx>/<原相对路径>`，保留目录结构；
+  2. 每个批次写 `_manifest.json`（完整索引字段），恢复按清单走，IDB 清空也能恢复；
+  3. 复制 → 校验大小 → 删源；恢复时原路径必须为空，不覆盖；
+  4. 每次操作写 `_migration/ops-<时间戳>.json`，失败不阻断；
+  5. 需要 `readwrite` 句柄，未授权明确报 `LIB_E_NO_PERM`。
+- **理由**：可恢复、对旧文件同样有效、审计可查；批次时间戳避免同日重名。
+- **影响**：`js/library/trash.js`、`trash-ui.js`、`library.html`、`css/library.css`、`ui.js`、`lightbox.js`；TESTING §18。
+
 ---
 
 *新增决策在此追加，编号顺延。*
