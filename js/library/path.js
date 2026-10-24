@@ -227,6 +227,33 @@
         return 'file:///' + out.replace(/^\/+/, '');
     }
 
+    /** 从相对路径反解（入库时补元数据用） */
+    function parseRelPath(rel) {
+        var segs = String(rel || '').split('/').filter(Boolean);
+        var out = {
+            subdir: segs[0] || '',
+            platform: '', platformName: '',
+            creatorFull: '', creatorId: '',
+            type: '', fileName: segs.length ? segs[segs.length - 1] : ''
+        };
+        var pIdx = -1, k, i, t;
+        for (i = 1; i < segs.length && pIdx < 0; i++) {
+            for (k in PLATFORM_DIR) {
+                if (PLATFORM_DIR[k] === segs[i]) { out.platform = k; out.platformName = segs[i]; pIdx = i; break; }
+            }
+        }
+        if (pIdx > 0) {
+            out.creatorFull = segs[pIdx + 1] || '';
+            var m = out.creatorFull.match(/\(@([^)]+)\)/);
+            if (m) { out.creatorId = m[1]; }
+            var tSeg = segs[pIdx + 2] || '';
+            for (t in TYPE_DIR) {
+                if (TYPE_DIR[t] === tSeg) { out.type = t; break; }
+            }
+        }
+        return out;
+    }
+
     /** 长度自检 */
     function checkLength(relPath, maxLen) {
         var limit = maxLen || MAX_REL_LEN;
@@ -244,6 +271,7 @@
         creatorSegment: creatorSegment,
         buildRelDir: buildRelDir,
         buildRelPath: buildRelPath,
+        parseRelPath: parseRelPath,
         clampLength: clampLength,
         cleanSeg: cleanSeg,
         cleanPath: cleanPath,

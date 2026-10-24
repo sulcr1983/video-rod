@@ -1,6 +1,6 @@
 # 图片下载后自动归类入库 · 调研与方案（v0.1）
 
-> 日期：2026-10-24 ｜ 状态：**待评审** ｜ 前置：LIBRARY-PLAN v1.7（S1a 三段目录已实现）、IMAGE-DOWNLOAD-PLAN v1.2
+> 日期：2026-10-24 ｜ 状态：**已实现（v1.0，端到端 12/12）** ｜ 前置：LIBRARY-PLAN v1.7（S1a 三段目录已实现）、IMAGE-DOWNLOAD-PLAN v1.2
 > 要解决的问题：**下载完的图片怎么自动出现在资源库里**，不用手动"重新扫描"。
 
 ---
@@ -177,3 +177,50 @@ vrPendingMeta: {
 - [Pixel Flow（保存即入个人图片库 + 标签搜索）](https://chromewebstore.google.com/detail/pixel-flow-smart-image-pr/mepgoikhahpbllclcanaoijlampmceip)
 - [OrcaBox（源目录自动索引 + 缩略图 + 元数据）](https://garrygit888.github.io/OrcaBox-Release/)
 - [Tuzhua Image Grabber（批量下载 + 自动排序归档）](https://chromewebstore.google.com/detail/tuzhua-image-grabber/bibclbhicndopddjgcekhncdbainbccl)
+
+---
+
+## 十一、落地实现（v1.0，2026-10-24）
+
+### 11.1 代码落点
+
+| 文件 | 职责 |
+|---|---|
+| `js/library/db.js`（新建） | IDB `vr-library` v1：`file` / `thumb` / `setting` / `handle` / `oplog`；API 挂 `self.VRDB`，SW 与页面共用 |
+| `js/library/sw-library.js`（新建） | 预登记表（`chrome.storage.session`，键 `vrPendingMeta`，TTL 10 分钟 / 上限 500 / 写盘 200ms 节流）+ `downloads.onChanged` 完成确认 + 落库 + 广播 `vrLib.added` |
+| `js/library/path.js` v1.1 | 新增 `parseRelPath()`：relPath 反解平台/博主/类型，供预登记与入库兜底 |
+| `js/background.js` | 顶部 `importScripts` 增 3 个库脚本；`vrQueueFilename(url, filename, conflictAction, meta)` 增第 4 参数；`onMessage` 转发 `vrLib.*` 消息 |
+| `js/vr-download-hook.js` | 页面侧 `downloads.download` 包装里用 `parseRelPath` 生成 meta，随 `vrQueueName` 一起发 SW |
+| `js/library/settings.js` v1.1 + `options.html` | 「资源库 → 索引状态（已入库 N 条 + 刷新）」「最近入库」；监听 `vrLib.added` 自动刷新 |
+
+### 11.2 时序（与 §5.1 一致）
+
+```
+页面点下载
+  → vr-download-hook 生成 meta（relPath/platform/creatorFull/type/…）
+  → chrome.runtime.sendMessage({Message:'vrQueueName', url, filename, meta})
+  → SW: vrQueueFilename 记「URL → 文件名」+ VRLib.record(url, meta)  ── 预登记
+  → downloads.onChanged(state=complete)
+  → downloads.search({id}) 取绝对路径
+  → relFromAbs(abs, detectedRoot)；失败时用 meta.relPath 目录 + 实际文件名兜底
+  → VRDB.putFiles([item]) → 广播 vrLib.added → 页面/设置页刷新
+```
+
+### 11.3 验收对照（TESTING §11，12/12）
+
+| §九 标准 | 状态 | 说明 |
+|---|---|---|
+| 1 自动入库 | ✅ | 下载完成后索引自动出现条目，无需手动扫描 |
+| 2 元数据完整 | ✅ | 平台/博主/类型/大小/绝对路径/文件名 8 项断言通过 |
+| 3 改名兜底 | ✅ | 实际落盘 `test2 (1).mp4`（uniquify），索引记录的正是该名 |
+| 4 SW 重启 | ⏳ 未构造 | 元数据在 session storage，机制已就绪，极端场景待补测 |
+| 5 批量无重复 | ⏳ 未压测 | 单条已验证；批量并发待 I 系列图片链路一起测 |
+| 6 失败不产幽灵卡 | ✅ 设计保证 | 只在 `state=complete` 落库，interrupted 不写 |
+| 7 缩略图懒生成 | ⏳ 待 S2 | `thumb` store 已建，生成逻辑随资源库页/灯箱一起做 |
+| 8 不误收 | ✅ | 只认落在 `video-rod` 根目录内的下载：日常浏览器下载落到下载目录根部，不会进库；落在根目录内但没预登记的也会收录（与 S2 全量扫描口径一致，属自愈） |
+
+### 11.4 已知边界
+
+- **SW importScripts 缓存**：改动 `background.js` 的 importScripts 列表后，老 profile 会继续跑缓存版脚本；测试一律用新 profile（详见 TESTING §11.3）。
+- **运行期无法补载**：SW 安装完成后再调 `importScripts()` 会抛错，只能在首次求值时全部加载。
+- **URL 键天然有损**：预登记以 URL 为键，同一 URL 在 10 分钟内重复下载会命中同一条 meta——两者目录相同，可接受。

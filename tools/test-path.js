@@ -110,6 +110,21 @@ ok('file:// # 已转义', fu.indexOf('#') === -1);
 ok('file:// 可反解回原路径',
     decodeURIComponent(fu.replace('file:///', '')).replace(/\//g, '\\') === 'D:\\Media\\视频 素材\\a#b%c.jpg');
 
+/* ---------- 路径反解（入库用） ---------- */
+const pr1 = V.parseRelPath('video-rod/B站/影视飓风(@946974)/视频/a.mp4');
+eq('反解 平台', pr1.platform, 'bilibili');
+eq('反解 平台名', pr1.platformName, 'B站');
+eq('反解 博主', pr1.creatorFull, '影视飓风(@946974)');
+eq('反解 博主 ID', pr1.creatorId, '946974');
+eq('反解 类型', pr1.type, 'video');
+eq('反解 文件名', pr1.fileName, 'a.mp4');
+
+const pr2 = V.parseRelPath('video-rod/其他网页/example.com/图片/b.jpg');
+eq('反解 web 平台', pr2.platform, 'web');
+eq('反解 图片类型', pr2.type, 'image');
+
+eq('反解 无平台段', V.parseRelPath('video-rod/杂项/a.jpg').platform, '');
+
 /* ---------- 汇总 ---------- */
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail) {

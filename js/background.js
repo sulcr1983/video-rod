@@ -4,11 +4,18 @@
  * firefox 在 manifest 文件中已经加载以下脚本，如果已经加载 G 变量存在，不再加载。
  */
 if (typeof G === 'undefined') {
-    importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js", "/js/library/path.js");
+    importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js",
+        "/js/library/path.js", "/js/library/db.js", "/js/library/sw-library.js");
 }
-// 已加载过 G 的场景（Firefox）单独补 path.js，保证 VRPath 可用
+// 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用
 if (typeof self.VRPath === 'undefined') {
     try { importScripts("/js/library/path.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+if (typeof self.VRDB === 'undefined') {
+    try { importScripts("/js/library/db.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+if (typeof self.VRLib === 'undefined') {
+    try { importScripts("/js/library/sw-library.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
 
 // Service Worker 5分钟后会强制终止扩展
@@ -353,8 +360,14 @@ const vrPendingNameByUrl = new Map();   // url -> {filename, conflictAction, at}
 const VR_NAME_TTL = 10 * 60 * 1000;     // 记账保留 10 分钟：兼容同 URL 重复/并发下载
 const VR_NAME_MAP_MAX = 300;            // 防御性上限，防异常残留撑爆内存
 
-function vrQueueFilename(url, filename, conflictAction) {
+function vrQueueFilename(url, filename, conflictAction, meta) {
     if (!url || !filename) { return; }
+    // 资源库：预登记元数据（下载完成时页面上下文已丢失，必须提前存）
+    if (self.VRLib) {
+        try {
+            self.VRLib.record(url, Object.assign({ relPath: filename }, meta || {}));
+        } catch (e) { /* 入库失败不影响下载 */ }
+    }
     vrPendingNameByUrl.set(url, {
         filename: filename,
         conflictAction: conflictAction || "uniquify",
@@ -384,7 +397,7 @@ function vrAbortFilename(url, filename) {
  * 先记账再下载；失败撤账。返回 Promise<downloadId|null>。
  */
 function vrDownloadWithName(url, filename, extra) {
-    vrQueueFilename(url, filename, extra && extra.conflictAction);
+    vrQueueFilename(url, filename, extra && extra.conflictAction, extra && extra.meta);
     const opts = Object.assign(
         { url: url, filename: filename, saveAs: false, conflictAction: "uniquify" },
         extra || {}
@@ -452,9 +465,19 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     // 必须放在 init 检查之前——SW 刚被消息唤醒时 init 标志可能还没就绪，
     // 而记账只碰内存 Map，不依赖任何初始化状态；漏记账 = 文件名被浏览器忽略。
     if (Message && Message.Message == "vrQueueName") {
-        vrQueueFilename(Message.url, Message.filename, Message.conflictAction);
+        vrQueueFilename(Message.url, Message.filename, Message.conflictAction, Message.meta);
         sendResponse({ ok: true });
         return true;
+    }
+    // 资源库：入库查询/预登记（由 sw-library.js 处理）
+    if (Message && String(Message.Message || '').indexOf('vrLib.') === 0 && self.VRLib) {
+        try {
+            self.VRLib.handleMessage(Message, sendResponse);
+            return true;
+        } catch (e) {
+            sendResponse({ ok: false, code: 'LIB_E_SW', message: String(e) });
+            return true;
+        }
     }
     if (!G.initLocalComplete || !G.initSyncComplete) {
         sendResponse("error");
