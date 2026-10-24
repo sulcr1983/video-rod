@@ -237,3 +237,35 @@
 5. **星愿浏览器必须 `run_in_background` 启动**：用 `&` 后台起的进程会被工具会话回收（端口 9223 静默死亡）；taskkill 全部进程后等 3-4 秒再带参重拉（老实例在跑时新启动的参数被单例锁吞掉）
 6. **hook 检测假阴性**：popup.html 同时加载 `vr-download-hook.js`（`__vrNameHooked`）和 `popup-videorod.js` 的 `hookDownloadsApi`（`__vrHooked`），后者后包装会盖住前者的标记属性——检测 hook 是否装上要看功能（落盘名），不能看最外层 wrapper 的属性
 7. 改扩展代码后星愿里重载：`chrome://extensions` → 找「钓鱼竿」卡片 → `#dev-reload-button`（shadow DOM 里，JS `el.click()` 可靠）；重载后 SW 里 `typeof vrDownloadWithName === 'function'` 可验证新代码上线
+
+---
+
+## 8. 本地资源库原型 v1.3 验收（2026-10-24）
+
+> 对象：`deliverables/prototypes/library-prototype-v1.html` v1.3（方案见 `docs/LIBRARY-PLAN.md` v1.3）
+> 方式：CDP 驱动本机 Chrome 打开 `file://` 原型，`Runtime.evaluate` 执行断言 + 收集 `Runtime.exceptionThrown` / `Log.entryAdded`
+> 判定：**所有断言 PASS 且控制台 0 error/warning** 才算通过；截图另存 `deliverables/assets/`
+
+### 8.1 断言分组（对应 LIBRARY-PLAN §9 验收 15–19）
+
+| 组 | 覆盖 | 关键断言 |
+|---|---|---|
+| A 基础 | 渲染与数据 | 27 张卡片、初始 5 星标、标签下拉动态生成 |
+| B 星标 | 四入口一致 | 卡片按钮、列表行、右键菜单、`F` 键；点星标不误开灯箱 |
+| C 只看星标 | 叠加筛选 | 卡片数 == 星标数；按钮高亮；关闭后恢复全量 |
+| D 标签筛选 | 动态集合 | 筛选后全部命中该标签；与星标/搜索互不重置 |
+| E 键盘导航 | `J/K/Enter/F` | J/K 只高亮不打开；Enter 打开高亮项；F 切换星标；输入框内不触发 |
+| F 灯箱缩略图带 | 同步 | 数量 == 图片数；当前项唯一高亮；点第 N 张后计数/主图/信息栏同步 |
+| G 右键菜单 | 五项 + 星标 | 菜单出现、含"星标"项、Esc 关闭 |
+| H 进度条气泡 | 时间换算 | 气泡出现、`mm:ss` 格式、不改变播放位置 |
+| I 视频回归 | 自绘控件 | ↓ 切换、计数格式正确、Esc 关闭（防原生 controls 回归） |
+
+### 8.2 已知限制（测试侧）
+
+1. 视频样本走公网（MDN CC0，5.055 秒），首次加载可能需数秒——断言前先轮询 `readyState >= 1 && duration > 0`，最多等 30 秒
+2. 图片样本走 `trae-api-cn.mchost.guru` 文生图接口，弱网会出现灰块（原型已有裂图兜底，不算失败）
+3. 原型是单文件 `file://` 页面，与真实扩展页面的 CSP/权限行为不同——**§4.4 的 P0 探针不能由本测试替代**
+
+### 8.3 状态
+
+- [ ] A–I 全组跑通（待执行，执行后在此填「日期 + 通过数/总数 + 控制台错误数」）
