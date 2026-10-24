@@ -4,7 +4,11 @@
  * firefox 在 manifest 文件中已经加载以下脚本，如果已经加载 G 变量存在，不再加载。
  */
 if (typeof G === 'undefined') {
-    importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js");
+    importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js", "/js/library/path.js");
+}
+// 已加载过 G 的场景（Firefox）单独补 path.js，保证 VRPath 可用
+if (typeof self.VRPath === 'undefined') {
+    try { importScripts("/js/library/path.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
 
 // Service Worker 5分钟后会强制终止扩展
@@ -947,28 +951,55 @@ async function vrSaveContextMedia(info, isImage) {
         settings = (res && res.vrSettings) || {};
     } catch (e) { /* 忽略 */ }
 
-    const dir = String(settings.defaultDir || 'video-rod').replace(/[<>:"|?*\\]/g, '').replace(/^\/+|\/+$/g, '') || 'video-rod';
     const tpl = settings.template || '${author}_${title}';
 
     let name = '';
+    let pageUrl = '';
+    let authorFull = '';
     try {
         await chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['js/naming.js'] });
         const r = await chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: function (tpl, ext) {
                 const N = self.VideoRodNaming;
-                if (!N) { return ''; }
+                if (!N) { return null; }
                 try {
                     const i = N.extractPageInfo(document, location.href);
-                    return N.buildNameFromInfo(i, location.href, { tpl: tpl, ext: ext });
-                } catch (e) { return ''; }
+                    return {
+                        name: N.buildNameFromInfo(i, location.href, { tpl: tpl, ext: ext }),
+                        info: i,
+                        pageUrl: location.href
+                    };
+                } catch (e) { return null; }
             },
             args: [tpl, ext]
         });
-        name = (r && r[0] && r[0].result) || '';
+        const r0 = (r && r[0] && r[0].result) || null;
+        if (r0) {
+            name = r0.name || '';
+            pageUrl = r0.pageUrl || '';
+            authorFull = (r0.info && r0.info.authorFull) || '';
+        }
     } catch (e) { /* 受限页面，退回时间戳名 */ }
 
     if (!name) { name = 'media_' + Date.now() + '.' + ext; }
+
+    // 目录：优先走三段结构（子目录/平台/博主/类型），失败退回旧逻辑
+    let dir = '';
+    if (self.VRPath && self.VRPath.buildRelDir) {
+        try {
+            dir = self.VRPath.buildRelDir({
+                pageUrl: pageUrl,
+                mediaUrl: info.srcUrl,
+                authorFull: authorFull,
+                ext: ext,
+                subdir: settings.defaultDir || 'video-rod'
+            });
+        } catch (e2) { /* 退回 */ }
+    }
+    if (!dir) {
+        dir = String(settings.defaultDir || 'video-rod').replace(/[<>:"|?*\\]/g, '').replace(/^\/+|\/+$/g, '') || 'video-rod';
+    }
     const filename = (dir + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
 
     vrDownloadWithName(info.srcUrl, filename).then(function (id) {

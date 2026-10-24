@@ -79,7 +79,24 @@
     }
 
     window.vrDirOf = function (data) {
-        return (data && data.vrDir) || settings.defaultDir;
+        // 手动选过目录的条目优先；否则按「子目录/平台/博主/类型」自动拼
+        if (data && data.vrDir) { return data.vrDir; }
+        var P = window.VRPath;
+        if (P && P.buildRelDir) {
+            try {
+                return P.buildRelDir({
+                    pageUrl: (data && data.webUrl) || '',
+                    mediaUrl: data && data.url,
+                    site: pageInfo && pageInfo.site,
+                    authorFull: pageInfo && pageInfo.authorFull,
+                    creatorId: pageInfo && pageInfo.creatorId,
+                    type: data && (data.type || data.mediaType),
+                    ext: data && data.ext,
+                    subdir: settings.defaultDir
+                });
+            } catch (e) { /* 出错退回默认目录，不阻断下载 */ }
+        }
+        return settings.defaultDir;
     };
 
     window.vrOpenDirMenu = function (anchor, data) {

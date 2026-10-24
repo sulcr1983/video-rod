@@ -19,3 +19,6 @@ __pycache__/
 
 # 资源库根目录：下载内容不进 git
 /download/
+
+# 测试站视频夹具（从 .work/media 复制，可随时重建）
+/test-site/media/

@@ -80,6 +80,18 @@
         const name = N.buildNameFromInfo(
             { title: i.title, post: i.title, authorFull: i.authorFull, site: 'x' },
             'https://x.com/', { tpl: settings.template, ext: ext });
+        // 目录：优先走三段结构（子目录/X/博主/类型）
+        if (self.VRPath && self.VRPath.buildRelDir) {
+            try {
+                const dir = self.VRPath.buildRelDir({
+                    pageUrl: location.href,
+                    authorFull: i.authorFull,
+                    ext: ext,
+                    subdir: settings.defaultDir || 'video-rod'
+                });
+                return dir + '/' + name;
+            } catch (e) { /* 退回旧逻辑 */ }
+        }
         const dir = String(settings.defaultDir || 'video-rod')
             .replace(/[<>:"|?*\\]/g, '').replace(/^\/+|\/+$/g, '') || 'video-rod';
         return dir + '/' + name;

@@ -316,3 +316,42 @@
 6. **临时目录已规范化**（2026-10-24）：本节当初的 `E:\test\_vr-probe-ct` 与 `E:\test\_vr-probe-media`
    已归入项目内的 `.work/profiles/cft-147-probe` 与 `.work/media/probe`（`.work/` 不进 git、可整体删除）。
    仓库外不再保留本项目文件，规则见 `deliverables/DELIVERABLES.md` §1.1。
+
+---
+
+## 10. S1a 三段中文目录验收（2026-10-24，17/17 通过）
+
+> 对应 LIBRARY-PLAN §13.9 的 S1a：`path.js` + 下载落位 + 设置页「资源库」分区。
+
+### 10.1 环境
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147（`--load-extension=E:\test\video-rod`，profile `.work/profiles/ext-test`） |
+| 测试页 | `http://127.0.0.1:18080/index.html`（`test-site` 起 `python -m http.server`，视频夹具在 `test-site/media/`） |
+| 下载根目录 | `D:\Users\liq21\Downloads`（由「校验落盘」实测得出，非猜测） |
+| 脚本 | `tools/test-path.js`（48 条单测）、`tools/cdp-s1a-test.py`（17 条端到端） |
+
+### 10.2 结果
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| 单测 | 平台识别 / 类型推断 / 博主段 / 目录拼装 / 长度保护 / file:// 编码 | **48/48** |
+| A 扩展 | 加载成功、SW 就绪 | 1/1 |
+| B 设置页 | 分区存在、`VRSettings` 挂载、导航入口、子目录默认值、迁移按钮禁用、**校验落盘通过**、根目录显示 | 7/7 |
+| C 落位 | 嗅探卡片、勾选、产生下载、**三段中文目录**、下载完成 | 6/6 |
+| D 控制台 | 无 error / exception | 1/1 |
+
+**实际落盘路径**：
+
+```
+D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4
+└──── 下载根 ────┘└─ 子目录 ─┘└── 平台 ──┘└── 博主 ──┘└类型┘
+```
+
+### 10.3 已知点
+
+1. **真机只测了 web 平台**：本地测试站域名是 `127.0.0.1`，落到「其他网页/127.0.0.1」。B站/小红书/X/YouTube 的目录拼装由 `tools/test-path.js` 单测覆盖（4 个平台各有断言），未用域名映射做真机验证。
+2. **「校验落盘」会留一个空目录**：`video-rod/_verify/` 里的文件已用 `downloads.removeFile` 删除，但目录本身保留。索引阶段需忽略 `_` 开头目录（与 `_回收站` 同一规则）。
+3. **单卡下载按钮是 SVG**：CDP 合成点击不稳定，端到端测试改用「勾选 + 批量下载」入口，两条路径最终都走 `vrFullPath`，落位逻辑一致。
+4. **FSA 拿不到绝对路径**：设置页「选择文件夹并授权」只能存句柄，自定义目录的完整路径要手填；「校验落盘」反推的才是真实路径。

@@ -62,10 +62,11 @@
 | 2 | ~~**P0 前置探针**~~ | ✅ **已于 2026-10-24 完成，三项全过**（`file://` 直读 + 视频 seek + `downloads.search` 绝对路径），详见 TESTING §9 |
 | 3 | ~~**原型 v1.3 回归测试**~~ | ✅ **2026-10-24 完成：42/42 通过、控制台 0 错误**；截图见 `deliverables/assets/library-v13-*.png`（TESTING §8.3） |
 | 4 | 根目录方案已定（v1.7） | 默认 `<Chrome 下载目录>\video-rod`——系统下载目录下的子目录，**零拷贝、不与日常下载混放、不改 Chrome 设置**；自定义目录为 B 模式（`E:\test\video-rod\download` 保留作可选目标） |
-| 5 | **S1a 待开工** | `path.js` + 下载落位（`video-rod/平台/博主/类型/`）+ 设置页「资源库」分区（子目录名/模式/校验落盘），规格见 LIBRARY-PLAN §4.5、§13 |
-| 6 | 构建链在本机不可用 | `just / bash / zip / crx3 / openssl` 全缺，且仓库无 `package.json`；当前只能「加载已解压的扩展程序」，无法产出 .crx/.zip |
-| 7 | 文档漂移未修 | `DESIGN.md` 规划的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 均不存在，能力实际在 `popup-videorod.js` / `x-button.js` |
-| 8 | Deploy Key 写权限未知 | 若后续要 push，需在仓库 Settings → Deploy keys 勾选 Allow write access |
+| 5 | ~~**S1a**~~ | ✅ **2026-10-24 完成**：三段中文目录落盘 + 设置页「资源库」分区 + 校验落盘；单测 48/48、端到端 17/17（TESTING §10）。实落 `Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4` |
+| 6 | **S1b 待开工** | 迁移（结构 / 改子目录名 / 换根），规格见 LIBRARY-PLAN §4.5、§5.4、§13 |
+| 7 | 构建链在本机不可用 | `just / bash / zip / crx3 / openssl` 全缺，且仓库无 `package.json`；当前只能「加载已解压的扩展程序」，无法产出 .crx/.zip |
+| 8 | 文档漂移未修 | `DESIGN.md` 规划的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 均不存在，能力实际在 `popup-videorod.js` / `x-button.js` |
+| 9 | Deploy Key 写权限未知 | 若后续要 push，需在仓库 Settings → Deploy keys 勾选 Allow write access |
 
 > **工作区约定（2026-10-24 起）**：交付物 → `deliverables/`；文档 → `docs/`；可复用脚本 → `tools/`；
 > 本机临时件（Chrome profile、测试媒体、草稿）→ `.work/`（不进 git、可整体删除）。仓库外不再散落本项目文件。
