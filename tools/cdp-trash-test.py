@@ -152,7 +152,7 @@ def main():
                left: m.getBoundingClientRect().left, top: m.getBoundingClientRect().top };
     })()""")
     check("C1 右键菜单可见", menu["hidden"], False)
-    check("C2 菜单项完整", menu["acts"], ["preview", "open", "copy", "star", "trash"])
+    check("C2 菜单项完整", menu["acts"], ["preview", "open", "copy", "star", "rename", "trash"])
     check("C3 星标文案", menu["star"], "加星标")
 
     confirm = ev(cdp, sid, r"""(function(){
