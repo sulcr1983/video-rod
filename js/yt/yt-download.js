@@ -182,11 +182,15 @@
                 return;
             }
             if (!res || !res.ok) {
+                var code = (res && res.code) || '';
+                // 视频本身不可播时，重试没有意义 —— 按钮直接引导换视频，别让用户白等
+                var dead = code === 'YT_E_UNAVAILABLE';
                 var tip = res && res.hint ? '\n' + res.hint : '';
                 setMsg('取格式失败：' + ((res && res.error) || '未知原因') + tip, 'err');
-                el.note.textContent = '↻ 点这里重试';
-                el.note.style.cursor = 'pointer';
-                el.note.onclick = loadFormats;
+                el.note.textContent = dead ? '这个视频播不了，换一个视频试试' : '↻ 点这里重试';
+                el.note.style.cursor = dead ? 'default' : 'pointer';
+                el.note.onclick = dead ? null : loadFormats;
+                state.videoDead = dead;
                 return;
             }
             applyFormats(res);

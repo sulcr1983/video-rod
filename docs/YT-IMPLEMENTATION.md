@@ -134,21 +134,51 @@ Downloads/video-rod/YouTube/<作者>_<标题>_<高>p.mp4
 | 注入按钮 / 开窗 / 消息链路 | ✅ CDP 真机（`deliverables/assets/yt-button-injected.png`） |
 | 既有功能回归 | naming 27 / path 57 / image-util 58，全绿 |
 
-### ⏳ 未通过（环境问题，非代码问题）
+### 🔄 2026-10-24 晚更新：MWEB 已被关闭，改用 VISIONOS
 
-**活链路取格式被 YouTube 风控挡住。** 现象：四种客户端统一返回
-`UNPLAYABLE：The page needs to be reloaded.`
+用户实测报错 `TVHTML5 → UNPLAYABLE`，复查发现**研究阶段的结论已经过期**：
+MWEB 现在也统一回 `UNPLAYABLE: The page needs to be reloaded`。
 
-原因：研究阶段为了定位 403，对同一出口 IP（`203.10.99.42`）连续打了约 40 次 `youtubei/v1/player`，触发 IP+会话级限流。同一台机器、同一时段，**页面本身能正常播放**（说明不是网络问题）。
+逐客户端实测（`docs/YT-CLIENT-STATUS.md` 有完整表格）：
 
-需要苏哥在自己浏览器里验一次：
+| 客户端 | 结果 |
+|---|---|
+| **VISIONOS** | ✅ **32 条格式全带直链，最高 2160p，且 URL 里没有 `n`（不用跑 sandbox）** |
+| MWEB / TVHTML5 | ❌ UNPLAYABLE |
+| ANDROID / IOS | ❌ HTTP 400（客户端版本失效） |
+| ANDROID_VR | ❌ 要求登录验证 |
+| WEB | ⚠️ OK 但 0 条直链（全 SABR） |
 
-1. `chrome://extensions` → 重新加载本扩展
-2. 打开任意 YouTube 视频，等播放起来
-3. 点播放器下面的「下载」
-4. 选 1080p → 下载
+**已改**：客户端顺序换成 `VISIONOS → MWEB → TVHTML5 → ANDROID → IOS`。
 
-若仍失败，窗口里会显示四个客户端各自的拒绝原因——把那行发我，按原因再调。
+**顺带修了一个误导人的 bug**：原来错误只保留**最后一个**客户端的失败原因，
+所以用户只看到 TVHTML5 那一行，前三个的真实原因全被覆盖。现在收集全部并分类：
+
+| code | 含义 | UI 行为 |
+|---|---|---|
+| `YT_E_UNAVAILABLE` | 视频本身不可播（下架/私有/会员/地区） | 提示「换一个视频」，**不提供重试**（重试无意义） |
+| `YT_E_LOGIN` | 需要登录 | 提示先登录 |
+| `YT_E_BLOCKED` | 客户端全被拒（限流） | 提示刷新/等几分钟，可重试 |
+
+> 用户报的那个 Shorts（`DtY-bKDvl4I`）实测 `playabilityStatus.status = ERROR`、
+> `reason = 此视频不能观看` —— **页面自己都播不了**，不是扩展的问题。
+
+### ⏳ 仍未通过：浏览器侧拉流极慢（网络环境，非代码）
+
+同一 URL、同一条代理：
+
+| 拉取方式 | 吞吐 |
+|---|---|
+| Python `urllib` 经代理 | 1.4–2.0 MB/s |
+| 浏览器 `fetch`（扩展页） | 2–190 KB/s |
+
+已排除 CORS（扩展页 fetch 返回 206 正常）、直链过期、`n` 参数。
+怀疑是 URL 里 `ip=2a09:bac5:...` 是 **IPv6**，而代理出口是 IPv4，浏览器优先走 IPv6 连接导致绕路。
+
+待验证：代理开 IPv4 优先 / Chrome `--disable-ipv6` / 换出口节点。
+
+**这意味着**：取格式（0.2s）、Range 探测（206）、合并器都已验证可用；
+只有「把几十上百 MB 完整拉下来」这一步在当前网络下会很慢。
 
 ## 六、已知限制
 

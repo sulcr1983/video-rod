@@ -511,6 +511,25 @@
 - **理由**：测试只该动自己造的东西。前缀圈定既避免触发安全阈值，也避免误伤用户已有文件。
 - **影响**：`tools/cdp-image-batch-test.py`、`tools/cdp-image-panel-test.py`；见 HANDOFF §7.4-17。
 
+## ADR-046 YouTube 取格式客户端改用 VISIONOS（MWEB 已被关闭）
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：ADR-039 的结论是「九种客户端里只有 MWEB 活着」，据此把 MWEB 排在第一位。
+  2026-10-24 晚用户实测报错，复查发现 **MWEB 也已经被关闭**，统一回
+  `UNPLAYABLE: The page needs to be reloaded`；ANDROID/IOS 直接 HTTP 400（版本失效）。
+  这是 ADR-039 自己预判过的风险（「MWEB 直链窗口关闭」），只是比预期来得快。
+- **决策**：客户端顺序改为 **`VISIONOS → MWEB → TVHTML5 → ANDROID → IOS`**。
+  实测 VISIONOS 返回 32 条全带直链的格式、最高 2160p，**且 URL 里没有 `n` 参数**
+  （连 sandbox 解密都不需要，比 MWEB 那条路更简单）。
+- **理由**：YouTube 的客户端灰度是按「客户端 + 地区 + 时间」推的，任何单一路径都会过期。
+  顺序里保留后面几个是「活得久」而不是「现在有用」；第一个返回直链的就用。
+- **附带修**：错误汇总原来只保留**最后一个**客户端的失败原因，用户只看到 TVHTML5 那一行，
+  前三个的真实原因被覆盖 —— 这正是这次报错信息误导人的根因。改为收集全部并按
+  `YT_E_UNAVAILABLE` / `YT_E_LOGIN` / `YT_E_BLOCKED` 分类，UI 给不同建议
+  （视频本身不可播时**不提供重试**，因为重试无意义）。
+- **影响**：`js/background.js`（`ytCollectFormats`）、`js/yt/yt-download.js`（错误分类）；
+  详见 `docs/YT-CLIENT-STATUS.md`。回归 `yt-download-test.py` 21/21 未变。
+
 ---
 
 *新增决策在此追加，编号顺延。*
