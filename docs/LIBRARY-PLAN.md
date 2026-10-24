@@ -710,7 +710,7 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 | 2 | `css/library.css` | 新增 | 页面样式（沿用 popup 浅色变量） | — |
 | 3 | `js/library/path.js` | 已建 | 目录拼装、相对/绝对路径互转、`file://` URL 编码、长度与保留名校验 | `naming.js`（仅 `sanitizeName`） |
 | 4 | `js/library/db.js` | 新增 | IndexedDB 封装（file/thumb/setting/handle/oplog 五个 store） | — |
-| 5 | `js/library/indexer.js` | 新增 | 三源建索引（downloads.search / 快照 / FSA 全量扫描）+ 失效条目核对 + 快照写回 | `db.js`、`path.js`、SW 桥 |
+| 5 | `js/library/indexer.js` | 已建 | 三源建索引（downloads.search / 快照 / FSA 全量扫描）+ 失效条目核对 + 快照写回 | `db.js`、`path.js` |
 | 6 | `js/library/thumbs.js` | 新增 | 缩略图队列（并发 2、懒生成、失败占位、WebP 缓存） | `db.js` |
 | 7 | `js/library/trash.js` | 新增 | 软删除、恢复、清空、重命名（走 FSA 写权限） | `db.js`、`path.js` |
 | 8 | `js/library/migrate.js` | 新增 | 迁移 dry-run / 执行 / 校验 / 回滚（日志 JSON） | `db.js`、`path.js` |
@@ -945,7 +945,7 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | **S0** ✅ | P0 探针 | 探测扩展 + 结果记录 | **已完成 2026-10-24，三项全过**（§13.7） | `chore: P0 探针——file:// 直读与 downloads 绝对路径实测` |
 | **S1a** ✅ | `path.js` + 下载路径接管 + 设置页「资源库」分区 | **已完成 2026-10-24**：新下载落 `<下载目录>/video-rod/平台/博主/类型/`；设置页可改子目录名、切模式、校验落盘 | 单测 **48/48** + 端到端 **17/17**（TESTING §10）；实落 `Download\video-rod\其他网页\127.0.0.1\视频\test.mp4` | `feat(library): 三段中文目录（下载目录子目录）+ 根目录设置与落盘校验` |
 | **S1b** ✅ | 迁移（结构迁移 + 换根迁移 + 改子目录名） | **已完成 2026-10-24**：`migrate.js` 引擎 + `migrate-ui.js` 面板；dry-run / 复制 / 校验（size + 首尾 64KB）/ 删源 / 日志 / 回滚 | 端到端 **39/39**（TESTING §12）；S1a 回归 17/17、自动入库回归 14/14 | `feat(library): 迁移——dry-run/复制/校验/回滚（FSA 句柄）` |
-| **S2** | `db.js` ✅ + `sw-library.js` ✅ + `indexer.js` 待做 | 索引可建、可重建、有快照 | 1k 文件首屏 < 2s；清空下载历史后仍能列出 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
+| **S2** ✅ | `db.js` ✅ + `sw-library.js` ✅ + `indexer.js` ✅ | **已完成 2026-10-24**：三源建索引（downloads/快照/全量）+ `reconcile()` + 快照落盘与恢复；设置页「索引维护」三个入口 | 端到端 **35/35**（TESTING §13）；回归 57/17/14/39 全绿；1k 首屏性能留 S3 页面实测 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
 | **S3** | `library.html` + `ui.js` + `thumbs.js` | 可浏览、可筛选、可搜索 | TESTING §8 的 A/C/D 组 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
 | **S4** | `lightbox.js` + `video.js` + `keyboard.js` | 看图/看视频/键盘 | TESTING §8 的 E/F/H/I 组 | `feat(library): 灯箱与视频弹层——缩略图带 + 自绘控件键盘` |
 | **S5** | `trash.js` + 右键菜单 + 删除/回收站 UI | 删除、恢复、清空、重命名 | TESTING §8 的 B/G 组 | `feat(library): 删除回收站与右键菜单——可恢复、二次确认` |
@@ -1091,7 +1091,9 @@ Log      = { id, planId, kind, at, srcName, dstName,
 |---|---|---|
 | 1 | `VRIndex.setRoot(handle, absRoot)` 内存 | 传入值 |
 | 2 | `VRDB.getHandle('root')` + `VRDB.getSetting('rootAbs')` | 授权时记录 |
-| 3 | 旧授权库 `vr-lib-handle`（settings.js「选择文件夹并授权」写的 key `root`） | A 模式 `detectedRoot + '/' + subdir`；B 模式 `customRoot` |
+| 3 | 旧授权库 `vr-lib-handle`（settings.js「选择文件夹并授权」写的 key `root`） | **仅 custom 模式复用**；absRoot = `customRoot` |
+
+**目录契约**：句柄指向「资源库根」——A 模式 = `<下载目录>/<subdir>`，B 模式 = `customRoot`；索引 key 首段固定为 `subdir`（A 为真实目录、B 为虚拟前缀，与 §13.10 迁移同步口径一致）。扫描时按 `absRoot + '/' + 相对路径` 算 `absPath`，按 `subdir + '/' + 相对路径` 写 `relPath`。
 
 - `setRoot()` 把句柄与绝对路径一并落库，下次打开页面免重选。
 - 句柄可用性用 `queryPermission({mode:'read'})` 判断：`prompt` → `LIB_E_AUTH_LOST`（`file://` 直读不受影响，但扫描/快照必须重授权）。
@@ -1114,8 +1116,8 @@ downloads 细节：
 
 full 细节：
 
-- 复用 `VRMigrate.listFiles(handle)`，天然跳过临时/私有目录与非媒体。
-- `absPath = absRoot + '/' + rel`；`mtime` 取 `File.lastModified`。
+- indexer 内置 walk，跳过规则与 §13.10 一致（点文件 / `_migration` / `_回收站` / `_verify` / `_library` / `.part`），只收 `VRPath.typeOf() !== 'other'`。
+- `absPath = absRoot + '/' + 相对路径`；`mtime` 取 `File.lastModified`。
 
 **条目映射与合并**
 
@@ -1205,4 +1207,5 @@ VRIndex.snapshot() -> Promise<string>       // 返回落盘绝对路径
 | v1.7 | 2026-10-24 | **根目录方案改为「系统下载目录下的 video-rod 子目录」**：§4.5 重写——A 模式（默认，零拷贝、不改 Chrome 设置、自动跟随下载目录变化）与 B 模式（自定义目录，需搬移）；新增「探测真实下载根目录」算法（微下载 + 反推，顺带解决 OneDrive 重定向）；迁移扩为三种（结构迁移 / 改子目录名 / A↔B 换根）；§10 已拍板与 §13.1/§13.3/§13.4/§13.9 同步 |
 | v1.8 | 2026-10-24 | **S1b 迁移规格定死**：新增 §13.10——扩展无通用文件写权限，迁移只能走 FSA 句柄（`planRebase` 参数由路径改为 DirectoryHandle）；三种形态共用扫描/预演/复制/校验/删源/日志/回滚；冲突只比 size 不比 mtime；异常→错误码映射；迁移后索引同步口径；8 条验收；测试用 OPFS 句柄注入绕开原生目录选择器 |
 | v1.9 | 2026-10-24 | **S2 索引规格定死**：新增 §13.11——三源分工（downloads 只 upsert 不判缺失；snapshot/full 扫不到标 `missing` 不删除）；根解析三档（内存 → VRDB handle → 旧授权库）；快照不存 absPath、按当前根重算；reconcile 优先 `downloads.exists` 再 FSA；设置页三个维护入口；8 条验收；测试 `tools/cdp-indexer-test.py` |
+| v2.0 | 2026-10-24 | **S2 索引落地**：§13.11 按实现校订（句柄指向资源库根、`relPath` 首段固定 `subdir`；full 改为内置 walk）；§13.9 S2 标 ✅（端到端 35/35，回归 57/17/14/39 全绿）；TESTING 新增 §13；DELIVERABLES 登记 `indexer.js` 与 `cdp-indexer-test.py` |
 

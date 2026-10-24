@@ -471,3 +471,55 @@ D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4
 3. **深度校验（SHA-256）未跑**：`deepVerify` 开关存在但测试未开（大文件读两遍成本高）。
 4. **索引 absPath 依赖 `detectedRoot`**：没跑过「校验落盘」的 profile 里，迁移只更新 relPath，absPath 保留原值等 S2 校对。
 5. **改子目录名会自动改设置里的 `subdir`**（仅 UI 层）；引擎本身不改设置，避免测试互相污染。
+
+---
+
+## 13. S2 索引服务验收（2026-10-24，35/35 通过）
+
+### 13.1 环境与测试手法
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346） |
+| 测试站 | `python -m http.server 18080`（`test-site/`） |
+| 句柄来源 | **OPFS** `navigator.storage.getDirectory()` 造树，`VRIndex.setRoot(handle, 'D:/DL/idx-root', 'video-rod')` 注入（同 §12 思路，绕开原生目录选择器） |
+| downloads 源 | 真实下载 `http://127.0.0.1:18080/media/test.mp4` → `video-rod/其他网页/127.0.0.1/视频/idx-dl.mp4`；跑完 `removeFile` + `erase` |
+| 命令 | `VR_CDP=http://127.0.0.1:9346 python tools/cdp-indexer-test.py` |
+
+OPFS 树：`B站/影视飓风(@946974)/视频/a.mp4`、`…/图片/p.jpg`、`其他网页/site/音频/s.mp3`，外加 `readme.txt`、`_verify/x.mp4`、`_library/index-20260101.json`、`part.mp4.part`（均应被跳过）。
+
+### 13.2 结果（35 条）
+
+| 组 | 覆盖 | 通过 |
+|---|---|---|
+| A 模块/根绑定 | 模块加载、`setRoot` 返回 absRoot+prefix | 4/4 |
+| B 全量扫描 | 3 个媒体文件、跳过私有/临时目录、星标标签保留、absPath 重算、元数据反解、state=ok | 6/6 |
+| C 快照 | 命名 `index-YYYYMMDD.json`、version/count/subdir、含全部条目、清库后恢复 3 条、星标标签保留、absPath 重算 | 7/7 |
+| D 缺失语义 | 扫描 2 条/标缺失 2 条、条目不删（总数 4）、状态正确、`reconcile` 命中 2 个缺失、不删条目 | 5/5 |
+| E 设置页 | 三个按钮存在、重建有结果、写快照给出路径、状态行显示已入库 | 4/4 |
+| F 无句柄降级 | full/snapshot 均报 `LIB_E_NO_PERM`，downloads 仍可用 | 3/3 |
+| G downloads 源 | 真实下载→清库→重建：条目出现、relPath 带 `video-rod/` 前缀、absPath 用下载真名、platform/type 正确、size>0 | 5/5 |
+| H 控制台 | 无 error / exception | 1/1 |
+
+### 13.3 本轮修掉的真 bug
+
+1. **`reconcile()` 把整个索引误标 missing**：索引 key 带 `subdir` 前缀（`video-rod/…`），而 FSA 句柄指向资源库根，直接拿 `relPath` 去 `getFile()` 必然找不到。修法：先 `stripPrefix(relPath, prefix)` 再查。首轮 D4 把 4 条全标 missing 暴露了它。
+2. **测试手法坑（非产品 bug）**：用 `data:text/plain` 发下载，Chrome 会按 MIME 把 `.mp4` 改成 `.txt`，被媒体过滤掉 → downloads 源测出 0 条。改用测试站的 `media/test.mp4` 后正常。
+
+### 13.4 回归
+
+| 套件 | 结果 |
+|---|---|
+| `tools/test-path.js` | **57/57** |
+| `tools/cdp-s1a-test.py` | **17/17** |
+| `tools/cdp-index-test.py` | **14/14** |
+| `tools/cdp-migrate-test.py` | **39/39** |
+| `tools/cdp-indexer-test.py` | **35/35** |
+
+### 13.5 尚未覆盖 / 已知边界
+
+1. **原生目录选择器仍未自动化**：只验证了 OPFS 句柄注入，「用户点选目录拿句柄」这一步靠手动。
+2. **1k 文件首屏性能未测**：S2 只测正确性；「1k 文件 < 2s」要等 S3 页面出来才有真实首屏。
+3. **快照只保留 7 份的清理分支未单独断言**（代码路径简单，未构造 8 份）。
+4. **downloads 上限 5000 的 `truncated` 分支未构造**（需要 5000 条下载记录）。
+5. **B 模式（custom）的 downloads 源不可用**：新下载仍落系统下载目录，要等 `archive.js`；S2 只保证 A 模式（默认）可用。

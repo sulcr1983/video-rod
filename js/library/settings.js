@@ -105,6 +105,18 @@
             }
             text('vrLibIndex', '已入库 ' + r.count + ' 条', r.count > 0 ? '#2e7d32' : '#666');
         });
+        if (root.VRIndex && root.VRIndex.status) {
+            root.VRIndex.status().then(function (s) {
+                var msg = '已入库 ' + s.count + ' 条';
+                if (s.missing) { msg += ' · 缺失 ' + s.missing; }
+                if (s.snapshotAt) {
+                    var d = new Date(s.snapshotAt);
+                    msg += ' · 快照 ' + (d.getMonth() + 1) + '-' + d.getDate() + ' ' +
+                        ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+                }
+                text('vrLibIndex', msg, s.count > 0 ? '#2e7d32' : '#666');
+            }).catch(function () { /* 状态失败不覆盖原文案 */ });
+        }
         chrome.runtime.sendMessage({ Message: 'vrLib.list' }, function (r) {
             if (chrome.runtime.lastError || !r || !r.ok) { return; }
             var el = $('vrLibRecent');
@@ -228,6 +240,75 @@
         });
     }
 
+    /* ---------------- 索引维护（S2） ---------------- */
+
+    function absRootNow() {
+        if ((state.mode || 'system') === 'custom') {
+            return String(state.customRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        }
+        var rootDir = String(state.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        return rootDir ? (rootDir + '/' + (state.subdir || 'video-rod')) : '';
+    }
+
+    function bindIndex() {
+        var build = $('vrLibIdxBuild');
+        if (build) {
+            build.addEventListener('click', function () {
+                if (!root.VRIndex) { text('vrLibIdxMsg', '索引模块未加载', '#c0392b'); return; }
+                text('vrLibIdxMsg', '正在从下载记录重建…', '#666');
+                root.VRIndex.build({ mode: 'downloads' }).then(function (r) {
+                    text('vrLibIdxMsg', '重建完成：' + r.ok + ' 条' +
+                        (r.missing ? '（标记缺失 ' + r.missing + '）' : ''), '#2e7d32');
+                    refreshIndex();
+                }).catch(function (e) {
+                    text('vrLibIdxMsg', '失败：' + (e && e.message || e), '#c0392b');
+                });
+            });
+        }
+
+        var snap = $('vrLibIdxSnap');
+        if (snap) {
+            snap.addEventListener('click', function () {
+                if (!root.VRIndex) { text('vrLibIdxMsg', '索引模块未加载', '#c0392b'); return; }
+                text('vrLibIdxMsg', '正在写快照…', '#666');
+                root.VRIndex.snapshot().then(function (p) {
+                    text('vrLibIdxMsg', '快照已写入 ' + p, '#2e7d32');
+                    refreshIndex();
+                }).catch(function (e) {
+                    text('vrLibIdxMsg', '失败：' + (e && e.message || e), '#c0392b');
+                });
+            });
+        }
+
+        var full = $('vrLibIdxFull');
+        if (full) {
+            full.addEventListener('click', function () {
+                if (!root.VRIndex) { text('vrLibIdxMsg', '索引模块未加载', '#c0392b'); return; }
+                if (typeof root.showDirectoryPicker !== 'function') {
+                    text('vrLibIdxMsg', '此浏览器不支持目录选择（需 Chrome 86+）', '#c0392b');
+                    return;
+                }
+                var abs = absRootNow();
+                if (!abs) {
+                    text('vrLibIdxMsg', '请先点「校验落盘」确定根目录（自定义模式请先填路径）', '#b26a00');
+                    return;
+                }
+                root.showDirectoryPicker({ mode: 'read' }).then(function (h) {
+                    return root.VRIndex.setRoot(h, abs).then(function () {
+                        return root.VRIndex.build({ mode: 'full' });
+                    });
+                }).then(function (r) {
+                    text('vrLibIdxMsg', '全量扫描完成：' + r.ok + ' 条' +
+                        (r.missing ? '（标记缺失 ' + r.missing + '）' : ''), '#2e7d32');
+                    refreshIndex();
+                }).catch(function (e) {
+                    if (e && e.name === 'AbortError') { return; }
+                    text('vrLibIdxMsg', '失败：' + (e && e.message || e), '#c0392b');
+                });
+            });
+        }
+    }
+
     /* ---------------- 事件绑定 ---------------- */
 
     function bind() {
@@ -302,6 +383,7 @@
         load(function () {
             render();
             bind();
+            bindIndex();
             refreshIndex();
         });
     }
