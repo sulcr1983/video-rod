@@ -1,6 +1,6 @@
-# video-rod 本地资源库 · 方案评审版 v1.4
+# video-rod 本地资源库 · 方案评审版 v1.5
 
-> 版本：v1.4 ｜ 日期：2026-10-24 ｜ 状态：**待二次评审** ｜ 范围：方案 + 可交互原型，不含产品代码
+> 版本：v1.5 ｜ 日期：2026-10-24 ｜ 状态：**待二次评审** ｜ 范围：方案 + 可交互原型 + P0 探针实测，不含产品代码
 > 目标读者：评审人（外部审计）、Sunny姐姐（项目所有者）
 > 配套原型：[library-prototype-v1.html](../deliverables/prototypes/library-prototype-v1.html)（单文件，双击即可打开）
 > 关联文档：[REQUIREMENTS.md](REQUIREMENTS.md#L124-L131)（P1 #13 下载历史）、[PLAN.md](PLAN.md#L75)
@@ -124,7 +124,7 @@
 | 能否读取本地文件并播放 | ✅ `FileSystemFileHandle.getFile()` → `URL.createObjectURL(file)` → `<video>`/`<img>` 可直接用 |
 | 是否有 MV3 限制 | 无 `fileSystem` 旧 API，但 **File System Access API 在扩展页面可用**；不能在 Service Worker 里用，必须在页面（用户手势）里调用 |
 | 旧 `file://` 方案（列目录） | ❌ 无法枚举目录 → **不采用它做扫描**。`file://` 只用于"路径已知时的读取/播放"，见 §4.4 |
-| `file://` 资源能否在扩展页面直接 `<img>/<video>` | ⚠️ **待实测**（P0 前置探针）。需用户开启"允许访问文件网址"；若不可用则退化为 FSA blob URL 读取 |
+| `file://` 资源能否在扩展页面直接 `<img>/<video>` | ✅ **已实测通过（S0，2026-10-24，Chrome for Testing 147）**：`<img>` `naturalWidth=320`；`<video>` `readyState=4`、`duration=5.055`、`currentTime=2` 可写回读；见 §14 |
 
 参考：[File System Access API 官方文档](https://developer.chrome.com/docs/capabilities/web-apis/file-system-access)、[File System Access API 打开目录](https://photoswipe.com/)（组件）、[Photoview 目录扫描模式](https://selfhosting.sh/best/photo-management/)、[Billfish 官方](https://www.billfish.cn/)、[TagStudio/Eagle 替代对比](https://www.refern.app/blog/best-eagle-alternatives-without-copying-files-2026)
 
@@ -215,13 +215,19 @@ C 作为兜底：如果哪天不想维护，直接让 Billfish 以"索引模式"
 - 资源库用 `chrome.downloads.search()` 拿**绝对路径**建索引，再用 `file:///D:/Media/...` 直接显示/播放，**不需要每次启动重新授权目录**
 - 目录授权（FSA）只在两种场景使用：**首次全量扫描**（历史里没有的文件）与**迁移旧文件**（需要写权限）
 
-> **P0 前置探针（写产品代码前必须先做）**
-> 用一个最小 MV3 扩展页面验证三件事，任一不通过就切换到备选路径：
-> 1. 扩展页面里 `<img src="file:///D:/x.jpg">` 能否显示（`naturalWidth > 0`）
-> 2. `<video src="file:///D:/x.mp4">` 能否播放（`readyState ≥ 3`）与拖动进度（`currentTime` 可写）
-> 3. `chrome.downloads.search({})` 返回的 `filename` 是否就是绝对路径
-> 备选路径：改用 FSA `getFile()` → `URL.createObjectURL()` 读取（代价：需目录授权，且句柄可能不跨重启持久化）。
-> **结论出来前，§11 的 Q2 保持"待实测"，不允许在文档里写成"已验证"。**
+> **P0 前置探针（✅ 已于 2026-10-24 执行通过）**
+> 用一个最小 MV3 扩展页面（`tools/probe-file-access/`）验证三件事，结果如下：
+>
+> | # | 探测项 | 判定 | 实测值 |
+> |---|---|---|---|
+> | 1 | `<img src="file:///E:/test/_vr-probe-media/probe.jpg">` | ✅ 通过 | `naturalWidth=320`、`naturalHeight=200` |
+> | 2 | `<video src="file:///.../probe.mp4">` 播放 + seek | ✅ 通过 | `readyState=4`、`duration=5.055`、`currentTime=2` 写回读一致 |
+> | 3 | `chrome.downloads.search()` 的 `filename` | ✅ 通过 | `D:\Users\liq21\Downloads\vr-probe-record.txt`（绝对路径） |
+>
+> **测试环境**：Chrome for Testing 147.0.7727.15（正式版 Chrome 155 已移除 `--load-extension`，无法命令行加载探针扩展）。
+> **结论**：主线（`downloads.search` 绝对路径 + `file://` 直读）成立，**退化到 FSA 的路径不触发**。
+> **正式版注意事项**：正式 Chrome 默认关闭"允许访问文件网址"，需用户一次性在 `chrome://extensions` 打开；
+> 未打开时 `isAllowedFileSchemeAccess()` 返回 `false`，页面按 §13.6 的 `LIB_E_AUTH_LOST` 显示引导横幅。
 
 **退化路径的真实代价（审计 ATK-08 成立，且比其描述更严重）**
 
@@ -475,13 +481,14 @@ setting: { key, value }                                        // 排序偏好�
 
 - ✅ 已消除：「每次启动重新授权」——主线靠 `downloads.search` 建索引 + `file://` 直读，配合 §4.4 的索引快照破死锁
 - ✅ 已消除：原生视频控件吞键盘——改为自绘控件，已在原型实测
-- ⚠️ **条件性阻断 1**：`file://` 直读尚未实测。若失败，退化到 FSA 就必然"每次启动授权一次"，与 R8 冲突。**P0 探针必须先行**
+- ✅ **已消除（S0 实测）**：`file://` 直读通过——图片 `naturalWidth=320`、视频 `readyState=4` 且可 seek、
+  `downloads.search` 返回绝对路径。退化到 FSA 的路径**不触发**；仅需用户一次性打开"允许访问文件网址"
 - ✅ 已解除：GPL-3.0 义务——本项目为**私有库、本机自用、不分发**，上游许可不产生分发义务；
   仓库保留上游 LICENSE 与署名即可。第三方代码按 §6.2 直接复用并保留其版权声明
 - ⚠️ 需用户接受的一次性设置成本：改 Chrome 下载目录（企业策略锁定时可能改不了）
 - ✅ 迁移数据风险：先复制后删 + 大小/采样校验 + 日志 + 回滚 + 不覆盖 + 异常即停
 
-**结论：进入实现前必须先完成 P0 探针；探针通过则方案成立，失败则需先解决 R8 与 FSA 的冲突再谈实现。**
+**结论：P0 探针已于 2026-10-24 全部通过（§4.4 / §13.7），方案成立，可进入 S1（路径与下载落位）。**
 
 ---
 
@@ -529,8 +536,8 @@ setting: { key, value }                                        // 排序偏好�
 
 | # | 质疑点 | 若判断为"不成立"的后果 | 本方案的回答 | 需要评审人做什么 |
 |---|---|---|---|---|
-| Q1 | **"不每次授权"是否真能成立？** 依赖"Chrome 设置里固定下载目录 + `downloads.search` 拿绝对路径 + `file://` 直读" | 若 `file://` 在扩展页面读不了，就得每次启动选目录（用户明确不接受） | §4.4：读取走 `downloads.search`（不需授权）；`file://` 仅用于播放已知路径，且**已标注待实测**，失败则退化 FSA | 判断这个退化链是否可接受；或指出更好的读取路径 |
-| Q2 | **`file://` 直读尚未实测**（P0 探针未做） | 核心体验（点开即播）可能退化 | 已列为 P0 前置验证项，先测再写产品代码 | 确认"先探针后开发"的顺序是否合理 |
+| Q1 | **"不每次授权"是否真能成立？** 依赖"Chrome 设置里固定下载目录 + `downloads.search` 拿绝对路径 + `file://` 直读" | 若 `file://` 在扩展页面读不了，就得每次启动选目录（用户明确不接受） | §4.4：读取走 `downloads.search`（不需授权）；`file://` 直读**已实测通过**（S0），退化路径不触发 | 判断这个链路是否还有未覆盖的失败模式 |
+| Q2 | **`file://` 直读**（原"未实测"） | 核心体验（点开即播）可能退化 | ✅ **S0 已实测通过**：`<img>` 与 `<video>` 都能直读，`downloads.search` 返回绝对路径（§4.4 / §13.7） | 复核探针结果与测试环境（Chrome for Testing 147）是否可信 |
 | Q3 | **迁移旧文件有数据风险** | 可能弄丢用户历史文件 | §5.4：dry-run → 复制 → 校验大小 → 删源 → 日志 → 可回滚 → 不覆盖 | 检查是否有遗漏的失败分支（断电、权限中途撤销、同名但内容不同） |
 | Q4 | **删除权限的边界** | 误删不可恢复 | §5.3：默认软删除进 `_回收站`，二次确认显示文件名+大小，清空才永久删 | 判断"清空回收站"是否需要更强的确认（如输入文件名） |
 | Q5 | **平台/博主识别准确率** | 目录分错、博主分裂 | 复用 `naming.js` 的 `SITE_RULES`；拿不到作者落 `待整理`；索引存 `creatorId` 归并 | 指出哪些平台无法稳定识别作者 |
@@ -559,7 +566,8 @@ setting: { key, value }                                        // 排序偏好�
 ### 11.4 已知限制（不回避）
 
 1. **必须一次性改 Chrome 下载目录**：Chrome 不允许扩展写任意绝对路径，这是浏览器硬限制，不是设计选择。
-2. **必须一次性开启"允许访问文件网址"**（若 Q2 探针通过）；否则退化为 FSA 每次授权。
+2. **必须一次性开启"允许访问文件网址"**：S0 已实测 `isAllowedFileSchemeAccess=true` 时直读可用；
+   正式 Chrome 默认关闭该开关（Chrome for Testing 默认为开），需用户在 `chrome://extensions` 手动开一次。
 3. **目录句柄不能跨浏览器重启持久化**：这是 Chrome 的限制，因此不把 FSA 作为日常读取路径。
 4. **下载历史被清空会导致索引缺失**：提供"全量扫描"重建，但历史 URL 等元数据无法恢复。
 5. **v1 不做**：云同步、AI 打标、视频转码、移动端。
@@ -601,7 +609,7 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 
 | 项 | 审计判断 | 我的复核 | 处理 |
 |---|---|---|---|
-| `file://` 直读 | S1 阻断 | **成立**。方案 §4.4 一直标"待实测"却没做，这是最大缺口 | 列为 P0 前置探针，通过才进 P1（§4.4） |
+| `file://` 直读 | S1 阻断 | **成立，已实测解除**。S0 探针（Cft 147）：`<img>` `naturalWidth=320`、`<video>` `readyState=4` 且 `currentTime=2` 可写回读、`downloads.search` 返回绝对路径 | §4.4 与 §13.7 记录实测值；Q2 关闭 |
 | 中文 + `@()` 路径 | S1 阻断 | **部分成立，降级**。NTFS 支持 Unicode 与 `@()`；`chrome.downloads.download` 拒绝的是 `:*?"<>\|`，不是中文。真正要写对的是：本地路径 `\`→`/` 后逐段 `encodeURI` 才能拼成合法 `file://` URL（`#`、`%`、空格必须转义） | 归入实现检查单，不列为阻断 |
 | FSA 跨会话 | S1 阻断 | **成立且更严重**。持久权限只到"同一会话"，跨会话 `queryPermission()` 返回 `prompt`。方案主线不依赖 FSA，但退化的代价必须写明 | §4.4 增"退化真实代价"；并补破死锁方案 |
 | creatorId 稳定性 | S1 阻断 | **问题真实，因果错**。`xsec_token` 是分享凭证、每次都变，但它不是用户 ID；正确 ID 在 `/user/profile/<user_id>` 路径段。真实风险是**短链解析不出 ID** | §5 增逐平台提取规则；短链落 `待整理`，不猜 |
@@ -828,19 +836,26 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | `LIB_E_SNAPSHOT_STALE` | 快照日期早于最近下载 | 索引可能不是最新 | 后台增量补齐，不阻塞浏览 |
 | `LIB_E_TIMEOUT` / `LIB_E_SW_DOWN` | SW 未启动/繁忙 | 后台未就绪，正在重试 | 指数退避重试 2 次后提示 |
 
-### 13.7 P0 前置探针规格（必须先跑）
+### 13.7 P0 前置探针（✅ 已执行：2026-10-24，全部通过）
 
-**形式**：`tools/probe-file-access/` 建一个最小 MV3 扩展（`manifest.json` + `probe.html` + `probe.js`），开发者模式加载后点「开始探测」。
+**形式**：`tools/probe-file-access/` 最小 MV3 扩展（`manifest.json` + `background.js` + `probe.html` + `probe.js`），
+加载后打开 `chrome-extension://<id>/probe.html`，点「开始探测」；结果写入 `window.__PROBE__`，供 CDP 读取。
 
-**三件事与判定**
+**执行结果**
 
-| # | 探测 | 通过判定 | 不通过的后继动作 |
+| # | 探测 | 判定 | 实测 |
 |---|---|---|---|
-| 1 | `<img src="file:///D:/...jpg">` | `naturalWidth > 0` | 图片改走 FSA `getFile()` + `createObjectURL` |
-| 2 | `<video src="file:///D:/...mp4">` | `readyState >= 3` 且 `currentTime = 5` 可写回读 | 视频改走 FSA 读取（大文件一次性 blob 有内存风险 → 加"用系统播放器打开"兜底） |
-| 3 | `chrome.downloads.search({limit:5})` | 返回项 `filename` 为绝对路径（含盘符/根） | 索引改从 `vrLibSettings.rootLabel` + FSA 扫描建立，每次会话需授权 |
+| 1 | `<img src="file:///E:/test/_vr-probe-media/probe.jpg">` | ✅ 通过 | `naturalWidth=320`、`naturalHeight=200` |
+| 2 | `<video src="file:///.../probe.mp4">` + seek | ✅ 通过 | `readyState=4`、`duration=5.055`、`currentTime` 设为 2.0 后读回 2.0 |
+| 3 | `chrome.downloads.search({limit:5})` | ✅ 通过 | `filename = D:\Users\liq21\Downloads\vr-probe-record.txt`（绝对路径） |
 
-**执行要求**：三项结果写回 `docs/TESTING.md` §8，**任一不通过则 §4.4 的退化路径正式生效**，不得直接进 P1。
+**环境**：Chrome for Testing 147.0.7727.15，独立 profile，`--load-extension` 加载。
+**为什么不用正式 Chrome 155**：Chrome 137+ 移除了 `--load-extension`（即使加 `--disable-features=DisableLoadExtensionCommandLineSwitch` 也无效），
+无法命令行加载探针扩展；日常使用仍走"开发者模式手动 Load unpacked"。
+**正式版差异**：正式 Chrome 的 `isAllowedFileSchemeAccess` 默认为 `false`，需一次性手动开启；探针环境为 `true`。
+
+**结论**：三项全过 → **主线成立，退化路径不触发**。§4.4 的备选方案保留，仅作为未来 Chrome 收紧策略时的预案。
+**执行要求（已满足）**：结果同步写回 `docs/TESTING.md` §9。
 
 ### 13.8 组件取用决策（能抄就抄）
 
@@ -857,7 +872,7 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 
 | 步骤 | 内容 | 产出 | 验收 | 建议提交信息 |
 |---|---|---|---|---|
-| **S0** | P0 探针 | 探测扩展 + 结果记录 | 三项有明确通过/失败结论 | `chore: P0 探针——file:// 直读与 downloads 绝对路径实测` |
+| **S0** ✅ | P0 探针 | 探测扩展 + 结果记录 | **已完成 2026-10-24，三项全过**（§13.7） | `chore: P0 探针——file:// 直读与 downloads 绝对路径实测` |
 | **S1** | `path.js` + 下载路径接管 | 新下载自动落三段中文目录 | `node tools/test-naming.js` 全绿 + 真机下 3 个平台各 1 个文件 | `feat(library): 下载落位改为 平台/博主/类型 三段中文目录` |
 | **S2** | `db.js` + `indexer.js` + `sw-library.js` | 索引可建、可重建、有快照 | 1k 文件首屏 < 2s；清空下载历史后仍能列出 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
 | **S3** | `library.html` + `ui.js` + `thumbs.js` | 可浏览、可筛选、可搜索 | TESTING §8 的 A/C/D 组 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
@@ -877,5 +892,6 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | v1.2 | 2026-10-24 | **回应审计报告**：新增 §12 独立复核（6 条 S1 逐条判断 + 3 处不采纳理由 + 3 处审计未发现项）；§5 增 `creatorId` 逐平台提取规则；§5.4 校验改为 size+首尾采样并补异常处理；§6 视频改为自绘控件（ATK-21 已实测修复）；§4.4 增 FSA 退化代价与索引重建死锁破解；§8 风险表 +7 条；§11.4 增 GPL-3.0 与策略锁目录；对抗性结论改为"2 条条件性阻断" |
 | v1.3 | 2026-10-24 | **开源交互全量落地**：② §6 交互清单新增星标、只看星标、标签 chips、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条时间气泡；③ §6.1 八项开源 UX 中 6 项标 ✅、1 项以时间气泡替代、1 项只取轻量标签；④ 新增 §6.2"只学交互、不抄代码"实现边界；⑤ §7 P3 补入新增交互；⑥ §9 验收新增 15–19 五条；⑦ §11.3 补"能验证/不能验证"三行；① 曾按"已公开开源"口径改写许可证段落 |
 | v1.4 | 2026-10-24 | **口径定稿 + 实现规格**：① 确认项目为**私有仓库、本机自用、不分发**，GPL-3.0 不触发分发义务；§0.1 明确"**开源代码能抄就抄**，按引入成本择优"；② §2.3 改为可直接引入 PhotoSwipe 5 / justified-layout 的无需构建成品；③ §6.2 从"只学交互不抄代码"改写为"抄代码策略"；④ 新增 §13 实现规格（前后端文件清单、模块职责、函数签名、数据结构、错误码、状态机、P0 探针、S0–S5 提交切分），确保开工前无待研究项 |
-| —— | —— | 注：v1.3 曾按"已公开开源"改写、并自加"全部自研"约束；v1.4 均已作废，以本行为准 |
+| v1.5 | 2026-10-24 | **S0 探针实测通过**：`<img>`/`<video src="file://">` 直读、视频 seek、`downloads.search` 返回绝对路径三项全过（Chrome for Testing 147）；§2.4/§4.4/§8/§11.1/§11.4/§12.2/§13.7/§13.9 同步关闭待实测项；对抗性结论中的"条件性阻断 1"解除；记录正式 Chrome 需手动开"允许访问文件网址" |
+| —— | —— | 注：v1.3 曾按"已公开开源"改写、并自加"全部自研"约束；v1.4 均已作废，以 v1.4 为准 |
 

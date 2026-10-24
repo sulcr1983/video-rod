@@ -269,3 +269,40 @@
 ### 8.3 状态
 
 - [ ] A–I 全组跑通（待执行，执行后在此填「日期 + 通过数/总数 + 控制台错误数」）
+
+---
+
+## 9. P0 探针实测记录（2026-10-24，全部通过）
+
+> 对应 LIBRARY-PLAN §13.7。对象：`tools/probe-file-access/`（最小 MV3 扩展）。
+> 目的：决定资源库读取走 `file://` 直读还是退化为 FSA。
+
+### 9.1 环境
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147.0.7727.15（`C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe`） |
+| 启动参数 | `--remote-debugging-port=9341 --user-data-dir=E:\test\_vr-probe-ct --load-extension=...\tools\probe-file-access --disable-extensions-except=...` |
+| 扩展 ID | `bjfplhnnaanfpgioicjlnenplcpdblnm` |
+| 测试文件 | `E:\test\_vr-probe-media\probe.jpg`（3803 B）、`probe.mp4`（1,128,375 B，MDN CC0，5.055s） |
+| 文件访问开关 | `chrome.extension.isAllowedFileSchemeAccess() === true` |
+
+### 9.2 结果
+
+| # | 探测 | 结果 | 实测值 |
+|---|---|---|---|
+| 1 | `<img src="file:///E:/test/_vr-probe-media/probe.jpg">` | ✅ 通过 | `naturalWidth=320`、`naturalHeight=200` |
+| 2 | `<video src="file:///.../probe.mp4">` 播放 + seek | ✅ 通过 | `readyState=4`、`duration=5.055`；`currentTime` 设 2.0 → 读回 2.0 |
+| 3 | `chrome.downloads.search({limit:5})` | ✅ 通过 | `filename="D:\Users\liq21\Downloads\vr-probe-record.txt"`（绝对路径），`exists=true` |
+
+**总判定：PASS（3/3）**
+
+### 9.3 新坑（复现测试必读）
+
+1. **正式版 Chrome 137+ 移除了 `--load-extension`**：Chrome 155 上加 `--load-extension` 无效，加
+   `--disable-features=DisableLoadExtensionCommandLineSwitch` 也无效 → 命令行加载扩展只能改用 **Chrome for Testing**。
+   日常使用仍走 `chrome://extensions` → 开发者模式 → 加载已解压。
+2. **`chrome://extensions-internals` 可读扩展真实 ID**：比 `Preferences` / `Secure Preferences` 更可靠（新版 Chrome 那两个文件里已查不到 unpacked 扩展）。
+3. **unpacked 扩展 ID 不等于路径 SHA256 推算值**：实测推算出的两个候选 ID 都是错误页，必须以 `extensions-internals` 里的 `path` 为准。
+4. **探针造的下载记录会落在 Chrome 默认下载目录**（本机为 `D:\Users\liq21\Downloads`），测试后需手动清理。
+5. **Chrome for Testing 默认允许文件访问**（`isAllowedFileSchemeAccess=true`），正式版默认关闭——不能把探针环境结论直接当成"正式版开箱即用"。
