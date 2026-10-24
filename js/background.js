@@ -901,14 +901,25 @@ function ytCollectFormats(videoId) {
             var webVer = (ctx.client || {}).clientVersion || '2.20261023.01.00';
 
             // [显示名, clientName, 数字 id, clientVersion]
+            //
+            // 2026-10 实测（docs/YT-CLIENT-STATUS.md）：MWEB 已经被关掉了——
+            // 它现在统一回 UNPLAYABLE「The page needs to be reloaded」，不再是
+            // 研究阶段那个「只有它活着」的状态。ANDROID/IOS 直接 400（版本过期），
+            // TVHTML5 同样 UNPLAYABLE，ANDROID_VR 要登录验证。
+            //
+            // 现在稳定给直链的是 **VISIONOS**：32 条格式全部带 url、最高 2160p，
+            // 且 URL 里**没有 n 参数**（不需要跑 sandbox 解密）。
+            // 它排在第一位；后面几个是备用，YouTube 灰度随时会变，多留几个活得久。
             var clients = [
+                ['VISIONOS', 'VISIONOS', '101', '0.1'],
                 ['MWEB', 'MWEB', '2', webVer],
+                ['TVHTML5', 'TVHTML5', '7', '7.20261023.00.00'],
                 ['ANDROID', 'ANDROID', '3', '19.44.38'],
-                ['IOS', 'IOS', '5', '19.45.4'],
-                ['TVHTML5', 'TVHTML5', '7', '7.20261023.00.00']
+                ['IOS', 'IOS', '5', '19.45.4']
             ];
 
             var lastErr = '';
+            var tried = [];          // 每个客户端的结果都留一条，别只留最后一个
             var json = null;
 
             for (var ci = 0; ci < clients.length; ci++) {
@@ -920,7 +931,7 @@ function ytCollectFormats(videoId) {
                     gl: 'US'
                 };
                 if (visitor) { clientObj.visitorData = visitor; }
-                if (c[1] === 'ANDROID' || c[1] === 'IOS') {
+                if (c[1] === 'ANDROID' || c[1] === 'IOS' || c[1] === 'ANDROID_VR') {
                     clientObj.androidSdkVersion = 34;
                     clientObj.osName = 'Android';
                     clientObj.osVersion = '14';
@@ -952,27 +963,44 @@ function ytCollectFormats(videoId) {
                     var ps = j.playabilityStatus || {};
                     if (ps.status !== 'OK') {
                         lastErr = c[0] + ' → ' + (ps.status || '?') + '：' + (ps.reason || '');
+                        tried.push(lastErr);
                         continue;
                     }
                     var sd0 = j.streamingData || {};
                     var hasUrl = (sd0.adaptiveFormats || []).some(function (f) { return !!f.url; });
                     if (!hasUrl) {
                         lastErr = c[0] + ' → 只有 SABR，没有直链';
+                        tried.push(lastErr);
                         continue;
                     }
                     json = j;
                     break;
                 } catch (e) {
                     lastErr = c[0] + ' → 请求异常：' + String((e && e.message) || e);
+                    tried.push(lastErr);
                 }
             }
 
             if (!json) {
+                // 把失败分成两类，UI 才能给对的建议：
+                //  · 视频本身不可播（unavailable / 私有 / 会员）→ 换视频，别让用户等
+                //  · 客户端全被拒（限流/风控）→ 建议刷新、等几分钟
+                var joined = tried.join(' ｜ ');
+                var videoDead = /this video is unavailable|video unavailable|此视频不能观看|private|members-only|age/i
+                    .test(joined);
+                var loginNeeded = /LOGIN_REQUIRED|Sign in to confirm/i.test(joined);
+                var code = videoDead ? 'YT_E_UNAVAILABLE' : (loginNeeded ? 'YT_E_LOGIN' : 'YT_E_BLOCKED');
+                var hint = videoDead
+                    ? '这个视频在 YouTube 侧本身不可播放（已下架/私有/地区或会员限制），换一个视频试试。'
+                    : (loginNeeded
+                        ? '这个视频需要登录才能播放。先在本浏览器登录 YouTube，再回来重试。'
+                        : 'YouTube 正在限制本机请求。刷新视频页、等几分钟，或确认已登录后再试。');
                 return {
                     ok: false,
-                    error: lastErr || '所有客户端都拿不到直链',
-                    hint: 'YouTube 经常对同一 IP 短时间内的重复请求做限制。' +
-                          '刷新视频页、等几分钟，或确认已登录后再试。'
+                    code: code,
+                    error: joined || lastErr || '所有客户端都拿不到直链',
+                    tried: tried,
+                    hint: hint
                 };
             }
 
