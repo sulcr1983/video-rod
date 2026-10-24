@@ -85,6 +85,16 @@
           <div id="vrLibRecent" class="explain" style="flex:1;word-break:break-all">—</div>
         </div>
 
+        <div class="item" style="align-items:flex-start">
+          <label>索引维护</label>
+          <div style="flex:1">
+            <button type="button" id="vrLibIdxBuild" class="button2">重建索引（下载记录）</button>
+            <button type="button" id="vrLibIdxSnap" class="button2">写快照</button>
+            <button type="button" id="vrLibIdxFull" class="button2">授权目录并全量扫描</button>
+            <div id="vrLibIdxMsg" class="explain" style="margin-top:4px"></div>
+          </div>
+        </div>
+
         <div class="item">
           <button type="button" id="vrLibVerify" class="button2">校验落盘</button>
           <span id="vrLibVerifyMsg" class="explain"></span>
@@ -981,6 +991,7 @@
   <script src="lib/base64.js" defer></script>
   <script src="js/library/path.js" defer></script>
   <script src="js/library/db.js" defer></script>
+  <script src="js/library/indexer.js" defer></script>
   <script src="js/library/migrate.js" defer></script>
   <script src="js/library/settings.js" defer></script>
   <script src="js/library/migrate-ui.js" defer></script>

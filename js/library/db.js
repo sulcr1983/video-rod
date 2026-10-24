@@ -195,6 +195,37 @@
         });
     }
 
+    /* ---------- 目录句柄 ---------- */
+
+    /** 取 FSA 目录句柄（key 默认 'root'）；没有则 null */
+    function getHandle(key) {
+        key = key || 'root';
+        return open().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var t = db.transaction(['handle'], 'readonly');
+                var req = t.objectStore('handle').get(key);
+                req.onsuccess = function () {
+                    var r = req.result;
+                    resolve(r ? r.handle : null);
+                };
+                req.onerror = function () { reject(req.error); };
+            });
+        });
+    }
+
+    /** 存/清 FSA 目录句柄；handle 传 null 表示删除 */
+    function setHandle(key, handle) {
+        if (key && typeof key === 'object') { handle = key; key = 'root'; }
+        key = key || 'root';
+        return open().then(function (db) {
+            return tx(db, ['handle'], 'readwrite', function (t) {
+                var s = t.objectStore('handle');
+                if (handle) { s.put({ key: key, handle: handle }); }
+                else { s.delete(key); }
+            });
+        }).then(function () { return true; });
+    }
+
     root.VRDB = {
         open: open,
         putFiles: putFiles,
@@ -208,6 +239,8 @@
         getThumb: getThumb,
         getSetting: getSetting,
         setSetting: setSetting,
-        log: log
+        log: log,
+        getHandle: getHandle,
+        setHandle: setHandle
     };
 })(typeof self !== 'undefined' ? self : this);

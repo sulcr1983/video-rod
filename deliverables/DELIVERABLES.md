@@ -1,7 +1,8 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v2.0 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
+> 版本：v2.1 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
+> v2.1 变更：登记 S2 索引两件（`indexer.js` / `cdp-indexer-test.py`）；`db.js` 升 v1.1（handle 读写）、`settings.js` 升 v1.3（索引维护入口）、LIBRARY-PLAN 升 v2.0（§13.11 索引规格 + S2 完成）。
 > v2.0 变更：登记交接文档 `docs/HANDOFF.md`（接手 AI 入口，含现状/环境/代码地图/测试基线/坑/未完成）。
 > v1.9 变更：登记 S1b 迁移三件（`migrate.js` / `migrate-ui.js` / `cdp-migrate-test.py`）；`settings.js` 升 v1.2、`options.html` 迁移面板；S1a 脚本 B5 断言随按钮启用同步；LIBRARY-PLAN 升 v1.8（§13.10 迁移规格）。
 > v1.8 变更：登记自动入库三件套（`db.js` / `sw-library.js` / `cdp-index-test.py`）+ `parseRelPath` 与 SW 消息转发；`test-path.js` 升 v1.1（57/57）；自动入库调研文档转「已实现」。
@@ -119,11 +120,13 @@ video-rod/
 | 资源库原型回归脚本（CDP） | `tools/cdp-library-test.py` | v1.0 | 已定稿 | 原型 v1.3 的 A–I 九组共 42 条断言；2026-10-24 实测 **42/42 通过、控制台 0 错误**。端口 `CDP` 环境变量可覆盖（默认 9333） |
 | 资源库原型验收截图 | `deliverables/assets/library-v13-{grid,lightbox,video}.png` | v1.3 | 已定稿 | 三态实拍：网格（星标+标签+键盘高亮）、灯箱（缩略图带）、视频弹层（进度时间气泡）；1440×900 |
 | 资源库路径引擎 | `js/library/path.js` | v1.1 | 已定稿 | 平台识别 / 类型推断 / 博主段 / 三段目录拼装 / 长度保护 / `file://` 编码；被 popup、background（秒存）、x-button（X 按钮）三处下载链路复用；v1.1 新增 `parseRelPath()` 反解（relPath → 平台/博主/类型），供预登记 meta 与入库兜底使用 |
-| 资源库设置页脚本 | `js/library/settings.js` | v1.2 | 已定稿 | options.html「资源库」分区：子目录名、落盘模式、FSA 授权、**校验落盘**（微下载反推真实根目录）；v1.1 索引状态/最近入库；v1.2 新增 `setSubdir()` 供迁移成功后同步子目录名 |
+| 资源库设置页脚本 | `js/library/settings.js` | v1.3 | 已定稿 | options.html「资源库」分区：子目录名、落盘模式、FSA 授权、**校验落盘**（微下载反推真实根目录）；v1.1 索引状态/最近入库；v1.2 新增 `setSubdir()` 供迁移成功后同步子目录名；v1.3 新增「索引维护」三入口（重建索引 / 写快照 / 授权目录并全量扫描）与状态行 |
 | 资源库迁移引擎 | `js/library/migrate.js` | v1.0 | 已定稿 | 新建。三种形态（改子目录名 / 换根 / 整理旧文件）共用：扫描（跳过 `.part`/`_migration`/`_回收站`/`_verify`/点文件）→ dry-run 分类（move/skip/conflict/blocked）→ 流式复制 → 校验（size + 首尾 64KB，可选 SHA-256）→ 删源 → 逐条落日志 → 逆序回滚；任一条失败即中止且不删源；迁移后同步索引 relPath/absPath |
 | 资源库迁移面板 | `js/library/migrate-ui.js` | v1.0 | 已定稿 | 新建。设置页 `#vrLibMigPanel`：三方式切换、FSA 选目录（句柄缓存 IDB）、预演表格（前 50 行 + 计数/总大小）、执行进度条、回滚上次；成功后自动同步 `subdir` |
 | 迁移端到端验收脚本 | `tools/cdp-migrate-test.py` | v1.0 | 已定稿 | **39/39**：OPFS 句柄注入（绕开原生目录选择器），覆盖预演不改文件、执行/校验、回滚、冲突口径、改名+索引同步、整理旧文件、采样校验、面板交互（TESTING §12） |
-| 资源库索引层（IDB） | `js/library/db.js` | v1.0 | 已定稿 | 新建。库 `vr-library` v1，五个 store：`file`（keyPath relPath，索引 platform/creatorId/type/mtime/starred）、`thumb`、`setting`、`handle`、`oplog`；SW 与页面共用，API 挂 `self.VRDB`；单连接缓存 + `onversionchange` 让路 |
+| 资源库索引服务（三源） | `js/library/indexer.js` | v1.0 | 已定稿 | 新建。`VRIndex.build({mode:'downloads'|'snapshot'|'full'})` + `reconcile()` + `snapshot()`；根解析三档（内存 / VRDB handle / 旧授权库·仅 custom）；downloads 只 upsert、snapshot/full 扫不到标 `missing` 不删除；重建保留 starred/tags/thumbKey/title；快照写 `<根>/_library/index-YYYYMMDD.json`（不存 absPath，按当前根重算），保留 7 份；句柄指向资源库根、索引 key 首段固定 `subdir`（ADR-030） |
+| 索引端到端验收脚本 | `tools/cdp-indexer-test.py` | v1.0 | 已定稿 | **35/35**：OPFS 句柄注入覆盖全量扫描/快照恢复/缺失语义/reconcile；真实下载验证 downloads 源；无句柄降级报 `LIB_E_NO_PERM`；设置页三个维护按钮；测完清文件+擦记录+清索引（TESTING §13） |
+| 资源库索引层（IDB） | `js/library/db.js` | v1.1 | 已定稿 | 新建。库 `vr-library` v1，五个 store：`file`（keyPath relPath，索引 platform/creatorId/type/mtime/starred）、`thumb`、`setting`、`handle`、`oplog`；SW 与页面共用，API 挂 `self.VRDB`；单连接缓存 + `onversionchange` 让路；v1.1 补 `getHandle/setHandle`（S2 快照/全量扫描复用授权） |
 | 资源库 SW 入库服务 | `js/library/sw-library.js` | v1.0 | 已定稿 | 新建。预登记表存 `chrome.storage.session`（TTL 10 分钟、上限 500、200ms 节流），`downloads.onChanged` complete → 反查绝对路径 → 合并 meta 落 IDB → 广播 `vrLib.added`；处理 `vrLib.record/list/stats/clear`；忽略 `_verify/`、`_回收站/`；无根目录时用「预登记目录 + 实际文件名」兜底（覆盖 uniquify 改名）；重下同名文件保留星标/标签 |
 | 自动入库端到端验收脚本 | `tools/cdp-index-test.py` | v1.0 | 已定稿 | **14/14**：清空索引 → 批量下载 → 轮询索引出现 → 字段校验（三段目录/平台/类型/大小/绝对路径/文件名/计数）+ 设置页索引状态自动刷新 + 控制台零错误；测完自动删文件+擦记录+清索引（TESTING §11） |
 | 路径引擎单测 | `tools/test-path.js` | v1.1 | 已定稿 | **57/57**：4 个平台识别、类型推断、博主段、长度截断、`file://` 往返编码；v1.1 新增 9 条 `parseRelPath` 反解往返断言 |
@@ -133,7 +136,7 @@ video-rod/
 | 图片悬停下载方案 | `docs/IMAGE-DOWNLOAD-PLAN.md` | v1.2 | 待评审 | 三态交互、原图五级候选 + SW 校验回退 + DNR 补 Referer、批量队列；**v1.2 新增**尺寸档位（小/中/大/超大/自定义，按短边判定并显示命中数）与图集模式（自动滚动 + 分页翻页，10 页上限/可停止/连续 2 页失败中止） |
 | 图片悬停下载原型 | `deliverables/prototypes/image-hover-prototype-v1.html` | v1.2 | 待评审 | 单文件零依赖：SVG 封面、悬停 300ms 出按钮、单张/全部/确认条/进度、浮标 + 清单面板（**尺寸档位**、图集加载下一页、过滤/勾选/批量）、键盘操作；**CDP 24/24** |
 | 图片悬停原型截图 | `deliverables/assets/image-hover-v1-{hover,confirm,progress,panel,album}.png` | v1.2 | 已定稿 | 五态实拍：悬停按钮 / 全下确认条 / 批量进度 / 清单面板（档位+图集条） / 图集加载后 24 张 |
-| 本地资源库方案（评审版） | `docs/LIBRARY-PLAN.md` | v1.8 | 待二次评审 | 调研 + 架构选型 + 中文目录命名 + 数据模型 + 删除/迁移 + 开源 UX 取舍 + §11 审计指北 + §12 审计复核 + §13 实现规格 + §13.7 S0 实测 + **§13.10 S1b 迁移规格**（FSA 句柄约束、冲突口径、异常映射、8 条验收）；v1.7 = 根目录定为 `<下载目录>\video-rod` 子目录 |
+| 本地资源库方案（评审版） | `docs/LIBRARY-PLAN.md` | v2.0 | 已定稿（S0–S2 已实现） | 调研 + 架构选型 + 中文目录命名 + 数据模型 + 删除/迁移 + 开源 UX 取舍 + §11 审计指北 + §12 审计复核 + §13 实现规格 + §13.7 S0 实测 + §13.10 S1b 迁移规格 + **§13.11 S2 索引规格**（三源/快照/缺失语义/8 条验收）；v1.7 = 根目录定为 `<下载目录>\video-rod` 子目录 |
 | 本地资源库交互原型 | `deliverables/prototypes/library-prototype-v1.html` | v1.3 | 待二次评审 | 单文件可交互原型（27 条演示数据）；视频键盘 ↑↓/←→ 与连播（**自绘播放控件**，解决原生 controls 吞键）；时间线视图、右键菜单、悬停预览、回收站；**v1.3 新增**：星标+只看星标、轻量标签 chips+标签筛选、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条悬停时间气泡；内建「评审说明」 |
 | M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 已定稿 | M7 回归时重拍为浅色版（12 分P横幅 + 展开态），与 final-m7-bili.png 同内容 |
 | M4 YouTube 限制横幅截图（深色版） | `deliverables/assets/m4-yt-banner.png` | 2026-10-17 | 已归档 | 离线等效验证（域名映射）下的橙色警示横幅；浅色版见 final-m7-ytbanner.png |
