@@ -137,7 +137,7 @@ video-rod/
 | 查看器验收脚本 | `tools/cdp-viewer-test.py` | v1.0 | 已定稿 | **27/27**：图片缩放复位、信息面板、←/→ 切条、缩略图带、视频无原生 controls、Space、seek ±5/±30、↑/↓、连播、Esc（TESTING §17） |
 | 查看器截图 | `deliverables/assets/{viewer-image,viewer-zoom,viewer-video}.png` | v1.0 | 已定稿 | 1440 图片 + 信息面板 + 缩略图带、156% 放大、视频自绘控件 |
 | 前端统一设计方案 | `docs/FRONTEND-UI-SYSTEM.md` | v1.0 | 已定稿 | popup + 资源库共用 token/组件；现状审计、全宽布局、全屏查看器、响应式与实施记录 |
-| 前端统一改造截图 | `deliverables/assets/{popup-after,library-page-grid,library-page-cards,library-page-table,library-page-900,library-page-dark,library-page-viewer}.png` | v2.0 | 已定稿 | popup 蓝色统一；资源库 1440 概览/大卡/表格、860 横条、深色、全屏查看器 |
+| 前端统一改造截图 | `deliverables/assets/{popup-after,library-page-grid,library-page-overview,library-page-cards,library-page-table,library-page-900,library-page-dark}.png` | v2.1 | 已定稿 | popup 蓝色统一；资源库 1440 默认（概览收起）/ 展开概览 / 大卡 / 表格、860 横条、深色 |
 | 设置页重设计方案 | `docs/OPTIONS-REDESIGN.md` | v1.0 | 已定稿 | 现状审计（18 分区 / 151 个唯一 ID / 40 处内联样式 / 8 类问题）+ 四组信息架构 + 视觉 token + 组件规范 + 响应式断点 + 兼容清单 + 实施记录（TESTING §14） |
 | 设置页重设计样式与交互 | `options.html` + `css/options.css` + `js/options.js` | v1.0 | 已定稿 | 四组侧栏与当前项高亮、分区卡片化、统一配置行/开关/按钮/表格；资源库拆三卡；危险操作独立红卡；<980px 顶部导航；深色 token；保存轻提示、开关/删除 aria；151 个 ID 与全部存储键保留 |
 | 设置页重设计截图 | `deliverables/assets/options-redesign-{1440,900,dark,library,table,form,danger,about,full}.png` | v1.1 | 已定稿 | 1440×900 / 900×900 / 深色 / 资源库三卡 / 规则表 / 表单行 / 危险操作 / 关于页（上游与本 fork 增量）/ 整页长图；实测 0 横向溢出、0 控制台错误 |

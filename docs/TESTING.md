@@ -652,7 +652,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 
 ### 16.3 截图
 
-`deliverables/assets/`：`library-page-grid.png`（1440 概览）、`library-page-cards.png`（大卡）、`library-page-table.png`（表格）、`library-page-900.png`（860 横向筛选条）、`library-page-dark.png`（深色）、`library-page-viewer.png`（全屏查看器）。
+`deliverables/assets/`：`library-page-grid.png`（1440 默认，概览收起）、`library-page-overview.png`（展开概览）、`library-page-cards.png`（大卡）、`library-page-table.png`（表格）、`library-page-900.png`（860 横向筛选条）、`library-page-dark.png`（深色）；查看器见 §17.3。
 
 ### 16.4 边界与已知取舍
 
