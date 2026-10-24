@@ -132,7 +132,7 @@ def main():
         os.makedirs(p, exist_ok=True)
     os.makedirs(PROFILE, exist_ok=True)
     srv = start_server()
-    if not wait_port(f"http://127.0.0.1:{PORT_WEB}/check.html"):
+    if not wait_port(f"http://127.0.0.1:{PORT_WEB}/_video.mp4"):
         print("静态服务没起来")
         return 2
 
@@ -303,8 +303,9 @@ def main():
         check("FSA 写入了 1 个文件", len(log) == 1, len(log))
         if log:
             path = log[0].get("path") or ""
-            check("路径是 video-rod/YouTube/博主/视频/xxx.mp4",
-                  path.startswith("/video-rod/YouTube/") and "/视频/" in path and path.endswith(".mp4"), path)
+            check("路径是 <库根>/YouTube/博主/视频/xxx.mp4（已剥掉 video-rod 前缀）",
+                  path.startswith("/YouTube/") and "/视频/" in path and path.endswith(".mp4")
+                  and "video-rod/video-rod" not in path, path)
             check("文件名带分辨率", "_1080p" in path, path)
             check("字节数与合并结果一致", abs(log[0].get("size", 0) - 675433) < 4096, log[0].get("size"))
 

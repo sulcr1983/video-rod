@@ -53,6 +53,11 @@ SUITES = {
         ("cdp", "tools/cdp-image-test.py"),
         ("cdp", "tools/cdp-image-batch-test.py"),
         ("cdp", "tools/cdp-image-panel-test.py"),
+        ("cdp", "tools/yt-download-test.py"),
+    ],
+    "yt": [
+        # 离线：只打桩「取格式」，其余全真跑（下载 → 合并 → FSA 落盘 → Chrome 解码校验）
+        ("cdp", "tools/yt-download-test.py"),
     ],
     "library": [
         ("cdp", "tools/cdp-library-page-test.py"),
