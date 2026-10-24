@@ -59,8 +59,19 @@ def clear_seen(cdp, osid):
     return ev(cdp, osid, """new Promise(r => chrome.storage.local.remove('vrImgDownloaded', () => r(1)))""")
 
 
+# 只清「测试站」自己产生的文件，不无差别删整个目录——
+# 一次删几十个会触发宿主的安全删除阈值，测试直接被拦掉（踩过）。
+TEST_PREFIXES = ("测试站", "20261024_测试站")
+
+
+def is_test_artifact(name):
+    if not name.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        return False
+    return any(name.startswith(pfx) for pfx in TEST_PREFIXES)
+
+
 def clean_disk(dl_dir):
-    """清空下载目录里的测试图片。
+    """清掉下载目录里的测试图片。
     必须清磁盘而不只是擦记录：残留文件会让 conflictAction=uniquify 生成 (1)(2)，
     于是「记录数」和「本次真正新增的文件」对不上，断言就假失败（踩过）。
     """
@@ -68,7 +79,7 @@ def clean_disk(dl_dir):
         return 0
     n = 0
     for name in os.listdir(dl_dir):
-        if not name.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+        if not is_test_artifact(name):
             continue
         try:
             os.remove(os.path.join(dl_dir, name))
@@ -79,12 +90,11 @@ def clean_disk(dl_dir):
 
 
 def disk_images(dl_dir):
-    """磁盘上实际存在的图片文件集合。
+    """磁盘上测试产物的集合。
     比 downloads.search 可靠：记录登记时机不受控，磁盘才是最终事实。"""
     if not os.path.isdir(dl_dir):
         return set()
-    return {n for n in os.listdir(dl_dir)
-            if n.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))}
+    return {n for n in os.listdir(dl_dir) if is_test_artifact(n)}
 
 
 def wait_disk_growth(dl_dir, before, expect, timeout=20.0):
@@ -446,16 +456,23 @@ def main():
     cdp.navigate(sid, PAGE_MANY)
     cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 10.0)
     time.sleep(0.3)
-    hover(cdp, sid, "#m0")
     # 等批量宿主真的建起来（导航后内容脚本重新注入需要时间）
     cdp.wait_js(sid, "!!document.getElementById('vr-img-batch-host')", 8.0)
-    bar = hover_bar_state(cdp, sid)
+    # 30 张页扫描慢，按钮可能晚于 hover 的固定等待才出现 —— 必须轮询等，
+    # 单次 hover_bar_state 会拿到「还没显示」的快照，坐标就废了（踩过）
+    hover(cdp, sid, "#m0")
+    bar, _ = wait_bar(cdp, sid, lambda b: b.get("all") and not b["all"]["hidden"], 8.0)
     if not bar.get("all") or bar["all"]["hidden"]:
         check("G0 30 张页出现「全部」按钮", False, True)
         return finish(cdp, osid)
     # 120px 的缩略图会让「全部 N」收成纯图标（文案为空，数字在 aria-label）
     g0_txt = bar["all"]["text"] or bar["all"]["aria"]
     check("G0 30 张页出现「全部 30」按钮", "全部 30" in g0_txt, True)
+    # icon-only 切换会让按钮宽度变化，点之前重取一次坐标
+    bar = hover_bar_state(cdp, sid)
+    if not bar.get("all") or bar["all"]["hidden"]:
+        check("G0c 点击前按钮仍可用", False, True)
+        return finish(cdp, osid)
     click_at(cdp, sid, bar["all"]["cx"], bar["all"]["cy"])
     cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"))
     if not cf.get("cfOn"):

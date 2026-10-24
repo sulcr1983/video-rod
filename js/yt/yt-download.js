@@ -417,8 +417,17 @@
                     if (d.state === 'complete' || d.state === 'interrupted') {
                         chrome.downloads.onChanged.removeListener(onChange);
                         setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-                        if (d.state === 'complete') { resolve(id); }
-                        else { reject(new Error('下载中断：' + (d.error || ''))); }
+                        if (d.state === 'complete') {
+                            // 把下载器回报的真实路径带回去（它可能改过文件名）
+                            chrome.downloads.search({ id: id }, function (list) {
+                                var rec = list && list[0];
+                                resolve({
+                                    id: id,
+                                    absPath: (rec && rec.filename) || '',
+                                    relPath: filename
+                                });
+                            });
+                        } else { reject(new Error('下载中断：' + (d.error || ''))); }
                     }
                 }
                 chrome.downloads.onChanged.addListener(onChange);
@@ -511,21 +520,75 @@
         });
     }
 
-    /** @returns {Promise<string>} 'fsa' | 'downloads' */
+    /**
+     * 落盘。
+     * @returns {Promise<{via:'fsa'|'downloads', relPath:string, absPath:string, size:number}>}
+     *
+     * 返回实际落盘信息（含 uniquify 后的真实文件名），供随后入库用。
+     * 早先只返回 'fsa' 字符串，结果入库那条链路拿不到 relPath，资源库里就不出现这张卡。
+     */
     function save(blob, relPath) {
+        var baseDir = String(relPath).split('/').slice(0, -1).join('/');
         return getRootHandle().then(function (root) {
             if (!root) { return null; }
-            return writeToRoot(root, relPath, blob).then(function () { return 'fsa'; });
+            return writeToRoot(root, relPath, blob).then(function (finalName) {
+                // 实际文件名可能因重名被加了 _01，入库要用真实名
+                return { via: 'fsa', finalName: finalName, baseDir: baseDir };
+            });
         }).catch(function (e) {
             state.fsaError = String((e && e.message) || e);
             try { window.__vrFsaError = state.fsaError; } catch (x) { /* ignore */ }
             return null;
-        }).then(function (via) {
-            if (via === 'fsa') { state.via = 'fsa'; return 'fsa'; }
-            return saveToDownloads(blob, relPath).then(function () {
+        }).then(function (r) {
+            if (r && r.via === 'fsa') {
+                state.via = 'fsa';
+                state.savedRelPath = (r.baseDir ? r.baseDir + '/' : '') + r.finalName;
+                return { via: 'fsa', relPath: state.savedRelPath, absPath: '', size: blob.size };
+            }
+            return saveToDownloads(blob, relPath).then(function (rec) {
                 state.via = 'downloads';
-                return 'downloads';
+                // 下载器可能改文件名，以它回报的为准
+                return {
+                    via: 'downloads',
+                    relPath: (rec && rec.relPath) || relPath,
+                    absPath: (rec && rec.absPath) || '',
+                    size: blob.size
+                };
             });
+        });
+    }
+
+    /**
+     * 写盘成功后主动入库。
+     * FSA 直写没有 chrome.downloads 事件，常规入库链路（sw-library 的 onChanged）
+     * 永远等不到，所以这里显式调 vrLib.ingest。失败只提示，不影响下载结果。
+     */
+    function ingestSaved(saved) {
+        if (!saved || !saved.relPath) { return Promise.resolve(null); }
+        if (saved.via !== 'fsa') { return Promise.resolve(null); }   // 下载器那条会自己入库
+        return new Promise(function (resolve) {
+            try {
+                chrome.runtime.sendMessage({
+                    Message: 'vrLib.ingest',
+                    info: {
+                        relPath: saved.relPath,
+                        absPath: saved.absPath || '',
+                        platform: 'youtube',
+                        platformName: 'YouTube',
+                        creatorFull: meta.author || '',
+                        creatorId: meta.authorId || '',
+                        type: state.chosen && state.chosen.audioOnly ? 'audio' : 'video',
+                        title: meta.title || '',
+                        pageUrl: meta.pageUrl || '',
+                        size: saved.size || 0,
+                        mtime: Date.now(),
+                        mime: saved.relPath.match(/\.m4a$/i) ? 'audio/mp4' : 'video/mp4'
+                    }
+                }, function (res) {
+                    if (chrome.runtime.lastError) { resolve(null); return; }
+                    resolve(res || null);
+                });
+            } catch (e) { resolve(null); }
         });
     }
 
@@ -539,7 +602,7 @@
         state.mergeError = '';
 
         function stage(txt, pct) { setMsg(txt); setBar(pct); }
-        function finish() {
+        function finish(saved) {
             setBar(100);
             var tail = state.via === 'fsa'
                 ? '已直接写入资源库目录'
@@ -549,6 +612,14 @@
             el.file.classList.add('on');
             state.busy = false;
             el.go.disabled = !state.chosen;
+            // FSA 直写没有下载事件，主动补一次入库，让资源库立刻能看到这张卡
+            ingestSaved(saved).then(function (r) {
+                if (r && r.ok) {
+                    setMsg('完成：' + (meta.author ? meta.author + ' / ' : '') +
+                        (meta.title || '') + '\n' + tail + '，已加入资源库',
+                        state.via === 'fsa' ? 'ok' : 'warn');
+                }
+            });
         }
         function fail(e) {
             setBar(null);

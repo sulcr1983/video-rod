@@ -1,6 +1,6 @@
 # 苏哥的钓鱼竿 — 交接文档
 
-> 更新：2026-10-24（收尾轮）｜ 代码 HEAD：`f99d7bc`（YouTube 下载 + 图片 I4 合并）及其后的文档收尾提交
+> 更新：2026-10-24（三线合并轮）｜ 代码 HEAD：`909ceb8`（YouTube 下载 + 图片 I4 + 入库打通）
 > 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§23（已验收记录）。
 > 本文只写「现在是什么状态、怎么跑、别踩什么坑」，设计论证在 LIBRARY-PLAN 里。
 
@@ -17,15 +17,16 @@
 ## 1. 一句话现状
 
 这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2 → S5 删除与回收站 → S5b 批量选择/重命名**；
-图片线 **I1+I2（单张悬停）+ I3（本页一键全下）+ I4（浮标 + 清单面板，实施中）** 也已落地；
-**YouTube 播放器下载**（1080p/4K 直选、音视频轨无损合并成 MP4）已可用。
-**十六套回归：15 套全绿，1 套红**（`cdp-image-batch-test.py` C1，I4 引入的回归，见 §7.4-15）；合计 571 条断言。
+图片线 **I1+I2（单张悬停）+ I3（本页一键全下）+ I4（浮标 + 清单面板）** 已全部落地；
+**YouTube 播放器下载**（1080p/4K 直选、音视频轨无损合并成 MP4）已可用，
+且**已接入资源库入库链路**（FSA 直写后主动调 `vrLib.ingest`，不再等 indexer 全量扫描）。
+**十六套回归全绿**（`node` ×4 + `cdp` ×12）；合计 616 条断言。
 下一步是 **图片线 I5–I6**（设置/快捷键 → 图集）与 **YouTube 的深水区**（SABR 复放、流式落盘、WebM）。
 
 | 项 | 值 |
 |---|---|
 | 仓库 | `E:\test\video-rod`（`origin` = `github-video-rod:sulcr1983/video-rod.git`） |
-| 分支 / HEAD | `master` / `0132072 feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
+| 分支 / HEAD | `master` / `909ceb8 fix(yt): FSA 写盘漏剥 video-rod 前缀；docs: 单任务收尾` |
 | 形态 | Chrome MV3 扩展（猫抓 cat-catch 的 fork），Service Worker 版 background |
 | 下载根目录 | `<Chrome 下载目录>\video-rod\<平台>\<博主(@ID)>\<类型>\<文件名>`（本机实测 `D:\Users\liq21\Downloads\video-rod`） |
 | 索引 | IndexedDB `vr-library` v1（5 个 store） |
@@ -191,10 +192,10 @@ node tools/test-image-batch.js     # 27/27   纯 Node，批量队列并发/取�
 & $py tools/yt-download-test.py      # 21/21   YouTube 下载：离线端到端（打桩取格式，其余全真跑）
 ```
 
-> **合计 16 套 / 571 条断言**（按各套自报断言累加：57+58+27+57+17+14+39+35+30+27+27+47+34+35+46+21）。
-> **当前实测 15/16 绿**：`cdp-image-batch-test.py` 的 C1 红了（I4 引入，见 §7.4-15），其余 15 套全绿。
-> 旧文档写的「13 套 380 条」是漏算 —— `test-image-tier.js`、`cdp-image-panel-test.py`、`yt-download-test.py`
-> 三套后来才加，且原有清单本身也少算了，已按上表重算。
+> **合计 16 套 / 616 条断言**（按各套自报断言累加：57+58+27+57+17+14+39+35+30+27+27+47+34+35+46+21）。
+> **当前实测 16/16 全绿**（`cdp-run.py --suite full` 一次跑完，约 6 分钟；输出末行 `✅ 全部通过`）。
+> 旧文档写的「13 套 380 条」「15/16 绿」都已过期 —— 前者漏算了后加的三套，
+> 后者的 C1 回归已按 §7.4-15 修好，现稳定全绿。
 > `node tools/test-image-tier.js`（57/57）排在四个 node 单测里，`cdp-run.py --suite full` 会自动带上。
 > `cdp-image-test.py` 依赖 `test-site` 的图片夹具与 18080 端口，
 > 会真下载到 `Downloads\video-rod\其他网页\127.0.0.1\图片\`，脚本结束自行清理。
@@ -344,7 +345,24 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 12. **YouTube 的内存上限**：双轨全量进内存再合并，4K 长视频（>1GB）有 OOM 风险（>700MB 会在提示行预警）。要根治得改流式：边拉边按 `tfdt` 交织落盘。
 13. **YouTube 只覆盖 MP4 容器**：WebM(VP9)/Opus 档被过滤。4K 有 AV1-in-MP4 兜底，实际很少缺档，但真碰上就只有低清。
 14. **存量下载路径没迁到 FSA**：弹窗下载 / 图片批量 / m3u8 仍走 `chrome.downloads`，在 Chrome 147 上文件名会退化成 UUID 或 URL 末段（ADR-040）。要么整体迁 FSA，要么接受「名字不对」。
-15. **🔴 I4 引入了 I3 的回归（当前唯一红的一套）**：`tools/cdp-image-batch-test.py` C1「确认条出现」失败，可稳定复现（连跑两次都是 58s 后挂在 C1）。A1–B4 全过，说明悬停条本身正常；截图 `deliverables/assets/image-batch-hoverbar.png` 显示「全部 5」在**窄图模式下被收成图标**，而测试是 `Input.dispatchMouseEvent` 按坐标点它 —— 怀疑「测量坐标 → 点击」之间按钮尺寸/位置又翻了一次（I4 的 `MutationObserver` + `scanImages` 在 boot 时会重扫）。**修法方向**：给悬停条窄图切换加稳定态（尺寸定稿后再允许翻），或让测试改用元素派发点击而非坐标。修之前 `--suite full` 会是 15/16。
+15. **✅ 已修 | I4 曾引入 I3 的 C1 回归**：`cdp-image-batch-test.py` C1「确认条出现」曾稳定失败。
+    根因不是悬停条坏，而是**测试侧时序**：`hover()` 只固定等 0.65s，而 I4 的 `boot()` 会在页面加载时
+    跑一次 `scanImages`（30 张页要遍历+读 naturalWidth），按钮可能晚一点才出现；测试拿到的坐标是
+    「还没定稿」的快照，`icon-only` 一翻尺寸又变，坐标就废了。
+    修法（两条一起）：
+    - 产品侧：`boot()` 的数量计算延后到 `requestIdleCallback`（2s 兜底），不跟其他内容脚本抢主线程；
+      `MutationObserver` 只对「有 img 进/出」触发重算，纯文本变动不重扫。
+    - 测试侧：G 组改成 `wait_bar()` 轮询等按钮真正可见，并在**点击前重取一次坐标**。
+    现在单跑和 `--suite full` 都稳定 35/35。
+16. **FSA 直写的文件不会自动入库**：`sw-library` 的常规入库靠 `chrome.downloads` 的 complete 事件
+    （`writeOne` 用 `d.filename` 反推相对路径）。YouTube 走 FSA 直写（ADR-040），**根本没有下载事件**，
+    等下载器那条链路永远等不到 → 资源库里不出现这张卡，只能靠 indexer 全量扫描兜底（慢且要手动触发）。
+    修法：给 `VRLib` 加 `ingestDirect(info)` + `vrLib.ingest` 消息，写入方落盘成功后显式调一次；
+    `yt-download.js` 的 `save()` 改为返回 `{via, relPath, absPath, size}`（含 uniquify 后的真实文件名），
+    `finish()` 里调 `ingestSaved()`。下载器兜底那条不调（它自己会入库）。
+17. **测试清理不要无差别删目录**：`clean_disk()` 早先会删下载目录里所有图片，一次几十个会触发宿主的
+    安全删除阈值，整套测试被拦掉（表现为退出码 1 但没有任何 FAIL 行）。改成**按文件名前缀**
+    只删测试站产物（`测试站` / `20261024_测试站`），`disk_images()` 同口径，增量统计也不会把用户文件算进去。
 
 ---
 
