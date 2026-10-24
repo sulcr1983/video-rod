@@ -1,7 +1,8 @@
 # 苏哥的钓鱼竿 — 测试策略与用例
 
-> 版本：v1.3 ｜ 日期：2026-10-17 ｜ 状态：已确认
-> v1.3 变更：M7 浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧）。
+> 版本：v1.5 ｜ 日期：2026-10-24 ｜ 状态：已确认
+> v1.4 变更：S5 删除与回收站验收（§18）。
+> v1.5 变更：S5b 批量选择/重命名（§19）、I1/I2 图片悬停下载（§20）；测试基线扩到 **11 套 318 条**。
 > 原则：小项目不搞重型测试框架，**冒烟 + 关键路径 + 回归清单**三件套，每个用例都是大白话可执行的。
 
 ---
@@ -745,3 +746,110 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 3. 只展示带 `_manifest.json` 的批次；手工丢进 `_回收站` 的目录不列出。
 4. 本次不含**重命名**与**批量选择**（原型里的批量条），留在 S5b。
 5. 移动用「复制 → 校验大小 → 删源」，不是 FSA `move()`；Windows 上先关查看器再移动，避免文件占用。
+
+---
+
+## 19. 批量选择 + 重命名验收（S5b）
+
+> 实现口径：`docs/S5B-BATCH-RENAME.md`（与本文冲突时以该文为准）。
+
+### 19.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 选择态 | `batch.js`（VRBatch）：`body.batch-mode` 驱动样式，**不改网格 DOM**（表格仍 8 列） |
+| 浮条 | `#libBatchBar`：已选 N 项 / 全选 / 取消 / 移到回收站 / 退出；`Esc` 退出 |
+| 批量删除 | 复用 `VRTrash.remove(relPaths)` 单批次 + 现有确认框；成功后退出模式并刷新徽标 |
+| 重命名 | `rename.js`（VRRename）：引擎 + 自绘弹窗；复制→校验大小→删源；索引删旧写新 |
+| 入口 | 右键菜单「重命名…」（批量模式下仅选中 1 项可用，其余 `disabled`） |
+| 错误码 | `LIB_E_NAME` / `LIB_E_EXISTS` / `LIB_E_NO_PERM` / `LIB_E_NOT_FOUND` / `LIB_E_COPY` / `LIB_E_DB` |
+
+### 19.2 端到端验收（`tools/cdp-batch-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 扩展加载、模块加载、OPFS + 索引 3 条、3 张卡、顶栏批量按钮 | 5/5 |
+| B | 进入模式、勾选框与计数、勾选 1/2 项不打开查看器、全选、取消、Esc/退出、筛选与搜索清空选择 | 14/14 |
+| C | 右键重命名弹窗、默认选中文件名主体、目录提示、非法字符就地报错、Enter 提交 | 7/7 |
+| D | 新文件存在且内容不变、旧文件已删、索引换 key、保留星标/标签、`thumbKey` 置空、`absPath` 更新、条数不变 | 7/7 |
+| E | 非法字符/空名/同名 → `LIB_E_NAME`、目标存在 → `LIB_E_EXISTS`、源不存在 → `LIB_E_NOT_FOUND`、扩展名保护 | 5/5 |
+| F | 批量删除 2 项：确认文案、退出模式、回收站 count=2、索引只留 1 条、文件进批次、原路径清空 | 7/7 |
+| G | 无句柄 → `LIB_E_NO_PERM` | 1/1 |
+| L | 控制台 0 error | 1/1 |
+
+合计 **47/47**。
+
+### 19.3 回归
+
+`cdp-library-page-test.py` 30/30、`cdp-trash-test.py` 27/27、`cdp-viewer-test.py` 27/27。
+`cdp-trash-test.py` 的 C2 断言同步为 `preview / open / copy / star / rename / trash`（条数不变）。
+
+### 19.4 截图
+
+`batch-bar.png`（批量浮条 + 勾选态）、`rename-dialog.png`（重命名弹窗，默认选中主体）。
+
+### 19.5 边界与后续
+
+1. **不做批量重命名**（编号/替换/正则），本轮只做单条。
+2. 全选范围是「当前渲染列表」，受筛选/搜索影响，不做跨页/跨全库。
+3. 重命名是「复制→校验→删源」，失败会清理目标副本；成功即生效，**无撤销**。
+4. 大小写重命名（`b.png → B.png`）在 Windows 下判为同名，返回 `LIB_E_NAME`，本轮不支持两步改名。
+5. 旧缩略图 blob 不级联删除（`VRDB` 无 `deleteThumb`），留待 S6 清理任务。
+
+---
+
+## 20. 图片悬停下载验收（I1 + I2）
+
+> 实现口径：`docs/IMAGE-I1I2-IMPL.md`。
+
+### 20.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 工具 | `lib-image-util.js`（`self.VRImageUtil`，Node 可 require）：五级候选、srcset 最大 w、扫描过滤、扩展名 |
+| 入口 | `image-hover.js`：悬停 300ms 出「下载原图」，Shadow DOM 隔离，滚动/缩放/移开即隐藏 |
+| SW | `vrImg.resolve` / `vrImg.download`：逐候选 fetch 校验 `image/*`，全失败回退最后一个 |
+| 防盗链 | **DNR 会话规则**补 `Referer`（`downloads.download` 的 `headers` 会被拒） |
+| 开关 | `vrLibSettings.imgHover`，缺省开；关闭后宿主节点移除 |
+
+### 20.2 单测（`tools/test-image-util.js`）
+
+覆盖 URL 规范化、占位图判定、srcset 选择、五级候选顺序与去重、扫描过滤、扩展名推导。
+合计 **58/58**。
+
+### 20.3 端到端验收（`tools/cdp-image-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 扩展加载、夹具齐全 | 2/2 |
+| B | 页面加载无注入节点、快速划过不出、悬停出按钮、Shadow DOM 内、位置内缩 8px、移开隐藏 | 6/6 |
+| C | 点击 3 秒内完成（实测 0.26s）、路径含 `图片/`、按 host 归入其他网页、文件名格式、内容与源图一致 | 6/6 |
+| D | 夹具注入并解码 | 1/1 |
+| E–G | `a[href]` / `srcset` / 懒加载 三种场景各 4 条：出按钮、下载完成、取到原图、不触发链接跳转 | 12/12 |
+| H | 16×16 / SVG / 占位图 / data URI 均不出按钮 | 4/4 |
+| I | `imgHover=false` 无节点且悬停不出；`true` 恢复 | 2/2 |
+| J | 控制台 0 error | 1/1 |
+
+合计 **34/34**。
+
+### 20.4 关键坑（已修，别再踩）
+
+1. **`downloads.download` 不接受 `Referer`**：传 `headers:[{name:'Referer'}]` 直接报
+   `Unsafe request header name`，下载根本发不出去，`vrImg.download` 恒返回 `IMG_E_FETCH`
+   且 `chrome.downloads` 里查不到任何记录。必须用 **DNR 会话规则**补头（id 从 9000 起，
+   一次性使用、`finally` 里撤销）。详见 `IMAGE-I1I2-IMPL.md` §4.3.1。
+2. **内容脚本在 isolated world**：主世界读 `window.__vrImgHoverLoaded` 恒为 `false`，
+   断言要改看「无宿主节点 + 悬停不出按钮」这两个可跨 world 观测的事实。
+3. **测试脚手架两处**（非产品缺陷）：`scrollIntoView` 后要等一帧再取 `getBoundingClientRect`；
+   点完一张图后按钮有 1.2s 的 `done` 态，下一张必须**重新悬停**，否则点到旧坐标、下到上一张图。
+
+### 20.5 截图
+
+`image-hover-button.png`（悬停态）、`image-hover-done.png`（✓ 已存）。
+
+### 20.6 边界与后续
+
+1. **未做**：I3 批量队列、I4 浮标 + 清单面板、I5 设置/快捷键、I6 图集。
+2. 单张重复点击会按 `uniquify` 生成 `(1)` 文件，已下载去重（`vrDownloaded`）留给批量阶段。
+3. iframe 内图片不抓（`all_frames:false`，用户明确要求）。
+4. 深色站点按钮对比度按站点后续适配；Shadow DOM 用 `mode:'open'`，自用优先可测性。

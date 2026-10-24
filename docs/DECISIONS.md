@@ -298,6 +298,33 @@
 - **理由**：可恢复、对旧文件同样有效、审计可查；批次时间戳避免同日重名。
 - **影响**：`js/library/trash.js`、`trash-ui.js`、`library.html`、`css/library.css`、`ui.js`、`lightbox.js`；TESTING §18。
 
+## ADR-034 批量选择只改 class 不动 DOM；重命名走「复制→校验→删源」
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：S5b 要加批量条与重命名。原型里的批量态是重新渲染一版带勾选框的卡片；但 S3/S4 的回归断言依赖网格 DOM 结构与表格 8 列，重渲染会连带改测试。
+- **决策**：
+  1. **选择态用 `body.batch-mode` + `.lib-card.sel` 驱动样式**，勾选元素常驻 DOM、默认 `display:none`，不重建节点；
+  2. 选择集合以 `relPath` 为键；筛选/搜索变化清空选择（模式保留）；`Esc` 先交给弹窗/菜单/查看器；
+  3. **重命名不做 `move()`**（FSA 没有），沿用回收站口径：复制 → 校验大小 → 删源；
+  4. 扩展名保护：输入不含 `.` 且原名有扩展名时补回；显式写扩展名则以用户为准；
+  5. 索引删旧 key → 写新 key，`thumbKey` 置空让缩略图重生成，`starred`/`tags` 等字段保留；
+  6. **本轮不做批量重命名**，右键入口在批量模式下仅选中 1 项可用。
+- **理由**：DOM 结构稳定 → 既有回归零改动；重命名与回收站共用同一套文件搬运与校验，减少两套易错逻辑。
+- **影响**：`js/library/batch.js`、`rename.js`、`ui.js`、`trash-ui.js`、`library.html`、`css/library.css`；TESTING §19。
+
+## ADR-035 图片下载的 Referer 只能走 DNR，不能塞进 downloads 的 headers
+
+- **日期**：2026-10-24 ｜ **状态**：✅（踩坑后修正）
+- **背景**：I1/I2 落盘时给 `chrome.downloads.download` 传 `headers: [{name:'Referer', value: pageUrl}]` 以过防盗链。实测**下载根本发不出去**：`chrome.runtime.lastError.message` 为 `Unsafe request header name`，`chrome.downloads` 里连一条记录都没有，`vrImg.download` 恒返回 `IMG_E_FETCH`。
+- **决策**：
+  1. `Referer` 属浏览器受控头，`downloads` API 只允许自定义头 → **改用 `declarativeNetRequest` 会话规则**补头（与 `function.js` 的 `setRequestHeaders` 同思路）；
+  2. 规则 id 从 **9000** 起，避开 `function.js` 拿 tabId 当 id 的既有规则；
+  3. `urlFilter` 用「去掉协议的完整图片 URL」做子串匹配，比 `||域名` 更精确；
+  4. **一次性使用**：`downloads.download` 返回后（成功或失败）立刻撤销，避免规则堆积；
+  5. DNR 不可用时降级为不补头，下载照常发起。
+- **理由**：这是 API 硬约束，没有第二种写法；DNR 是扩展里唯一能改受控请求头的通道。
+- **影响**：`js/background.js`（`vrImgRefererRule` / `vrImgClearRefererRule`）、`docs/IMAGE-I1I2-IMPL.md` §4.3.1；TESTING §20.4。
+
 ---
 
 *新增决策在此追加，编号顺延。*
