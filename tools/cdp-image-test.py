@@ -327,27 +327,40 @@ def main():
     hover(cdp, sid, "#big1")
     check("I2 imgHover=true 恢复按钮", bool(button_state(cdp, sid).get("visible")), True)
 
-    return finish(cdp)
+    return finish(cdp, osid)
 
 
 def cleanup(cdp, osid):
+    """删除本次测试下载的文件 + 擦除下载记录。
+    注意：下载完成后 Chrome 可能还短暂持有文件句柄，removeFile 失败时
+    直接删磁盘文件作为兜底，并把擦不掉的记录一并报告出来。"""
     for i in created_ids:
         cdp.eval(f"new Promise(r => chrome.downloads.removeFile({i}, () => r(1)))", osid)
-        time.sleep(0.1)
+        time.sleep(0.15)
         cdp.eval(f"new Promise(r => chrome.downloads.erase({{id:{i}}}, () => r(1)))", osid)
+        time.sleep(0.05)
     leftovers = []
     for d in downloads(cdp, osid):
-        if d["id"] in created_ids and d["filename"] and os.path.exists(d["filename"]):
+        if d["id"] not in created_ids:
+            continue
+        fn = d.get("filename") or ""
+        if fn and os.path.exists(fn):
             try:
-                os.remove(d["filename"])
+                os.remove(fn)
             except OSError:
-                leftovers.append(d["filename"])
+                leftovers.append(fn)
     if leftovers:
-        print("      未能删除：", leftovers)
+        print("      未能删除（可能被占用）：", leftovers)
     set_img_hover(cdp, osid, True)
 
 
 def finish(cdp, osid=None):
+    # 先清理再统计，避免测试产物留在用户下载目录里
+    if osid and created_ids:
+        try:
+            cleanup(cdp, osid)
+        except Exception as e:
+            print("      清理失败：", e)
     errs = cdp.errors()
     check("J1 控制台无 error/exception", errs, [])
     total = len(results)
