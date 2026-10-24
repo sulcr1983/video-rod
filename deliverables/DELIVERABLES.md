@@ -1,7 +1,8 @@
 # 苏哥的钓鱼竿 — 产出物管理规范
 
-> 版本：v2.3 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
+> 版本：v2.4 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
+> v2.4 变更：新增资源库页面（全宽大图 / 全屏查看器 / 懒缩略图）与 22 条验收；popup 统一蓝灰；登记 `FRONTEND-UI-SYSTEM.md` 与 5 张截图。
 > v2.3 变更：全局更名「苏哥的钓鱼竿」（扩展名 / 界面 / 文档 / locale）；关于页补上游署名与本 fork 增量、开发手记与数据块。
 > v2.2 变更：登记设置页重设计三件（方案 `OPTIONS-REDESIGN.md`、样式/交互改造、8 张验收截图）。
 > v2.1 变更：登记 S2 索引两件（`indexer.js` / `cdp-indexer-test.py`）；`db.js` 升 v1.1（handle 读写）、`settings.js` 升 v1.3（索引维护入口）、LIBRARY-PLAN 升 v2.0（§13.11 索引规格 + S2 完成）。
@@ -128,6 +129,10 @@ video-rod/
 | 迁移端到端验收脚本 | `tools/cdp-migrate-test.py` | v1.0 | 已定稿 | **39/39**：OPFS 句柄注入（绕开原生目录选择器），覆盖预演不改文件、执行/校验、回滚、冲突口径、改名+索引同步、整理旧文件、采样校验、面板交互（TESTING §12） |
 | 资源库索引服务（三源） | `js/library/indexer.js` | v1.0 | 已定稿 | 新建。`VRIndex.build({mode:'downloads'|'snapshot'|'full'})` + `reconcile()` + `snapshot()`；根解析三档（内存 / VRDB handle / 旧授权库·仅 custom）；downloads 只 upsert、snapshot/full 扫不到标 `missing` 不删除；重建保留 starred/tags/thumbKey/title；快照写 `<根>/_library/index-YYYYMMDD.json`（不存 absPath，按当前根重算），保留 7 份；句柄指向资源库根、索引 key 首段固定 `subdir`（ADR-030） |
 | 索引端到端验收脚本 | `tools/cdp-indexer-test.py` | v1.0 | 已定稿 | **35/35**：OPFS 句柄注入覆盖全量扫描/快照恢复/缺失语义/reconcile；真实下载验证 downloads 源；无句柄降级报 `LIB_E_NO_PERM`；设置页三个维护按钮；测完清文件+擦记录+清索引（TESTING §13） |
+| 资源库页面（S3 核心） | `library.html` + `css/library.css` + `js/library/ui.js` + `js/library/thumbs.js` | v1.0 | 已定稿 | 全宽大卡（4:3、`minmax(320px,1fr)`）；类型/平台/星标筛选、搜索、排序、网格/列表；全屏查看器（图片/视频、←/→/Esc）；懒生成 WebP 缩略图（并发 2、IDB 缓存）；响应式 860px 侧栏折叠 |
+| 资源库页面验收脚本 | `tools/cdp-library-page-test.py` | v1.0 | 已定稿 | **22/22**：6 条种子渲染/计数、类型+平台+星标筛选、搜索、排序、列表、查看器翻页/关闭、空态、1280/860 无溢出、控制台 0 error（TESTING §15） |
+| 前端统一设计方案 | `docs/FRONTEND-UI-SYSTEM.md` | v1.0 | 已定稿 | popup + 资源库共用 token/组件；现状审计、全宽布局、全屏查看器、响应式与实施记录 |
+| 前端统一改造截图 | `deliverables/assets/{popup-after,library-page-grid,library-page-list,library-page-viewer,library-page-900}.png` | v1.0 | 已定稿 | popup 蓝色统一；资源库 1440 网格/列表、全屏查看器、860 窄屏 |
 | 设置页重设计方案 | `docs/OPTIONS-REDESIGN.md` | v1.0 | 已定稿 | 现状审计（18 分区 / 151 个唯一 ID / 40 处内联样式 / 8 类问题）+ 四组信息架构 + 视觉 token + 组件规范 + 响应式断点 + 兼容清单 + 实施记录（TESTING §14） |
 | 设置页重设计样式与交互 | `options.html` + `css/options.css` + `js/options.js` | v1.0 | 已定稿 | 四组侧栏与当前项高亮、分区卡片化、统一配置行/开关/按钮/表格；资源库拆三卡；危险操作独立红卡；<980px 顶部导航；深色 token；保存轻提示、开关/删除 aria；151 个 ID 与全部存储键保留 |
 | 设置页重设计截图 | `deliverables/assets/options-redesign-{1440,900,dark,library,table,form,danger,about,full}.png` | v1.1 | 已定稿 | 1440×900 / 900×900 / 深色 / 资源库三卡 / 规则表 / 表单行 / 危险操作 / 关于页（上游与本 fork 增量）/ 整页长图；实测 0 横向溢出、0 控制台错误 |
