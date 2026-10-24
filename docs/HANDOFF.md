@@ -69,7 +69,7 @@
 | `js/library/migrate-ui.js` | 设置页 `#vrLibMigPanel`：选目录 / 预演表格 / 进度 / 回滚 | ✅ |
 | `js/vr-download-hook.js` | 页面侧包装 `chrome.downloads.download`：先记账（含资源库 meta）再下载，解决 Chromium bug 579563 丢文件名 | ✅（ADR-027） |
 | `js/library/indexer.js` | `VRIndex`：三源建索引（downloads / 快照 / FSA 全量）+ `reconcile()` + 快照落盘与恢复；根解析三档；缺失只标不删（ADR-030） | ✅ 35/35 |
-| `library.html` / `css/library.css` / `js/library/ui.js` / `js/library/thumbs.js` | 资源库页面（S3 核心）：全宽大卡网格/列表、筛选/搜索/排序、全屏查看器、懒缩略图 | ✅ 22/22 |
+| `library.html` / `css/library.css` / `js/library/ui.js` / `js/library/thumbs.js` | 资源库页面（S3 核心）：概览 KPI/平台分布/博主速览、全宽大卡网格、真表格、筛选/搜索/排序/分组、全屏查看器、懒缩略图 | ✅ 29/29 |
 | `lightbox.js` / `video.js` / `keyboard.js` / `trash.js` / `archive.js` | S4–S5 的文件，**均不存在** | ❌ |
 
 ### 3.3 关键数据流（别绕开）
@@ -102,7 +102,7 @@
 | **自动入库** | 预登记 + 完成确认 + 索引落库 + 设置页索引状态/最近入库 | **14/14**（TESTING §11） |
 | **S1b** | 三种迁移 + dry-run + 流式复制 + 校验 + 回滚 + 迁移后索引同步 | **39/39**（TESTING §12） |
 | **S2** | `indexer.js`：三源建索引 + 快照破死锁 + reconcile + 设置页三个维护入口 | **35/35**（TESTING §13） |
-| **S3** | 资源库页面：全宽大卡 + 筛选/搜索/排序 + 全屏查看器 + 懒缩略图 | **22/22**（TESTING §15） |
+| **S3** | 资源库页面：概览可视化 + 全宽大卡 + 表格 + 筛选/搜索/排序/分组 + 全屏查看器 | **29/29**（TESTING §15/§16） |
 | 单测 | `tools/test-path.js` | **57/57** |
 | 图片线 | 调研 v0.1（已拍板双入口/清单面板/优先原图）、方案 v1.2（尺寸档位 + 图集分页）、原型 v1.2 | 原型 CDP **24/24**；**实现 0 行** |
 
@@ -145,7 +145,7 @@ node tools/test-path.js            # 57/57   纯 Node，无浏览器
 & $py tools/cdp-index-test.py      # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
 & $py tools/cdp-migrate-test.py    # 39/39   OPFS 句柄注入，三种迁移 + 回滚
 & $py tools/cdp-indexer-test.py    # 35/35   OPFS 句柄 + 真实下载，三源索引/快照/缺失语义
-& $py tools/cdp-library-page-test.py  # 22/22   资源库页面：筛选/搜索/排序/查看器/响应式
+& $py tools/cdp-library-page-test.py  # 29/29   资源库：概览/表格/筛选/搜索/排序/分组/查看器/响应式
 ```
 
 原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
@@ -227,7 +227,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 ### 7.2 S4–S5（S3 已完成）
 
-- S3 ✅：`library.html` + `library.css` + `ui.js` + `thumbs.js` 已上线；全宽大卡、筛选/搜索/排序、全屏查看器、懒缩略图；popup/options 入口已加。**不要再写一套索引逻辑。**
+- S3 ✅：`library.html` + `library.css` + `ui.js` + `thumbs.js` 已上线；概览 KPI/平台分布/博主速览、全宽大卡、真表格、筛选/搜索/排序/分组、全屏查看器、懒缩略图；popup/options 入口已加。**不要再写一套索引逻辑。**
 - S4：`lightbox.js` + `video.js` + `keyboard.js`（自绘控件；↑↓ 切队列、←→ ±5s、Shift ±30s、空格、连播）。
 - S5：`trash.js` + 右键菜单 + 回收站 UI（`_回收站/` 已约定；索引已忽略 `_` 开头目录）。
 
@@ -260,7 +260,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 | `docs/LIBRARY-PLAN.md` | **主线权威方案 v2.0**：架构、目录命名、数据模型、删除/迁移、§11 审计指北、§12 审计复核、§13 实现规格、§13.10 S1b 规格、**§13.11 S2 索引规格** |
 | `docs/TESTING.md` | **验收记录**：§8 原型 42/42、§9 P0、§10 S1a、§11 自动入库、§12 S1b、**§13 S2 索引 35/35**、§14 设置页重设计；含环境限制与坑 |
 | `docs/OPTIONS-REDESIGN.md` | 设置页重设计：现状审计、四组信息架构、视觉/组件规范、响应式、实施记录（ADR-031） |
-| `docs/FRONTEND-UI-SYSTEM.md` | 前端统一设计：popup + 资源库共用 token/组件、全屏查看器、验收记录（TESTING §15） |
+| `docs/FRONTEND-UI-SYSTEM.md` | 前端统一设计：popup + 资源库共用 token/组件、全屏查看器、**§11 资源库 v2（概览/表格）**、验收记录（TESTING §15/§16） |
 | `deliverables/DELIVERABLES.md` | **产出物登记宪法**（新增文件先读 §1.1 落点规则，落地当天登记） |
 | `docs/DECISIONS.md` | ADR-001~032（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、ADR-030 索引三源与缺失不删、ADR-031 设置页信息架构、ADR-032 资源库媒体优先） |
 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` / `IMAGE-DOWNLOAD-PLAN.md` | 图片线调研（已拍板）与方案 v1.2 |
@@ -276,7 +276,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 1. `git status` 应干净；`git log -1` 应不早于 `0e4515c`（资源库 S3；其后是文档提交）。
 2. 读本文 §3（代码地图）与 §7（未完成）。
-3. 起环境（§5.1），按 §5.2 跑六条命令，**确认 57/57、17/17、14/14、39/39、35/35、22/22**。
+3. 起环境（§5.1），按 §5.2 跑六条命令，**确认 57/57、17/17、14/14、39/39、35/35、29/29**。
 4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区：点一次「校验落盘」确认根目录探测；再点「写快照」确认 `_library/index-*.json` 落盘。
 5. 再动 S3：先补 `library.html` / `ui.js` / `thumbs.js` 的实现细节到 LIBRARY-PLAN（如有新增决策），再写代码；索引直接复用 `VRIndex`/`VRDB`，不要重写。
 6. 每次代码改动前后都 `git commit + push`（用 §2 的身份参数）。

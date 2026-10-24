@@ -49,10 +49,10 @@ SEED = r"""
      type:'audio',fileName:'晚安.mp3',size:8*1024*1024,mtime:now-4000,starred:0,tags:[],state:'ok'},
     {relPath:'video-rod/X/Ken/图片/街拍.jpg',absPath:'D:/fake/e.jpg',
      platform:'x',platformName:'X',creatorFull:'Ken',creatorId:'ken',
-     type:'image',fileName:'街拍.jpg',size:890*1024,mtime:now-5000,starred:1,tags:[],state:'ok'},
+     type:'image',fileName:'街拍.jpg',size:890*1024,mtime:now-5*86400000,starred:1,tags:[],state:'ok'},
     {relPath:'video-rod/B站/影视飓风(@946974)/视频/丢失.mp4',absPath:'D:/fake/f.mp4',
      platform:'bilibili',platformName:'B站',creatorFull:'影视飓风(@946974)',creatorId:'946974',
-     type:'video',fileName:'丢失.mp4',size:500*1024*1024,mtime:now-6000,duration:60,
+     type:'video',fileName:'丢失.mp4',size:500*1024*1024,mtime:now-6*86400000,duration:60,
      starred:0,tags:[],state:'missing'}
   ];
   await VRDB.deleteFiles((await VRDB.getAllFiles()).map(f => f.relPath));
@@ -99,6 +99,39 @@ def main():
     check("B2 空态隐藏", base["empty"], True)
     check("B3 总数与总大小", base["sub"], "共 6 项 · 742 MB")
     check("B4 类型计数", base["types"], ["全部资源6", "视频3", "图片2", "音频1", "星标2"])
+
+    v2 = ev(cdp, sid, r"""(async function(){
+      const q = s => document.querySelector(s);
+      const qa = s => [...document.querySelectorAll(s)];
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const out = {};
+      out.kpi = [q('#libKpiTotal').textContent, q('#libKpiSize').textContent,
+                 q('#libKpiSizeUnit').textContent, q('#libKpiImage').textContent,
+                 q('#libKpiVideo').textContent];
+      out.stack = qa('#libPlatStack i').length;
+      out.legend = qa('.legend-item').length;
+      out.creators = qa('.ccard').length;
+      out.bars = qa('.bar-row').length;
+      out.th = qa('.lib-table thead th').length;
+      out.thText = qa('.lib-table thead th').map(x => x.textContent.trim()).join('|');
+      q('#libGroup').value = 'date';
+      q('#libGroup').dispatchEvent(new Event('change', {bubbles: true}));
+      await wait(150);
+      out.days = qa('#libGrid .lib-day').length;
+      out.dayLabel = (q('#libGrid .lib-day b') || {}).textContent || '';
+      q('#libGroup').value = 'none';
+      q('#libGroup').dispatchEvent(new Event('change', {bubbles: true}));
+      await wait(150);
+      out.daysAfter = qa('#libGrid .lib-day').length;
+      return out;
+    })()""")
+    check("B5 概览 KPI", v2["kpi"], ["6", "742", "MB", "2", "3"])
+    check("B6 平台分布 4 段 + 4 条图例", [v2["stack"], v2["legend"]], [4, 4])
+    check("B7 博主速览 5 张卡", v2["creators"], 5)
+    check("B8 博主产量 Top5 条形", v2["bars"], 5)
+    check("B9 表格 8 列", v2["th"], 8)
+    check("B10 表头含名称/平台/博主/大小", all(k in v2["thText"] for k in ("名称", "平台", "博主", "大小")), True)
+    check("B11 按日期分组", [v2["days"] > 1, v2["dayLabel"], v2["daysAfter"]], [True, "今天", 0])
 
     flow = ev(cdp, sid, r"""(async function(){
       const q = s => document.querySelector(s);
@@ -178,11 +211,13 @@ def main():
     time.sleep(0.5)
     mobile = ev(cdp, sid, r"""(function(){
       const s = document.querySelector('.lib-side');
+      const sc = document.querySelector('.side-scroll');
       return {sw: document.documentElement.scrollWidth, iw: innerWidth,
-              side: getComputedStyle(s).position, groups: getComputedStyle(document.querySelector('.side-group')).display};
+              side: getComputedStyle(s).position, scrollX: getComputedStyle(sc).overflowX,
+              chips: document.querySelectorAll('.lib-side .side-item').length};
     })()""")
-    check("K2 860px 侧栏折叠", [mobile["side"], mobile["groups"], mobile["sw"], mobile["iw"]],
-          ["static", "none", 860, 860])
+    check("K2 860px 侧栏折叠为横条", [mobile["side"], mobile["scrollX"], mobile["sw"], mobile["iw"], mobile["chips"] > 0],
+          ["static", "auto", 860, 860, True])
 
     # 清理
     ev(cdp, sid, r"""(async function(){

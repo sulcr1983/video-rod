@@ -946,7 +946,7 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | **S1a** ✅ | `path.js` + 下载路径接管 + 设置页「资源库」分区 | **已完成 2026-10-24**：新下载落 `<下载目录>/video-rod/平台/博主/类型/`；设置页可改子目录名、切模式、校验落盘 | 单测 **48/48** + 端到端 **17/17**（TESTING §10）；实落 `Download\video-rod\其他网页\127.0.0.1\视频\test.mp4` | `feat(library): 三段中文目录（下载目录子目录）+ 根目录设置与落盘校验` |
 | **S1b** ✅ | 迁移（结构迁移 + 换根迁移 + 改子目录名） | **已完成 2026-10-24**：`migrate.js` 引擎 + `migrate-ui.js` 面板；dry-run / 复制 / 校验（size + 首尾 64KB）/ 删源 / 日志 / 回滚 | 端到端 **39/39**（TESTING §12）；S1a 回归 17/17、自动入库回归 14/14 | `feat(library): 迁移——dry-run/复制/校验/回滚（FSA 句柄）` |
 | **S2** ✅ | `db.js` ✅ + `sw-library.js` ✅ + `indexer.js` ✅ | **已完成 2026-10-24**：三源建索引（downloads/快照/全量）+ `reconcile()` + 快照落盘与恢复；设置页「索引维护」三个入口 | 端到端 **35/35**（TESTING §13）；回归 57/17/14/39 全绿；1k 首屏性能留 S3 页面实测 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
-| **S3** ✅ | `library.html` + `ui.js` + `thumbs.js` | **已完成 2026-10-24**：全宽大卡网格/列表、类型/平台/星标筛选、搜索/排序、全屏查看器、懒缩略图 | 端到端 **22/22**（TESTING §15）；回归 17/14/35 全绿 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
+| **S3** ✅ | `library.html` + `ui.js` + `thumbs.js` | **已完成 2026-10-24**：概览 KPI/平台分布/博主速览、全宽大卡网格、真表格、类型/平台/星标筛选、搜索/排序/分组、全屏查看器、懒缩略图 | 端到端 **29/29**（TESTING §15/§16）；回归 17/14/35 全绿 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
 | **S4** | `lightbox.js` + `video.js` + `keyboard.js` | 看图/看视频/键盘 | TESTING §8 的 E/F/H/I 组 | `feat(library): 灯箱与视频弹层——缩略图带 + 自绘控件键盘` |
 | **S5** | `trash.js` + 右键菜单 + 删除/回收站 UI | 删除、恢复、清空、重命名 | TESTING §8 的 B/G 组 | `feat(library): 删除回收站与右键菜单——可恢复、二次确认` |
 
@@ -1209,3 +1209,4 @@ VRIndex.snapshot() -> Promise<string>       // 返回落盘绝对路径
 | v1.9 | 2026-10-24 | **S2 索引规格定死**：新增 §13.11——三源分工（downloads 只 upsert 不判缺失；snapshot/full 扫不到标 `missing` 不删除）；根解析三档（内存 → VRDB handle → 旧授权库）；快照不存 absPath、按当前根重算；reconcile 优先 `downloads.exists` 再 FSA；设置页三个维护入口；8 条验收；测试 `tools/cdp-indexer-test.py` |
 | v2.0 | 2026-10-24 | **S2 索引落地**：§13.11 按实现校订（句柄指向资源库根、`relPath` 首段固定 `subdir`；full 改为内置 walk）；§13.9 S2 标 ✅（端到端 35/35，回归 57/17/14/39 全绿）；TESTING 新增 §13；DELIVERABLES 登记 `indexer.js` 与 `cdp-indexer-test.py` |
 | v2.1 | 2026-10-24 | **S3 资源库页面落地**：全宽大卡（4:3、min 320px）+ 全屏查看器 + 懒缩略图；`library.html`/`library.css`/`ui.js`/`thumbs.js` 建成，端到端 22/22（TESTING §15）；`manifest` 补 `unlimitedStorage` |
+| v2.2 | 2026-10-24 | **资源库 v2**：概览 4 KPI + 平台分布堆叠条 + 博主 Top5 + 博主速览卡；列表改真表格（8 列）；新增按日期分组；≤899 侧栏折叠横条；端到端 29/29（TESTING §16） |
