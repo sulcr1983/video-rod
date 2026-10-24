@@ -142,8 +142,21 @@
   .p-head .x:hover{background:var(--hover)}
   .p-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:9px;font-size:11.5px;color:var(--dim)}
   .p-filters label{display:flex;align-items:center;gap:4px}
+  .p-filters .sizes{display:flex;gap:4px}
+  .p-filters .sizes button{height:24px;padding:0 8px;border-radius:6px;background:var(--bg-deep);font-size:11px;color:var(--dim);border:1px solid transparent}
+  .p-filters .sizes button:hover{background:var(--line2)}
+  .p-filters .sizes button.on{background:var(--cyan);color:#fff;font-weight:600}
+  .p-filters .sizes button i{font-style:normal;opacity:.8;margin-left:3px;font-size:10px}
   .p-filters input[type=number]{width:62px;height:24px;padding:0 6px;border:1px solid var(--line);border-radius:5px;background:#fff}
   .p-filters input[type=text]{width:150px;height:24px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:#fff}
+  #customSize{display:none;gap:6px;align-items:center;margin-top:8px;font-size:11.5px;color:var(--dim)}
+  #customSize.on{display:flex}
+  .albumbar{display:flex;align-items:center;gap:8px;margin-top:9px;padding:7px 9px;border-radius:8px;background:var(--cyan-tint);font-size:11.5px;color:#0b5f59}
+  .albumbar b{font-weight:650}
+  .albumbar button{height:24px;padding:0 9px;border-radius:6px;background:#fff;color:var(--cyan);font-size:11px;border:1px solid rgba(15,118,110,.25)}
+  .albumbar button:hover{background:#fff;border-color:var(--cyan)}
+  .albumbar button:disabled{opacity:.45;cursor:not-allowed}
+  .albumbar .msg{margin-left:auto;color:#0b5f59;opacity:.85}
   .p-actions{display:flex;gap:6px;margin-top:9px}
   .p-actions button{height:26px;padding:0 9px;border-radius:6px;background:var(--bg-deep);font-size:11.5px}
   .p-actions button:hover{background:var(--line2)}
@@ -250,10 +263,26 @@
         <button class="x" id="pClose" title="关闭 (Esc)">✕</button>
       </div>
       <div class="p-filters">
-        <label>最小宽 <input type="number" id="fW" value="100" min="0" step="10"></label>
-        <label>最小高 <input type="number" id="fH" value="100" min="0" step="10"></label>
+        <span>尺寸</span>
+        <div class="sizes" id="sizeBtns">
+          <button data-edge="100" class="on">小<i>0</i></button>
+          <button data-edge="500">中<i>0</i></button>
+          <button data-edge="1200">大<i>0</i></button>
+          <button data-edge="2000">超大<i>0</i></button>
+          <button data-edge="custom">自定义</button>
+        </div>
         <label>URL 含 <input type="text" id="fUrl" placeholder="例如 jpg / png"></label>
         <label><input type="checkbox" id="fOnlyNew" checked> 只看未下载</label>
+      </div>
+      <div id="customSize">
+        宽 ≥ <input type="number" id="fW" value="100" min="0" step="10">
+        高 ≥ <input type="number" id="fH" value="100" min="0" step="10">
+      </div>
+      <div class="albumbar">
+        <span>图集：<b id="albumPages">第 1/3 页</b> · 已收集 <b id="albumCount">12</b> 张</span>
+        <button id="albumMore">加载下一页</button>
+        <button id="albumStop" disabled>停止</button>
+        <span class="msg" id="albumMsg">模拟站点分页；真实实现会后台打开下一页再抓图</span>
       </div>
       <div class="p-actions">
         <button id="pAll">全选</button>
@@ -315,23 +344,29 @@
   ];
   const IMG_SIZES = ['portrait_4_3','portrait_16_9','square_hd','landscape_4_3','portrait_4_3','landscape_16_9'];
 
-  const MEDIA = TITLES.map((t, i) => {
-    const c = CREATORS[i % CREATORS.length];
-    const sz = SIZES[i % SIZES.length];
-    return {
-      id: i + 1,
-      title: t,
-      creatorFull: c.full,
-      creator: c.name,
-      platform: PLATFORMS[i % PLATFORMS.length],
-      w: sz[0], h: sz[1],
-      // 演示用远端 URL：只用于「按 URL 过滤」演示，不作为 <img> 来源
-      url: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=' +
-           encodeURIComponent(PROMPTS[i]) + '&image_size=' + IMG_SIZES[i % IMG_SIZES.length],
-      src: '',          // 本地 SVG 封面（离线可用、截图稳定）
-      state: 'idle'      // idle | done | skipped
-    };
-  });
+  const PAGES = 3;                 // 演示：图集共 3 页
+  let loadedPages = 1;             // 当前已抓取的页数
+
+  const MEDIA = [];
+  for (let p = 1; p <= PAGES; p++) {
+    TITLES.forEach((t, i) => {
+      const c = CREATORS[(i + p) % CREATORS.length];
+      const sz = SIZES[(i + p) % SIZES.length];
+      MEDIA.push({
+        id: (p - 1) * TITLES.length + i + 1,
+        page: p,
+        title: p > 1 ? t + ' · 第' + p + '页' : t,
+        creatorFull: c.full,
+        creator: c.name,
+        platform: PLATFORMS[(i + p) % PLATFORMS.length],
+        w: sz[0], h: sz[1],
+        // 演示用图集 URL：只用于「按 URL 过滤」与抓取演示
+        url: 'https://example.com/gallery/page-' + p + '/' + ((p - 1) * TITLES.length + i + 1) + '.jpg',
+        src: '',
+        state: 'idle'
+      });
+    });
+  }
 
   /* 本地 SVG 封面：不依赖外网，保证原型随时可看 */
   function svgCover(m, i){
@@ -373,7 +408,7 @@
   function renderFeed(){
     const feed = $('feed');
     feed.innerHTML = '';
-    MEDIA.forEach((m, i) => {
+    MEDIA.filter(m => m.page <= loadedPages).forEach((m, i) => {
       const el = document.createElement('div');
       el.className = 'ph';
       el.dataset.id = m.id;
@@ -381,17 +416,19 @@
         <div class="wrap" style="--ar:${m.w} / ${m.h}">
           <img src="${m.src}" alt="${esc(m.title)}" loading="lazy"
                data-w="${m.w}" data-h="${m.h}" data-id="${m.id}">
-          <span class="badge">${m.w}×${m.h}</span>
+          <span class="badge${m.state === 'done' ? ' done' : ''}">${m.state === 'done' ? '✓ 已存' : m.w + '×' + m.h}</span>
         </div>
         <div class="cap"><b>${esc(m.title)}</b><span class="dot"></span>${esc(m.creator)}<span class="dot"></span>${esc(m.platform)}</div>`;
       feed.appendChild(el);
     });
     // 让占位/小图也出现在页面里（默认不显示热点，仅演示过滤）
-    const junk = document.createElement('div');
-    junk.className = 'ph';
-    junk.style.display = 'none';
-    junk.innerHTML = JUNK.map(j => `<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=" data-w="${j.w}" data-h="${j.h}" data-junk="1">`).join('');
-    feed.appendChild(junk);
+    if (loadedPages === 1) {
+      const junk = document.createElement('div');
+      junk.className = 'ph';
+      junk.style.display = 'none';
+      junk.innerHTML = JUNK.map(j => `<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=" data-w="${j.w}" data-h="${j.h}" data-junk="1">`).join('');
+      feed.appendChild(junk);
+    }
   }
 
   function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -461,9 +498,18 @@
   $('hoverBar').addEventListener('mouseenter', () => clearTimeout(hideTimer));
   $('hoverBar').addEventListener('mouseleave', () => { hideTimer = setTimeout(hideBar, 300); });
 
-  function usableCount(){ return MEDIA.filter(m => isUsable(m) && m.state !== 'done').length; }
-  function totalUsable(){ return MEDIA.filter(isUsable).length; }
-  function skippedCount(){ return MEDIA.filter(m => !isUsable(m)).length + JUNK.length; }
+  function usableCount(){
+    return MEDIA.filter(m => m.page <= loadedPages && isUsable(m) && m.state !== 'done').length;
+  }
+  function loadedUsableTotal(){
+    return MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).length;
+  }
+  function totalUsable(){
+    return MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).length;
+  }
+  function skippedCount(){
+    return MEDIA.filter(m => m.page <= loadedPages && !isUsable(m)).length + (loadedPages === 1 ? JUNK.length : 0);
+  }
 
   /* ---------- 单张下载 ---------- */
   $('hbOne').onclick = () => {
@@ -496,7 +542,7 @@
   $('cfList').onclick = () => { $('confirm').classList.remove('on'); openPanel(); };
   $('cfGo').onclick = () => {
     $('confirm').classList.remove('on');
-    runBatch(MEDIA.filter(isUsable).filter(m => m.state !== 'done'));
+    runBatch(MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).filter(m => m.state !== 'done'));
   };
 
   /* ---------- 批量队列（并发 3） ---------- */
@@ -582,15 +628,46 @@
     const fh = +$('fH').value || 0;
     const kw = ($('fUrl').value || '').trim().toLowerCase();
     const onlyNew = $('fOnlyNew').checked;
+    const loaded = MEDIA.filter(m => m.page <= loadedPages);
 
-    filtered = MEDIA.filter(m =>
-      m.w >= fw && m.h >= fh &&
-      (!kw || m.url.toLowerCase().includes(kw)) &&
-      (!onlyNew || m.state !== 'done')
-    );
+    filtered = loaded.filter(m => {
+      let sizeOk;
+      if (preset === 'custom') {
+        sizeOk = m.w >= fw && m.h >= fh;
+      } else {
+        sizeOk = Math.min(m.w, m.h) >= +preset;   // 按短边判定，竖图不误判
+      }
+      return sizeOk && (!kw || m.url.toLowerCase().includes(kw)) && (!onlyNew || m.state !== 'done');
+    });
     renderGrid();
     paintCounts();
+    paintSizes();
   }
+
+  /* ---------- 尺寸档位 ---------- */
+  let preset = '100';
+
+  function paintSizes(){
+    const loaded = MEDIA.filter(m => m.page <= loadedPages);
+    document.querySelectorAll('#sizeBtns button').forEach(b => {
+      const edge = b.dataset.edge;
+      if (edge === 'custom') return;
+      const n = loaded.filter(m => Math.min(m.w, m.h) >= +edge).length;
+      const i = b.querySelector('i');
+      if (i) i.textContent = n;
+    });
+  }
+
+  document.querySelectorAll('#sizeBtns button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#sizeBtns button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      preset = b.dataset.edge;
+      $('customSize').classList.toggle('on', preset === 'custom');
+      applyFilter();
+    };
+  });
+  ['fW','fH'].forEach(id => $(id).addEventListener('input', () => { if (preset === 'custom') applyFilter(); }));
 
   function renderGrid(){
     const grid = $('pgrid');
@@ -646,7 +723,42 @@
   $('pDlAll').onclick = () => {
     selected.clear();
     closePanel();
-    runBatch(MEDIA.filter(isUsable).filter(m => m.state !== 'done'));
+    runBatch(MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).filter(m => m.state !== 'done'));
+  };
+
+  /* ---------- 图集加载（模拟分页抓取） ---------- */
+  let albumTimer = 0, loadingMore = false;
+
+  $('albumMore').onclick = () => {
+    if (loadingMore) { return; }
+    if (loadedPages >= PAGES) { toast('已经是最后一页了'); return; }
+    const next = loadedPages + 1;
+    loadingMore = true;
+    $('albumMore').disabled = true;
+    $('albumStop').disabled = false;
+    $('albumMsg').textContent = '正在抓取第 ' + next + ' 页…';
+    albumTimer = setTimeout(() => {
+      loadedPages = next;
+      loadingMore = false;
+      renderFeed();
+      applyFilter();
+      $('albumPages').textContent = '第 ' + loadedPages + '/' + PAGES + ' 页';
+      $('albumCount').textContent = loadedUsableTotal();
+      $('albumMsg').textContent = loadedPages >= PAGES ? '已到最后一页' : '可继续加载';
+      $('albumMore').disabled = loadedPages >= PAGES;
+      $('albumStop').disabled = true;
+      $('floatN').textContent = usableCount();
+      toast('已抓取第 ' + next + ' 页，累计 ' + loadedUsableTotal() + ' 张');
+    }, 1200);
+  };
+
+  $('albumStop').onclick = () => {
+    if (!loadingMore) { return; }
+    clearTimeout(albumTimer);
+    loadingMore = false;
+    $('albumMsg').textContent = '已停止（已抓到的保留）';
+    $('albumMore').disabled = false;
+    $('albumStop').disabled = true;
   };
 
   /* ---------- 键盘 ---------- */
@@ -694,8 +806,15 @@
   $('dReset').onclick = () => {
     MEDIA.forEach(m => m.state = 'idle');
     selected.clear();
+    loadedPages = 1;
     renderFeed();
+    paintSizes();
     $('floatN').textContent = usableCount();
+    $('albumPages').textContent = '第 1/' + PAGES + ' 页';
+    $('albumCount').textContent = loadedUsableTotal();
+    $('albumMsg').textContent = '模拟站点分页；真实实现会后台打开下一页再抓图';
+    $('albumMore').disabled = false;
+    $('albumStop').disabled = true;
     if (hotOn) document.querySelectorAll('.ph').forEach(p => p.classList.add('hot'));
     toast('已重置演示数据');
   };
@@ -703,6 +822,8 @@
   /* ---------- 启动 ---------- */
   renderFeed();
   $('floatN').textContent = usableCount();
+  $('albumCount').textContent = loadedUsableTotal();
+  paintSizes();
   document.querySelectorAll('.ph img').forEach(img => {
     img.addEventListener('error', () => { img.style.opacity = 0; });
   });
