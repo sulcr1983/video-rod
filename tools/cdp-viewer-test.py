@@ -81,17 +81,17 @@ def main():
     for m in ("Runtime.enable", "Page.enable", "Network.enable"):
         cdp.send(m, {}, sid)
     cdp.send("Network.setCacheDisabled", {"cacheDisabled": True}, sid)
-    cdp.send("Page.navigate", {"url": f"chrome-extension://{ext_id}/library.html"}, sid)
-    time.sleep(2.0)
+    cdp.navigate(sid, f"chrome-extension://{ext_id}/library.html")
 
     mods = ev(cdp, sid, "({v: typeof VRViewer, o: typeof VRVideo, k: typeof VRKeys})")
     check("A2 查看器模块已加载", mods, {"v": "object", "o": "object", "k": "object"})
-    if not mods or mods.get("v") != "object":
+    if not mods or not mods.get("v") or mods["v"] != "object":
         return finish(cdp)
 
     check("A3 种子 4 条", ev(cdp, sid, SEED), 4)
-    cdp.send("Page.reload", {"ignoreCache": True}, sid)
-    time.sleep(2.0)
+    cdp.reload(sid)
+    # 等卡片渲染出来，比固定 2s 快
+    cdp.wait_selector(sid, "#libGrid .lib-card", 8.0)
 
     # 1) 点第一张卡（视频）打开
     first = ev(cdp, sid, r"""(function(){
@@ -99,7 +99,9 @@ def main():
       card.click();
       return card.getAttribute('data-rel');
     })()""")
-    time.sleep(1.2)
+    # 等查看器真的打开（含视频节点），替代固定 1.2s
+    cdp.wait_js(sid, "!document.getElementById('libViewer').hidden", 6.0)
+    cdp.wait_js(sid, "!!document.querySelector('#libViewerStage video')", 6.0)
     open_state = ev(cdp, sid, r"""(function(){
       const v = document.querySelector('#libViewerStage video');
       return {
@@ -151,6 +153,13 @@ def main():
     check("B6 信息面板可收起/展开", [info["a"], info["b"], info["c"]], ["block", "none", "block"])
 
     # 3) 视频：静音 + 空格播放 + 方向键
+    # 必须等元数据加载完（readyState >= 1），否则 duration 还是 NaN/None——
+    # 原来的固定 1.2s 盲等恰好盖住了这个前提，改成轮询后要显式等。
+    cdp.wait_js(sid, """(function(){
+      const v = document.querySelector('#libViewerStage video');
+      return !!v && v.readyState >= 1 && isFinite(v.duration) && v.duration > 0;
+    })()""", 10.0)
+
     pre = ev(cdp, sid, r"""(function(){
       const v = document.querySelector('#libViewerStage video');
       v.pause();
@@ -168,12 +177,16 @@ def main():
 
     ev(cdp, sid, "VRVideo.seekTo(0)")
     key(cdp, sid, "ArrowRight")
-    time.sleep(0.35)
+    # 等 seek 真正落地（短片会夹到末尾），比固定 0.35s 稳
+    cdp.wait_js(sid, """(function(){
+      const v = document.querySelector('#libViewerStage video');
+      return isFinite(v.duration) && v.currentTime >= v.duration - 0.2;
+    })()""", 5.0)
     seek5 = ev(cdp, sid, "Math.round(document.querySelector('#libViewerStage video').currentTime * 100) / 100")
     check("C3 → 快进 5s（短片夹到末尾）", seek5 >= pre["dur"] - 0.2, True)
 
     key(cdp, sid, "ArrowLeft", "{shiftKey:true}")
-    time.sleep(0.3)
+    cdp.wait_js(sid, "document.querySelector('#libViewerStage video').currentTime <= 0.1", 5.0)
     seek30 = ev(cdp, sid, "Math.round(document.querySelector('#libViewerStage video').currentTime * 100) / 100")
     check("C4 Shift+← 回退 30s", seek30 <= 0.1, True)
 

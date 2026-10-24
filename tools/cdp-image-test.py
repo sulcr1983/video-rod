@@ -162,7 +162,8 @@ def main():
     osid = cdp.attach(otid)
     cdp.send("Runtime.enable", {}, osid)
     cdp.send("Page.enable", {}, osid)
-    time.sleep(1.8)
+    # 等扩展 API 可用即可，不用盲等 1.8s
+    cdp.wait_js(osid, "typeof chrome !== 'undefined' && !!chrome.downloads", 8.0)
 
     tid = cdp.send("Target.createTarget", {"url": "about:blank"})["targetId"]
     sid = cdp.attach(tid)
@@ -174,8 +175,9 @@ def main():
 
     # 确保开关为开
     set_img_hover(cdp, osid, True)
-    cdp.send("Page.navigate", {"url": PAGE}, sid)
-    time.sleep(1.6)
+    cdp.navigate(sid, PAGE)
+    # 图全部解码完再断言，避免拿到 0 张
+    cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 8.0)
 
     base = ev(cdp, sid, """(function(){
       return {imgs: document.querySelectorAll('img').length,
@@ -311,8 +313,8 @@ def main():
     # 注意：内容脚本跑在 isolated world，window.__vrImgHoverLoaded 在主世界读不到，
     # 因此断言只看「有没有宿主节点」+「悬停出不出按钮」这两个可跨 world 观测的事实。
     set_img_hover(cdp, osid, False)
-    cdp.send("Page.reload", {"ignoreCache": True}, sid)
-    time.sleep(2.0)
+    cdp.reload(sid)
+    cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 8.0)
     hover(cdp, sid, "#big1")
     off = ev(cdp, sid, """(function(){
       return {host: !!document.getElementById('vr-img-hover-host')};
@@ -322,8 +324,8 @@ def main():
           [off["host"], bool(st_off.get("visible"))], [False, False])
 
     set_img_hover(cdp, osid, True)
-    cdp.send("Page.reload", {"ignoreCache": True}, sid)
-    time.sleep(2.0)
+    cdp.reload(sid)
+    cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 8.0)
     hover(cdp, sid, "#big1")
     check("I2 imgHover=true 恢复按钮", bool(button_state(cdp, sid).get("visible")), True)
 

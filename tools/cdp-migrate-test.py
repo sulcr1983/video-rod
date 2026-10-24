@@ -100,7 +100,7 @@ def main():
     sid = cdp.attach(tid)
     cdp.send("Runtime.enable", {}, sid)
     cdp.send("Page.enable", {}, sid)
-    time.sleep(2.0)
+    cdp.wait_js(sid, "typeof VRMigrate === 'object' && typeof VRDB === 'object'", 8.0)
     cdp.send("Page.bringToFront", {}, sid)
 
     mods = ev(cdp, sid, "({m: typeof VRMigrate, d: typeof VRDB, s: typeof VRSettings})")

@@ -36,7 +36,7 @@ def main():
     osid = cdp.attach(otid)
     cdp.send("Runtime.enable", {}, osid)
     cdp.send("Page.enable", {}, osid)
-    time.sleep(2.0)
+    cdp.wait_js(osid, "!!document.getElementById('anchorLibrary')", 8.0)
 
     check("B1 资源库分区存在", cdp.eval("!!document.getElementById('anchorLibrary')", osid), True)
     check("B2 VRSettings 已挂载", cdp.eval("typeof self.VRSettings === 'object'", osid), True)

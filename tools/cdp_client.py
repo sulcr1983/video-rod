@@ -79,6 +79,42 @@ class Cdp:
         return self.send("Target.attachToTarget",
                          {"targetId": target_id, "flatten": True})["sessionId"]
 
+    def wait_js(self, session, expr, timeout=8.0, interval=0.05):
+        """轮询直到表达式返回真值，返回该值；超时返回 None。
+        用来替代「等页面加载 time.sleep(2.0)」这类固定等待——
+        条件一满足就往下走，通常能省掉一半以上的空等。"""
+        import time as _t
+        deadline = _t.time() + timeout
+        last = None
+        while _t.time() < deadline:
+            last = self.eval(expr, session)
+            if last and not (isinstance(last, dict) and "__error" in last):
+                return last
+            _t.sleep(interval)
+        return None
+
+    def wait_ready(self, session, timeout=10.0):
+        """等到 document.readyState === 'complete'（比固定 sleep 快且稳）。"""
+        return bool(self.wait_js(session, "document.readyState === 'complete'", timeout))
+
+    def wait_selector(self, session, selector, timeout=8.0):
+        """等到选择器出现。"""
+        return self.wait_js(
+            session,
+            "!!document.querySelector(%s)" % json.dumps(selector),
+            timeout)
+
+    def navigate(self, session, url, timeout=12.0):
+        """导航并等加载完成，替代 sleep + 盲等。"""
+        self.send("Page.navigate", {"url": url}, session)
+        self.wait_ready(session, timeout)
+        return True
+
+    def reload(self, session, timeout=12.0):
+        self.send("Page.reload", {"ignoreCache": True}, session)
+        self.wait_ready(session, timeout)
+        return True
+
     def targets(self):
         return self.send("Target.getTargets")["targetInfos"]
 
