@@ -130,7 +130,7 @@ video-rod/
 | 索引端到端验收脚本 | `tools/cdp-indexer-test.py` | v1.0 | 已定稿 | **35/35**：OPFS 句柄注入覆盖全量扫描/快照恢复/缺失语义/reconcile；真实下载验证 downloads 源；无句柄降级报 `LIB_E_NO_PERM`；设置页三个维护按钮；测完清文件+擦记录+清索引（TESTING §13） |
 | 设置页重设计方案 | `docs/OPTIONS-REDESIGN.md` | v1.0 | 已定稿 | 现状审计（18 分区 / 151 个唯一 ID / 40 处内联样式 / 8 类问题）+ 四组信息架构 + 视觉 token + 组件规范 + 响应式断点 + 兼容清单 + 实施记录（TESTING §14） |
 | 设置页重设计样式与交互 | `options.html` + `css/options.css` + `js/options.js` | v1.0 | 已定稿 | 四组侧栏与当前项高亮、分区卡片化、统一配置行/开关/按钮/表格；资源库拆三卡；危险操作独立红卡；<980px 顶部导航；深色 token；保存轻提示、开关/删除 aria；151 个 ID 与全部存储键保留 |
-| 设置页重设计截图 | `deliverables/assets/options-redesign-{1440,900,dark,library,table,form,danger,full}.png` | v1.0 | 已定稿 | 1440×900 / 900×900 / 深色 / 资源库三卡 / 规则表 / 表单行 / 危险操作 / 整页长图；实测 0 横向溢出、0 控制台错误 |
+| 设置页重设计截图 | `deliverables/assets/options-redesign-{1440,900,dark,library,table,form,danger,about,full}.png` | v1.1 | 已定稿 | 1440×900 / 900×900 / 深色 / 资源库三卡 / 规则表 / 表单行 / 危险操作 / 关于页（上游与本 fork 增量）/ 整页长图；实测 0 横向溢出、0 控制台错误 |
 | 资源库索引层（IDB） | `js/library/db.js` | v1.1 | 已定稿 | 新建。库 `vr-library` v1，五个 store：`file`（keyPath relPath，索引 platform/creatorId/type/mtime/starred）、`thumb`、`setting`、`handle`、`oplog`；SW 与页面共用，API 挂 `self.VRDB`；单连接缓存 + `onversionchange` 让路；v1.1 补 `getHandle/setHandle`（S2 快照/全量扫描复用授权） |
 | 资源库 SW 入库服务 | `js/library/sw-library.js` | v1.0 | 已定稿 | 新建。预登记表存 `chrome.storage.session`（TTL 10 分钟、上限 500、200ms 节流），`downloads.onChanged` complete → 反查绝对路径 → 合并 meta 落 IDB → 广播 `vrLib.added`；处理 `vrLib.record/list/stats/clear`；忽略 `_verify/`、`_回收站/`；无根目录时用「预登记目录 + 实际文件名」兜底（覆盖 uniquify 改名）；重下同名文件保留星标/标签 |
 | 自动入库端到端验收脚本 | `tools/cdp-index-test.py` | v1.0 | 已定稿 | **14/14**：清空索引 → 批量下载 → 轮询索引出现 → 字段校验（三段目录/平台/类型/大小/绝对路径/文件名/计数）+ 设置页索引状态自动刷新 + 控制台零错误；测完自动删文件+擦记录+清索引（TESTING §11） |
