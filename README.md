@@ -18,7 +18,7 @@
 - **批量下载**、m3u8 碎片**自动合并**成完整 MP4
 - **网页图片批量下载**：扫 img/srcset/背景图/懒加载，滤掉小图标
 - **右键秒存**：视频/图片上右键直接下，不用开面板
-- **B站/YouTube 抓取**：B站分P/合集/大会员（零签名对抗嗅探增强）；YouTube 能抓则抓（2026 SABR/poToken 下纯扩展受限，见 docs/DECISIONS.md ADR-019）
+- **B站/YouTube 抓取**：B站分P/合集/大会员（零签名对抗嗅探增强）；**YouTube 播放器下方独立下载按钮**——1080p/4K 直选，音视频轨本地无损合并成 MP4（见 docs/YT-IMPLEMENTATION.md）
 - 快捷键 `Alt+Shift+V` 唤起面板
 
 ## 本 fork 做了什么（相对上游）
@@ -160,6 +160,8 @@
 | [docs/FRONTEND-UI-SYSTEM.md](docs/FRONTEND-UI-SYSTEM.md) | 前端统一设计：popup + 资源库的 token、组件、全屏查看器与验收 |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | 交接文档：现状、环境、代码地图、测试基线、踩过的坑 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策记录（ADR）：每个重要选择为什么这么做 |
+| [docs/YT-FEASIBILITY.md](docs/YT-FEASIBILITY.md) | YouTube 高清可行性实测：SABR 封堵真相、客户端矩阵、n 参数归因、三条路线技术账 |
+| [docs/YT-IMPLEMENTATION.md](docs/YT-IMPLEMENTATION.md) | YouTube 下载实现记录：文件地图、数据流、三个关键设计、验证状态与已知限制 |
 | [deliverables/DELIVERABLES.md](deliverables/DELIVERABLES.md) | **产出物管理规范**：目录结构、命名、版本状态、登记表 |
 
 **目录速览**：`docs/` 工程文档 ｜ `deliverables/` 产出物（原型/评审/资产）｜ `tools/` 工具脚本 ｜ `archive/` 归档（上游猫抓遗产+作废产出物，留证不删）

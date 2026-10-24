@@ -923,3 +923,66 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 1. **未做**：I4 浮标 + 清单面板、I5 设置 UI/快捷键、I6 图集。确认条里「先看清单」目前提示「I4 上线」。
 2. 浏览器首次批量下载会弹「是否允许下载多个文件」，确认条已提前告知，无法用代码绕过。
 3. 并发过高反而慢（`chrome.downloads` 是单队列），并发 3 是实测折中，设置项留给 I5。
+
+---
+
+## 22. 图片浮标 + 清单面板验收（I4）
+
+> 实现口径：`docs/IMAGE-I4-IMPL.md`。
+
+### 22.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 浮标 | `js/image-panel.js`：右下角 40px 圆标，角标=可下张数，可拖动、可关闭（`sessionStorage`） |
+| 清单面板 | 缩略图网格（首屏 24 张、滚动追加）+ 尺寸档位 + URL 过滤 + 排序 + 勾选 + 批量下载 |
+| 尺寸档位 | 小≥100 / 中≥500 / 大≥1200 / 超大≥2000 / 自定义，**每档实时显示命中数**，按**短边**判定 |
+| 勾选 | 单击切换、`Shift+单击` 区间、全选/反选/清空，以 URL 为键（排序过滤后不丢） |
+| 键盘 | `Esc` 关、`J/K` 移动、`X` 勾选、`A` 全选、`Enter` 下载 |
+| 工具函数 | `js/lib-image-util.js` 新增 `shortSide/parseTierMin/tierCounts/filterByTier/filterByKeyword/sortItems` |
+| 队列复用 | `js/image-batch.js` 抽出 `runQueue(items)`，暴露 `VRImgBridge.download(items)` 给面板 |
+
+### 22.2 单测（`tools/test-image-tier.js`）**57/57**
+
+短边判定、四档阈值边界（99/100、499/500、1199/1200、1999/2000）、竖图按短边、
+每档命中数、自定义阈值合法性、URL 关键词、三种排序、组合取交集、空/null 安全。
+
+### 22.3 端到端（`tools/cdp-image-panel-test.py`）**46/46**
+
+| 组 | 断言 |
+|---|---|
+| A | 扩展/夹具、浮标出现、角标=8、距右下 16px |
+| B | 点浮标开面板、标题含张数、首屏 8 张、显示尺寸 |
+| C | 小 8 / 中 2 / 大 2 / 超大 0 且禁用、切档网格数、自定义 1200 命中 2 |
+| D | 关键词 sprite=1、cover=2、无命中空态、清空恢复 |
+| E | 单击勾选、已选计数、下载可用、Shift 区间 4 张、清空、全选 8、反选 0 |
+| F | 尺寸降序顺序变化、排序后勾选不丢 |
+| G | `A` 全选、`X` 取消当前项、`J` 移动焦点 |
+| H | 下载选中 2 张落盘、文件名含日期前缀 |
+| I | `Esc` 关闭 |
+| J | 浮标拖动改位置、位置持久化 |
+| K | 关闭后本页不再显示 |
+| L | `imgPanel=false` 无宿主 / `true` 恢复 |
+| M | 控制台 0 error |
+
+### 22.4 截图
+
+`image-panel-float.png`（浮标）、`image-panel-grid.png`（面板网格）、
+`image-panel-tier.png`（切大档）。
+
+### 22.5 关键坑（都已修）
+
+1. **浮标永远不出现**：`ensureUI()` 只在开面板时调，而浮标是入口 → 死循环。
+   修法：脚本末尾主动 `boot()`，`DOMContentLoaded` 兜底；设置关→开时重建。
+2. **Shadow DOM 焦点**：`document.activeElement` 只返回 host，`J/K/X` 全失效。
+   修法：读 `shadowRoot.activeElement`。
+3. **`prompt`/`alert` 可能被 CSP 拦**：自定义档位改**面板内联输入行**。
+4. **自定义档位显示 0**：会被读成「一张都没有」，改初始显示「…」。
+5. **`total` 与档位计数语义不同**：`total` 含不达任何档的图，档位计数才是有阈值的。
+
+### 22.6 边界与后续
+
+1. **未做**：设置页 UI 与快捷键（I5）、图集/多页（I6）。
+2. 只认 `<img>`：CSS 背景图、`<picture>` 的 `<source>`、Canvas 扫不到（与 I1–I3 一致）。
+3. 懒加载图未解码时不进清单（`scanImages` 已过滤），滚动后才补。
+4. 浮标关闭用 `sessionStorage`（刷新恢复）；位置用 `localStorage`（跨站共享偏移，I5 可按站点存）。

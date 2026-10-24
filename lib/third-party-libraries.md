@@ -62,3 +62,17 @@ Download:
 lib/m3u8-decrypt.js
 Source: https://github.com/video-dev/hls.js/blob/master/src/crypt/aes-decryptor.ts
 License: Apache-2.0 license
+
+lib/youtubei.min.js
+Source: https://github.com/LuanRT/YouTube.js
+License: MIT license
+Version: 18.3.0（youtubei.js）
+用途: 只取 Player.decipher —— 从 YouTube 的 base.js 里抽出 n/sig 变换函数并求值。
+     googlevideo 直链的 n 参数不经过变换一律 403（docs/YT-FEASIBILITY.md 实测）。
+     该库要求宿主提供 JS 求值器（v18 起默认实现会抛错），所以必须在 sandbox 页里跑：
+     js/yt/nsig-sandbox.html（manifest 的 sandbox.pages，CSP 带 'unsafe-eval'）。
+Build:
+`npm i youtubei.js@18.3.0 esbuild`
+`echo "export { Player } from 'youtubei.js';" > entry.js`
+`esbuild entry.js --bundle --format=iife --global-name=YTJS --platform=browser --minify --outfile=lib/youtubei.min.js`
+备注: 只导出 Player，产物 470KB；仅在点击下载时才加载（沙箱 iframe 按需创建），不拖慢 popup。

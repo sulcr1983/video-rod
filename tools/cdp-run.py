@@ -41,6 +41,7 @@ SUITES = {
         ("node", "tools/test-path.js"),
         ("node", "tools/test-image-util.js"),
         ("node", "tools/test-image-batch.js"),
+        ("node", "tools/test-image-tier.js"),
         ("cdp", "tools/cdp-s1a-test.py"),
         ("cdp", "tools/cdp-index-test.py"),
         ("cdp", "tools/cdp-migrate-test.py"),
@@ -51,6 +52,7 @@ SUITES = {
         ("cdp", "tools/cdp-batch-test.py"),
         ("cdp", "tools/cdp-image-test.py"),
         ("cdp", "tools/cdp-image-batch-test.py"),
+        ("cdp", "tools/cdp-image-panel-test.py"),
     ],
     "library": [
         ("cdp", "tools/cdp-library-page-test.py"),
@@ -61,8 +63,10 @@ SUITES = {
     "image": [
         ("node", "tools/test-image-util.js"),
         ("node", "tools/test-image-batch.js"),
+        ("node", "tools/test-image-tier.js"),
         ("cdp", "tools/cdp-image-test.py"),
         ("cdp", "tools/cdp-image-batch-test.py"),
+        ("cdp", "tools/cdp-image-panel-test.py"),
     ],
     "core": [
         ("node", "tools/test-path.js"),

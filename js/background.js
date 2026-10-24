@@ -874,14 +874,19 @@ try {
  * 监听 扩展 message 事件
  */
 /**
- * 注入到 YouTube 页面主世界执行：用 MWEB 客户端取格式列表。
+ * 注入到 YouTube 页面主世界执行：取格式列表（带直链的那种）。
  *
  * 这段函数会被 chrome.scripting.executeScript 序列化后送到页面里跑，
  * 所以不能引用任何外层变量（只能用它自己的参数和页面全局）。
  *
- * 为什么是 MWEB：实测九种客户端，只有 MWEB 还在返回带 url 的 adaptiveFormats
- * （41/41，最高 2160p60，且不需要 poToken）；WEB 已全面 SABR 化，返回 0 条直链。
- * 详见 docs/YT-FEASIBILITY.md。
+ * 为什么要在页面里发而不是扩展进程里发：
+ *   这条链的身份包含页面自己的 cookie 与 visitorData，换个上下文就变成
+ *   「陌生第三方」，直接 UNPLAYABLE。
+ *
+ * 为什么按 MWEB → ANDROID → IOS → TVHTML5 依次试：
+ *   实测（docs/YT-FEASIBILITY.md）九种客户端里只有 MWEB 稳定返回带 url 的
+ *   adaptiveFormats，但 YouTube 的灰度是按客户端+地区+时间的，今天 MWEB 能用
+ *   不代表明天；多试几种比写死一种活得更久。第一个返回了直链的就用它。
  */
 function ytCollectFormats(videoId) {
     return (async function () {
@@ -892,44 +897,85 @@ function ytCollectFormats(videoId) {
             }
             var key = cfg.get('INNERTUBE_API_KEY');
             var ctx = cfg.get('INNERTUBE_CONTEXT') || {};
-            var client = ctx.client || {};
-            var visitor = client.visitorData || '';
-            var VER = client.clientVersion || '2.20261023.01.00';
-            var body = {
-                context: {
-                    client: {
-                        clientName: 'MWEB',
-                        clientVersion: VER,
-                        hl: cfg.get('HL') || 'en',
-                        gl: cfg.get('GL') || 'US',
-                        visitorData: visitor
-                    },
-                    user: { lockedSafetyMode: false },
-                    request: { useSsl: true }
-                },
-                videoId: videoId,
-                contentCheckOk: true,
-                racyCheckOk: true
-            };
-            var headers = {
-                'Content-Type': 'application/json',
-                'X-Youtube-Client-Name': '2',
-                'X-Youtube-Client-Version': VER
-            };
-            if (visitor) { headers['X-Goog-Visitor-Id'] = visitor; }
+            var visitor = (ctx.client || {}).visitorData || '';
+            var webVer = (ctx.client || {}).clientVersion || '2.20261023.01.00';
 
-            var resp = await fetch('/youtubei/v1/player?key=' +
-                encodeURIComponent(key) + '&prettyPrint=false', {
-                method: 'POST',
-                credentials: 'include',
-                headers: headers,
-                body: JSON.stringify(body)
-            });
-            var json = await resp.json();
-            var ps = json.playabilityStatus || {};
-            if (ps.status !== 'OK') {
-                return { ok: false, error: (ps.status || '未知状态') + '：' + (ps.reason || '') };
+            // [显示名, clientName, 数字 id, clientVersion]
+            var clients = [
+                ['MWEB', 'MWEB', '2', webVer],
+                ['ANDROID', 'ANDROID', '3', '19.44.38'],
+                ['IOS', 'IOS', '5', '19.45.4'],
+                ['TVHTML5', 'TVHTML5', '7', '7.20261023.00.00']
+            ];
+
+            var lastErr = '';
+            var json = null;
+
+            for (var ci = 0; ci < clients.length; ci++) {
+                var c = clients[ci];
+                var clientObj = {
+                    clientName: c[1],
+                    clientVersion: c[3],
+                    hl: 'en',
+                    gl: 'US'
+                };
+                if (visitor) { clientObj.visitorData = visitor; }
+                if (c[1] === 'ANDROID' || c[1] === 'IOS') {
+                    clientObj.androidSdkVersion = 34;
+                    clientObj.osName = 'Android';
+                    clientObj.osVersion = '14';
+                }
+                var headers = {
+                    'Content-Type': 'application/json',
+                    'X-Youtube-Client-Name': c[2],
+                    'X-Youtube-Client-Version': c[3]
+                };
+                if (visitor) { headers['X-Goog-Visitor-Id'] = visitor; }
+                try {
+                    var resp = await fetch('/youtubei/v1/player?key=' +
+                        encodeURIComponent(key) + '&prettyPrint=false', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: headers,
+                        body: JSON.stringify({
+                            context: {
+                                client: clientObj,
+                                user: { lockedSafetyMode: false },
+                                request: { useSsl: true }
+                            },
+                            videoId: videoId,
+                            contentCheckOk: true,
+                            racyCheckOk: true
+                        })
+                    });
+                    var j = await resp.json();
+                    var ps = j.playabilityStatus || {};
+                    if (ps.status !== 'OK') {
+                        lastErr = c[0] + ' → ' + (ps.status || '?') + '：' + (ps.reason || '');
+                        continue;
+                    }
+                    var sd0 = j.streamingData || {};
+                    var hasUrl = (sd0.adaptiveFormats || []).some(function (f) { return !!f.url; });
+                    if (!hasUrl) {
+                        lastErr = c[0] + ' → 只有 SABR，没有直链';
+                        continue;
+                    }
+                    json = j;
+                    break;
+                } catch (e) {
+                    lastErr = c[0] + ' → 请求异常：' + String((e && e.message) || e);
+                }
             }
+
+            if (!json) {
+                return {
+                    ok: false,
+                    error: lastErr || '所有客户端都拿不到直链',
+                    hint: 'YouTube 经常对同一 IP 短时间内的重复请求做限制。' +
+                          '刷新视频页、等几分钟，或确认已登录后再试。'
+                };
+            }
+
             var sd = json.streamingData || {};
             var progressive = sd.formats || [];
             var adaptive = sd.adaptiveFormats || [];
@@ -969,6 +1015,7 @@ function ytCollectFormats(videoId) {
     })();
 }
 
+
 chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (chrome.runtime.lastError) { return; }
     // 苏哥的钓鱼竿：下载文件名记账（popup/options 等页面经 vr-download-hook.js 转发）。
@@ -985,7 +1032,9 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             '?videoId=' + encodeURIComponent(Message.videoId || '') +
             '&tabId=' + encodeURIComponent(String((sender.tab && sender.tab.id) || 0)) +
             '&title=' + encodeURIComponent(Message.title || '') +
-            '&author=' + encodeURIComponent(Message.author || '');
+            '&author=' + encodeURIComponent(Message.author || '') +
+            '&authorId=' + encodeURIComponent(Message.authorId || '') +
+            '&pageUrl=' + encodeURIComponent(Message.pageUrl || '');
         chrome.windows.create({
             url: ytUrl, type: 'popup', width: 480, height: 700, focused: true
         }, function (w) {

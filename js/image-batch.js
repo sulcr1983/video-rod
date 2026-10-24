@@ -375,55 +375,77 @@
         return { items: out.slice(0, max), total: Math.min(out.length, max), truncated, max };
     }
 
+    /**
+     * 跑队列（面板与「全部 N」共用）。
+     * items: [{url, candidates, title}]，调用方负责截断与去重。
+     * 返回 Promise<{ok, succeeded, fail, canceled}>，进度同时走底部进度条。
+     */
+    function runQueue(items, opts) {
+        const list = Array.isArray(items) ? items.slice() : [];
+        const o = opts || {};
+        return new Promise(resolve => {
+            if (!list.length) { resolve({ ok: true, succeeded: 0, fail: 0, canceled: false }); return; }
+            settings().then(s => {
+                const concurrency = Math.max(1, Math.min(MAX_CONCURRENCY,
+                    Number(s.imgConcurrency) || DEFAULT_CONCURRENCY));
+                batch = {
+                    batchId: 'b-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+                    total: list.length,
+                    done: 0,
+                    ok: 0,
+                    fail: 0,
+                    failures: []
+                };
+                state = 'running';
+                if (o.showBar !== false) { showProgress(); }
+                if (typeof o.onStart === 'function') { o.onStart(batch); }
+
+                send({
+                    Message: 'vrImg.batch',
+                    action: 'vrImg.batch',
+                    items: list,
+                    pageUrl: location.href,
+                    pageTitle: String(document.title || '').slice(0, 120),
+                    concurrency: concurrency,
+                    batchId: batch.batchId
+                }, res => {
+                    let out;
+                    if (res && (typeof res.succeeded === 'number' || typeof res.ok === 'number')) {
+                        out = {
+                            ok: true,
+                            succeeded: typeof res.succeeded === 'number' ? res.succeeded : res.ok,
+                            fail: res.fail || 0,
+                            canceled: !!res.canceled,
+                            failures: res.failures || []
+                        };
+                    } else {
+                        out = { ok: false, succeeded: 0, fail: list.length, canceled: false, failures: [] };
+                    }
+                    if (state === 'running' || state === 'canceling') {
+                        batch.ok = out.succeeded;
+                        batch.fail = out.fail;
+                        batch.done = out.succeeded + out.fail;
+                        batch.failures = out.failures;
+                        state = out.canceled ? 'canceled' : 'done';
+                        if (o.showBar !== false) { renderProgress(); hideProgressLater(); }
+                    }
+                    if (typeof o.onDone === 'function') { o.onDone(out, batch); }
+                    resolve(out);
+                });
+            });
+        });
+    }
+
     async function startDownload() {
         if (state !== 'confirm') { return; }
         const { items, total, truncated } = await collectItems();
         if (!total) { closeConfirm(); return; }
         closeConfirm();
-
-        const s = await settings();
-        const concurrency = Math.max(1, Math.min(MAX_CONCURRENCY,
-            Number(s.imgConcurrency) || DEFAULT_CONCURRENCY));
-
-        batch = {
-            batchId: 'b-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-            total: total,
-            done: 0,
-            ok: 0,
-            fail: 0,
-            failures: []
-        };
-        state = 'running';
-        showProgress();
-
-        send({
-            Message: 'vrImg.batch',
-            action: 'vrImg.batch',
-            items: items,
-            pageUrl: location.href,
-            pageTitle: String(document.title || '').slice(0, 120),
-            concurrency: concurrency,
-            batchId: batch.batchId
-        }, res => {
-            // SW 的最终回执：进度事件可能先到，这里只做兜底收尾
-            if (state === 'running' || state === 'canceling') {
-                if (res && (typeof res.succeeded === 'number' || typeof res.ok === 'number')) {
-                    // SW 回执用 succeeded 表示成功张数（ok 是「消息成功」标志，别混用）
-                    batch.ok = typeof res.succeeded === 'number' ? res.succeeded : res.ok;
-                    batch.fail = res.fail || 0;
-                    batch.done = batch.ok + batch.fail;
-                    batch.failures = res.failures || [];
-                    state = res.canceled ? 'canceled' : 'done';
-                    renderProgress();
-                    hideProgressLater();
-                } else {
-                    failAll('批量下载没有返回结果');
-                }
-            }
-            if (truncated) {
-                toast('本次只下前 ' + total + ' 张，剩余请刷新后继续');
-            }
-        });
+        const out = await runQueue(items);
+        if (truncated) {
+            toast('本次只下前 ' + total + ' 张，剩余请刷新后继续');
+        }
+        return out;
     }
 
     function failAll(msg) {
@@ -516,6 +538,11 @@
         },
         requestAll() {
             return openConfirm();
+        },
+        /** 面板用：直接下这批（不弹确认条），进度仍走底部进度条 */
+        download(items, opts) {
+            if (!enabled) { return Promise.resolve({ ok: false, succeeded: 0, fail: 0 }); }
+            return runQueue(items, opts);
         },
         onCount(fn) {
             countListener = fn;

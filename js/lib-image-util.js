@@ -343,9 +343,100 @@
         return out;
     }
 
+    /* ---------------- 尺寸档位（I4 清单面板用） ---------------- */
+
+    /* 按「短边」判定档位：竖图 600×2000 应算「中」，不能按宽或长边算成「大」。 */
+    var TIERS = [
+        { key: 'small', label: '小', min: 100 },
+        { key: 'medium', label: '中', min: 500 },
+        { key: 'large', label: '大', min: 1200 },
+        { key: 'huge', label: '超大', min: 2000 }
+    ];
+
+    function shortSide(w, h) {
+        var a = Number(w) || 0;
+        var b = Number(h) || 0;
+        if (a <= 0 || b <= 0) { return 0; }
+        return Math.min(a, b);
+    }
+
+    /** 自定义阈值合法性：正整数才有效，否则返回 0 */
+    function parseTierMin(raw) {
+        var n = parseInt(String(raw == null ? '' : raw).trim(), 10);
+        if (!isFinite(n) || n <= 0) { return 0; }
+        return n;
+    }
+
+    /**
+     * 每个档位的命中数。
+     * items: [{w, h}] 或 scanImages 结果；返回 { small: n, medium: n, large: n, huge: n, total: n }
+     */
+    function tierCounts(items) {
+        var out = { small: 0, medium: 0, large: 0, huge: 0, total: 0 };
+        var arr = items || [];
+        for (var i = 0; i < arr.length; i++) {
+            var ss = shortSide(arr[i] && arr[i].w, arr[i] && arr[i].h);
+            if (!ss) { continue; }
+            out.total++;
+            for (var j = 0; j < TIERS.length; j++) {
+                if (ss >= TIERS[j].min) { out[TIERS[j].key]++; }
+            }
+        }
+        return out;
+    }
+
+    /** 按档位过滤：min 为短边下限（0 表示不过滤） */
+    function filterByTier(items, min) {
+        var m = Number(min) || 0;
+        var arr = items || [];
+        if (m <= 0) { return arr.slice(); }
+        var out = [];
+        for (var i = 0; i < arr.length; i++) {
+            var ss = shortSide(arr[i] && arr[i].w, arr[i] && arr[i].h);
+            if (ss >= m) { out.push(arr[i]); }
+        }
+        return out;
+    }
+
+    /** URL 关键词过滤（大小写不敏感子串）；关键词为空则原样返回 */
+    function filterByKeyword(items, kw) {
+        var k = String(kw == null ? '' : kw).trim().toLowerCase();
+        var arr = items || [];
+        if (!k) { return arr.slice(); }
+        var out = [];
+        for (var i = 0; i < arr.length; i++) {
+            var u = String((arr[i] && arr[i].url) || '').toLowerCase();
+            if (u.indexOf(k) >= 0) { out.push(arr[i]); }
+        }
+        return out;
+    }
+
+    /** 排序：'page' 页面顺序（稳定）/ 'size-desc' / 'size-asc' */
+    function sortItems(items, mode) {
+        var arr = (items || []).slice();
+        if (mode !== 'size-desc' && mode !== 'size-asc') { return arr; }
+        var dir = mode === 'size-desc' ? -1 : 1;
+        arr.sort(function (a, b) {
+            var sa = shortSide(a && a.w, a && a.h);
+            var sb = shortSide(b && b.w, b && b.h);
+            if (sa !== sb) { return (sa - sb) * dir; }
+            var la = Math.max(Number(a && a.w) || 0, Number(a && a.h) || 0);
+            var lb = Math.max(Number(b && b.w) || 0, Number(b && b.h) || 0);
+            return (la - lb) * dir;
+        });
+        return arr;
+    }
+
     return {
         MIN_SIZE: MIN_SIZE,
         IMAGE_EXT: IMAGE_EXT,
+        TIERS: TIERS,
+        shortSide: shortSide,
+        parseTierMin: parseTierMin,
+        tierCounts: tierCounts,
+        filterByTier: filterByTier,
+        filterByKeyword: filterByKeyword,
+        sortItems: sortItems,
         absolutize: absolutize,
         isDataUri: isDataUri,
         isSvgUrl: isSvgUrl,
