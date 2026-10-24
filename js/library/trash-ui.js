@@ -91,6 +91,13 @@
         if (starBtn) {
             starBtn.textContent = e.starred ? '取消星标' : '加星标';
         }
+        var renameBtn = menu.querySelector('[data-act="rename"]');
+        if (renameBtn) {
+            var picked = (root.VRBatch && root.VRBatch.active()) ? root.VRBatch.count() : 1;
+            var canRename = picked === 1;
+            renameBtn.disabled = !canRename;
+            renameBtn.title = canRename ? '' : '批量选择时只能重命名单个文件';
+        }
         menu.hidden = false;
 
         var w = menu.offsetWidth || 180;
@@ -136,6 +143,10 @@
         }
         if (act === 'star') {
             if (cb.toggleStar) { await cb.toggleStar(rel); }
+            return;
+        }
+        if (act === 'rename') {
+            if (cb.rename) { cb.rename(rel); }
             return;
         }
         if (act === 'trash') {
