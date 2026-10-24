@@ -1,4 +1,4 @@
-# 钓鱼竿 Video Rod — 交接文档
+# 苏哥的钓鱼竿 — 交接文档
 
 > 更新：2026-10-24 ｜ 代码 HEAD：`f61ca96`（设置页重设计；其后仅文档提交）
 > 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§13（已验收记录）。
@@ -282,7 +282,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 ## 10. 恢复上下文提示词（直接复制给下一个 AI）
 
 ```
-你是接手「钓鱼竿 Video Rod」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§13。
+你是接手「苏哥的钓鱼竿」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§13。
 项目是私有自用 Chrome MV3 扩展，主线是本地资源库；S0/S1a/S1b/自动入库/S2 索引已完成并全绿，下一步 S3 资源库页面（library.html + ui.js + thumbs.js）。
 规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
 git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。

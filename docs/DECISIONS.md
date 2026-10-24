@@ -1,4 +1,4 @@
-# 钓鱼竿 Video Rod — 决策记录（ADR）
+# 苏哥的钓鱼竿 — 决策记录（ADR）
 
 > Architecture Decision Records。记录「为什么这么做」，防止以后回头看忘记当初的理由。
 > 状态图例：✅ 已生效 ｜ 🟡 生效中（施工期） ｜ 📋 已计划未开工
@@ -154,7 +154,7 @@
   - ❌ 报告不准：「filterFileName 不滤 `\`/`/`」——实际 `stringModify` 单独处理了斜杠（转 `&bsol;`/`&sol;` 实体，function.js:252）。实质结论（斜杠被转义、不能直接当目录分隔符）仍成立。
   - 📌 漏报一：**猫抓原生已支持目录下载**（background.js:281 按网页标题建子目录 `CatCatch/` 或 `标题/`）——「下载到文件夹」不是从无到有。
   - 📌 漏报二：**猫抓原生已有文件名内联编辑 + 模板**（popup.js:73、init.js:101 `downFileName`，变量 title/url/date/ext）——「自定义命名」也不是从无到有。
-- **决策（校准后的真实增量）**：钓鱼竿的核心增量 = ① 智能起名（页面识别：文章标题/推文正文/作者前缀，猫抓模板没这些变量）② 按平台/作者自动分目录（猫抓只有按网页标题）③ 图片批量扫描（嗅探清单确实无 image/*，init.js:63-73 实锤）④ 右键秒存 + 快捷键 + 批量管理 UI。命名/目录的叙事从「从无到有」改为「从有到好」，不夸大。
+- **决策（校准后的真实增量）**：本项目的核心增量 = ① 智能起名（页面识别：文章标题/推文正文/作者前缀，猫抓模板没这些变量）② 按平台/作者自动分目录（猫抓只有按网页标题）③ 图片批量扫描（嗅探清单确实无 image/*，init.js:63-73 实锤）④ 右键秒存 + 快捷键 + 批量管理 UI。命名/目录的叙事从「从无到有」改为「从有到好」，不夸大。
 - **留档**：本 ADR 是 2026-10 时点的事实快照。若未来 B站/YouTube 生态回暖（或出现新的成熟开源实现），可重估 ADR-019 的路线。
 
 ## ADR-021 合并路线定案：A（保持在线FFmpeg 现状）+ 设置留开关
@@ -210,7 +210,7 @@
 ## ADR-027 下载文件名保护：自注册 onDeterminingFilename + URL 预记账（抄 XBD/CocoCut/Imageye）
 
 - **日期**：2026-10-18 ｜ **状态**：✅
-- **背景**：星愿浏览器（苏哥日常主力）里钓鱼竿的 `downloads.download({filename})` 被忽略，文件落成服务器名/UUID。根因 = **Chromium bug 579563**：浏览器内任何扩展注册 `chrome.downloads.onDeterminingFilename` 监听后，其他扩展的 `filename` 参数即失效；官方 workaround 是自己也注册该监听、对自己的下载 suggest 文件名。苏哥星愿装了 13 个扩展，其中 XBD（`piibeklj`）、CocoCut（`ekhbcipn`）、Imageye（`agionbom`）三个下载类扩展全部注册了该监听——完全吻合症状（单扩展的测试 Chromium 无此问题）。
+- **背景**：星愿浏览器（苏哥日常主力）里，`downloads.download({filename})` 被忽略，文件落成服务器名/UUID。根因 = **Chromium bug 579563**：浏览器内任何扩展注册 `chrome.downloads.onDeterminingFilename` 监听后，其他扩展的 `filename` 参数即失效；官方 workaround 是自己也注册该监听、对自己的下载 suggest 文件名。苏哥星愿装了 13 个扩展，其中 XBD（`piibeklj`）、CocoCut（`ekhbcipn`）、Imageye（`agionbom`）三个下载类扩展全部注册了该监听——完全吻合症状（单扩展的测试 Chromium 无此问题）。
 - **决策**：按苏哥指示逆向他浏览器里装的扩展，抄三家的成熟写法（三家独立实现，套路一致，可信度高）：
   - **URL 预记账**：下载前把 `url → {filename, conflictAction}` 写进 SW 内存 Map；`onDeterminingFilename` 触发时按 `item.url`/`item.finalUrl`（重定向后地址）双查 suggest。不用 downloadId 记账——id 下载前不存在
   - **三道防线**（抄 XBD）：① `byExtensionId` 是别的扩展 → 直接 return 不碰（做好公民，多家下载扩展共存）；② 命中预记账 → suggest 记账名；③ 是自己的下载却没记账（SW 重启丢账）→ item.filename 是绝对路径 suggest 用不了，弃权降级

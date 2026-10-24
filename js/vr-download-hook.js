@@ -1,5 +1,5 @@
 /**
- * 钓鱼竿：下载文件名保护（页面侧挂钩）
+ * 苏哥的钓鱼竿：下载文件名保护（页面侧挂钩）
  * 背景：Chromium bug 579563——浏览器内任何扩展注册 onDeterminingFilename 监听后，
  * downloads.download({filename}) 的 filename 会被忽略（落盘变服务器名/UUID名）。
  * SW 侧（background.js）已注册监听并按 URL 记账 suggest；页面自身发起的下载，

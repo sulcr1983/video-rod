@@ -1,4 +1,4 @@
-# 钓鱼竿 popup 重设计 · 方案说明
+# 苏哥的钓鱼竿 popup 重设计 · 方案说明
 
 > 日期：2026-10-17 ｜ 状态：评审中 ｜ 配套：`deliverables/prototypes/popup-redesign-options-v2.html`
 > 一句话：**不是换皮，是把"每屏让你做决定"改成"默认就对了"。**

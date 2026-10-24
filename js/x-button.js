@@ -1,5 +1,5 @@
 /**
- * 钓鱼竿 video-rod — X(推特) 推文内联下载按钮（M8 v1）
+ * 苏哥的钓鱼竿 video-rod — X(推特) 推文内联下载按钮（M8 v1）
  * 只在 x.com / twitter.com 注入；独立模块，不碰猫抓 content-script.js
  *
  * 原理（ADR 后补）：
@@ -110,8 +110,8 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'vr-xbtn';
-        btn.setAttribute('aria-label', '钓鱼竿下载此视频');
-        btn.title = '钓鱼竿：下载这个视频';
+        btn.setAttribute('aria-label', '苏哥的钓鱼竿下载此视频');
+        btn.title = '苏哥的钓鱼竿：下载这个视频';
         btn.innerHTML = ICON;
         wrap.appendChild(btn);
 

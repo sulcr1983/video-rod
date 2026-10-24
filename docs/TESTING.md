@@ -1,4 +1,4 @@
-# 钓鱼竿 Video Rod — 测试策略与用例
+# 苏哥的钓鱼竿 — 测试策略与用例
 
 > 版本：v1.3 ｜ 日期：2026-10-17 ｜ 状态：已确认
 > v1.3 变更：M7 浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧）。
@@ -49,7 +49,7 @@
 | U4 | 目录 chip | 可改目录、有最近目录、可新建 |
 | U5 | 清晰度下拉 | 默认「自动（最高）」，可手动改 |
 | U6 | B站分P卡 | 「分P ×N」点击展开/收起，可逐个勾选 |
-| U7 | 右键菜单 | 网页区域右键出「钓鱼竿下载这个视频」，触发下载 |
+| U7 | 右键菜单 | 网页区域右键出「苏哥的钓鱼竿下载这个视频」，触发下载 |
 | U8 | 空状态 | 无媒体页面面板显示友好空态 |
 | U9 | 标签切换 | 当前页/其他页/媒体控制切换后列表与底栏不串位 |
 | U10 | 批量命名同名 | 多条套同一模板时自动 `_01`/`_02`，不覆盖 |
@@ -230,13 +230,13 @@
 
 ### 新坑（复现测试必读）
 
-1. **星愿的钓鱼竿扩展 ID = `bilfgmaaplmlfgpmjfhdaillmnonjlbj`**（手动「加载已解压」，location 4，在 `Default/Secure Preferences` 里查——`Default/Preferences` 的 extensions.settings 是空的！）；多扩展环境 `find_ext_id` 会误匹配，必须按精确 ID 查 SW
+1. **星愿里的苏哥的钓鱼竿扩展 ID = `bilfgmaaplmlfgpmjfhdaillmnonjlbj`**（手动「加载已解压」，location 4，在 `Default/Secure Preferences` 里查——`Default/Preferences` 的 extensions.settings 是空的！）；多扩展环境 `find_ext_id` 会误匹配，必须按精确 ID 查 SW
 2. **苏哥的浏览器下载目录 = `E:/personal/Downloads`**（不是 C 盘 Users 下）
 3. **blob:/data: 下载的 IPC 记账赛跑**：不走网络的下载 onDeterminingFilename 几乎立即触发，popup 页 fire-and-forget 式 sendMessage 记账必输 → 必须等 SW 记账应答后再发起下载（hook v2 的核心修正）
 4. **X 推文页懒加载**：新标签页打开后 ~10-15s article/video 才渲染，且要 `window.scrollBy` 滚动触发 video 懒加载，`.vr-xbtn` 才会注入；复用旧标签页 + Page.navigate 可能卡在 X 错误页（"Something went wrong"），必须新建标签页
 5. **星愿浏览器必须 `run_in_background` 启动**：用 `&` 后台起的进程会被工具会话回收（端口 9223 静默死亡）；taskkill 全部进程后等 3-4 秒再带参重拉（老实例在跑时新启动的参数被单例锁吞掉）
 6. **hook 检测假阴性**：popup.html 同时加载 `vr-download-hook.js`（`__vrNameHooked`）和 `popup-videorod.js` 的 `hookDownloadsApi`（`__vrHooked`），后者后包装会盖住前者的标记属性——检测 hook 是否装上要看功能（落盘名），不能看最外层 wrapper 的属性
-7. 改扩展代码后星愿里重载：`chrome://extensions` → 找「钓鱼竿」卡片 → `#dev-reload-button`（shadow DOM 里，JS `el.click()` 可靠）；重载后 SW 里 `typeof vrDownloadWithName === 'function'` 可验证新代码上线
+7. 改扩展代码后星愿里重载：`chrome://extensions` → 找「苏哥的钓鱼竿」卡片 → `#dev-reload-button`（shadow DOM 里，JS `el.click()` 可靠）；重载后 SW 里 `typeof vrDownloadWithName === 'function'` 可验证新代码上线
 
 ---
 
@@ -541,7 +541,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），`
 | 重复 ID | **0**（原 `allDisable/allEnable` ×4 已改 `data-all`） |
 | 横向溢出 | 1440px：`scrollWidth 1430`；900px：`890` → 均无溢出 |
 | 移动导航 | <980px 侧栏变顶部横向 chips，滚动条隐藏 |
-| 关于分区 | 4 张卡片（项目 / 上游与许可 / 本 fork 增量 / 开发手记）+ 4 个数据块；版本 `钓鱼竿 v2.7.2.1`、作者 chip 正常 |
+| 关于分区 | 4 张卡片（项目 / 上游与许可 / 本 fork 增量 / 开发手记）+ 4 个数据块；版本 `苏哥的钓鱼竿 v2.7.2.1`、作者 chip 正常 |
 | 控制台 | 0 error / exception |
 
 ### 14.3 交互冒烟
@@ -551,7 +551,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），`
 | 动态表格 | `#extList` 33→34 行；输入 `zzztest` 写入 `storage.sync`；删除回到 33 行 |
 | 一键禁用/启用 | `data-all=0` 全部关闭、`data-all=1` 全部开启 |
 | 导航高亮 | 资源库 → 后缀 → 关于；页尾落在「关于」 |
-| i18n / 版本 | 导航「后缀」等文案正常；`钓鱼竿 v2.7.2.1` |
+| i18n / 版本 | 导航「后缀」等文案正常；`苏哥的钓鱼竿 v2.7.2.1` |
 | 保存提示 | `storage.sync` 变更后出现「已保存」轻提示（不影响字段逻辑） |
 
 ### 14.4 回归
