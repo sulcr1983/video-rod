@@ -115,7 +115,7 @@ video-rod/
 | M2 面板回归截图（深色版） | `deliverables/assets/m1-regress.png` | 2026-10-17 | 已归档 | M2 阶段复跑 M1 断言集的实拍（防重构改坏）；浅色版现行 |
 | P0 探针扩展（file:// 直读 + downloads 绝对路径） | `tools/probe-file-access/` | v1.0 | 已定稿 | 最小 MV3 扩展：`probe.html` + `probe.js`，结果写 `window.__PROBE__` 供 CDP 读取；三项全过（TESTING §9）。配套 `run-probe.py` 为 CDP 执行器，媒体默认在 `.work/media/probe` |
 | 资源库原型回归脚本（CDP） | `tools/cdp-library-test.py` | v1.0（草稿） | 待跑通 | 针对 `library-prototype-v1.html` v1.3 的 A–I 九组断言；端口用 `CDP` 环境变量覆盖（默认 9333）。**尚未执行**，TESTING §8.3 未勾选 |
-| 本地资源库方案（评审版） | `docs/LIBRARY-PLAN.md` | v1.6 | 待二次评审 | 调研 + 架构选型 + 中文目录命名 + 数据模型 + 删除/迁移 + 开源 UX 取舍 + §11 审计指北 + §12 审计复核 + §13 实现规格 + §13.7 S0 实测；v1.6 = 确定根目录 `E:\test\video-rod\download`、直写/归档两种落盘模式、设置页与换根迁移 |
+| 本地资源库方案（评审版） | `docs/LIBRARY-PLAN.md` | v1.7 | 待二次评审 | 调研 + 架构选型 + 中文目录命名 + 数据模型 + 删除/迁移 + 开源 UX 取舍 + §11 审计指北 + §12 审计复核 + §13 实现规格 + §13.7 S0 实测；v1.7 = 根目录定为 `<下载目录>\video-rod` 子目录（零拷贝、不混日常下载）、custom 自定义目录模式、三种迁移 |
 | 本地资源库交互原型 | `deliverables/prototypes/library-prototype-v1.html` | v1.3 | 待二次评审 | 单文件可交互原型（27 条演示数据）；视频键盘 ↑↓/←→ 与连播（**自绘播放控件**，解决原生 controls 吞键）；时间线视图、右键菜单、悬停预览、回收站；**v1.3 新增**：星标+只看星标、轻量标签 chips+标签筛选、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条悬停时间气泡；内建「评审说明」 |
 | M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 已定稿 | M7 回归时重拍为浅色版（12 分P横幅 + 展开态），与 final-m7-bili.png 同内容 |
 | M4 YouTube 限制横幅截图（深色版） | `deliverables/assets/m4-yt-banner.png` | 2026-10-17 | 已归档 | 离线等效验证（域名映射）下的橙色警示横幅；浅色版见 final-m7-ytbanner.png |
