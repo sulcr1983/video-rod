@@ -234,7 +234,7 @@
 
 | 文件 | 改动 |
 |---|---|
-| `options.html` | 侧栏改为 4 组导航 + 品牌头；加 `main`/`page-head`；18 个分区标题 `h1→h2`；资源库拆三卡；4 张表套 `.table-scroll`；操作区拆「备份/危险」；8 个重复 ID 改 `data-all` |
+| `options.html` | 侧栏改为 4 组导航 + 品牌头；加 `main`/`page-head`；18 个分区标题 `h1→h2`；资源库拆三卡；4 张表套 `.table-scroll`；操作区拆「备份/危险」；8 个重复 ID 改 `data-all`；**关于区重写**：上游与许可 / 本 fork 增量 / 开发手记 / 数据块 |
 | `css/options.css` | 追加 `.options-page` 作用域块（布局/卡片/表单行/开关/按钮/表格/资源库/响应式/深色），旧规则未动，其他 4 个页面不受影响 |
 | `js/options.js` | 移除 `adjustSidebarPosition`；滚动位置计算导航高亮（含页尾特判）；开关/删除按钮 aria；`storage.onChanged` 保存提示；动态行删除按钮支持键盘 |
 | `js/library/settings.js` | 「最近入库」去掉内联 monospace 样式，改 `.recent-item` |
@@ -249,9 +249,10 @@
 | 动态表格 | 新增 33→34 行、输入进 `storage.sync`、删除回 33 行 |
 | 一键禁用/启用 | 全部关闭 / 全部开启均生效 |
 | 导航 | 资源库 → 后缀 → 关于，高亮跟随（页尾正确落在「关于」） |
+| 关于区 | 4 张卡片（项目 / 上游与许可 / 本 fork 增量 / 开发手记）+ 4 个数据块；版本与作者正常 |
 | 回归 | S1a **17/17**、索引 **35/35**、自动入库 **14/14**、迁移 **39/39** |
 
-截图（`deliverables/assets/`）：`options-redesign-1440.png`、`-900.png`、`-dark.png`、`-library.png`、`-table.png`、`-form.png`、`-danger.png`、`-full.png`。
+截图（`deliverables/assets/`）：`options-redesign-1440.png`、`-900.png`、`-dark.png`、`-library.png`、`-table.png`、`-form.png`、`-danger.png`、`-about.png`、`-full.png`。
 
 ### 11.3 与方案的偏差（有意）
 
