@@ -325,6 +325,83 @@
 - **理由**：这是 API 硬约束，没有第二种写法；DNR 是扩展里唯一能改受控请求头的通道。
 - **影响**：`js/background.js`（`vrImgRefererRule` / `vrImgClearRefererRule`）、`docs/IMAGE-I1I2-IMPL.md` §4.3.1；TESTING §20.4。
 
+## ADR-036 批量下载用 SW 侧并发池 + 进度广播，不用 content 侧串行
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：I3 要一次下几十张图。若在 content script 里逐张发消息，每次都要等回执，
+  50 张就是 50 个来回，慢且容易被页面生命周期打断。
+- **决策**：
+  1. 队列放 **Service Worker** 里跑，content 只发一次 `vrImg.batch`，带 `batchId`；
+  2. 并发缺省 **3**（上限 8）：`chrome.downloads` 本身是单队列，并发再高反而排队更慢；
+  3. 进度用 `chrome.runtime.sendMessage` 广播，**200ms 节流**（否则几十张会刷爆消息通道）；
+  4. 取消用 `vrImg.batchCancel` 置标志位，只拦「还没开始的」任务，已发出的请求跑完；
+  5. 失败不中断，逐条记 `{url, code}`，最终回执汇总（明细截断 50 条）。
+- **理由**：一次消息替代 N 次往返；SW 有 `host_permissions` 可跨域校验；页面刷新也不影响已在跑的批次。
+- **影响**：`js/background.js`（`vrImgBatch` / `vrImgBatchCancel`）、`js/image-batch.js`；TESTING §21。
+
+## ADR-037 已下载去重与单批上限：宁可少下，不可失控
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：批量最容易出两类事故——同一张图反复下（重复文件堆满目录）、一次点下几百张（浏览器弹拦截 + 卡死）。
+- **决策**：
+  1. **去重表** `chrome.storage.local` 键 `vrImgDownloaded`（url → 时间戳），上限 **2000** 条，超出按时间淘汰最旧；
+  2. 命中去重表则**跳过但算成功**（进度条照走，用户看到的是「已完成」而不是「失败」）；
+  3. **单批上限** `vrLibSettings.imgBatchLimit` 缺省 **200**，确认条上直接写明「本次只下前 N 张」，
+     不等到下到一半才发现被截断。
+- **理由**：去重和上限都是「保护用户磁盘和浏览器」的硬约束，必须在**确认条**这个决策点就告知，
+  而不是事后报错。
+- **影响**：`js/background.js`（`vrImgSeenUrls` / `vrImgRememberUrl`）、`js/image-batch.js`（`collectItems`）；TESTING §21。
+
+## ADR-038 参考 Tubly（YTB.crx）：只取代理层模式，不取代码；YouTube 翻案待验证
+
+- **日期**：2026-10-24 ｜ **状态**：🟡 待验证（实验 #1 未跑）
+- **背景**：拆解商业扩展 `YTB.crx`（Tubly，订阅制 YouTube 下载器，MV3）后确认：
+  1. **crx 内不含任何 YouTube 解析代码**（`googlevideo`/`streamingData`/`poToken`/`decipher` 全文 0 命中）；
+     引擎由 `tubly.download/app/` 服务端下发，扩展只提供特权 RPC（cookie / DNR / `executeScript` / `downloads` / FSA）；
+  2. 其真正的技术手法是**把请求放回目标站点自己的页面里发**：隐藏 iframe 指向 `youtube.com`
+     → `executeScript({world:"MAIN"})` → 在 iframe 的 origin 内同源 `fetch`，`visitorData`/`ytcfg` 直接可读；
+  3. 反向能力同样成立：DNR `modifyHeaders` 删 `cookie`，同一 iframe 即变匿名会话。
+- **决策**：
+  1. **不搬代码**。闭源商业产品，且无代码可搬（引擎不在包里）；复用策略仍按 ADR-028，但本例退化为「只抄模式」。
+  2. **收编其代理层设计**为自有模块：同源桥（iframe + MAIN world + 帧协议 + 背压）、DNR 规则池（按 `tabIds` 定向，替代固定 id）、
+     `downloads.ui` 关气泡、`runtime.getContexts` 判 offscreen。
+  3. **ADR-019 的 YouTube 结论暂不推翻**，但开一个实验口子：先验证「隐藏 iframe 内同源调 `youtubei/v1/player`
+     能否拿到未降级 formats」。验证通过则 ADR-019 的 P1 降级翻案；不通过则维持原判，力气投 B站与通用嗅探。
+- **理由**：poToken/SABR 封的是「扩展进程作为第三方身份去请求」，而站点自有页面内的请求身份天然合法。
+  这条路径不依赖签名对抗，符合 ADR-019「搭便车而非对抗」的既定精神。
+- **影响**：新增 `docs/REF-YTB-TUBLY.md`（拆包与融合评估全文）；待建 `js/same-origin-bridge.js`、`js/dnr-rules.js`；
+  `tools/cdp-probe.py` 增加同源探针用例。若实验失败，本 ADR 第 3 条标注为「已验证不可行」留档。
+
+## ADR-039 YouTube 高清下载：可行，路线改为「MWEB 直链 + SABR 复放」，ADR-019 作废
+
+- **日期**：2026-10-24 ｜ **状态**：✅（实测已证，待实现）
+- **背景**：ADR-019 判定「2026 起纯扩展基本无解」，YouTube 降为 P1、不投入对抗。本次对真实页面做了分层实测
+  （`docs/YT-FEASIBILITY.md` 有全部证据与复现脚本），结论被推翻：
+  1. **Web 客户端确实全封**：`adaptiveFormats` 40 条，带 `url` 的 **0 条**，只剩 `serverAbrStreamingUrl`；
+     `<video>.src` 是 blob，媒体走单条 `sabr=1` POST。这是猫抓嗅探失效的根因——不是嗅不到，是不存在那条 URL。
+  2. **换客户端直链就回来了**：同页同源打 `/youtubei/v1/player`，**MWEB 返回 41/41 全带 url，最高 2160p60**，
+     且 URL 无 `pot` 参数（不需要 poToken）。其余 8 种客户端全灭。
+  3. **403 的唯一原因是 `n` 未变换**：UA / 出口 IP / 过期 / poToken 逐项排除。
+     用 `youtubei.js` 的 `Player.decipher` 纯 JS 变换（**47ms**）后 → **206 Partial Content + `ftypdash`**，
+     itag 299（1080p60）**真实媒体字节到手**。
+  4. **但直链不稳**：连续调用十几分钟后 MWEB 回落 `UNPLAYABLE`，且出现「只有 itag 18 带 url」的混合态
+     —— SABR 灰度仍在推进，MWEB 直链是临时窗口。
+  5. **稳的那条是 SABR 复放**：页面自己那条预签名链接可被外部复放，空 body 回 `200 + application/vnd.yt-ump`
+     且仅报 `sabr.malformed_config`（= 鉴权已过）；带播放器请求体复放可拿到 EBML/WebM 媒体字节。
+     不碰 API、不解 `n`、不需 poToken，稳定性等价于「播放器能不能播」。
+- **决策**：
+  1. **ADR-019 的 YouTube 部分作废**（B站部分不变）。YouTube 回到 P0。
+  2. 主路径 **B：SABR 复放**（4–6 天，需端口 UMP 分片重组），快速通道 **A：MWEB + `n` 变换**（2–3 天，已验证）。
+     两者共用「页面同源取 streamingData → sandbox 解 n / 重组 UMP → 流式落盘 → FFmpeg 合流 → 资源库入库」骨架。
+  3. **MVP 走 A**：先让「能下 1080p/4K」发生；A 的骨架全部被 B 复用，不浪费。
+  4. 需要 **sandbox 页**（`content_security_policy.sandbox` 允许 `'unsafe-eval'`）承载 `n` 变换——
+     MV3 扩展页禁 `eval`，Tubly 的同一段 CSP 即为同一原因。
+  5. **仍不装外部程序**（ADR-008 维持）：三条候选路线都不需要 yt-dlp。
+- **理由**：被封的是「Web 客户端这个身份」，不是「浏览器这个运行环境」。入口换到 MWEB / SABR，
+  请求仍然由用户的浏览器发出，身份天然合法——与 ADR-019「搭便车而非对抗」的原始精神一致，只是搭的车换了。
+- **影响**：新增 `docs/YT-FEASIBILITY.md`；新增五个探针脚本 `tools/yt-probe.py` / `yt-clients.py` /
+  `yt-dl-test.py` / `yt-feasibility.py` / `yt-sabr.py`；待建 `js/yt/`（page-bridge / nsig-sandbox / sabr-ump / downloader）。
+
 ---
 
 *新增决策在此追加，编号顺延。*

@@ -98,11 +98,22 @@
     },
     {
       "matches": [
+        "https://*.youtube.com/*"
+      ],
+      "js": [
+        "js/yt/yt-page.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
         "https://*/*",
         "http://*/*"
       ],
       "js": [
         "js/lib-image-util.js",
+        "js/image-batch.js",
         "js/image-hover.js"
       ],
       "run_at": "document_idle",
@@ -111,5 +122,13 @@
   ],
   "default_locale": "en",
   "version": "2.7.2.1",
-  "incognito": "split"
+  "incognito": "split",
+  "sandbox": {
+    "pages": [
+      "js/yt/nsig-sandbox.html"
+    ]
+  },
+  "content_security_policy": {
+    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-inline' 'unsafe-eval'; object-src 'self'"
+  }
 }

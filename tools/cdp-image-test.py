@@ -67,11 +67,18 @@ def move(cdp, sid, x, y):
 
 
 def hover(cdp, sid, selector, wait=0.65):
+    """把鼠标移到目标图片中心并等按钮出现。
+    必须先「离开」再「进入」：如果鼠标本来就在目标附近，直接 mouseMoved 到同一
+    区域不会触发 mouseover，按钮就不会出现（E/G 组连续悬停时踩过）。
+    这里先移到视口左上角外侧一点，再进目标，保证一定产生 mouseover。"""
     r = rect(cdp, sid, selector)
     if not r:
         return None
-    move(cdp, sid, 2, 2)
-    time.sleep(0.06)
+    # 两次不同坐标的移动，确保离开原位置
+    move(cdp, sid, 1, 1)
+    time.sleep(0.05)
+    move(cdp, sid, 3, 3)
+    time.sleep(0.05)
     move(cdp, sid, r["cx"], r["cy"])
     time.sleep(wait)
     return r
@@ -86,6 +93,7 @@ def button_state(cdp, sid):
       const b = sr && sr.querySelector('button.vr-btn');
       if (!b) { return {host:true, btn:false}; }
       const r = b.getBoundingClientRect();
+      const wr = wrap ? wrap.getBoundingClientRect() : null;
       return {
         host:true, btn:true,
         text: b.textContent.trim(),
@@ -93,9 +101,39 @@ def button_state(cdp, sid):
         disabled: !!b.disabled,
         visible: wrap ? getComputedStyle(wrap).display !== 'none' : false,
         inShadow: document.querySelector('button.vr-btn') === null,
-        x:r.x, y:r.y, w:r.width, h:r.height, cx:r.x + r.width/2, cy:r.y + r.height/2
+        x:r.x, y:r.y, w:r.width, h:r.height, cx:r.x + r.width/2, cy:r.y + r.height/2,
+        // 按钮组的整体位置（I3 起 wrap 里有两个按钮，定位以内缩 8px 对齐右边缘）
+        wrapX: wr ? wr.x : null, wrapY: wr ? wr.y : null,
+        wrapW: wr ? wr.width : null, wrapH: wr ? wr.height : null
       };
     })()""")
+
+
+def hover_until_shown(cdp, sid, selector, attempts=3, timeout=4.0):
+    """悬停直到按钮真的出现，最多试 attempts 次。
+    浏览器连跑多套后渲染会变慢（HANDOFF §6.5），单次 hover 偶尔不触发
+    mouseover 或按钮延迟出现；重试一次比让整条断言假失败划算。"""
+    last = {}
+    for i in range(attempts):
+        hover(cdp, sid, selector, wait=0.6 + i * 0.2)
+        last = wait_button(cdp, sid, timeout)
+        if last.get("visible"):
+            return last
+    return last
+
+
+def wait_button(cdp, sid, timeout=5.0):
+    """等悬停按钮真正显示、且可以点（不是上一张图残留的 done/fail 态）。
+    产品侧已在 hideNow/show 复位 disabled，这里只做兜底轮询。"""
+    t0 = time.time()
+    last = {}
+    while time.time() - t0 < timeout:
+        last = button_state(cdp, sid)
+        cls = str(last.get("cls", ""))
+        if last.get("visible") and "done" not in cls and "fail" not in cls:
+            return last
+        time.sleep(0.1)
+    return last
 
 
 def click(cdp, sid, x, y):
@@ -202,15 +240,23 @@ def main():
     st = button_state(cdp, sid)
     check("B3 悬停出现『下载原图』", [st.get("visible"), st.get("text")], [True, "下载原图"])
     check("B4 按钮在 Shadow DOM 内", st.get("inShadow"), True)
-    within = (abs((st["x"] + st["w"]) - (img["x"] + img["w"] - 8)) <= 2 and
-              abs(st["y"] - (img["y"] + 8)) <= 2)
+    # I3 起悬停条里有两个按钮，位置断言看整组（wrap）的右边缘，不是单个按钮
+    within = (abs((st["wrapX"] + st["wrapW"]) - (img["x"] + img["w"] - 8)) <= 2 and
+              abs(st["wrapY"] - (img["y"] + 8)) <= 2)
     check("B5 按钮贴图片右上角（内缩 8px）", within, True)
     shot(cdp, sid, "image-hover-button.png")
 
-    # 移开隐藏
+    # 移开隐藏：产品是「移开 300ms 后开始隐藏」，实测到真正不可见约 450ms
+    # （mouseout 触发 + 计时器 + 一轮渲染），等 0.8s 再断言，别卡在边界上
     move(cdp, sid, 4, 4)
-    time.sleep(0.55)
-    check("B6 移开 300ms 后隐藏", bool(button_state(cdp, sid).get("visible")), False)
+    t0 = time.time()
+    gone = False
+    while time.time() - t0 < 1.2:
+        if not button_state(cdp, sid).get("visible"):
+            gone = True
+            break
+        time.sleep(0.1)
+    check("B6 移开 300ms 后隐藏", gone, True)
 
     # ---- C. 单张下载 ----
     before = {d["id"] for d in downloads(cdp, osid)}
@@ -275,8 +321,8 @@ def main():
         url_before = ev(cdp, sid, "location.href")
         # 必须每次都重新悬停：上一张图点完会停在 done 态（1.2s 才隐藏），
         # 直接复用 button_state 会点到旧按钮的坐标，下到的还是上一张图。
-        hover(cdp, sid, selector)
-        st = button_state(cdp, sid)
+        # 悬停后轮询等按钮真正显示，别悬停一次就断言（done 态会短暂挡住）。
+        st = hover_until_shown(cdp, sid, selector)
         check(f"{tag}1 悬停样式图片出现按钮", bool(st.get("visible")), True)
         if not st.get("visible"):
             return None
