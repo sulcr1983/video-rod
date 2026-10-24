@@ -336,6 +336,7 @@
         return '<div class="thumb">' +
             '<div class="ph t-' + esc(e.type || 'other') + '"><span>' + esc(label) + '</span></div>' +
             '<img alt="" loading="lazy" data-thumb="' + esc(e.relPath) + '">' +
+            '<span class="batch-check" aria-hidden="true"></span>' +
             '<span class="type-chip">' + esc(label) + '</span>' +
             (e.duration ? '<span class="dur">' + formatDuration(e.duration) + '</span>' : '') +
             '<button type="button" class="star' + (e.starred ? ' on' : '') + '" data-star="' + esc(e.relPath) + '" ' +
@@ -366,6 +367,7 @@
             '<td class="c-thumb"><div class="row-thumb">' +
             '<div class="ph t-' + esc(e.type || 'other') + '"><span>' + esc(typeLabel(e.type)) + '</span></div>' +
             '<img alt="" loading="lazy" data-thumb="' + esc(e.relPath) + '">' +
+            '<span class="batch-check" aria-hidden="true"></span>' +
             (e.duration ? '<span class="dur">' + formatDuration(e.duration) + '</span>' : '') +
             '</div></td>' +
             '<td class="c-name"><div class="row-main">' +
@@ -524,9 +526,12 @@
         renderEmpty(list.length);
         renderActiveFilters();
         observeThumbs();
+        if (root.VRBatch) { root.VRBatch.refresh(); }
     }
 
     function apply() {
+        // 筛选/搜索变化后旧的勾选可能已不可见，直接清空（批量模式保留）
+        if (root.VRBatch) { root.VRBatch.clearSelection(); }
         renderSide();
         renderOverview();
         renderCreators();
@@ -601,6 +606,7 @@
     /* ---------------- 查看器 ---------------- */
 
     function openViewer(relPath) {
+        if (root.VRBatch && root.VRBatch.active()) { return; }
         if (root.VRViewer) { root.VRViewer.open(relPath); }
     }
 
@@ -708,6 +714,14 @@
         ['libGrid', 'libList'].forEach(function (id) {
             var box = $(id);
             box.addEventListener('click', function (ev) {
+                if (root.VRBatch && root.VRBatch.active()) {
+                    var pick = ev.target.closest('[data-rel]');
+                    if (pick) {
+                        ev.preventDefault();
+                        root.VRBatch.toggle(pick.dataset.rel);
+                    }
+                    return;
+                }
                 var star = ev.target.closest('[data-star]');
                 if (star) {
                     ev.stopPropagation();
@@ -720,8 +734,11 @@
             box.addEventListener('keydown', function (ev) {
                 if (ev.key !== 'Enter' && ev.key !== ' ') { return; }
                 var card = ev.target.closest('[data-rel]');
-                if (card) {
-                    ev.preventDefault();
+                if (!card) { return; }
+                ev.preventDefault();
+                if (root.VRBatch && root.VRBatch.active()) {
+                    root.VRBatch.toggle(card.dataset.rel);
+                } else {
                     openViewer(card.dataset.rel);
                 }
             });
@@ -789,6 +806,26 @@
             toggleStar: toggleStar,
             fileName: fileName,
             getEntry: function (rel) { return map[rel]; },
+            reload: loadData,
+            rename: function (rel) {
+                if (root.VRRename) { root.VRRename.open(rel); }
+            }
+        });
+    }
+
+    function initRename() {
+        if (!root.VRRename) { return; }
+        root.VRRename.init({
+            getEntry: function (rel) { return map[rel]; },
+            reload: loadData
+        });
+    }
+
+    function initBatch() {
+        if (!root.VRBatch) { return; }
+        root.VRBatch.init({
+            getRendered: function () { return rendered; },
+            getEntry: function (rel) { return map[rel]; },
             reload: loadData
         });
     }
@@ -797,6 +834,8 @@
         if (!$('libGrid')) { return; }
         initViewer();
         initTrashUi();
+        initRename();
+        initBatch();
         bind();
         loadData();
     }

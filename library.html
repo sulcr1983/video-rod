@@ -16,6 +16,8 @@
   <script src="js/library/lightbox.js" defer></script>
   <script src="js/library/trash.js" defer></script>
   <script src="js/library/trash-ui.js" defer></script>
+  <script src="js/library/rename.js" defer></script>
+  <script src="js/library/batch.js" defer></script>
   <script src="js/library/ui.js" defer></script>
 </head>
 
@@ -54,6 +56,7 @@
           </svg>
         </button>
       </div>
+      <button type="button" id="libBatch" class="btn" aria-pressed="false" title="批量选择">批量</button>
       <button type="button" id="libRefresh" class="btn">刷新</button>
       <button type="button" id="libOptions" class="btn">设置</button>
     </div>
@@ -257,6 +260,15 @@
     </main>
   </div>
 
+  <!-- 批量操作条 -->
+  <div class="batch-bar" id="libBatchBar" hidden role="region" aria-label="批量操作">
+    <span class="bb-count" id="libBatchCount">已选 0 项</span>
+    <button type="button" class="bbtn" id="libBatchAll">全选</button>
+    <button type="button" class="bbtn" id="libBatchClear">取消</button>
+    <button type="button" class="bbtn danger" id="libBatchTrash" disabled>移到回收站</button>
+    <button type="button" class="bbtn primary" id="libBatchExit">退出</button>
+  </div>
+
   <div class="lib-viewer" id="libViewer" hidden>
     <header class="viewer-top">
       <div class="viewer-title">
@@ -321,6 +333,7 @@
     <button type="button" data-act="open" role="menuitem">在文件中打开</button>
     <button type="button" data-act="copy" role="menuitem">复制路径</button>
     <button type="button" data-act="star" role="menuitem">加星标</button>
+    <button type="button" data-act="rename" role="menuitem">重命名…</button>
     <div class="ctx-sep"></div>
     <button type="button" data-act="trash" class="danger" role="menuitem">移到回收站</button>
   </div>
@@ -341,6 +354,21 @@
       <button type="button" class="btn danger" id="libTrashEmpty">清空回收站</button>
     </footer>
   </aside>
+
+  <!-- 重命名弹窗 -->
+  <div class="rename-mask" id="libRenameMask" hidden>
+    <div class="rename-box" role="dialog" aria-modal="true" aria-labelledby="libRenameTitle">
+      <h3 id="libRenameTitle">重命名</h3>
+      <label class="rename-field" for="libRenameInput">文件名（目录不变，扩展名保持一致）</label>
+      <input id="libRenameInput" type="text" autocomplete="off" spellcheck="false" />
+      <p class="rename-dir" id="libRenameDir"></p>
+      <p class="rename-error" id="libRenameError" hidden></p>
+      <div class="rename-acts">
+        <button type="button" class="btn" id="libRenameCancel">取消</button>
+        <button type="button" class="btn primary" id="libRenameOk">保存</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 确认框 -->
   <div class="confirm-mask" id="libConfirmMask" hidden>
