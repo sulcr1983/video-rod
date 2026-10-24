@@ -140,6 +140,16 @@ video-rod/
 | 删除与回收站（S5） | `js/library/trash.js` + `js/library/trash-ui.js` | v1.0 | 已定稿 | VRTrash：软删除批次/清单/恢复/彻底删除/清空/审计日志；VRTrashUI：右键菜单、`⋯`、回收站抽屉、确认框、Toast |
 | 删除验收脚本 | `tools/cdp-trash-test.py` | v1.0 | 已定稿 | **27/27**：OPFS 句柄注入、移动/清单/索引/恢复/彻底删除/清空、无权限报错、右键菜单、确认框、抽屉恢复（TESTING §18） |
 | 删除截图 | `deliverables/assets/{trash-menu,trash-confirm,trash-drawer}.png` | v1.0 | 已定稿 | 右键菜单、确认框、回收站抽屉（批次/恢复/彻底删除/清空） |
+| 批量选择 + 重命名（S5b） | `js/library/batch.js` + `js/library/rename.js` | v1.0 | 已定稿 | VRBatch：`body.batch-mode` 驱动样式（不改网格 DOM）、浮条全选/取消/批量软删除、筛选搜索变化清空选择；VRRename：引擎 + 自绘弹窗、复制→校验大小→删源、扩展名保护、索引删旧写新、六种错误码 |
+| 批量/重命名验收脚本 | `tools/cdp-batch-test.py` | v1.0 | 已定稿 | **47/47**：OPFS 句柄注入 + 真实文件；批量模式/勾选/全选/退出、重命名成功与六类错误码、批量删除进回收站（TESTING §19） |
+| 批量/重命名截图 | `deliverables/assets/{batch-bar,rename-dialog}.png` | v1.0 | 已定稿 | 批量浮条（已选 2 项）+ 勾选态、重命名弹窗（默认选中文件名主体） |
+| 图片悬停下载实现规格 | `docs/IMAGE-I1I2-IMPL.md` | v1.0 | 已定稿 | I1/I2 唯一口径：候选五级优先级、SW 消息协议、**DNR 补 Referer 的原因与写法**、错误码、实测结果与踩坑 |
+| 图片工具（I1） | `js/lib-image-util.js` | v1.0 | 已定稿 | 纯函数（`self.VRImageUtil` / Node 可 require）：URL 规范化、占位图/SVG/data URI 判定、srcset 最大 w、五级候选去重、`scanImages` 过滤、扩展名推导 |
+| 图片悬停按钮（I2） | `js/image-hover.js` | v1.0 | 已定稿 | content script：悬停 300ms 出「下载原图」、Shadow DOM 隔离、滚动/缩放/移开即隐藏、`imgHover` 开关、busy/done/fail 三态 |
+| 图片下载 SW 分支 | `js/background.js`（`vrImg.resolve` / `vrImg.download`） | v1.1 | 已定稿 | 逐候选 fetch 校验 `content-type:image/*`、全失败回退最后一个；落 `video-rod/<平台>/<博主>/图片/<日期>_<标题>.<ext>`；**Referer 走 DNR 会话规则**（downloads 的 headers 会被拒） |
+| 图片工具单测 | `tools/test-image-util.js` | v1.0 | 已定稿 | **58/58**：候选顺序与去重、srcset、扫描过滤、URL 规范化、扩展名 |
+| 图片悬停验收脚本 | `tools/cdp-image-test.py` | v1.0 | 已定稿 | **34/34**：悬停出现/划过不出/移开隐藏、点击落盘 0.26s、路径与文件名、候选优先（a[href]/srcset/懒加载）、四类过滤、开关（TESTING §20） |
+| 图片悬停截图 | `deliverables/assets/{image-hover-button,image-hover-done}.png` | v1.0 | 已定稿 | 悬停态「下载原图」贴图片右上角、完成态「✓ 已存」 |
 | 前端统一设计方案 | `docs/FRONTEND-UI-SYSTEM.md` | v1.0 | 已定稿 | popup + 资源库共用 token/组件；现状审计、全宽布局、全屏查看器、响应式与实施记录 |
 | 前端统一改造截图 | `deliverables/assets/{popup-after,library-page-grid,library-page-overview,library-page-cards,library-page-table,library-page-900,library-page-dark}.png` | v2.1 | 已定稿 | popup 蓝色统一；资源库 1440 默认（概览收起）/ 展开概览 / 大卡 / 表格、860 横条、深色 |
 | 设置页重设计方案 | `docs/OPTIONS-REDESIGN.md` | v1.0 | 已定稿 | 现状审计（18 分区 / 151 个唯一 ID / 40 处内联样式 / 8 类问题）+ 四组信息架构 + 视觉 token + 组件规范 + 响应式断点 + 兼容清单 + 实施记录（TESTING §14） |

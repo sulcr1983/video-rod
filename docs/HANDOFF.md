@@ -1,6 +1,6 @@
 # 苏哥的钓鱼竿 — 交接文档
 
-> 更新：2026-10-24 ｜ 代码 HEAD：`836557d`（S5 删除与回收站）
+> 更新：2026-10-24 ｜ 代码 HEAD：`2a18d65`（S5b 批量重命名 + I1/I2 图片悬停下载已合并）
 > 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§13（已验收记录）。
 > 本文只写「现在是什么状态、怎么跑、别踩什么坑」，设计论证在 LIBRARY-PLAN 里。
 
@@ -16,9 +16,9 @@
 
 ## 1. 一句话现状
 
-这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2 → S5 删除与回收站**，八套回归全绿；
-图片悬停下载只完成了**调研 + 方案 v1.2 + 可交互原型 v1.2**，**代码一行未写**。
-下一步是 **S3 资源库页面**（`library.html` + `ui.js` + `thumbs.js`），索引数据底座已经就绪。
+这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2 → S5 删除与回收站 → S5b 批量选择/重命名**；
+图片线 **I1+I2（单张悬停下载）也已落地**，两条支线都已合并进 master，**十一套回归全绿（318 条断言）**。
+下一步是 **图片线 I3–I6**（批量队列 → 浮标 + 清单面板 → 设置/快捷键 → 图集），接口已按 I1/I2 预留。
 
 | 项 | 值 |
 |---|---|
@@ -107,8 +107,10 @@
 | **S3** | 资源库页面：概览可视化（可收起）+ 全宽大卡 + 表格 + 筛选/搜索/排序/分组 | **30/30**（TESTING §15/§16） |
 | **S4** | 查看器 v2：缩放/拖拽、信息面板、缩略图带、视频自绘控件、键盘与连播 | **27/27**（TESTING §17） |
 | **S5** | 删除与回收站：软删除/清单/恢复/彻底删除/清空、右键菜单、抽屉、确认框 | **27/27**（TESTING §18） |
+| **S5b** | 批量选择（顶栏批量 / 底部浮条 / 全选 / 批量软删除）+ 单条重命名（复制校验删源） | **47/47**（TESTING §19） |
+| **I1+I2** | 图片悬停下载：五级候选 + SW 校验回退 + Shadow DOM 按钮 + DNR 补 Referer | 单测 **58/58**、CDP **34/34**（TESTING §20） |
 | 单测 | `tools/test-path.js` | **57/57** |
-| 图片线 | 调研 v0.1（已拍板双入口/清单面板/优先原图）、方案 v1.2（尺寸档位 + 图集分页）、原型 v1.2 | 原型 CDP **24/24**；**实现 0 行** |
+| 图片线 | 调研 v0.1、方案 v1.2、原型 v1.2 | 原型 CDP **24/24** |
 
 已拍板的产品口径（不要擅自改）：
 - 双入口：图片悬停按钮 + 页面浮标；清单面板形态照 Imageye。
@@ -136,7 +138,7 @@ Start-Process $chrome -ArgumentList @(
   '--no-first-run','--no-default-browser-check','about:blank')
 ```
 
-### 5.2 八套回归（按顺序跑）
+### 5.2 十一套回归（按顺序跑）
 
 ```powershell
 $env:VR_CDP='http://127.0.0.1:9346'
@@ -145,6 +147,7 @@ $env:VR_CDP='http://127.0.0.1:9346'
 $py = "C:\Users\XPENG\AppData\Local\Programs\Python\Python312\python.exe"
 
 node tools/test-path.js            # 57/57   纯 Node，无浏览器
+node tools/test-image-util.js      # 58/58   纯 Node，图片候选链/扫描过滤
 & $py tools/cdp-s1a-test.py        # 17/17   设置页 + 三段目录真落盘（会留下一个下载文件）
 & $py tools/cdp-index-test.py      # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
 & $py tools/cdp-migrate-test.py    # 39/39   OPFS 句柄注入，三种迁移 + 回滚
@@ -152,7 +155,12 @@ node tools/test-path.js            # 57/57   纯 Node，无浏览器
 & $py tools/cdp-library-page-test.py  # 30/30   资源库：概览收起/表格/筛选/搜索/排序/分组/响应式
 & $py tools/cdp-viewer-test.py       # 27/27   查看器：缩放/信息/缩略图带/视频控件/键盘/连播
 & $py tools/cdp-trash-test.py        # 27/27   删除/回收站：OPFS 句柄注入 + 真实文件
+& $py tools/cdp-batch-test.py        # 47/47   批量选择 + 重命名：OPFS 句柄注入 + 真实文件
+& $py tools/cdp-image-test.py        # 34/34   图片悬停：悬停/下载/候选优先/过滤/开关（需测试站 18080）
 ```
+
+> **合计 11 套 / 318 条断言**。`cdp-image-test.py` 依赖 `test-site` 的图片夹具与 18080 端口，
+> 会真下载到 `Downloads\video-rod\其他网页\127.0.0.1\图片\`，脚本结束自行清理。
 
 原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
 
@@ -231,19 +239,24 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 **唯一还要补的**：`library.html` 首次打开时如果还没有索引，应自动跑一次 `build({mode:'full'})`（需句柄）或 `build({mode:'snapshot'})`——这属于 S3 的启动逻辑，不要现在改 indexer。
 
-### 7.2 S5b / 图片线（S5 删除已完成）
+### 7.2 资源库后续（S5b 已完成）
 
 - S3 ✅：概览（可收起）、全宽大卡、真表格、筛选/搜索/排序/分组、懒缩略图；popup/options 入口已加。**不要再写一套索引逻辑。**
 - S4 ✅：查看器拆成 `lightbox.js`（VRViewer）+ `video.js`（VRVideo）+ `keyboard.js`（VRKeys）；图片缩放/拖拽/双击复位、信息面板、缩略图带、视频自绘控件（进度/音量/倍速/全屏/连播）、↑↓ 切条、←→ ±5s、Shift ±30s、空格。**不要再往 ui.js 里塞查看器逻辑。**
 - S5 ✅：`trash.js` + `trash-ui.js`；软删除到 `_回收站/<批次>/<原相对路径>`、批次清单、单条/整批恢复、彻底删除、清空、右键菜单、确认框、审计日志。**删除前先关查看器**，避免 Windows 文件占用。
-- S5b（未做）：重命名、批量选择（原型里的批量条）；做的时候复用 `VRTrash` 的移动/清单与 `VRMigrate` 的校验逻辑。
+- S5b ✅：`batch.js`（`VRBatch` 选择态，`body.batch-mode` 驱动样式、**不改网格 DOM**）+ `rename.js`（`VRRename` 引擎与弹窗，复制→校验大小→删源）。**不做批量重命名**；筛选/搜索变化清空选择；`Esc` 先让弹窗/菜单/查看器处理。
+  - 路径口径坑：索引 key 首段是 `subdir`，句柄可能指向资源库根（无首段）或下载目录（有首段），`VRRename` 按「先剥前缀再原样」探测。
 
 交互与验收对照原型 `deliverables/prototypes/library-prototype-v1.html`（v1.3）与 LIBRARY-PLAN §6。
 
-### 7.3 图片下载实现（I1–I6，一条未写）
+### 7.3 图片下载实现（I1/I2 已完成，I3–I6 未做）
 
-顺序：`lib-image-util.js`（原图候选/尺寸档位）→ `image-hover.js`（悬停按钮 + 事件委托 + Shadow DOM）→ 批量队列 → 浮标 + 清单面板 → 设置/快捷键 → 图集模式。
-方案 `docs/IMAGE-DOWNLOAD-PLAN.md` v1.2 已经把交互、候选链、失败回退写死；原型 v1.2 可直接对照。**注意**：图片落库走的是已经跑通的自动入库链路，不要再另写一套。
+- **I1 ✅** `js/lib-image-util.js`：纯函数（`self.VRImageUtil`，Node 可 require）。五级候选链（`a[href]` → srcset 最大 w → data-* 懒加载 → `data-ri` JSON → `currentSrc`）、`scanImages` 过滤（短边 <100 / data URI / SVG / 占位图）、`extFromContentType`。
+- **I2 ✅** `js/image-hover.js`：悬停 300ms 出「下载原图」，Shadow DOM 隔离，滚动/缩放/移开即隐藏；读 `vrLibSettings.imgHover`（缺省开），关闭即移除宿主节点。
+- **SW ✅** `vrImg.resolve` / `vrImg.download`：逐个候选 `fetch` 校验 `content-type: image/*`，全失败回退最后一个（**绝不空点**）。
+- **⚠️ 关键坑（已踩）**：`chrome.downloads.download` 的 `headers` **不接受 `Referer`**，直接报 `Unsafe request header name`，下载根本发不出去。必须用 **DNR 会话规则**补头（id 从 9000 起，一次性使用、`finally` 里撤销）。详见 `docs/IMAGE-I1I2-IMPL.md` §4.3.1。
+- **未做**：I3 批量队列、I4 浮标 + 清单面板、I5 设置/快捷键、I6 图集。消息协议与工具函数已预留，直接接入口即可。
+- 图片落库走**已经跑通的自动入库链路**，不要再另写一套。
 
 ### 7.4 已知缺口 / 技术债（先认账，别当成新发现）
 
@@ -275,17 +288,19 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 | `docs/LIBRARY-PLAN-审计方案.md` | 给评审人/审计 AI 的找茬手册（已执行过一轮，结论在 §12） |
 | `deliverables/prototypes/library-prototype-v1.html` | 资源库交互基准（v1.3） |
 | `deliverables/prototypes/image-hover-prototype-v1.html` | 图片悬停交互基准（v1.2） |
+| `docs/S5B-BATCH-RENAME.md` | **S5b 唯一实现口径**：批量选择状态机、重命名引擎 API、路径口径、错误码、验收标准 |
+| `docs/IMAGE-I1I2-IMPL.md` | **I1/I2 唯一实现口径**：候选链五级优先级、SW 消息协议、DNR 补 Referer 的原因与写法 |
 | `docs/MOBILE-RESEARCH.md` | **已封存**，不要继续投入移动端 |
 
 ---
 
 ## 9. 接手第一小时清单
 
-1. `git status` 应干净；`git log -1` 应不早于 `0e4515c`（资源库 S3；其后是文档提交）。
+1. `git status` 应干净；`git log -1` 应不早于 `2a18d65`（S5b + I1/I2 合并）。
 2. 读本文 §3（代码地图）与 §7（未完成）。
-3. 起环境（§5.1），按 §5.2 跑八条命令，**确认 57/57、17/17、14/14、39/39、35/35、30/30、27/27、27/27**。
+3. 起环境（§5.1），按 §5.2 跑十一条命令，**确认 57/58/17/14/39/35/30/27/27/47/34 全绿**。
 4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区：点一次「校验落盘」确认根目录探测；再点「写快照」确认 `_library/index-*.json` 落盘。
-5. 再动 S3：先补 `library.html` / `ui.js` / `thumbs.js` 的实现细节到 LIBRARY-PLAN（如有新增决策），再写代码；索引直接复用 `VRIndex`/`VRDB`，不要重写。
+5. 再动图片线 I3（批量队列）：先补实现口径文档，再写代码；图片落库直接复用自动入库链路，候选/扫描复用 `VRImageUtil`，不要重写。
 6. 每次代码改动前后都 `git commit + push`（用 §2 的身份参数）。
 
 ---
@@ -294,9 +309,9 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 ```
 你是接手「苏哥的钓鱼竿」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§13。
-项目是私有自用 Chrome MV3 扩展，主线是本地资源库；S0/S1a/S1b/自动入库/S2 索引已完成并全绿，下一步 S3 资源库页面（library.html + ui.js + thumbs.js）。
+项目是私有自用 Chrome MV3 扩展，主线是本地资源库 + 图片悬停下载；S0→S5b 与 I1/I2 已完成并全绿（11 套 318 条），下一步图片线 I3 批量队列。
 规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
 git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。
 改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome；CDP 脚本用系统 Python 3.12（装了 websocket-client）。
-开始前先按 docs/HANDOFF.md §5 跑一遍八套回归（57/17/14/39/35/30/27/27），确认全绿再动代码。
+开始前先按 docs/HANDOFF.md §5 跑一遍十一套回归（57/58/17/14/39/35/30/27/27/47/34），确认全绿再动代码。
 ```
