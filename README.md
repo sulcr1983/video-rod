@@ -3,6 +3,8 @@
 > 浏览器媒体嗅探下载扩展：**猫抓（cat-catch）的全站嗅探内核 × Plucker 式文件管理体验 × B站/YouTube 主动抓取**。
 >
 > **私有仓库、本机自用**，不上架、不分发。开发者模式 Load unpacked 安装。
+>
+> **作者：Sunny** ｜ 基于猫抓的衍生作品（GPL-3.0）；内核之外的增量见「本 fork 做了什么」。
 
 ---
 
@@ -18,6 +20,18 @@
 - **右键秒存**：视频/图片上右键直接下，不用开面板
 - **B站/YouTube 抓取**：B站分P/合集/大会员（零签名对抗嗅探增强）；YouTube 能抓则抓（2026 SABR/poToken 下纯扩展受限，见 docs/DECISIONS.md ADR-019）
 - 快捷键 `Alt+Shift+V` 唤起面板
+
+## 本 fork 做了什么（相对上游）
+
+嗅探、m3u8/直链下载、图片批量扫描等**基础能力来自猫抓**；下面这些是本仓库自己做的增量：
+
+- **本地资源库（S0–S2）**：`平台/博主/类型` 三段中文目录、下载完成自动入库、三种迁移（预演 / 复制 / 校验 / 回滚）、索引三源（下载记录 / 快照 / FSA 全量扫描）与缺失校对。
+- **桌面端下载链路**：文件名保护（绕开 Chromium 579563）、X 推文内联下载、右键秒存与快捷键、面板浅色化。
+- **设置页重设计**：18 个平铺分区收敛为 4 组导航，重做卡片层级、响应式与深色模式。
+- **图片悬停下载**：调研、方案 v1.2、可交互原型（实现待排期）。
+- **工程化**：文档先行 + 每步验收；5 套 CDP 自动化回归，**162 条断言**（57 / 17 / 14 / 39 / 35）。
+
+> 验收记录见 `docs/TESTING.md`；每个选择为什么这么做见 `docs/DECISIONS.md`（31 条 ADR）。
 
 ## 安装（开发者模式）
 
@@ -138,6 +152,9 @@
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | 需求规格：用户故事、功能清单（P0-P2）、非功能需求 |
 | [docs/DESIGN.md](docs/DESIGN.md) | 技术设计：架构、模块边界、数据流、集成对象 |
 | [docs/TESTING.md](docs/TESTING.md) | 测试策略：用例表、验收标准、回归清单、已知限制 |
+| [docs/LIBRARY-PLAN.md](docs/LIBRARY-PLAN.md) | 本地资源库权威方案：目录规范、数据模型、迁移、索引（S0–S2 已实现） |
+| [docs/OPTIONS-REDESIGN.md](docs/OPTIONS-REDESIGN.md) | 设置页重设计：现状审计、四组信息架构、组件规范、实施记录 |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | 交接文档：现状、环境、代码地图、测试基线、踩过的坑 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策记录（ADR）：每个重要选择为什么这么做 |
 | [deliverables/DELIVERABLES.md](deliverables/DELIVERABLES.md) | **产出物管理规范**：目录结构、命名、版本状态、登记表 |
 

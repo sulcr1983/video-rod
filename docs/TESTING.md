@@ -541,6 +541,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），`
 | 重复 ID | **0**（原 `allDisable/allEnable` ×4 已改 `data-all`） |
 | 横向溢出 | 1440px：`scrollWidth 1430`；900px：`890` → 均无溢出 |
 | 移动导航 | <980px 侧栏变顶部横向 chips，滚动条隐藏 |
+| 关于分区 | 4 张卡片（项目 / 上游与许可 / 本 fork 增量 / 开发手记）+ 4 个数据块；版本 `钓鱼竿 v2.7.2.1`、作者 chip 正常 |
 | 控制台 | 0 error / exception |
 
 ### 14.3 交互冒烟
