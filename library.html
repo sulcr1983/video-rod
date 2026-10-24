@@ -10,6 +10,9 @@
   <script src="js/library/path.js" defer></script>
   <script src="js/library/db.js" defer></script>
   <script src="js/library/thumbs.js" defer></script>
+  <script src="js/library/keyboard.js" defer></script>
+  <script src="js/library/video.js" defer></script>
+  <script src="js/library/lightbox.js" defer></script>
   <script src="js/library/ui.js" defer></script>
 </head>
 
@@ -113,9 +116,12 @@
       <div class="lib-scroll" id="libScroll">
         <section class="lib-overview" id="libOverview" aria-label="资源概览" hidden>
           <div class="section-label">
-            <span>资源概览</span><i class="ln"></i><span class="hint">索引全局</span>
+            <span>资源概览</span><i class="ln"></i>
+            <span class="hint" id="libOverviewSummary"></span>
+            <button type="button" class="link-toggle" id="libOverviewToggle" aria-expanded="false">展开</button>
           </div>
 
+          <div class="overview-body" id="libOverviewBody">
           <div class="kpi-row">
             <article class="kpi">
               <div class="kpi-head">
@@ -190,6 +196,7 @@
               <div class="bars" id="libCreatorBars"></div>
             </section>
           </div>
+          </div>
         </section>
 
         <div class="lib-toolbar">
@@ -247,17 +254,60 @@
   </div>
 
   <div class="lib-viewer" id="libViewer" hidden>
-    <button type="button" class="viewer-close" id="libViewerClose" aria-label="关闭预览">✕</button>
-    <button type="button" class="viewer-nav prev" id="libViewerPrev" aria-label="上一个">‹</button>
-    <div class="viewer-stage" id="libViewerStage"></div>
-    <button type="button" class="viewer-nav next" id="libViewerNext" aria-label="下一个">›</button>
-    <div class="viewer-bar">
-      <div class="viewer-info">
+    <header class="viewer-top">
+      <div class="viewer-title">
         <strong id="libViewerTitle"></strong>
         <span id="libViewerMeta"></span>
       </div>
-      <button type="button" id="libViewerOpen" class="btn">在文件中打开</button>
+      <span class="viewer-count" id="libViewerCount">1 / 1</span>
+      <div class="viewer-actions">
+        <button type="button" class="vbtn" id="libViewerInfoBtn" aria-pressed="true" title="信息 (i)">信息</button>
+        <button type="button" class="vbtn" id="libViewerOpen">在文件中打开</button>
+        <button type="button" class="vbtn icon" id="libViewerClose" aria-label="关闭预览">✕</button>
+      </div>
+    </header>
+
+    <div class="viewer-body">
+      <button type="button" class="viewer-nav prev" id="libViewerPrev" aria-label="上一个">‹</button>
+      <div class="viewer-stage" id="libViewerStage"></div>
+      <button type="button" class="viewer-nav next" id="libViewerNext" aria-label="下一个">›</button>
+
+      <aside class="viewer-panel" id="libViewerInfo" aria-label="文件信息">
+        <h3>文件信息</h3>
+        <dl class="facts" id="libViewerFacts"></dl>
+        <div class="panel-acts">
+          <button type="button" class="vbtn" id="libViewerCopyPath">复制路径</button>
+          <button type="button" class="vbtn" id="libViewerOpen2">在文件中打开</button>
+        </div>
+      </aside>
     </div>
+
+    <div class="video-ctl" id="libVideoCtl" hidden>
+      <button type="button" class="vc-btn" id="libVideoPlay" aria-label="播放 / 暂停">▶</button>
+      <span class="vc-time" id="libVideoTime">0:00 / 0:00</span>
+      <input type="range" id="libVideoSeek" min="0" max="1000" value="0" step="1" aria-label="播放进度" />
+      <button type="button" class="vc-btn" id="libVideoMute" aria-label="静音">🔊</button>
+      <input type="range" id="libVideoVol" min="0" max="100" value="100" step="1" aria-label="音量" />
+      <select id="libVideoRate" aria-label="播放倍速">
+        <option value="0.5">0.5×</option>
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+      </select>
+      <label class="vc-auto"><input type="checkbox" id="libVideoAuto" checked /> 连播</label>
+      <button type="button" class="vc-btn" id="libVideoFull" aria-label="全屏">⛶</button>
+    </div>
+
+    <div class="image-ctl" id="libImageCtl" hidden>
+      <button type="button" class="vc-btn" id="libViewerZoomOut" aria-label="缩小">−</button>
+      <span class="vc-zoom" id="libViewerZoomVal">100%</span>
+      <button type="button" class="vc-btn" id="libViewerZoomIn" aria-label="放大">+</button>
+      <button type="button" class="vbtn" id="libViewerZoomReset">适应</button>
+    </div>
+
+    <div class="viewer-strip" id="libViewerStrip"></div>
   </div>
 </body>
 

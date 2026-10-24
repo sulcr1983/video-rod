@@ -1,7 +1,8 @@
 # 苏哥的钓鱼竿 — 产出物管理规范
 
-> 版本：v2.5 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
+> 版本：v2.6 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
+> v2.6 变更：S4 查看器 v2——`lightbox.js` / `video.js` / `keyboard.js`、图片缩放拖拽、信息面板、缩略图带、视频自绘控件、键盘与连播；概览默认收起；验收 27/27。
 > v2.5 变更：资源库 v2——概览 KPI / 平台分布 / 博主速览 / 真表格 / 日期分组，验收 29/29；截图更新为 6 张。
 > v2.4 变更：新增资源库页面（全宽大图 / 全屏查看器 / 懒缩略图）与 22 条验收；popup 统一蓝灰；登记 `FRONTEND-UI-SYSTEM.md` 与 5 张截图。
 > v2.3 变更：全局更名「苏哥的钓鱼竿」（扩展名 / 界面 / 文档 / locale）；关于页补上游署名与本 fork 增量、开发手记与数据块。
@@ -131,7 +132,10 @@ video-rod/
 | 资源库索引服务（三源） | `js/library/indexer.js` | v1.0 | 已定稿 | 新建。`VRIndex.build({mode:'downloads'|'snapshot'|'full'})` + `reconcile()` + `snapshot()`；根解析三档（内存 / VRDB handle / 旧授权库·仅 custom）；downloads 只 upsert、snapshot/full 扫不到标 `missing` 不删除；重建保留 starred/tags/thumbKey/title；快照写 `<根>/_library/index-YYYYMMDD.json`（不存 absPath，按当前根重算），保留 7 份；句柄指向资源库根、索引 key 首段固定 `subdir`（ADR-030） |
 | 索引端到端验收脚本 | `tools/cdp-indexer-test.py` | v1.0 | 已定稿 | **35/35**：OPFS 句柄注入覆盖全量扫描/快照恢复/缺失语义/reconcile；真实下载验证 downloads 源；无句柄降级报 `LIB_E_NO_PERM`；设置页三个维护按钮；测完清文件+擦记录+清索引（TESTING §13） |
 | 资源库页面（S3 核心） | `library.html` + `css/library.css` + `js/library/ui.js` + `js/library/thumbs.js` | v1.1 | 已定稿 | 概览 4 KPI + 平台分布堆叠条 + 博主 Top5 + 博主速览卡；全宽大卡（4:3）；**真表格 8 列**（表头/右对齐数字）；筛选/搜索/排序/**日期分组**；全屏查看器；懒缩略图；≤899 侧栏折叠为横条；深色模式 |
-| 资源库页面验收脚本 | `tools/cdp-library-page-test.py` | v1.1 | 已定稿 | **29/29**：种子渲染/计数、KPI、平台分布、博主速览、Top5、表格 8 列、表头文案、日期分组、筛选/搜索/排序、查看器、空态、900/860 响应式、控制台 0 error（TESTING §16） |
+| 资源库页面验收脚本 | `tools/cdp-library-page-test.py` | v1.2 | 已定稿 | **30/30**：种子渲染/计数、KPI、平台分布、博主速览、Top5、表格 8 列、日期分组、概览收起、筛选/搜索/排序、查看器、空态、900/860 响应式、控制台 0 error（TESTING §16） |
+| 查看器 v2（S4） | `js/library/lightbox.js` + `js/library/video.js` + `js/library/keyboard.js` | v1.0 | 已定稿 | VRViewer：队列/图片缩放拖拽/信息面板/缩略图带；VRVideo：自绘控件（进度/时间/音量/倍速/全屏/连播）；VRKeys：输入框不劫持的统一键盘 |
+| 查看器验收脚本 | `tools/cdp-viewer-test.py` | v1.0 | 已定稿 | **27/27**：图片缩放复位、信息面板、←/→ 切条、缩略图带、视频无原生 controls、Space、seek ±5/±30、↑/↓、连播、Esc（TESTING §17） |
+| 查看器截图 | `deliverables/assets/{viewer-image,viewer-zoom,viewer-video}.png` | v1.0 | 已定稿 | 1440 图片 + 信息面板 + 缩略图带、156% 放大、视频自绘控件 |
 | 前端统一设计方案 | `docs/FRONTEND-UI-SYSTEM.md` | v1.0 | 已定稿 | popup + 资源库共用 token/组件；现状审计、全宽布局、全屏查看器、响应式与实施记录 |
 | 前端统一改造截图 | `deliverables/assets/{popup-after,library-page-grid,library-page-cards,library-page-table,library-page-900,library-page-dark,library-page-viewer}.png` | v2.0 | 已定稿 | popup 蓝色统一；资源库 1440 概览/大卡/表格、860 横条、深色、全屏查看器 |
 | 设置页重设计方案 | `docs/OPTIONS-REDESIGN.md` | v1.0 | 已定稿 | 现状审计（18 分区 / 151 个唯一 ID / 40 处内联样式 / 8 类问题）+ 四组信息架构 + 视觉 token + 组件规范 + 响应式断点 + 兼容清单 + 实施记录（TESTING §14） |

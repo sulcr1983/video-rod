@@ -23,7 +23,8 @@
     var objectUrls = [];
     var searchTimer = 0;
     var rendered = [];
-    var viewerIndex = -1;
+    var overviewCollapsed = true;
+    try { overviewCollapsed = localStorage.getItem('vrLibOverview') !== '1'; } catch (e) { /* 忽略 */ }
 
     var PLAT = {
         bilibili: { name: 'B站', short: 'B', color: '#fb7299' },
@@ -197,6 +198,17 @@
 
     /* ---------------- 概览（全局统计） ---------------- */
 
+    function applyOverviewState() {
+        var box = $('libOverview');
+        var btn = $('libOverviewToggle');
+        if (!box) { return; }
+        box.classList.toggle('collapsed', overviewCollapsed);
+        if (btn) {
+            btn.textContent = overviewCollapsed ? '展开' : '收起';
+            btn.setAttribute('aria-expanded', String(!overviewCollapsed));
+        }
+    }
+
     function renderOverview() {
         var box = $('libOverview');
         if (!box) { return; }
@@ -249,6 +261,10 @@
             .sort(function (a, b) { return b.n - a.n; })
             .slice(0, 5);
         var max = tops.length ? tops[0].n : 1;
+        var sum = $('libOverviewSummary');
+        if (sum) { sum.textContent = n + ' 项 · ' + formatBytes(bytes) + ' · ' + pKeys.length + ' 个平台'; }
+        applyOverviewState();
+
         $('libCreatorBars').innerHTML = tops.map(function (t) {
             return '<div class="bar-row">' +
                 '<span class="nm" title="' + esc(t.name) + '">' + esc(t.name) + '</span>' +
@@ -576,10 +592,10 @@
         apply();
     }
 
-    /* ---------------- 全屏查看器 ---------------- */
+    /* ---------------- 查看器 ---------------- */
 
-    function viewerEntries() {
-        return rendered.length ? rendered : all;
+    function openViewer(relPath) {
+        if (root.VRViewer) { root.VRViewer.open(relPath); }
     }
 
     function openEntry(relPath) {
@@ -588,69 +604,6 @@
         try {
             chrome.tabs.create({ url: root.VRPath.toFileUrl(e.absPath) });
         } catch (err) { /* 忽略 */ }
-    }
-
-    function paintViewer() {
-        var list = viewerEntries();
-        var e = list[viewerIndex];
-        if (!e) { return; }
-        var stage = $('libViewerStage');
-        stage.innerHTML = '';
-
-        var url = (e.absPath && root.VRPath) ? root.VRPath.toFileUrl(e.absPath) : '';
-        if (e.state === 'missing' || !url) {
-            stage.innerHTML = '<div class="viewer-missing">文件已不在原位置，可用「在文件中打开」重新定位</div>';
-        } else if (e.type === 'image') {
-            var img = document.createElement('img');
-            img.src = url;
-            img.alt = fileName(e);
-            stage.appendChild(img);
-        } else if (e.type === 'video') {
-            var v = document.createElement('video');
-            v.src = url;
-            v.controls = true;
-            v.autoplay = true;
-            v.playsInline = true;
-            stage.appendChild(v);
-        } else {
-            stage.innerHTML = '<div class="viewer-missing">该类型暂不支持预览，可用「在文件中打开」</div>';
-        }
-
-        $('libViewerTitle').textContent = fileName(e);
-        $('libViewerMeta').textContent = (viewerIndex + 1) + ' / ' + list.length + ' · ' +
-            typeLabel(e.type) + ' · ' + platformName(e) + ' · ' + creatorName(e) + ' · ' + formatBytes(e.size);
-        $('libViewerPrev').disabled = list.length < 2;
-        $('libViewerNext').disabled = list.length < 2;
-        $('libViewerOpen').dataset.rel = e.relPath;
-    }
-
-    function openViewer(relPath) {
-        var list = viewerEntries();
-        var idx = -1;
-        for (var i = 0; i < list.length; i++) {
-            if (list[i].relPath === relPath) { idx = i; break; }
-        }
-        if (idx < 0) { return; }
-        viewerIndex = idx;
-        $('libViewer').hidden = false;
-        document.body.classList.add('viewer-open');
-        paintViewer();
-    }
-
-    function closeViewer() {
-        var v = $('libViewerStage').querySelector('video');
-        if (v) { try { v.pause(); } catch (e) { /* 忽略 */ } }
-        $('libViewerStage').innerHTML = '';
-        $('libViewer').hidden = true;
-        document.body.classList.remove('viewer-open');
-        viewerIndex = -1;
-    }
-
-    function stepViewer(step) {
-        var list = viewerEntries();
-        if (list.length < 2) { return; }
-        viewerIndex = (viewerIndex + step + list.length) % list.length;
-        paintViewer();
     }
 
     function bind() {
@@ -690,6 +643,12 @@
                 state.q = v;
                 apply();
             }, 150);
+        });
+
+        $('libOverviewToggle').addEventListener('click', function () {
+            overviewCollapsed = !overviewCollapsed;
+            try { localStorage.setItem('vrLibOverview', overviewCollapsed ? '0' : '1'); } catch (e) { /* 忽略 */ }
+            applyOverviewState();
         });
 
         $('libSort').addEventListener('change', function () {
@@ -774,19 +733,8 @@
             });
         });
 
-        $('libViewerClose').addEventListener('click', closeViewer);
-        $('libViewerPrev').addEventListener('click', function () { stepViewer(-1); });
-        $('libViewerNext').addEventListener('click', function () { stepViewer(1); });
-        $('libViewerOpen').addEventListener('click', function () { openEntry(this.dataset.rel); });
-        $('libViewer').addEventListener('click', function (ev) {
-            if (ev.target.id === 'libViewer' || ev.target.id === 'libViewerStage') { closeViewer(); }
-        });
         document.addEventListener('keydown', function (ev) {
-            if (!$('libViewer').hidden) {
-                if (ev.key === 'Escape') { ev.preventDefault(); closeViewer(); return; }
-                if (ev.key === 'ArrowLeft') { ev.preventDefault(); stepViewer(-1); return; }
-                if (ev.key === 'ArrowRight') { ev.preventDefault(); stepViewer(1); return; }
-            }
+            if (root.VRViewer && root.VRViewer.isOpen()) { return; }
             if (ev.key === '/' && document.activeElement !== search) {
                 ev.preventDefault();
                 search.focus();
@@ -810,8 +758,26 @@
         } catch (e) { /* 忽略 */ }
     }
 
+    function initViewer() {
+        if (!root.VRViewer) { return; }
+        root.VRViewer.init({
+            getList: function () { return rendered.length ? rendered : all; },
+            getEntry: function (rel) { return map[rel]; },
+            getUrl: function (e) {
+                return (e.absPath && root.VRPath) ? root.VRPath.toFileUrl(e.absPath) : '';
+            },
+            fileName: fileName,
+            platformName: platformName,
+            creatorName: creatorName,
+            formatBytes: formatBytes,
+            formatDate: formatDate,
+            typeLabel: typeLabel
+        });
+    }
+
     function init() {
         if (!$('libGrid')) { return; }
+        initViewer();
         bind();
         loadData();
     }
