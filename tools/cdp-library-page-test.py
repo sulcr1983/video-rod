@@ -114,6 +114,15 @@ def main():
       out.bars = qa('.bar-row').length;
       out.th = qa('.lib-table thead th').length;
       out.thText = qa('.lib-table thead th').map(x => x.textContent.trim()).join('|');
+      out.ovCollapsed = q('#libOverview').classList.contains('collapsed');
+      out.ovBody = getComputedStyle(q('#libOverviewBody')).display;
+      q('#libOverviewToggle').click();
+      await wait(80);
+      out.ovOpenBody = getComputedStyle(q('#libOverviewBody')).display;
+      out.ovBtn = q('#libOverviewToggle').textContent;
+      q('#libOverviewToggle').click();
+      await wait(80);
+      out.ovClosedAgain = q('#libOverview').classList.contains('collapsed');
       q('#libGroup').value = 'date';
       q('#libGroup').dispatchEvent(new Event('change', {bubbles: true}));
       await wait(150);
@@ -132,6 +141,9 @@ def main():
     check("B9 表格 8 列", v2["th"], 8)
     check("B10 表头含名称/平台/博主/大小", all(k in v2["thText"] for k in ("名称", "平台", "博主", "大小")), True)
     check("B11 按日期分组", [v2["days"] > 1, v2["dayLabel"], v2["daysAfter"]], [True, "今天", 0])
+    check("B12 概览默认收起且可展开",
+          [v2["ovCollapsed"], v2["ovBody"], v2["ovOpenBody"], v2["ovBtn"], v2["ovClosedAgain"]],
+          [True, "none", "block", "收起", True])
 
     flow = ev(cdp, sid, r"""(async function(){
       const q = s => document.querySelector(s);

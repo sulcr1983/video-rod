@@ -174,7 +174,7 @@
 
 | 项 | 结果 |
 |---|---|
-| `tools/cdp-library-page-test.py` | **29/29**（含概览 KPI/分布/博主速览/表格/分组；v1 为 22/22） |
+| `tools/cdp-library-page-test.py` | **30/30**（含概览收起/KPI/分布/博主速览/表格/分组；v1 为 22/22） |
 | `tools/cdp-s1a-test.py` | 17/17 |
 | `tools/cdp-index-test.py` | 14/14 |
 | `tools/cdp-indexer-test.py` | 35/35 |
@@ -277,7 +277,7 @@
 | 数据可视化 | 4 KPI、4 段平台堆叠条 + 图例、Top5 作者条形、博主拼图卡 |
 | 表格 | 8 列（预览/名称/平台/博主/类型/大小/下载时间/星标），表头底色、数字右对齐、行悬停 |
 | 响应式 | ≤1199 隐藏博主列、≤999 隐藏类型列、≤899 隐藏时间列 + 侧栏横条、≤699 单列 |
-| 验收 | **29/29**（TESTING §16）；回归 S1a 17/17、索引 35/35、自动入库 14/14、迁移 39/39 |
+| 验收 | **30/30**（TESTING §16）；回归 S1a 17/17、索引 35/35、自动入库 14/14、迁移 39/39 |
 | 截图 | `library-page-{grid,cards,table,900,dark,viewer}.png` |
 
 > 设计取舍：概览固定为「索引全局」，避免筛选时数字跳动；表格是管理视图，进入后自动收起图表区。
@@ -334,3 +334,14 @@
 ### 12.5 验收
 
 新增 `tools/cdp-viewer-test.py`，覆盖：图片打开/缩放/复位、信息面板、`←/→` 切队列、缩略图带跳转、视频自绘控件（无 `controls` 属性）、`Space`、`←/→` 与 `Shift` 步进、`↑/↓` 切条、`Esc` 关闭、控制台 0 error。
+
+### 12.6 实施记录（2026-10-24）
+
+| 项 | 结果 |
+|---|---|
+| 概览收起 | 默认收起；摘要「6 项 · 742 MB · 4 个平台」；本地记住展开状态；表格视图强制收起 |
+| 新增文件 | `js/library/lightbox.js`（VRViewer）、`js/library/video.js`（VRVideo）、`js/library/keyboard.js`（VRKeys） |
+| ui.js | 删除旧查看器实现，只保留 `openViewer()` 转发与初始化回调 |
+| 验收 | `tools/cdp-viewer-test.py` **27/27**；`cdp-library-page-test.py` 升 **30/30**（新增概览收起断言） |
+| 回归 | path 57、S1a 17、自动入库 14、迁移 39、索引 35 全绿 |
+| 截图 | `viewer-image.png`、`viewer-zoom.png`、`viewer-video.png` |
