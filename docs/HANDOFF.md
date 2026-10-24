@@ -61,8 +61,8 @@
 | 1 | **资源库方案二次评审** | 方案 v1.5 + 原型 v1.3 已就绪；审计手册见 `docs/LIBRARY-PLAN-审计方案.md` |
 | 2 | ~~**P0 前置探针**~~ | ✅ **已于 2026-10-24 完成，三项全过**（`file://` 直读 + 视频 seek + `downloads.search` 绝对路径），详见 TESTING §9 |
 | 3 | **原型 v1.3 回归测试** | 新增 5 项交互（星标/标签/键盘导航/缩略图带/时间气泡）需 CDP 断言通过后再交付评审 |
-| 4 | 根目录盘符待定 | 需要苏哥确认资源库根目录（如 `D:\Media\video-rod`）；另注意本机 Chrome 默认下载目录是 `D:\Users\liq21\Downloads` |
-| 5 | **S1 待开工** | `path.js` + 下载落位接管（三段中文目录），规格见 LIBRARY-PLAN §13 |
+| 4 | 根目录已定 | `E:\test\video-rod\download`（已建目录、已 gitignore）；**待你确认**：是否愿意把 Chrome 下载位置改成它（直写=零拷贝），否则走归档模式 |
+| 5 | **S1a 待开工** | `path.js` + 下载落位 + 设置页「资源库」分区（根目录显示/选择/校验落盘），规格见 LIBRARY-PLAN §4.5、§13 |
 | 6 | 构建链在本机不可用 | `just / bash / zip / crx3 / openssl` 全缺，且仓库无 `package.json`；当前只能「加载已解压的扩展程序」，无法产出 .crx/.zip |
 | 7 | 文档漂移未修 | `DESIGN.md` 规划的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 均不存在，能力实际在 `popup-videorod.js` / `x-button.js` |
 | 8 | Deploy Key 写权限未知 | 若后续要 push，需在仓库 Settings → Deploy keys 勾选 Allow write access |

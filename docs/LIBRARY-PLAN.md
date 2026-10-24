@@ -248,6 +248,42 @@ Chrome 的持久权限（Persistent Permissions，Chrome 122+）行为是：目�
    索引丢失时优先读快照，**避免为了重建而要求授权**
 3. 仅在"快照也不存在 + 目录里有非本扩展下载的文件"时，才要求一次性授权扫描 —— 这是唯一合理的授权时机
 
+### 4.5 根目录与落盘模式（v1.6 拍板）
+
+**已定根目录**：`E:\test\video-rod\download`（在仓库内，已加入 `.gitignore`，下载内容不进 git）。
+
+**Chrome 的硬限制**：`chrome.downloads.download({filename})` 只能写**相对浏览器下载目录**的路径，
+不能直接写 `E:\test\video-rod\download\...`。所以"设置里自选文件夹"必须落到下面两种模式之一：
+
+| 模式 | 做法 | 优点 | 代价 |
+|---|---|---|---|
+| **A 直写（默认）** | 把 Chrome 下载目录设为 rootDir；扩展只写 `B站/博主/视频/xxx.mp4` 相对路径 | **零拷贝**、最快、`file://` 直读 | 需**一次性手动**改 Chrome 全局下载目录（扩展无权限代改）；会影响其它下载 |
+| **B 归档** | Chrome 下载目录保持默认；下载完成后由扩展把文件**搬到** rootDir | 不动 Chrome 设置 | 每个文件多一次拷贝（500MB 约 1–2 秒）；归档时**必须有扩展页面打开**（FSA 需要页面上下文，SW 里拿不到句柄） |
+
+> **为什么不能"扩展自己下到任意目录"**：扩展没有任意路径写文件的 API。FSA 可以写，但
+> `showDirectoryPicker()` 必须在页面里由用户手势触发；用它逐块下载媒体等于自己重写下载器，
+> 还要处理 m3u8 合并、断点、重试——与"复用猫抓内核"的设计原则冲突。因此下载这一段仍走 `chrome.downloads`。
+
+**设置页要提供的六件事**（`options.html` 新增「资源库」分区）：
+
+| # | 控件 | 行为 |
+|---|---|---|
+| 1 | 根目录显示 | 展示 `vrLibSettings.rootDir`（默认 `E:\test\video-rod\download`） |
+| 2 | 选择文件夹 | `showDirectoryPicker()` 选目录 → 存 `rootDir`（同时写入 FSA 句柄，供删除/迁移用） |
+| 3 | 打开 Chrome 下载设置 | `chrome.tabs.create({url: 'chrome://settings/downloads'})`，并提示"把下载位置改成上面这个路径" |
+| 4 | 校验落盘 | 发起 1KB 微下载到 `_verify/<ts>.txt` → `downloads.search` 比对 `filename` 前缀是否等于 rootDir → 判定直写是否生效 → `removeFile` 清理 |
+| 5 | 落盘模式 | `auto`（默认：校验通过走直写，否则走归档）/ `direct` / `archive` |
+| 6 | 迁移到新根目录 | dry-run 预览 → 执行 → 日志 → 可回滚（见 §5.4 的换根迁移） |
+
+**迁移的两种形态**（共用同一套 复制→校验→删源→日志→回滚 流程）：
+
+| 形态 | 源 | 目标 | 触发场景 |
+|---|---|---|---|
+| **结构迁移** | 旧目录里散落的文件 | rootDir 下的 `平台/博主/类型/` | 第一次启用资源库，整理历史下载 |
+| **换根迁移** | 旧 rootDir（保持相对结构） | 新 rootDir（相同相对路径） | 用户在设置里改了根目录 |
+
+**校验口径与异常处理**沿用 §5.4：默认 `size` + 首尾 64KB 采样；`EBUSY` / `ENOSPC` / 权限撤销 → 停止后续、不删源、保留日志、可回滚。
+
 ---
 
 ## 五、数据模型与索引
@@ -518,15 +554,16 @@ setting: { key, value }                                        // 排序偏好�
 
 ## 十、已拍板（2026-10-24）
 
-1. **根目录**：单独设置一个文件夹（例如 `D:\Media\video-rod`），作为 Chrome 下载目录；扩展只写相对路径
+1. **根目录**：`E:\test\video-rod\download`（已定，v1.6 更新）；默认**直写模式**——用户在 Chrome 设置里把下载目录指向它，扩展只写相对路径
 2. **不要求每次启动授权**：靠 `downloads.search` + `file://` 读取；目录授权只在首次全量扫描与迁移时使用
 3. **目录用中文**：`B站 / 小红书 / X / YouTube / 其他网页`，类型 `视频 / 图片 / 音频`
-4. **旧文件自动迁移**：先 dry-run，再执行；日志 + 回滚 + 不覆盖
+4. **旧文件自动迁移**：先 dry-run，再执行；日志 + 回滚 + 不覆盖；**支持换根目录迁移**（§4.5）
 5. **资源库入口**：popup 设置里 + 可固定为独立标签页（按建议）
+6. **设置里可自选文件夹**：FSA 选择器改 rootDir；落盘模式 `auto/direct/archive` 可切（§4.5）
 
-### 仍需你确认的小项
-- 根目录具体盘符与路径（用于原型与后续默认值）
-- 是否接受"一次性在 Chrome 设置里把下载目录改到该文件夹"
+### 仍需确认的小项
+- 是否接受"一次性在 Chrome 设置里把下载目录改到 `E:\test\video-rod\download`"（选 A 直写的前提）
+- 若不接受，则走 B 归档模式（每文件多一次拷贝，且归档需扩展页面打开）
 
 ---
 
@@ -668,7 +705,8 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 | 11 | `js/library/video.js` | 新增 | 视频弹层：**自绘控件**、↑↓ 切换、←→ ±5s（Shift ±30s）、空格、连播、进度气泡 | `ui.js` |
 | 12 | `js/library/keyboard.js` | 新增 | 全局键盘路由：`/` `J/K` `Enter` `F` `Esc`，按弹层优先级分发 | `ui.js`、`lightbox.js`、`video.js` |
 | 13 | `js/library/bridge.js` | 新增 | 页面 ↔ SW 消息桥：超时、重试、错误码归一 | `chrome.runtime` |
-| 14 | `js/library/settings.js` | 新增 | 资源库设置读写（`chrome.storage.local` 的 `vrLibSettings`） | — |
+| 14 | `js/library/settings.js` | 新增 | 资源库设置读写 + 设置页渲染（根目录显示/选择、落盘模式、校验落盘、迁移入口） | `db.js` |
+| 14b | `js/library/archive.js` | 新增 | B 归档模式：下载完成后把文件从 Chrome 下载目录搬入 rootDir（复制→校验→删源） | `db.js`、`path.js` |
 | 15 | `lib/`（可选） | 新增 | PhotoSwipe 5 / justified-layout 的**无需构建成品文件**（按 §6.2 能抄就抄） | — |
 
 **后端（Service Worker 侧）**
@@ -727,11 +765,13 @@ oplog:   keyPath "id" autoInc    字段: at, op, payload, result   // 迁移/删
 
 ```js
 {
-  rootLabel: "D:\\Media\\video-rod",   // 仅显示用，真实根目录由 Chrome 下载设置决定
+  rootDir: "E:\\test\\video-rod\\download",  // 资源库根目录（默认值，可在设置里改）
+  writeMode: "auto",                    // auto | direct | archive（§4.5）
+  verifyPassed: false,                  // 「校验落盘」最近一次结果
   sort: "new", view: "grid", group: "none",
   autoplay: true, hoverPreview: true,
   thumbQuality: 0.72, thumbMaxEdge: 480,
-  deepVerify: false                    // 迁移时是否追加 SHA-256
+  deepVerify: false                     // 迁移时是否追加 SHA-256
 }
 ```
 
@@ -791,8 +831,21 @@ VRTrash.list() -> Promise<TrashItem[]>
 
 // migrate.js
 VRMigrate.plan({mapping}) -> Promise<Plan>               // items: {from, to, action:"move"|"skip"|"conflict", size}
+VRMigrate.planRestructure() -> Promise<Plan>             // 形态一：散文件 → 三段结构
+VRMigrate.planRebase(oldRoot, newRoot) -> Promise<Plan>   // 形态二：换根目录，保持相对路径
 VRMigrate.run(planId, onProgress) -> Promise<Log>
 VRMigrate.rollback(logId) -> Promise<{rolledBack, failed}>
+
+// archive.js（B 归档模式）
+VRArchive.canRun() -> boolean                            // 页面是否可见（FSA 需页面上下文）
+VRArchive.pending() -> Promise<PendingItem[]>           // 已下载完成、待搬入 rootDir 的条目
+VRArchive.move(item) -> Promise<{ok, code?}>            // 复制 → 校验 → 删源
+VRArchive.flush() -> Promise<{moved, failed}>           // 资源库/设置页打开时自动跑一遍
+
+// settings-page.js（options.html 的「资源库」分区）
+VRSettings.render() / VRSettings.pickRoot() / VRSettings.openChromeDownloads()
+VRSettings.verify() -> Promise<{ok, actualPath}>         // 1KB 微下载 + 比对 + 清理
+VRSettings.setWriteMode(mode) / VRSettings.startMigration(kind)
 
 // ui.js
 VRUI.state  = { platform, creator, type, q, sort, view, group, starredOnly, tag, focusId }
@@ -873,11 +926,12 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | 步骤 | 内容 | 产出 | 验收 | 建议提交信息 |
 |---|---|---|---|---|
 | **S0** ✅ | P0 探针 | 探测扩展 + 结果记录 | **已完成 2026-10-24，三项全过**（§13.7） | `chore: P0 探针——file:// 直读与 downloads 绝对路径实测` |
-| **S1** | `path.js` + 下载路径接管 | 新下载自动落三段中文目录 | `node tools/test-naming.js` 全绿 + 真机下 3 个平台各 1 个文件 | `feat(library): 下载落位改为 平台/博主/类型 三段中文目录` |
+| **S1a** | `path.js` + 下载路径接管 + 设置页「资源库」分区 | 新下载落三段中文目录；rootDir 默认 `E:\test\video-rod\download`；设置页能改根目录、切换落盘模式、校验落盘 | `node tools/test-naming.js` 全绿 + 真机下 3 个平台各 1 个文件 + 「校验落盘」返回当前实际路径 | `feat(library): 三段中文目录 + 根目录设置与落盘校验` |
+| **S1b** | 迁移（结构迁移 + 换根迁移） | dry-run 预览、执行、日志、回滚 | 迁移前后数量/大小一致；中断可回滚；同名不覆盖 | `feat(library): 迁移到新根目录——dry-run/复制/校验/回滚` |
 | **S2** | `db.js` + `indexer.js` + `sw-library.js` | 索引可建、可重建、有快照 | 1k 文件首屏 < 2s；清空下载历史后仍能列出 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
 | **S3** | `library.html` + `ui.js` + `thumbs.js` | 可浏览、可筛选、可搜索 | TESTING §8 的 A/C/D 组 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
 | **S4** | `lightbox.js` + `video.js` + `keyboard.js` | 看图/看视频/键盘 | TESTING §8 的 E/F/H/I 组 | `feat(library): 灯箱与视频弹层——缩略图带 + 自绘控件键盘` |
-| **S5** | `trash.js` + `migrate.js` + 右键菜单 | 删除/恢复/迁移 | TESTING §8 的 B/G 组 + 迁移 dry-run 与回滚 | `feat(library): 删除回收站与旧文件迁移——可恢复、可回滚` |
+| **S5** | `trash.js` + 右键菜单 + 删除/回收站 UI | 删除、恢复、清空、重命名 | TESTING §8 的 B/G 组 | `feat(library): 删除回收站与右键菜单——可恢复、二次确认` |
 
 > 每一档都必须：`git status` 干净 → 测试通过 → 截图归档 → 才进下一档。**不允许一次提交跨两档。**
 
@@ -893,5 +947,6 @@ VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
 | v1.3 | 2026-10-24 | **开源交互全量落地**：② §6 交互清单新增星标、只看星标、标签 chips、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条时间气泡；③ §6.1 八项开源 UX 中 6 项标 ✅、1 项以时间气泡替代、1 项只取轻量标签；④ 新增 §6.2"只学交互、不抄代码"实现边界；⑤ §7 P3 补入新增交互；⑥ §9 验收新增 15–19 五条；⑦ §11.3 补"能验证/不能验证"三行；① 曾按"已公开开源"口径改写许可证段落 |
 | v1.4 | 2026-10-24 | **口径定稿 + 实现规格**：① 确认项目为**私有仓库、本机自用、不分发**，GPL-3.0 不触发分发义务；§0.1 明确"**开源代码能抄就抄**，按引入成本择优"；② §2.3 改为可直接引入 PhotoSwipe 5 / justified-layout 的无需构建成品；③ §6.2 从"只学交互不抄代码"改写为"抄代码策略"；④ 新增 §13 实现规格（前后端文件清单、模块职责、函数签名、数据结构、错误码、状态机、P0 探针、S0–S5 提交切分），确保开工前无待研究项 |
 | v1.5 | 2026-10-24 | **S0 探针实测通过**：`<img>`/`<video src="file://">` 直读、视频 seek、`downloads.search` 返回绝对路径三项全过（Chrome for Testing 147）；§2.4/§4.4/§8/§11.1/§11.4/§12.2/§13.7/§13.9 同步关闭待实测项；对抗性结论中的"条件性阻断 1"解除；记录正式 Chrome 需手动开"允许访问文件网址" |
+| v1.6 | 2026-10-24 | **确定根目录与落盘模式**：新增 §4.5——rootDir 定为 `E:\test\video-rod\download`；给出直写（默认，零拷贝）与归档（不动 Chrome 设置）两种模式及代价；设置页六件事（显示/选择文件夹/打开 Chrome 下载设置/校验落盘/模式切换/换根迁移）；迁移拆为"结构迁移"与"换根迁移"；§10 已拍板更新；§13.3/§13.4/§13.1/§13.9 同步（新增 archive.js、settings-page API、S1a/S1b 切分） |
 | —— | —— | 注：v1.3 曾按"已公开开源"改写、并自加"全部自研"约束；v1.4 均已作废，以 v1.4 为准 |
 
