@@ -1,7 +1,7 @@
 # 苏哥的钓鱼竿 — 交接文档
 
-> 更新：2026-10-24 ｜ 代码 HEAD：`a1a02dd` 之后的 I3 提交（图片批量下载已落地）
-> 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§13（已验收记录）。
+> 更新：2026-10-24（收尾轮）｜ 代码 HEAD：`f99d7bc`（YouTube 下载 + 图片 I4 合并）及其后的文档收尾提交
+> 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§23（已验收记录）。
 > 本文只写「现在是什么状态、怎么跑、别踩什么坑」，设计论证在 LIBRARY-PLAN 里。
 
 ---
@@ -17,8 +17,10 @@
 ## 1. 一句话现状
 
 这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2 → S5 删除与回收站 → S5b 批量选择/重命名**；
-图片线 **I1+I2（单张悬停）+ I3（本页一键全下）** 也已落地，**十三套回归全绿（380 条断言）**。
-下一步是 **图片线 I4–I6**（浮标 + 清单面板 → 设置/快捷键 → 图集），接口已按 I1–I3 预留。
+图片线 **I1+I2（单张悬停）+ I3（本页一键全下）+ I4（浮标 + 清单面板，实施中）** 也已落地；
+**YouTube 播放器下载**（1080p/4K 直选、音视频轨无损合并成 MP4）已可用。
+**十六套回归：15 套全绿，1 套红**（`cdp-image-batch-test.py` C1，I4 引入的回归，见 §7.4-15）；合计 571 条断言。
+下一步是 **图片线 I5–I6**（设置/快捷键 → 图集）与 **YouTube 的深水区**（SABR 复放、流式落盘、WebM）。
 
 | 项 | 值 |
 |---|---|
@@ -185,10 +187,20 @@ node tools/test-image-batch.js     # 27/27   纯 Node，批量队列并发/取�
 & $py tools/cdp-batch-test.py        # 47/47   批量选择 + 重命名：OPFS 句柄注入 + 真实文件
 & $py tools/cdp-image-test.py        # 34/34   图片悬停：悬停/下载/候选优先/过滤/开关（需测试站 18080）
 & $py tools/cdp-image-batch-test.py  # 35/35   图片批量：确认条/进度/取消/去重/上限（需测试站 18080）
+& $py tools/cdp-image-panel-test.py  # 46/46   I4 浮标 + 清单面板（需测试站 18080）
+& $py tools/yt-download-test.py      # 21/21   YouTube 下载：离线端到端（打桩取格式，其余全真跑）
 ```
 
-> **合计 13 套 / 380 条断言**。`cdp-image-test.py` 依赖 `test-site` 的图片夹具与 18080 端口，
+> **合计 16 套 / 571 条断言**（按各套自报断言累加：57+58+27+57+17+14+39+35+30+27+27+47+34+35+46+21）。
+> **当前实测 15/16 绿**：`cdp-image-batch-test.py` 的 C1 红了（I4 引入，见 §7.4-15），其余 15 套全绿。
+> 旧文档写的「13 套 380 条」是漏算 —— `test-image-tier.js`、`cdp-image-panel-test.py`、`yt-download-test.py`
+> 三套后来才加，且原有清单本身也少算了，已按上表重算。
+> `node tools/test-image-tier.js`（57/57）排在四个 node 单测里，`cdp-run.py --suite full` 会自动带上。
+> `cdp-image-test.py` 依赖 `test-site` 的图片夹具与 18080 端口，
 > 会真下载到 `Downloads\video-rod\其他网页\127.0.0.1\图片\`，脚本结束自行清理。
+
+`tools/yt-ext-test.py`（按钮注入 → 开窗 → 真实取格式）**不进 full 套件**：它要连 YouTube，
+结果受 IP 风控影响，只适合手动跑。
 
 原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
 
@@ -233,6 +245,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 ### 6.4 下载与命名
 
 - `chromium bug 579563`：只要有扩展注册 `onDeterminingFilename`，`downloads.download` 的 `filename` 就会被忽略 → 已有 ADR-027 三道防线，**不要绕开 `vrDownloadWithName()` 直接下载**。
+- ⚠️ **但那三道防线在 Chrome 147 上已经失效了**（ADR-040 实测）：blob 下载落盘成 UUID、**http 下载也丢名**（退化成 URL 末段），`suggest()` 被忽略。项目里所有靠它保名字的路径（弹窗下载 / 图片批量 / m3u8）都会静默落成随机名。**新代码要落盘请走 FSA 直写**（`js/yt/yt-download.js` 的 `save()` 是现成范例）。存量路径尚未迁移。
 - `conflictAction: uniquify` 会把 `a.mp4` 变成 `a (1).mp4`：索引以 `downloads.search` 的实际文件名为准，不要用预登记名。
 
 ### 6.5 环境类
@@ -251,6 +264,31 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 - 所以任何「拿 relPath 直接去句柄里找文件」的代码都必须先 `stripPrefix(relPath, prefix)`。
 
 首版 `reconcile()` 忘了剥前缀，结果把整个索引全标成 missing（D4 断言当场抓到）。
+
+**同一个坑第二次踩**：YouTube 下载走 FSA 直写时也没剥前缀，会落成 `video-rod/video-rod/YouTube/…`。
+现在 `js/yt/yt-download.js` 的 `writeToRoot()` 会按 `subdir` / db 里的 `rootPrefix` 剥掉首段，
+`tools/yt-download-test.py` 有断言卡着（期望 `<库根>/YouTube/博主/视频/…`）。
+**任何新增的 FSA 写盘代码，先问一句「这个句柄指向哪一层」。**
+
+### 6.7 同一工作区跑多条线会静默覆盖
+
+私有自用项目的实际工作方式：图片线（I1–I6）与 YouTube 线可能**同时**在同一棵工作树上改文件。
+没有冲突提示，**后写的一方直接覆盖前一方**，git 也不会报（两边都是未提交改动）。
+
+真实事故：图片线写 `manifest.json` 时把 YouTube 的 `content_scripts` 注册块整段抹掉，
+`background.js` 里的代码都还在、按钮却永远不出现 —— 这种最难看。
+
+- **动 `manifest.json` 前后都要 `git diff manifest.json` 复核**，尤其是 `content_scripts` 数组；
+- 收工前跑 `python tools/cdp-run.py --suite full`，比肉眼看文件可靠；
+- 真要多线并行，最好各自 `git worktree` 或各自分支，别共用一棵树。
+
+### 6.8 行尾：仓库统一 LF，别用脚本写回
+
+`js/background.js` 被 python 文本模式读写过一次（读时 CRLF→LF 归一，写时 LF→CRLF 展开），
+结果整整 1992 行全变成 diff，真实改动被淹没。
+
+- 改仓库文本文件用编辑工具，或读写都用 `'rb'/'wb'` 字节级处理；
+- 提交前若看到「整文件级 diff」，先查行尾：`git show HEAD:<file> | grep -c $'\r'` 应为 0。
 
 ---
 
@@ -302,6 +340,11 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 8. **迁移的未覆盖项**：原生目录选择器未自动化（只剩「拿句柄」一步）、配额不足/文件占用分支未构造（TESTING §12.5）。
 9. **索引的未覆盖项**：1k 文件首屏性能未测（S2 只测正确性，真实首屏要等 S3）；快照保留 7 份的清理分支、downloads 超 5000 条的 `truncated` 分支未构造（TESTING §13.5）。
 10. **原生目录选择器仍未自动化**：`VRIndex` 的 full/snapshot 只用 OPFS 句柄验证过，「用户点选目录」靠手动；S3 做页面时要顺便把这一步的人工验收写进 TESTING。
+11. **YouTube 线没验过活链路**：`tools/yt-download-test.py` 21/21 全绿（打桩取格式，其余全真跑），但「真从 YouTube 取格式」只在我这边被 IP 风控挡住过，**需要 Sunny 在自己浏览器里点一次按钮复验**；若长期不通，退路线 B（SABR 复放，`docs/YT-FEASIBILITY.md` §5 已有可行性证据）。
+12. **YouTube 的内存上限**：双轨全量进内存再合并，4K 长视频（>1GB）有 OOM 风险（>700MB 会在提示行预警）。要根治得改流式：边拉边按 `tfdt` 交织落盘。
+13. **YouTube 只覆盖 MP4 容器**：WebM(VP9)/Opus 档被过滤。4K 有 AV1-in-MP4 兜底，实际很少缺档，但真碰上就只有低清。
+14. **存量下载路径没迁到 FSA**：弹窗下载 / 图片批量 / m3u8 仍走 `chrome.downloads`，在 Chrome 147 上文件名会退化成 UUID 或 URL 末段（ADR-040）。要么整体迁 FSA，要么接受「名字不对」。
+15. **🔴 I4 引入了 I3 的回归（当前唯一红的一套）**：`tools/cdp-image-batch-test.py` C1「确认条出现」失败，可稳定复现（连跑两次都是 58s 后挂在 C1）。A1–B4 全过，说明悬停条本身正常；截图 `deliverables/assets/image-batch-hoverbar.png` 显示「全部 5」在**窄图模式下被收成图标**，而测试是 `Input.dispatchMouseEvent` 按坐标点它 —— 怀疑「测量坐标 → 点击」之间按钮尺寸/位置又翻了一次（I4 的 `MutationObserver` + `scanImages` 在 boot 时会重扫）。**修法方向**：给悬停条窄图切换加稳定态（尺寸定稿后再允许翻），或让测试改用元素派发点击而非坐标。修之前 `--suite full` 会是 15/16。
 
 ---
 
@@ -314,8 +357,12 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 | `docs/OPTIONS-REDESIGN.md` | 设置页重设计：现状审计、四组信息架构、视觉/组件规范、响应式、实施记录（ADR-031） |
 | `docs/FRONTEND-UI-SYSTEM.md` | 前端统一设计：popup + 资源库共用 token/组件、全屏查看器、**§11 资源库 v2（概览/表格）**、验收记录（TESTING §15/§16） |
 | `deliverables/DELIVERABLES.md` | **产出物登记宪法**（新增文件先读 §1.1 落点规则，落地当天登记） |
-| `docs/DECISIONS.md` | ADR-001~032（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、ADR-030 索引三源与缺失不删、ADR-031 设置页信息架构、ADR-032 资源库媒体优先） |
+| `docs/DECISIONS.md` | ADR-001~040（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、ADR-030 索引三源与缺失不删、ADR-031 设置页信息架构、ADR-032 资源库媒体优先、**ADR-038 Tubly 只取模式、ADR-039 YouTube 路线、ADR-040 Chrome 147 文件名保护失效 → FSA 落盘**） |
 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` / `IMAGE-DOWNLOAD-PLAN.md` | 图片线调研（已拍板）与方案 v1.2 |
+| `docs/IMAGE-I4-IMPL.md` | **图片线 I4 实现规格**（浮标 + 清单面板，实施中；§22 验收） |
+| `docs/REF-YTB-TUBLY.md` | Tubly(`YTB.crx`) 拆包分析：crx 里没有解析器、WASM 是授权校验、7 个可复用代理层模式 |
+| `docs/YT-FEASIBILITY.md` | **YouTube 可行性实测**（权威证据）：Web 端 0 条直链 → 客户端矩阵 → 403 归因到 `n` → 206 真字节；SABR 复放可行 |
+| `docs/YT-IMPLEMENTATION.md` | **YouTube 实现与验收**：文件地图、数据流、四个关键设计、验证矩阵（21/21）、已知限制 |
 | `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | 自动入库方案的落地映射（已实现） |
 | `docs/LIBRARY-PLAN-审计方案.md` | 给评审人/审计 AI 的找茬手册（已执行过一轮，结论在 §12） |
 | `deliverables/prototypes/library-prototype-v1.html` | 资源库交互基准（v1.3） |
@@ -342,9 +389,9 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 ```
 你是接手「苏哥的钓鱼竿」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§13。
-项目是私有自用 Chrome MV3 扩展，主线是本地资源库 + 图片下载；S0→S5b 与 I1–I3 已完成并全绿（13 套 380 条），下一步图片线 I4 浮标 + 清单面板。
+项目是私有自用 Chrome MV3 扩展，主线是本地资源库 + 图片下载 + YouTube 播放器下载；S0→S5b、I1–I4、YouTube 下载已完成（16 套 571 条，当前 15/16 绿——I4 引入的 I3 回归 C1 待修），下一步图片线 I5–I6 与 YouTube 深水区（SABR / 流式 / WebM）。
 规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
 git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。
 改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome；CDP 脚本用系统 Python 3.12（装了 websocket-client）。
-开始前先按 docs/HANDOFF.md §5 跑一遍十三套回归（57/58/27/17/14/39/35/30/27/27/47/34/35），确认全绿再动代码。
+开始前先按 docs/HANDOFF.md §5 跑一遍十六套回归（57/58/27/57/17/14/39/35/30/27/27/47/34/35/46/21），确认全绿再动代码。
 ```

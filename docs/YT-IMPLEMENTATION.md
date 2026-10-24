@@ -101,6 +101,10 @@ Downloads/video-rod/YouTube/<作者>_<标题>_<高>p.mp4
 
 所以主通道改成 **File System Access**：拿资源库已授权的根句柄 `VRDB.getHandle('root')`，按 `relPath` 建子目录、写文件。文件名 100% 归我们管，还顺带绕开了「先把整个文件塞进 blob 再交给下载管理器」的内存峰值。
 
+> ⚠️ 这里有个**必踩的坑**（HANDOFF §6.6）：句柄指向的是**资源库根**（A 模式 = `<下载目录>/video-rod`），
+> 里面没有 `video-rod/` 这一层。所以写盘前必须把 `relPath` 的首段前缀（`subdir` / db 里的 `rootPrefix`）剥掉，
+> 否则会落成 `video-rod/video-rod/YouTube/…`。首版就踩了，现在有断言卡着。
+
 没有授权目录 / 不支持 FSA 时，退回 `chrome.downloads`，并在完成文案里**如实说明名字可能被改**——不假装成功。
 
 （Tubly 那个 600×260「另存为」小窗用 `showDirectoryPicker`，是同一个原因：下载管理器给不了可靠的文件名。）
@@ -122,7 +126,7 @@ Downloads/video-rod/YouTube/<作者>_<标题>_<高>p.mp4
 | 4K 档没被 codec 过滤掉 | ✅（AV1-in-MP4 保留） |
 | n 参数判断 | 无 `n` 的直链直接拉，不起沙箱 |
 | **fMP4 合并** | 675433 字节；`readyState=4`、时长 12.10s、**视频/音频解码字节均 > 0**、无 `MediaError` |
-| 三段路径 | `video-rod/YouTube/测试频道/视频/测试视频…_1080p.mp4` |
+| 三段路径 | `<库根>/YouTube/测试频道/视频/测试视频…_1080p.mp4`（已剥 `video-rod` 前缀） |
 | FSA 落盘 | ✅ 只写 1 个文件，字节数一致 |
 | 未走下载器兜底 | ✅ 没有任何 UUID 名文件 |
 | 注入按钮 / 开窗 / 消息链路 | ✅ CDP 真机（`deliverables/assets/yt-button-injected.png`） |

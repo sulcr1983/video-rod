@@ -44,6 +44,7 @@
         chosen: null,
         busy: false,
         subdir: 'video-rod',
+        prefix: 'video-rod',      // 资源库根已经到的那一层（FSA 写盘前要剥掉）
         durSec: 0,
         mergeError: '',
         via: ''
@@ -487,6 +488,10 @@
     function writeToRoot(root, relPath, blob) {
         var segs = String(relPath).split('/').filter(Boolean);
         var fileName = segs.pop();
+        // 关键：FSA 根句柄指向的是「资源库根」（A 模式 = <下载目录>/video-rod），
+        // 里面没有 video-rod/ 这一层——必须先把首段前缀剥掉，否则会落成
+        // video-rod/video-rod/YouTube/… （见 docs/HANDOFF.md §6.6）
+        if (segs.length && segs[0] === state.prefix) { segs.shift(); }
         var p = Promise.resolve(root);
         segs.forEach(function (seg) {
             p = p.then(function (d) { return d.getDirectoryHandle(seg, { create: true }); });
@@ -631,7 +636,17 @@
     try {
         chrome.storage.local.get('vrLibSettings', function (o) {
             var s = o && o.vrLibSettings;
-            if (s && s.subdir) { state.subdir = s.subdir; }
+            var sub = (s && s.subdir) || 'video-rod';
+            state.subdir = sub;
+            state.prefix = sub;
+            // 自定义目录模式下索引首段可能不是 subdir，以 db 里记的 rootPrefix 为准
+            try {
+                if (window.VRDB && typeof VRDB.getSetting === 'function') {
+                    VRDB.getSetting('rootPrefix', '').then(function (pfx) {
+                        if (pfx) { state.prefix = String(pfx).replace(/^\/+|\/+$/g, ''); }
+                    }).catch(function () { /* 用 subdir 兜底 */ });
+                }
+            } catch (e) { /* 用 subdir 兜底 */ }
         });
     } catch (e) { /* 用默认 video-rod */ }
 

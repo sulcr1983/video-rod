@@ -1,8 +1,10 @@
 # 苏哥的钓鱼竿 — 测试策略与用例
 
-> 版本：v1.5 ｜ 日期：2026-10-24 ｜ 状态：已确认
+> 版本：v1.6 ｜ 日期：2026-10-24 ｜ 状态：已确认
 > v1.4 变更：S5 删除与回收站验收（§18）。
 > v1.5 变更：S5b 批量选择/重命名（§19）、I1/I2 图片悬停下载（§20）；测试基线扩到 **11 套 318 条**。
+> v1.6 变更：I3 图片批量（§21）、I4 浮标+清单面板（§22）、YouTube 播放器下载（§23）；
+> 基线按各套自报断言重算为 **16 套 571 条**（旧文档的 318/380 是漏算，已对齐清单）。
 > 原则：小项目不搞重型测试框架，**冒烟 + 关键路径 + 回归清单**三件套，每个用例都是大白话可执行的。
 
 ---
@@ -986,3 +988,49 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 2. 只认 `<img>`：CSS 背景图、`<picture>` 的 `<source>`、Canvas 扫不到（与 I1–I3 一致）。
 3. 懒加载图未解码时不进清单（`scanImages` 已过滤），滚动后才补。
 4. 浮标关闭用 `sessionStorage`（刷新恢复）；位置用 `localStorage`（跨站共享偏移，I5 可按站点存）。
+
+---
+
+## 23. YouTube 播放器下载验收（YT）
+
+> 脚本：`tools/yt-download-test.py`（**21 条断言，离线**）+ `tools/yt-ext-test.py`（真机级联，需网络）
+> 实现与背景：`docs/YT-IMPLEMENTATION.md`、`docs/YT-FEASIBILITY.md`
+
+### 23.1 为什么单开一套「离线端到端」
+
+YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进回归会导致**测试结果随环境漂移**。
+所以这套测试只把「取格式」打桩，其余全是产品代码原样执行：
+
+1. 本地起带 CORS 的静态服务，吐出真实的一对 DASH 轨（`.work/_video.mp4` / `_audio.mp4`）；
+2. `Page.addScriptToEvaluateOnNewDocument` 在页面脚本之前替换 `chrome.runtime.sendMessage`，
+   只拦 `ytFormats` 并回假档位，其余消息透传；
+3. 用内存 mock 顶替 FSA 根句柄（记录 path/size/blob），因为 `showDirectoryPicker` 无法自动化。
+
+于是「档位渲染 → n 参数判断 → 拉流 → fMP4 合并 → 三段路径 → FSA 写盘 → Chrome 解码」
+这条链完全可无人值守回归，且不依赖 YouTube 是否放行。
+
+### 23.2 用例（21 条）
+
+| 组 | 断言 |
+|---|---|
+| 加载 | 扩展加载成功；`downloads.download.__vrNameHooked` 为真；`VRPath.buildRelPath` 可用 |
+| 档位 | 4K60 / 1080p / 720p / 360p(免合并) / 仅音频 全部渲染；**4K 档没被 codec 过滤掉** |
+| 落盘 | 只写 1 个文件；路径含 `video-rod/YouTube/<博主>/视频/`；文件名带分辨率；字节数与合并结果一致 |
+| 兜底 | 未走 `chrome.downloads`；没有任何 UUID 名文件 |
+| 容器 | 能取到合并字节；`MediaError=0`；时长 12.10s；**视频/音频解码字节均 > 0** |
+
+### 23.3 踩过的坑（测试脚手架，不是产品缺陷）
+
+1. **mock 的 `createWritable()` 必须返回 Promise** —— 真 FSA API 返回 Promise，返回普通对象会在 `.then` 上炸，
+   表现为「FSA 静默失败、悄悄退回下载器」。
+2. **小窗里解码会被节流** —— 下载页是 popup 窗口，后台状态下 `<video>` 的 `readyState` 停在 0 且
+   `play()` 会把 CDP 连接挂死；校验要搬到前台标签页（`data:` URL）做。
+3. **CDP 固定端口会连到上一轮没退干净的 Chrome** —— 症状是「点下载的瞬间 socket closed」；
+   端口改成随机即稳定。
+4. **`Page.captureScreenshot` 的 clip 是文档坐标** —— 要加 `scrollX/scrollY`，否则截到视口外的位置。
+
+### 23.4 边界
+
+1. **不测**「YouTube 接口通不通」——那由 `tools/yt-ext-test.py` 单独跑，且允许失败（受风控影响）。
+2. 只覆盖 MP4 容器：WebM/Opus 档不在本套断言内。
+3. 4K 长视频的内存峰值未做压力测试（>1GB 有 OOM 风险，见实现文档 §6）。
