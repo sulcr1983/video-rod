@@ -691,8 +691,8 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 
 | # | 文件 | 类型 | 用途 |
 |---|---|---|---|
-| 22 | `tools/cdp-library-test.py` | 新增 | 资源库页面 CDP 回归（对应 TESTING §8 的 A–I 九组） |
-| 23 | `tools/probe-file-access/` | 新增（临时） | P0 探针扩展（见 §13.7），验证完可删 |
+| 22 | `tools/cdp-library-test.py` | 已建（草稿） | 资源库页面 CDP 回归（对应 TESTING §8 的 A–I 九组）；尚未跑通 |
+| 23 | `tools/probe-file-access/` | 已建并执行 | P0 探针扩展 + `run-probe.py` 执行器；三项全过，保留作为 Chrome 策略收紧时的复检工具 |
 
 ### 13.2 现有代码接入点（已核实，非猜测）
 

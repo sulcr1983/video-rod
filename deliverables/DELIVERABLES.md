@@ -1,8 +1,8 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.5 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
+> 版本：v1.6 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
-> v1.5 变更：登记 P0 探针扩展（`tools/probe-file-access/`，三项全过）；方案升 v1.5（S0 实测结果关闭全部待实测项）；原型维持 v1.3。
+> v1.6 变更：新增 **§1.1 工作区边界**——确立 `.work/` 为本机临时工作区（gitignore、可整体删除），并规定"项目文件不得散落在仓库外"；清理 `E:\test\` 根目录下 5 个临时目录（3 个 Chrome profile + 测试媒体 + 草稿脚本），`tools/` 新增两个可复用脚本。
 
 ---
 
@@ -24,6 +24,10 @@ video-rod/
 │   ├── reviews/           #   评审/审计报告（日期化命名）
 │   └── assets/            #   生成的静态资产（图标、预览图）
 ├── tools/                 # 🔧 工具脚本：纯脚本，不是产出物
+├── .work/                 # 🧹 本机临时工作区：不进 git，可整体删除
+│   ├── profiles/          #   测试用 Chrome profile（原型回归 / P0 探针）
+│   ├── media/             #   测试媒体样本（probe.jpg / probe.mp4）
+│   └── scripts/           #   一次性脚本草稿（正式脚本请放 tools/）
 └── archive/               # 🗄️ 归档：上游遗产+作废产出物，留证不删
 ```
 
@@ -31,7 +35,22 @@ video-rod/
 - 写「项目应该是什么样」→ `docs/`
 - 做出来一个「能给苏哥看/能点/能用」的实物 → `deliverables/`
 - 「跑一下干个活」的脚本 → `tools/`
+- 「只有本机跑一次、删了也不影响」的 → `.work/`（**不进 git**）
 - 「没用了但删了心虚」→ `archive/`
+
+### 1.1 工作区边界（v1.6 新增）
+
+**硬规则：本项目产生的任何文件，都不允许散落在仓库外（如 `E:\test\` 根目录）。**
+
+| 类型 | 落点 | 进 git？ | 可删？ | 例子 |
+|---|---|---|---|---|
+| 交付物 | `deliverables/` | ✅ | 仅按 §5 生命周期 | 原型、审计报告、预览图 |
+| 工程文档 | `docs/` | ✅ | 仅按 ADEC 流程 | 方案、需求、测试策略 |
+| 可复用工具 | `tools/` | ✅ | 否 | CDP 测试脚本、探针扩展 |
+| 本机临时件 | `.work/` | ❌（已 gitignore） | ✅ 随时 | Chrome profile、测试媒体、草稿 |
+| 归档留证 | `archive/` | ✅ | 否 | 上游遗产、作废原型 |
+
+`.work/` 的说明与清理命令见 [.work/README.md](../.work/README.md)。
 
 ## 2. 命名规范
 
@@ -94,7 +113,8 @@ video-rod/
 | M5b 秒存/快捷键验收脚本 | `tools/cdp-m5b-test.py` | v1.0 | 已定稿 | 走 `vrSaveContextMedia` 真实路径验右键秒存落盘；CDP 真实派发 Alt+Shift+V 验快捷键 |
 | SW 状态诊断探针 | `tools/cdp-probe.py` | v1.0 | 已定稿 | 读 service worker 的 G/cacheData 状态，排查「嗅探为 0」类问题用 |
 | M2 面板回归截图（深色版） | `deliverables/assets/m1-regress.png` | 2026-10-17 | 已归档 | M2 阶段复跑 M1 断言集的实拍（防重构改坏）；浅色版现行 |
-| P0 探针扩展（file:// 直读 + downloads 绝对路径） | `tools/probe-file-access/` | v1.0 | 已定稿 | 最小 MV3 扩展：`probe.html` + `probe.js`，结果写 `window.__PROBE__` 供 CDP 读取；三项全过（TESTING §9） |
+| P0 探针扩展（file:// 直读 + downloads 绝对路径） | `tools/probe-file-access/` | v1.0 | 已定稿 | 最小 MV3 扩展：`probe.html` + `probe.js`，结果写 `window.__PROBE__` 供 CDP 读取；三项全过（TESTING §9）。配套 `run-probe.py` 为 CDP 执行器，媒体默认在 `.work/media/probe` |
+| 资源库原型回归脚本（CDP） | `tools/cdp-library-test.py` | v1.0（草稿） | 待跑通 | 针对 `library-prototype-v1.html` v1.3 的 A–I 九组断言；端口用 `CDP` 环境变量覆盖（默认 9333）。**尚未执行**，TESTING §8.3 未勾选 |
 | 本地资源库方案（评审版） | `docs/LIBRARY-PLAN.md` | v1.5 | 待二次评审 | 调研 + 架构选型 + 中文目录命名 + 数据模型 + 删除/迁移 + 开源 UX 取舍 + §11 审计指北 + §12 审计复核 + **§13 实现规格** + **§13.7 S0 实测结果**；v1.5 = S0 三项全过，待实测项全部关闭 |
 | 本地资源库交互原型 | `deliverables/prototypes/library-prototype-v1.html` | v1.3 | 待二次评审 | 单文件可交互原型（27 条演示数据）；视频键盘 ↑↓/←→ 与连播（**自绘播放控件**，解决原生 controls 吞键）；时间线视图、右键菜单、悬停预览、回收站；**v1.3 新增**：星标+只看星标、轻量标签 chips+标签筛选、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条悬停时间气泡；内建「评审说明」 |
 | M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 已定稿 | M7 回归时重拍为浅色版（12 分P横幅 + 展开态），与 final-m7-bili.png 同内容 |
@@ -134,6 +154,8 @@ video-rod/
 | 生成物 | 图标预览图这类可再生成的产物，登记在册但可随时重生，不是源码 |
 | 提交信息 | 说清「做了什么+为什么」，参照 git log 既有风格 |
 | 每个 M 里程碑 | 一个提交节点，坏了能回滚 |
+| 临时工作区 | `.work/` 已在 `.gitignore`；**禁止把 profile / 测试视频 / 临时草稿提交进仓** |
+| 仓库外零散落 | 新增文件前先确认落点；项目文件不得放在 `E:\test\` 等仓库外的裸目录 |
 
 ## 7. 本规范的维护
 
