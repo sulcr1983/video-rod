@@ -1,7 +1,7 @@
-# LIBRARY-PLAN v1.4 方案审计方案
+# LIBRARY-PLAN v1.5 方案审计方案
 
 > 版本：Audit-Plan v1.0 ｜ 日期：2026-10-24 ｜ 编制：QoderWork ｜ 委托：Sunny姐姐
-> 被审对象：`docs/LIBRARY-PLAN.md` v1.4（约 660 行）+ `deliverables/prototypes/library-prototype-v1.html`（v1.3，约 110 KB 单文件）
+> 被审对象：`docs/LIBRARY-PLAN.md` v1.5（含 §13.7 S0 实测结果）+ `deliverables/prototypes/library-prototype-v1.html`（v1.3，约 110 KB 单文件）
 > **口径更新（v1.4）**：项目是**私有仓库、本机自用、不分发**（上游 GPL-3.0 不产生分发义务）。**开源代码能抄就抄**，按引入成本择优（§6.2）。本手册中凡涉及许可证义务的段落均以此为准。
 > 交付：本文件即审计执行手册，审计人按此走一遍即可给出通过/条件通过/否决结论。
 
