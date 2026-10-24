@@ -18,6 +18,7 @@
   <!-- 添加导航栏 -->
   <nav class="sidebar" aria-label="Main Navigation">
     <ul>
+      <li><a href="#anchorLibrary" title="资源库">资源库</a></li>
       <li><a href="#anchorSuffix" data-i18n="suffix" title="suffix"></a></li>
       <li><a href="#anchorType" data-i18n="type" title="type"></a></li>
       <li><a href="#anchorRegexMatch" data-i18n="regexMatch" title="regexMatch"></a></li>
@@ -39,6 +40,51 @@
   </nav>
 
   <div class="wrapper options">
+
+    <!-- 资源库（本地下载管理） -->
+    <section id="anchorLibrary">
+      <h1 class="optionsTitle">资源库</h1>
+      <div class="optionBox">
+        <span class="explain">下载落到「系统下载目录 / 子目录 / 平台 / 博主 / 类型」，与日常下载分开。</span>
+
+        <div class="item">
+          <label>当前根目录</label>
+          <code id="vrLibRoot" style="font-family:Consolas,monospace">未探测（点下方「校验落盘」）</code>
+        </div>
+
+        <div class="item">
+          <label>子目录名</label>
+          <input type="text" id="vrLibSubdir" value="video-rod" style="width:200px" />
+          <button type="button" id="vrLibSaveSubdir" class="button2">保存</button>
+          <span id="vrLibSubdirMsg" class="explain"></span>
+        </div>
+
+        <div class="item">
+          <label>落盘模式</label>
+          <select id="vrLibMode">
+            <option value="system">系统下载目录下的子目录（推荐，零拷贝）</option>
+            <option value="custom">自定义文件夹（下载后搬移）</option>
+          </select>
+        </div>
+
+        <div class="item">
+          <label>自定义目录</label>
+          <input type="text" id="vrLibCustomRoot" placeholder="例如 E:\test\video-rod\download" style="width:320px" />
+          <button type="button" id="vrLibPickDir" class="button2">选择文件夹并授权</button>
+          <span id="vrLibCustomMsg" class="explain"></span>
+        </div>
+
+        <div class="item">
+          <button type="button" id="vrLibVerify" class="button2">校验落盘</button>
+          <span id="vrLibVerifyMsg" class="explain"></span>
+        </div>
+
+        <div class="item">
+          <button type="button" id="vrLibMigrate" class="button2" disabled>迁移…</button>
+          <span class="explain">（S1b 实现：结构迁移 / 改子目录名 / 换根）</span>
+        </div>
+      </div>
+    </section>
 
     <!-- 抓取后缀 -->
     <section id="anchorSuffix">
@@ -864,6 +910,8 @@
   </div>
 
   <script src="lib/base64.js" defer></script>
+  <script src="js/library/path.js" defer></script>
+  <script src="js/library/settings.js" defer></script>
   <script src="js/vr-download-hook.js" defer></script>
   <script src="js/options.js" defer></script>
   <script src="js/i18n.js" defer></script>

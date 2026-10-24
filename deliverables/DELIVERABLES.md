@@ -116,6 +116,10 @@ video-rod/
 | P0 探针扩展（file:// 直读 + downloads 绝对路径） | `tools/probe-file-access/` | v1.0 | 已定稿 | 最小 MV3 扩展：`probe.html` + `probe.js`，结果写 `window.__PROBE__` 供 CDP 读取；三项全过（TESTING §9）。配套 `run-probe.py` 为 CDP 执行器，媒体默认在 `.work/media/probe` |
 | 资源库原型回归脚本（CDP） | `tools/cdp-library-test.py` | v1.0 | 已定稿 | 原型 v1.3 的 A–I 九组共 42 条断言；2026-10-24 实测 **42/42 通过、控制台 0 错误**。端口 `CDP` 环境变量可覆盖（默认 9333） |
 | 资源库原型验收截图 | `deliverables/assets/library-v13-{grid,lightbox,video}.png` | v1.3 | 已定稿 | 三态实拍：网格（星标+标签+键盘高亮）、灯箱（缩略图带）、视频弹层（进度时间气泡）；1440×900 |
+| 资源库路径引擎 | `js/library/path.js` | v1.0 | 已定稿 | 平台识别 / 类型推断 / 博主段 / 三段目录拼装 / 长度保护 / `file://` 编码；被 popup、background（秒存）、x-button（X 按钮）三处下载链路复用 |
+| 资源库设置页脚本 | `js/library/settings.js` | v1.0 | 已定稿 | options.html「资源库」分区：子目录名、落盘模式、FSA 授权、**校验落盘**（微下载反推真实根目录）；迁移按钮 S1b 启用 |
+| 路径引擎单测 | `tools/test-path.js` | v1.0 | 已定稿 | **48/48**：覆盖 4 个平台识别、类型推断、博主段、长度截断、`file://` 往返编码 |
+| S1a 端到端验收脚本 | `tools/cdp-s1a-test.py` | v1.0 | 已定稿 | **17/17**：扩展加载 + 设置页 7 项 + 三段目录落盘 6 项 + 控制台零错误（TESTING §10） |
 | 本地资源库方案（评审版） | `docs/LIBRARY-PLAN.md` | v1.7 | 待二次评审 | 调研 + 架构选型 + 中文目录命名 + 数据模型 + 删除/迁移 + 开源 UX 取舍 + §11 审计指北 + §12 审计复核 + §13 实现规格 + §13.7 S0 实测；v1.7 = 根目录定为 `<下载目录>\video-rod` 子目录（零拷贝、不混日常下载）、custom 自定义目录模式、三种迁移 |
 | 本地资源库交互原型 | `deliverables/prototypes/library-prototype-v1.html` | v1.3 | 待二次评审 | 单文件可交互原型（27 条演示数据）；视频键盘 ↑↓/←→ 与连播（**自绘播放控件**，解决原生 controls 吞键）；时间线视图、右键菜单、悬停预览、回收站；**v1.3 新增**：星标+只看星标、轻量标签 chips+标签筛选、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条悬停时间气泡；内建「评审说明」 |
 | M3 B站分P横幅截图 | `deliverables/assets/m3-bili-banner.png` | 2026-10-17 | 已定稿 | M7 回归时重拍为浅色版（12 分P横幅 + 展开态），与 final-m7-bili.png 同内容 |

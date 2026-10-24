@@ -90,6 +90,7 @@
       ],
       "js": [
         "js/naming.js",
+        "js/library/path.js",
         "js/x-button.js"
       ],
       "run_at": "document_idle"
