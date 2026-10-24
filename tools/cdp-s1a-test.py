@@ -43,7 +43,7 @@ def main():
     check("B3 导航含资源库入口", cdp.eval(
         "Array.from(document.querySelectorAll('nav a')).some(a => a.getAttribute('href') === '#anchorLibrary')", osid), True)
     check("B4 子目录默认 video-rod", cdp.eval("document.getElementById('vrLibSubdir').value", osid), "video-rod")
-    check("B5 迁移按钮暂禁用（S1b 才做）", cdp.eval("document.getElementById('vrLibMigrate').disabled", osid), True)
+    check("B5 迁移按钮已启用（S1b 已落地）", cdp.eval("document.getElementById('vrLibMigrate').disabled", osid), False)
 
     # 校验落盘
     cdp.eval("document.getElementById('vrLibVerify').click()", osid)

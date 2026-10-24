@@ -316,6 +316,20 @@
         DEFAULTS: DEFAULTS,
         get: function () { return state ? Object.assign({}, state) : null; },
         reload: function (cb) { load(cb || function () {}); },
-        verify: verify
+        verify: verify,
+        // 迁移后同步子目录名（migrate-ui 调用）
+        setSubdir: function (name, cb) {
+            var v = cleanSeg(name);
+            if (!state) {
+                load(function () { root.VRSettings.setSubdir(v, cb); });
+                return;
+            }
+            save({ subdir: v }, function () {
+                render();
+                var sub = $('vrLibSubdir');
+                if (sub) { sub.value = v; }
+                if (cb) { cb(v); }
+            });
+        }
     };
 })(typeof self !== 'undefined' ? self : this);

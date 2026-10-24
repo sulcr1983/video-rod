@@ -416,3 +416,58 @@ D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4
 | IDB 连接泄漏 / 版本升级被 blocked | 每次读写都 `indexedDB.open` 一条新连接，SW 长跑会累积；将来升 v2 会被老连接卡住 | `db.js` 缓存单条连接，`onversionchange` 主动关闭并置空 |
 | 重下同名文件丢星标/标签 | `putFiles` 是覆盖写，`starred:0 / tags:[]` 会把用户之前标的星冲掉 | `sw-library.js` 落库前 `getFile(rel)` 读旧记录，保留非空 `starred`/`tags` |
 | 未知 `vrLib.*` 动作无应答 | 消息前缀匹配上但 `handleMessage` 返回 false，调用方回调永不触发 | 统一回 `LIB_E_ACTION` 错误应答，并把预登记 key 按命中键删除（`url` / `finalUrl` 分别记账） |
+
+---
+
+## 12. S1b 迁移验收（2026-10-24，39/39 通过）
+
+> 对应 LIBRARY-PLAN §13.10：`js/library/migrate.js`（引擎）+ `js/library/migrate-ui.js`（设置页面板）。
+> 三种形态：改子目录名 / 换根（A↔B）/ 整理旧文件；统一 dry-run → 复制 → 校验 → 删源 → 日志 → 回滚。
+
+### 12.1 环境与测试手法
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147，全新 profile `.work/profiles/ext-test4`，调试端口 **9345** |
+| 脚本 | `tools/cdp-migrate-test.py`（`VR_CDP=http://127.0.0.1:9345`） |
+| 目录来源 | **OPFS 句柄注入**：`navigator.storage.getDirectory()` 造真实 FSA 目录树，直接把句柄喂给 `VRMigrate` |
+| 为什么这样做 | `showDirectoryPicker()` 是原生选择器，CDP 点不了；OPFS 走的是同一套 `createWritable` / `getFile` / `removeEntry` 代码路径 |
+| 夹具 | `sub/clip.mp4`（2MB+123B）、`pic.jpg`（300KB+7B）、`note.part`、`readme.txt`、`_migration/log.json` |
+
+### 12.2 结果（39 条）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A 准备 | 扩展加载、VRMigrate/VRDB/VRSettings 已挂载 | 2/2 |
+| B 预演 | 只列媒体文件、2 条可迁移、跳过/冲突/阻断为 0、总字节正确、**预演不改动文件** | 5/5 |
+| C 执行 | 完成 2 条、未中止无失败、目标结构/大小一致、源媒体清空、非媒体与私有目录不动 | 6/6 |
+| D 回滚 | 回滚成功、源复原、目标清空 | 3/3 |
+| E 冲突 | 同名同大小 → skip；同名不同大小 → conflict；逐条动作正确 | 2/2 |
+| F 改名 | 预演 1 条、目标路径正确、执行完成、新目录就位、旧目录清理、**索引 relPath 同步**、星标/标签保留 | 7/7 |
+| G 整理 | 1 条可迁移（txt 不收）、三段路径正确、执行完成、文件落位、源删且非媒体保留 | 5/5 |
+| H 校验 | 同文件通过、内容不同被拒、截断被拒 | 3/3 |
+| I 面板 | 按钮可用、面板展开、三种方式、未预演禁用执行、缺目录给引导文案 | 5/5 |
+| J 控制台 | 无 error / exception | 1/1 |
+
+### 12.3 本轮修掉的两个真 bug
+
+1. **换根被误判成「路径未变」**：`classify()` 原本只看 `from === to` 就 skip。换根时两边相对路径本来就相同，导致整盘跳过（首轮 B2 得到 move=0 / skip=2）。
+   修法：只有**同一个根**（`srcHandle === dstHandle`）时 `from === to` 才算路径未变。整理旧文件仍走同根判定。
+2. **测试辅助函数 `exists()` 只查文件**：查 `_migration` 目录时永远 false（C6 假失败）。改为先 `getFileHandle` 再 `getDirectoryHandle`。属测试缺陷，非产品缺陷。
+
+### 12.4 回归
+
+| 套件 | 结果 |
+|---|---|
+| `tools/test-path.js` | **57/57** |
+| `tools/cdp-s1a-test.py` | **17/17**（B5 断言从「迁移按钮禁用」改为「已启用」） |
+| `tools/cdp-index-test.py` | **14/14** |
+| `tools/cdp-migrate-test.py` | **39/39** |
+
+### 12.5 尚未覆盖 / 已知边界
+
+1. **原生目录选择器没走自动化**：`showDirectoryPicker()` 的授权弹窗只能人点。引擎与 IO 已用 OPFS 全覆盖，剩下的是「拿句柄」这一步。
+2. **失败中止分支未构造真实场景**：配额不足 / 文件被占用无法在 OPFS 里稳定复现，靠代码路径保证「失败不删源」；`aborted` 分支只有设计保证。
+3. **深度校验（SHA-256）未跑**：`deepVerify` 开关存在但测试未开（大文件读两遍成本高）。
+4. **索引 absPath 依赖 `detectedRoot`**：没跑过「校验落盘」的 profile 里，迁移只更新 relPath，absPath 保留原值等 S2 校对。
+5. **改子目录名会自动改设置里的 `subdir`**（仅 UI 层）；引擎本身不改设置，避免测试互相污染。
