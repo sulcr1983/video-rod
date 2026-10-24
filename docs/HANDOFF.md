@@ -1,7 +1,7 @@
 # 钓鱼竿 Video Rod — 交接文档
 
-> 更新：2026-10-24 ｜ HEAD：`93b24d2`（`master`，工作区干净）
-> 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§12（已验收记录）。
+> 更新：2026-10-24 ｜ HEAD：`0132072`（`master`，工作区干净）
+> 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§13（已验收记录）。
 > 本文只写「现在是什么状态、怎么跑、别踩什么坑」，设计论证在 LIBRARY-PLAN 里。
 
 ---
@@ -16,14 +16,14 @@
 
 ## 1. 一句话现状
 
-这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 下载完成自动入库**，四套回归全绿；
+这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 下载完成自动入库 → S2 索引服务**，五套回归全绿；
 图片悬停下载只完成了**调研 + 方案 v1.2 + 可交互原型 v1.2**，**代码一行未写**。
-下一步是 **S2 索引服务**（`indexer.js`），它是 S3 资源库页面的数据底座。
+下一步是 **S3 资源库页面**（`library.html` + `ui.js` + `thumbs.js`），索引数据底座已经就绪。
 
 | 项 | 值 |
 |---|---|
 | 仓库 | `E:\test\video-rod`（`origin` = `github-video-rod:sulcr1983/video-rod.git`） |
-| 分支 / HEAD | `master` / `93b24d2 feat(library): 迁移——dry-run/复制/校验/回滚（FSA 句柄）` |
+| 分支 / HEAD | `master` / `0132072 feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
 | 形态 | Chrome MV3 扩展（猫抓 cat-catch 的 fork），Service Worker 版 background |
 | 下载根目录 | `<Chrome 下载目录>\video-rod\<平台>\<博主(@ID)>\<类型>\<文件名>`（本机实测 `D:\Users\liq21\Downloads\video-rod`） |
 | 索引 | IndexedDB `vr-library` v1（5 个 store） |
@@ -68,7 +68,7 @@
 | `js/library/migrate.js` | `VRMigrate`：三种迁移（改子目录名 / 换根 / 整理旧文件）；扫描 → dry-run → 流式复制 → 校验（size + 首尾 64KB，可选 SHA-256）→ 删源 → 日志 → 回滚 | ✅ 39/39 |
 | `js/library/migrate-ui.js` | 设置页 `#vrLibMigPanel`：选目录 / 预演表格 / 进度 / 回滚 | ✅ |
 | `js/vr-download-hook.js` | 页面侧包装 `chrome.downloads.download`：先记账（含资源库 meta）再下载，解决 Chromium bug 579563 丢文件名 | ✅（ADR-027） |
-| **`js/library/indexer.js`** | **尚未创建**（S2）：三源建索引 + 快照 + 校对 | ❌ 待做 |
+| `js/library/indexer.js` | `VRIndex`：三源建索引（downloads / 快照 / FSA 全量）+ `reconcile()` + 快照落盘与恢复；根解析三档；缺失只标不删（ADR-030） | ✅ 35/35 |
 | `library.html` / `css/library.css` / `ui.js` / `thumbs.js` / `lightbox.js` / `video.js` / `keyboard.js` / `trash.js` / `archive.js` | S3–S5 的文件，**均不存在** | ❌ |
 
 ### 3.3 关键数据流（别绕开）
@@ -100,6 +100,7 @@
 | **S1a** | 三段中文目录落盘 + 设置页「资源库」分区 + 校验落盘反推真实根目录 | **17/17**（TESTING §10） |
 | **自动入库** | 预登记 + 完成确认 + 索引落库 + 设置页索引状态/最近入库 | **14/14**（TESTING §11） |
 | **S1b** | 三种迁移 + dry-run + 流式复制 + 校验 + 回滚 + 迁移后索引同步 | **39/39**（TESTING §12） |
+| **S2** | `indexer.js`：三源建索引 + 快照破死锁 + reconcile + 设置页三个维护入口 | **35/35**（TESTING §13） |
 | 单测 | `tools/test-path.js` | **57/57** |
 | 图片线 | 调研 v0.1（已拍板双入口/清单面板/优先原图）、方案 v1.2（尺寸档位 + 图集分页）、原型 v1.2 | 原型 CDP **24/24**；**实现 0 行** |
 
@@ -123,21 +124,25 @@ Start-Process python -ArgumentList '-m','http.server','18080','--bind','127.0.0.
 # 2) 浏览器（改了 SW 引入的脚本就必须换新 profile + 新端口，见 §6.1）
 $chrome = "C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
 Start-Process $chrome -ArgumentList @(
-  '--remote-debugging-port=9345',
-  '--user-data-dir=E:\test\video-rod\.work\profiles\ext-test5',
+  '--remote-debugging-port=9346',
+  '--user-data-dir=E:\test\video-rod\.work\profiles\ext-test6',
   '--load-extension=E:\test\video-rod',
   '--no-first-run','--no-default-browser-check','about:blank')
 ```
 
-### 5.2 四套回归（按顺序跑）
+### 5.2 五套回归（按顺序跑）
 
 ```powershell
-$env:VR_CDP='http://127.0.0.1:9345'
+$env:VR_CDP='http://127.0.0.1:9346'
+# 注意：CDP 脚本要用「装了 websocket-client 的解释器」——本机是系统 Python 3.12，
+# 不是 WorkBuddy 托管的 3.13（后者没装 websocket）。
+$py = "C:\Users\XPENG\AppData\Local\Programs\Python\Python312\python.exe"
 
 node tools/test-path.js            # 57/57   纯 Node，无浏览器
-python tools/cdp-s1a-test.py       # 17/17   设置页 + 三段目录真落盘（会留下一个下载文件）
-python tools/cdp-index-test.py     # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
-python tools/cdp-migrate-test.py   # 39/39   OPFS 句柄注入，三种迁移 + 回滚
+& $py tools/cdp-s1a-test.py        # 17/17   设置页 + 三段目录真落盘（会留下一个下载文件）
+& $py tools/cdp-index-test.py      # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
+& $py tools/cdp-migrate-test.py    # 39/39   OPFS 句柄注入，三种迁移 + 回滚
+& $py tools/cdp-indexer-test.py    # 35/35   OPFS 句柄 + 真实下载，三源索引/快照/缺失语义
 ```
 
 原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
@@ -151,8 +156,8 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 ### 5.3 跑测试前必看
 
-- **测试会真下载到 `D:\Users\liq21\Downloads\video-rod\...`**：S1a 脚本不自动删，`cdp-index-test` / `cdp-migrate-test` 会自清理。
-- 记一次基线：**四条命令全绿**才算环境正常。任何一条失败先看 §6，不要先改代码。
+- **测试会真下载到 `D:\Users\liq21\Downloads\video-rod\...`**：S1a 脚本不自动删，`cdp-index-test` / `cdp-migrate-test` / `cdp-indexer-test` 会自清理。
+- 记一次基线：**五条命令全绿**才算环境正常。任何一条失败先看 §6，不要先改代码。
 - 测试产生的空目录（`video-rod\_verify\`、`其他网页\127.0.0.1\视频\`）属正常残留，不删也不影响。
 
 ---
@@ -192,32 +197,36 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 - 浏览器进程跑久了媒体管道会卡死（`readyState=0`、`networkState=2`）：**先重启浏览器**，别排查网络/代码。
 - FSA 句柄跨浏览器会话可能回到 `prompt` 状态：读文件（`file://`）不受影响，删除/迁移前需重新授权（`LIB_E_AUTH_LOST`）。
 
+### 6.6 索引 key 带 `subdir` 前缀，句柄却指向资源库根
+
+这是 S2 最容易写错的一处，已经踩过一次：
+
+- 索引 `relPath` 形如 `video-rod/B站/博主/视频/a.mp4`（首段是子目录，B 模式下是虚拟前缀）；
+- FSA 句柄指向**资源库根**（A 模式 = `<下载目录>/video-rod`，B 模式 = `customRoot`），里面**没有** `video-rod/` 这一层；
+- 所以任何「拿 relPath 直接去句柄里找文件」的代码都必须先 `stripPrefix(relPath, prefix)`。
+
+首版 `reconcile()` 忘了剥前缀，结果把整个索引全标成 missing（D4 断言当场抓到）。
+
 ---
 
 ## 7. 未完成（按建议顺序）
 
-### 7.1 S2 索引服务（下一步）
+### 7.1 S2 已完成（不要重做）
 
-要做 `js/library/indexer.js`（`VRIndex`），三源：
+`js/library/indexer.js`（`VRIndex`）已上线，能力与口径见 LIBRARY-PLAN §13.11，关键点：
 
-| 源 | 做法 | 前置 |
-|---|---|---|
-| downloads | `chrome.downloads.search()` 增量补齐 | 无 |
-| 快照 | 读写 `<根>/_library/index-<日期>.json` | **需 FSA 根句柄** |
-| 全量扫描 | 遍历根目录（与 `VRMigrate.listFiles` 同一套遍历） | **需 FSA 根句柄** |
+- 三源：`downloads`（只 upsert）/ `snapshot`（需句柄）/ `full`（需句柄）；
+- 扫不到的旧条目只标 `state:'missing'`，**永不自动删除**；重建保留 starred/tags/thumbKey/title；
+- 快照写 `<根>/_library/index-YYYYMMDD.json`，保留 7 份；不存 absPath，恢复时按当前根重算；
+- 设置页「索引维护」三个按钮：重建索引 / 写快照 / 授权目录并全量扫描。
 
-`VRIndex.build({mode}) / reconcile() / snapshot()` 签名见 LIBRARY-PLAN §13.4。
-**开工前先想清楚这三点**（方案里已有答案，别临场发挥）：
+**唯一还要补的**：`library.html` 首次打开时如果还没有索引，应自动跑一次 `build({mode:'full'})`（需句柄）或 `build({mode:'snapshot'})`——这属于 S3 的启动逻辑，不要现在改 indexer。
 
-1. 没有 FSA 句柄时只能跑 downloads + 内存里的 IDB，**不要假装能全量扫描**；
-2. `reconcile()`（文件是否还在）在纯路径下无法判断，只能靠 FSA `getFile()` 或 `file://` fetch；
-3. `absPath` 依赖 `detectedRoot`（设置页「校验落盘」才会填），没跑过的 profile 里它是空的——索引要能容忍这种状态。
+### 7.2 S3–S5（资源库页面与交互，下一步是 S3）
 
-### 7.2 S3–S5（资源库页面与交互）
-
-- S3：`library.html` + `css/library.css` + `ui.js` + `thumbs.js`（缩略图并发 2、懒生成、WebP 缓存；届时 `manifest.json` 补 `unlimitedStorage`），并在 popup/options 加「打开资源库」入口。
+- S3：`library.html` + `css/library.css` + `ui.js` + `thumbs.js`（缩略图并发 2、懒生成、WebP 缓存；届时 `manifest.json` 补 `unlimitedStorage`），并在 popup/options 加「打开资源库」入口。**数据直接用 `VRIndex`/`VRDB`，不要再写一套索引逻辑。**
 - S4：`lightbox.js` + `video.js` + `keyboard.js`（自绘控件；↑↓ 切队列、←→ ±5s、Shift ±30s、空格、连播）。
-- S5：`trash.js` + 右键菜单 + 回收站 UI（`_回收站/` 已约定；索引要忽略 `_` 开头目录）。
+- S5：`trash.js` + 右键菜单 + 回收站 UI（`_回收站/` 已约定；索引已忽略 `_` 开头目录）。
 
 交互与验收对照原型 `deliverables/prototypes/library-prototype-v1.html`（v1.3）与 LIBRARY-PLAN §6。
 
@@ -229,13 +238,15 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 ### 7.4 已知缺口 / 技术债（先认账，别当成新发现）
 
 1. **B 模式（自定义目录）还不完整**：`archive.js` 未实现。现在切到 `custom` 只改设置，**新下载仍落系统下载目录**；`VRMigrate` 只能搬存量文件。
-2. **没有资源库页面**：目前只能在设置页看到「索引状态 / 最近入库」文字列表。
+2. **没有资源库页面**：目前只能在设置页维护索引、看「索引状态 / 最近入库」文字列表；浏览界面是 S3。
 3. **缩略图未生成**：`thumb` store 建了但为空，S3 才做。
 4. **深校验开关未进 UI**：`vrLibSettings.deepVerify` 引擎已支持，设置页没有控件。
 5. **文档漂移**：`docs/DESIGN.md` 里写的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 不存在，能力实际在 `popup-videorod.js` / `x-button.js`。
 6. **构建链缺失**：产不出 `.crx/.zip`，只能开发者模式加载。
 7. **自动入库的未覆盖项**：批量并发、SW 中途被杀、图片类型（`type=image`）真机未验（TESTING §11.4）。
 8. **迁移的未覆盖项**：原生目录选择器未自动化（只剩「拿句柄」一步）、配额不足/文件占用分支未构造（TESTING §12.5）。
+9. **索引的未覆盖项**：1k 文件首屏性能未测（S2 只测正确性，真实首屏要等 S3）；快照保留 7 份的清理分支、downloads 超 5000 条的 `truncated` 分支未构造（TESTING §13.5）。
+10. **原生目录选择器仍未自动化**：`VRIndex` 的 full/snapshot 只用 OPFS 句柄验证过，「用户点选目录」靠手动；S3 做页面时要顺便把这一步的人工验收写进 TESTING。
 
 ---
 
@@ -243,10 +254,10 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 | 文档 | 地位 |
 |---|---|
-| `docs/LIBRARY-PLAN.md` | **主线权威方案 v1.8**：架构、目录命名、数据模型、删除/迁移、§11 审计指北、§12 审计复核、§13 实现规格、**§13.10 S1b 规格** |
-| `docs/TESTING.md` | **验收记录**：§8 原型 42/42、§9 P0、§10 S1a、§11 自动入库、§12 S1b；含环境限制与坑 |
+| `docs/LIBRARY-PLAN.md` | **主线权威方案 v2.0**：架构、目录命名、数据模型、删除/迁移、§11 审计指北、§12 审计复核、§13 实现规格、§13.10 S1b 规格、**§13.11 S2 索引规格** |
+| `docs/TESTING.md` | **验收记录**：§8 原型 42/42、§9 P0、§10 S1a、§11 自动入库、§12 S1b、**§13 S2 索引 35/35**；含环境限制与坑 |
 | `deliverables/DELIVERABLES.md` | **产出物登记宪法**（新增文件先读 §1.1 落点规则，落地当天登记） |
-| `docs/DECISIONS.md` | ADR-001~029（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界） |
+| `docs/DECISIONS.md` | ADR-001~030（ADR-027 文件名保护、ADR-028 复用策略、ADR-029 工作区边界、**ADR-030 索引三源与缺失不删**） |
 | `docs/IMAGE-DOWNLOAD-RESEARCH.md` / `IMAGE-DOWNLOAD-PLAN.md` | 图片线调研（已拍板）与方案 v1.2 |
 | `docs/IMAGE-AUTO-INDEX-RESEARCH.md` | 自动入库方案的落地映射（已实现） |
 | `docs/LIBRARY-PLAN-审计方案.md` | 给评审人/审计 AI 的找茬手册（已执行过一轮，结论在 §12） |
@@ -258,11 +269,11 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 ## 9. 接手第一小时清单
 
-1. `git status` 应干净；`git log -1` 应为 `93b24d2`。
+1. `git status` 应干净；`git log -1` 应为 `0132072`。
 2. 读本文 §3（代码地图）与 §7（未完成）。
-3. 起环境（§5.1），按 §5.2 跑四条命令，**确认 57/57、17/17、14/14、39/39**。
-4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区，点一次「校验落盘」确认根目录探测正常。
-5. 再动 S2：先补 `indexer.js` 的实现细节到 LIBRARY-PLAN（如有新增决策），再写代码。
+3. 起环境（§5.1），按 §5.2 跑五条命令，**确认 57/57、17/17、14/14、39/39、35/35**。
+4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区：点一次「校验落盘」确认根目录探测；再点「写快照」确认 `_library/index-*.json` 落盘。
+5. 再动 S3：先补 `library.html` / `ui.js` / `thumbs.js` 的实现细节到 LIBRARY-PLAN（如有新增决策），再写代码；索引直接复用 `VRIndex`/`VRDB`，不要重写。
 6. 每次代码改动前后都 `git commit + push`（用 §2 的身份参数）。
 
 ---
@@ -270,10 +281,10 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 ## 10. 恢复上下文提示词（直接复制给下一个 AI）
 
 ```
-你是接手「钓鱼竿 Video Rod」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§12。
-项目是私有自用 Chrome MV3 扩展，主线是本地资源库；S0/S1a/S1b/自动入库已完成并全绿，下一步 S2 索引服务（js/library/indexer.js）。
+你是接手「钓鱼竿 Video Rod」的 AI。先读 docs/HANDOFF.md，再读 docs/LIBRARY-PLAN.md 和 docs/TESTING.md §10~§13。
+项目是私有自用 Chrome MV3 扩展，主线是本地资源库；S0/S1a/S1b/自动入库/S2 索引已完成并全绿，下一步 S3 资源库页面（library.html + ui.js + thumbs.js）。
 规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
 git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。
-改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome。
-开始前先按 docs/HANDOFF.md §5 跑一遍四套回归，确认全绿再动代码。
+改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome；CDP 脚本用系统 Python 3.12（装了 websocket-client）。
+开始前先按 docs/HANDOFF.md §5 跑一遍五套回归（57/17/14/39/35），确认全绿再动代码。
 ```
