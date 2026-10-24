@@ -16,7 +16,7 @@
 
 ## 1. 一句话现状
 
-这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2**，七套回归全绿；
+这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2 → S5 删除与回收站**，八套回归全绿；
 图片悬停下载只完成了**调研 + 方案 v1.2 + 可交互原型 v1.2**，**代码一行未写**。
 下一步是 **S3 资源库页面**（`library.html` + `ui.js` + `thumbs.js`），索引数据底座已经就绪。
 
@@ -71,7 +71,8 @@
 | `js/library/indexer.js` | `VRIndex`：三源建索引（downloads / 快照 / FSA 全量）+ `reconcile()` + 快照落盘与恢复；根解析三档；缺失只标不删（ADR-030） | ✅ 35/35 |
 | `library.html` / `css/library.css` / `js/library/ui.js` / `js/library/thumbs.js` | 资源库页面（S3 核心）：概览 KPI/平台分布/博主速览（可收起）、全宽大卡网格、真表格、筛选/搜索/排序/分组、懒缩略图 | ✅ 30/30 |
 | `js/library/lightbox.js` / `video.js` / `keyboard.js` | 查看器 v2（S4）：队列、图片缩放拖拽、信息面板、缩略图带、视频自绘控件、键盘与连播 | ✅ 27/27 |
-| `trash.js` / `archive.js` | S5 与 B 模式的文件，**均不存在** | ❌ |
+| `js/library/trash.js` / `trash-ui.js` | 删除与回收站（S5）：软删除/清单/恢复/彻底删除/清空、右键菜单、抽屉、确认框 | ✅ 27/27 |
+| `archive.js` | B 模式（custom）的下载后搬移，**不存在** | ❌ |
 
 ### 3.3 关键数据流（别绕开）
 
@@ -105,6 +106,7 @@
 | **S2** | `indexer.js`：三源建索引 + 快照破死锁 + reconcile + 设置页三个维护入口 | **35/35**（TESTING §13） |
 | **S3** | 资源库页面：概览可视化（可收起）+ 全宽大卡 + 表格 + 筛选/搜索/排序/分组 | **30/30**（TESTING §15/§16） |
 | **S4** | 查看器 v2：缩放/拖拽、信息面板、缩略图带、视频自绘控件、键盘与连播 | **27/27**（TESTING §17） |
+| **S5** | 删除与回收站：软删除/清单/恢复/彻底删除/清空、右键菜单、抽屉、确认框 | **27/27**（TESTING §18） |
 | 单测 | `tools/test-path.js` | **57/57** |
 | 图片线 | 调研 v0.1（已拍板双入口/清单面板/优先原图）、方案 v1.2（尺寸档位 + 图集分页）、原型 v1.2 | 原型 CDP **24/24**；**实现 0 行** |
 
@@ -134,7 +136,7 @@ Start-Process $chrome -ArgumentList @(
   '--no-first-run','--no-default-browser-check','about:blank')
 ```
 
-### 5.2 七套回归（按顺序跑）
+### 5.2 八套回归（按顺序跑）
 
 ```powershell
 $env:VR_CDP='http://127.0.0.1:9346'
@@ -149,6 +151,7 @@ node tools/test-path.js            # 57/57   纯 Node，无浏览器
 & $py tools/cdp-indexer-test.py    # 35/35   OPFS 句柄 + 真实下载，三源索引/快照/缺失语义
 & $py tools/cdp-library-page-test.py  # 30/30   资源库：概览收起/表格/筛选/搜索/排序/分组/响应式
 & $py tools/cdp-viewer-test.py       # 27/27   查看器：缩放/信息/缩略图带/视频控件/键盘/连播
+& $py tools/cdp-trash-test.py        # 27/27   删除/回收站：OPFS 句柄注入 + 真实文件
 ```
 
 原型回归（与扩展无关，单独开一个带 `--remote-debugging-port=9333` 的 Chrome 并打开原型页）：
@@ -163,7 +166,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 ### 5.3 跑测试前必看
 
 - **测试会真下载到 `D:\Users\liq21\Downloads\video-rod\...`**：S1a 脚本不自动删，`cdp-index-test` / `cdp-migrate-test` / `cdp-indexer-test` 会自清理。
-- 记一次基线：**七条命令全绿**才算环境正常。任何一条失败先看 §6，不要先改代码。
+- 记一次基线：**八条命令全绿**才算环境正常。任何一条失败先看 §6，不要先改代码。
 - 测试产生的空目录（`video-rod\_verify\`、`其他网页\127.0.0.1\视频\`）属正常残留，不删也不影响。
 
 ---
@@ -228,11 +231,12 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 **唯一还要补的**：`library.html` 首次打开时如果还没有索引，应自动跑一次 `build({mode:'full'})`（需句柄）或 `build({mode:'snapshot'})`——这属于 S3 的启动逻辑，不要现在改 indexer。
 
-### 7.2 S5（S4 已完成）
+### 7.2 S5b / 图片线（S5 删除已完成）
 
 - S3 ✅：概览（可收起）、全宽大卡、真表格、筛选/搜索/排序/分组、懒缩略图；popup/options 入口已加。**不要再写一套索引逻辑。**
 - S4 ✅：查看器拆成 `lightbox.js`（VRViewer）+ `video.js`（VRVideo）+ `keyboard.js`（VRKeys）；图片缩放/拖拽/双击复位、信息面板、缩略图带、视频自绘控件（进度/音量/倍速/全屏/连播）、↑↓ 切条、←→ ±5s、Shift ±30s、空格。**不要再往 ui.js 里塞查看器逻辑。**
-- S5：`trash.js` + 右键菜单 + 回收站 UI（`_回收站/` 已约定；索引已忽略 `_` 开头目录）。
+- S5 ✅：`trash.js` + `trash-ui.js`；软删除到 `_回收站/<批次>/<原相对路径>`、批次清单、单条/整批恢复、彻底删除、清空、右键菜单、确认框、审计日志。**删除前先关查看器**，避免 Windows 文件占用。
+- S5b（未做）：重命名、批量选择（原型里的批量条）；做的时候复用 `VRTrash` 的移动/清单与 `VRMigrate` 的校验逻辑。
 
 交互与验收对照原型 `deliverables/prototypes/library-prototype-v1.html`（v1.3）与 LIBRARY-PLAN §6。
 
@@ -279,7 +283,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 1. `git status` 应干净；`git log -1` 应不早于 `0e4515c`（资源库 S3；其后是文档提交）。
 2. 读本文 §3（代码地图）与 §7（未完成）。
-3. 起环境（§5.1），按 §5.2 跑七条命令，**确认 57/57、17/17、14/14、39/39、35/35、30/30、27/27**。
+3. 起环境（§5.1），按 §5.2 跑八条命令，**确认 57/57、17/17、14/14、39/39、35/35、30/30、27/27、27/27**。
 4. 打开设置页 `chrome-extension://<id>/options.html#anchorLibrary` 看「资源库」分区：点一次「校验落盘」确认根目录探测；再点「写快照」确认 `_library/index-*.json` 落盘。
 5. 再动 S3：先补 `library.html` / `ui.js` / `thumbs.js` 的实现细节到 LIBRARY-PLAN（如有新增决策），再写代码；索引直接复用 `VRIndex`/`VRDB`，不要重写。
 6. 每次代码改动前后都 `git commit + push`（用 §2 的身份参数）。
@@ -294,5 +298,5 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 规矩：每次任务先叫我 Sunny 姐姐；先文档后代码；改代码前后都要 git commit + push（仓库没配 user.name，用
 git -c user.name="sulcr1983" -c user.email="sulcr1983@users.noreply.github.com" commit -m "..."）。
 改 SW 引入脚本必须换新 profile 跑测试；测试浏览器用 Chrome for Testing 147，不要用正式 Chrome；CDP 脚本用系统 Python 3.12（装了 websocket-client）。
-开始前先按 docs/HANDOFF.md §5 跑一遍七套回归（57/17/14/39/35/30/27），确认全绿再动代码。
+开始前先按 docs/HANDOFF.md §5 跑一遍八套回归（57/17/14/39/35/30/27/27），确认全绿再动代码。
 ```

@@ -395,6 +395,7 @@
         step: step,
         isOpen: isOpen,
         toggleInfo: toggleInfo,
+        current: function () { return cur; },
         _resetZoom: resetZoom,
         _zoom: function () { return scale; }
     };

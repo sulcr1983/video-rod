@@ -1,7 +1,8 @@
 # 苏哥的钓鱼竿 — 产出物管理规范
 
-> 版本：v2.6 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
+> 版本：v2.7 ｜ 日期：2026-10-24 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
+> v2.7 变更：S5 删除与回收站——`trash.js` / `trash-ui.js`、软删除批次与清单、恢复/彻底删除/清空、右键菜单与抽屉，验收 27/27。
 > v2.6 变更：S4 查看器 v2——`lightbox.js` / `video.js` / `keyboard.js`、图片缩放拖拽、信息面板、缩略图带、视频自绘控件、键盘与连播；概览默认收起；验收 27/27。
 > v2.5 变更：资源库 v2——概览 KPI / 平台分布 / 博主速览 / 真表格 / 日期分组，验收 29/29；截图更新为 6 张。
 > v2.4 变更：新增资源库页面（全宽大图 / 全屏查看器 / 懒缩略图）与 22 条验收；popup 统一蓝灰；登记 `FRONTEND-UI-SYSTEM.md` 与 5 张截图。
@@ -136,6 +137,9 @@ video-rod/
 | 查看器 v2（S4） | `js/library/lightbox.js` + `js/library/video.js` + `js/library/keyboard.js` | v1.0 | 已定稿 | VRViewer：队列/图片缩放拖拽/信息面板/缩略图带；VRVideo：自绘控件（进度/时间/音量/倍速/全屏/连播）；VRKeys：输入框不劫持的统一键盘 |
 | 查看器验收脚本 | `tools/cdp-viewer-test.py` | v1.0 | 已定稿 | **27/27**：图片缩放复位、信息面板、←/→ 切条、缩略图带、视频无原生 controls、Space、seek ±5/±30、↑/↓、连播、Esc（TESTING §17） |
 | 查看器截图 | `deliverables/assets/{viewer-image,viewer-zoom,viewer-video}.png` | v1.0 | 已定稿 | 1440 图片 + 信息面板 + 缩略图带、156% 放大、视频自绘控件 |
+| 删除与回收站（S5） | `js/library/trash.js` + `js/library/trash-ui.js` | v1.0 | 已定稿 | VRTrash：软删除批次/清单/恢复/彻底删除/清空/审计日志；VRTrashUI：右键菜单、`⋯`、回收站抽屉、确认框、Toast |
+| 删除验收脚本 | `tools/cdp-trash-test.py` | v1.0 | 已定稿 | **27/27**：OPFS 句柄注入、移动/清单/索引/恢复/彻底删除/清空、无权限报错、右键菜单、确认框、抽屉恢复（TESTING §18） |
+| 删除截图 | `deliverables/assets/{trash-menu,trash-confirm,trash-drawer}.png` | v1.0 | 已定稿 | 右键菜单、确认框、回收站抽屉（批次/恢复/彻底删除/清空） |
 | 前端统一设计方案 | `docs/FRONTEND-UI-SYSTEM.md` | v1.0 | 已定稿 | popup + 资源库共用 token/组件；现状审计、全宽布局、全屏查看器、响应式与实施记录 |
 | 前端统一改造截图 | `deliverables/assets/{popup-after,library-page-grid,library-page-overview,library-page-cards,library-page-table,library-page-900,library-page-dark}.png` | v2.1 | 已定稿 | popup 蓝色统一；资源库 1440 默认（概览收起）/ 展开概览 / 大卡 / 表格、860 横条、深色 |
 | 设置页重设计方案 | `docs/OPTIONS-REDESIGN.md` | v1.0 | 已定稿 | 现状审计（18 分区 / 151 个唯一 ID / 40 处内联样式 / 8 类问题）+ 四组信息架构 + 视觉 token + 组件规范 + 响应式断点 + 兼容清单 + 实施记录（TESTING §14） |
