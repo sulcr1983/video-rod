@@ -120,7 +120,7 @@ ClickSave 作者的原话是「看起来简单，实际一个问题接一个问�
 | 悬停延迟 | 300ms | 比 ClickSave 的 200ms 稍长，减少误触 |
 | 隐藏延迟 | 300ms | 留时间移到按钮 |
 | 最小尺寸 | 100×100 | 滤掉图标与装饰图 |
-| 看作原图 | 开 | 但失败自动回退到 `currentSrc` |
+| 看作原图 | **优先原图**（失败自动回退 `currentSrc`，见 §5.1） | 用户拍板；回退保证不让点击落空 |
 | 批量并发 | 3 | Chrome 对并发下载有限制 |
 | 批次上限 | 200 张 | 防止误点「全部」把几万张图打下来 |
 
@@ -133,7 +133,7 @@ ClickSave 作者的原话是「看起来简单，实际一个问题接一个问�
 | 全站注入拖慢页面 | 浏览卡顿 | 只做事件委托，不遍历 DOM；按钮用单例 DOM，隐藏即移除；设置里可一键关闭 |
 | 站点 CSS 干扰按钮 | 按钮变形/被裁 | Shadow DOM 承载按钮，样式完全隔离 |
 | 图片在 iframe / Shadow DOM 内 | 抓不到 | content script `all_frames: true`；Shadow DOM 用 `composedPath()` 取真实目标 |
-| 防盗链 403 | 下载失败 | 优先 `currentSrc`；原图仅尝试，失败回退，不报错打扰 |
+| 防盗链 403 | 原图下载失败 | **优先原图 + SW 侧 Referer/凭据校验 + 失败回退 `currentSrc`**（§5.1）；仍失败时用 `declarativeNetRequest` 补 Referer |
 | 站点检测到注入 | 被风控/封禁 | 按钮不放站点 DOM 里（Shadow DOM 挂 body）、不修改图片属性、不频繁请求 |
 | 批量把浏览器打爆 | 下载队列卡死 | 并发 3 + 批次上限 200 + 进度可取消 |
 | 重复下载 | 浪费流量 | 同 URL 去重 + 复用现有 `vrDownloaded` 去重表 |
@@ -141,15 +141,43 @@ ClickSave 作者的原话是「看起来简单，实际一个问题接一个问�
 
 ---
 
-## 五、待拍板（三选一 / 可多选）
+## 五、已拍板（2026-10-24）
 
-| # | 问题 | 选项 |
+| # | 问题 | 拍板结果 |
 |---|---|---|
-| 1 | 「全部下载」的入口形态 | **A. 悬停时按钮旁显示「全部 N 张」+ 页面常驻小浮标（推荐）** ｜ B. 只要悬停按钮旁 ｜ C. 只在 popup 面板里 |
-| 2 | 是否要图片清单面板（缩略图网格 + 过滤 + 勾选） | **A. 要（Imageye 形态，推荐）** ｜ B. 先不做，只做一键全下 |
-| 3 | 原图解析激进程度 | **A. 先 currentSrc，再尝试原图（推荐，稳）** ｜ B. 一律优先原图（可能 403） |
+| 1 | 「全部下载」入口 | **悬停按钮旁显示「全部 N 张」+ 页面右下角常驻小浮标**（双入口） |
+| 2 | 图片清单面板 | **要**（Imageye 形态：缩略图网格 + 按尺寸/URL 过滤 + 勾选下载） |
+| 3 | 原图解析 | **一律优先原图**；⚠️ 专家补强：**原图失败自动回退 `currentSrc`** |
 
-> 拍板后：先写方案文档 + 可交互原型（悬停按钮/浮标/面板三态），再进实现。
+### 5.1 关于「一律优先原图」的工程补强（必须做，否则会大量失败）
+
+小红书、微博、Pinterest 等站点对图片直链做 **Referer 防盗链**，直接 `chrome.downloads.download` 会 403。
+因此「优先原图」不能是「拼出一个 URL 就直接下」，必须带校验与回退：
+
+```js
+// 候选原图按优先级列出 → SW 侧逐个校验 → 第一个可用的
+候选 = [
+  a.href（图片被链接包裹时）,
+  srcset 最大项,
+  data-src / data-original-src / data-iurl / data-lazy-src,
+  父级 [data-ri] 的元数据,
+  img.currentSrc（保底）
+]
+
+// background（SW 有 host_permissions，可跨域；content script 的 fetch 受页面 CORS 限制）
+for (const url of 候选) {
+  const r = await fetch(url, { headers: { Referer: pageUrl }, credentials: 'include' });
+  if (r.ok && /^image\//.test(r.headers.get('content-type') || '')) return url;
+}
+return img.currentSrc;   // 全部失败 → 回退页面正在显示的那张
+```
+
+- 校验在 **Service Worker** 做（扩展有 `*://*/*` 权限），不在页面里做
+- 带 `Referer` + `credentials: 'include'`，尽量满足站点的防盗链与登录态
+- 若站点仍严格校验 Referer 导致下载失败：用已有 `declarativeNetRequest` 权限给该请求补 Referer 头（不新建权限）
+- **任何情况下都不让用户看到「点了没反应」**：回退到 `currentSrc` 至少能存下页面上看到的那张
+
+> 拍板后流程：先写方案文档 + 可交互原型（悬停按钮 / 浮标 / 清单面板三态），再进实现。
 
 ---
 
