@@ -1,5 +1,5 @@
 /* ==========================================================================
-   钓鱼竿 video-rod — 猫抓原生组件浅色校准（M7）
+   苏哥的钓鱼竿 video-rod — 猫抓原生组件浅色校准（M7）
    作用域：#vrShell（ID 特异性 100 > :root 的 10，media query 不参与特异性，
    所以 public.css 里 prefers-color-scheme:dark 的翻深色也压得住）
    口径与 css/videorod.css 的浅色 token 一致：

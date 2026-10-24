@@ -344,7 +344,7 @@ function save(tabId) {
     }
 }
 
-// ===== 钓鱼竿：下载文件名保护（M8 修复「星愿忽略 filename」）=====
+// ===== 苏哥的钓鱼竿：下载文件名保护（M8 修复「星愿忽略 filename」）=====
 // 根因：Chromium bug 579563——浏览器内任何扩展注册 chrome.downloads.onDeterminingFilename
 // 监听后，其他扩展 downloads.download({filename}) 的 filename 即被忽略（落盘变服务器名）。
 // 官方 workaround：自己也注册该监听、对自己的下载 suggest 文件名。
@@ -461,7 +461,7 @@ try {
  */
 chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (chrome.runtime.lastError) { return; }
-    // 钓鱼竿：下载文件名记账（popup/options 等页面经 vr-download-hook.js 转发）。
+    // 苏哥的钓鱼竿：下载文件名记账（popup/options 等页面经 vr-download-hook.js 转发）。
     // 必须放在 init 检查之前——SW 刚被消息唤醒时 init 标志可能还没就绪，
     // 而记账只碰内存 Map，不依赖任何初始化状态；漏记账 = 文件名被浏览器忽略。
     if (Message && Message.Message == "vrQueueName") {
@@ -635,7 +635,7 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         sendResponse("HeartBeat OK");
         return true;
     }
-    // 钓鱼竿：X(推特) 推文内联按钮下载（M8），js/x-button.js 发起
+    // 苏哥的钓鱼竿：X(推特) 推文内联按钮下载（M8），js/x-button.js 发起
     // 取 X 的「已合并音视频」完整 MP4 直链 → 直接下载。不下载分片、不合成、不走在线 FFmpeg。
     // 页面只传 user/statusId/mediaId 和文件名，直链由后台查——页面无法借道下载任意地址。
     if (Message.Message == "vrQuickDownX") {
@@ -918,7 +918,7 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
     }
 });
 
-// 钓鱼竿：X(推特) 推文内联按钮下载（M8）
+// 苏哥的钓鱼竿：X(推特) 推文内联按钮下载（M8）
 // content script 从 video.poster 提取媒体 ID，这里在嗅探缓存里匹配 URL 并下载。
 // 页面只传 mediaId 和文件名，URL 一律从缓存取——页面无法借道下载任意地址。
 // 优先完整渐进式 MP4（X 播放器必请求）；无则最高清视频轨 m3u8 → 打开猫抓 m3u8.html 兜底。
@@ -954,7 +954,7 @@ async function fetchXVideo(user, statusId, mediaId, wantBest) {
 
 // 右键菜单 和 快捷键 复用函数
 /**
- * 钓鱼竿：右键秒存（M5）
+ * 苏哥的钓鱼竿：右键秒存（M5）
  * 在页面里跑 naming.js 算出「作者_标题」，直接落到 默认目录/名字.ext
  */
 async function vrSaveContextMedia(info, isImage) {
