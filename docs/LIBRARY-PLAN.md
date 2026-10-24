@@ -1074,6 +1074,121 @@ Log      = { id, planId, kind, at, srcName, dstName,
 
 **测试怎么绕开原生选择器**：目录选择器无法用 CDP 自动点。用 `navigator.storage.getDirectory()`（OPFS）造真实 FSA 目录树，直接把句柄喂给 `VRMigrate.plan*/run/rollback`——走的是同一套 `createWritable` / `getFile` / `removeEntry` 代码路径。脚本 `tools/cdp-migrate-test.py`。
 
+### 13.11 S2 索引实现规格（v1.9 新增，开工前定死）
+
+**上下文**：`indexer.js` 跑在**页面侧**（options / 未来 library），理由同 §13.10——快照与全量扫描都要 FSA 句柄，SW 拿不到；downloads 源在扩展页同样能读。与 SW 侧自动入库的分工：
+
+| 角色 | 负责 | 时机 |
+|---|---|---|
+| `sw-library.js`（已上线） | **新下载即时入库**（预登记 + 完成确认 + 广播） | 每次下载完成 |
+| `indexer.js`（S2） | **重建 / 补全 / 校对** | 用户点「重建索引」，或 S3 页面首次打开 |
+
+两者写同一个 `vr-library` 库，索引条目字段完全一致（§13.3）。
+
+**根解析（三档，拿不到绝不猜）**
+
+| 顺序 | 来源 | absRoot |
+|---|---|---|
+| 1 | `VRIndex.setRoot(handle, absRoot)` 内存 | 传入值 |
+| 2 | `VRDB.getHandle('root')` + `VRDB.getSetting('rootAbs')` | 授权时记录 |
+| 3 | 旧授权库 `vr-lib-handle`（settings.js「选择文件夹并授权」写的 key `root`） | A 模式 `detectedRoot + '/' + subdir`；B 模式 `customRoot` |
+
+- `setRoot()` 把句柄与绝对路径一并落库，下次打开页面免重选。
+- 句柄可用性用 `queryPermission({mode:'read'})` 判断：`prompt` → `LIB_E_AUTH_LOST`（`file://` 直读不受影响，但扫描/快照必须重授权）。
+- absRoot 为空时**只允许 downloads 源**，不允许假造路径。
+
+**三源口径**
+
+| 源 | 前置 | 覆盖 | 扫不到时 |
+|---|---|---|---|
+| downloads | 无（只需 absRoot） | `downloads.search` 中 `state=complete`、落在资源库根下、扩展名是媒体的条目 | **不动**其他条目 |
+| snapshot | 句柄 + absRoot | `_library/index-*.json` | 标 `missing` |
+| full | 句柄 + absRoot | 整棵根目录（复用 `VRMigrate.listFiles` 的遍历/跳过规则） | 标 `missing` |
+
+downloads 细节：
+
+- `limit: 5000`、`orderBy: ['-startTime']`；触顶返回 `truncated:true`，**不假装全量**。
+- 只收 `filename` 落在「当前根」下的条目（A：`detectedRoot/subdir`；B：`customRoot`），避免把日常下载吸进资源库。
+- 跳过 `_verify/`、`_回收站/`、`_library/`、`_migration/`、点文件。
+- `absPath` 用 `d.filename` 原值（uniquify 改名后的真名），不拿预登记名。
+
+full 细节：
+
+- 复用 `VRMigrate.listFiles(handle)`，天然跳过临时/私有目录与非媒体。
+- `absPath = absRoot + '/' + rel`；`mtime` 取 `File.lastModified`。
+
+**条目映射与合并**
+
+- 字段对齐 §13.3：`relPath / absPath / platform / platformName / creatorFull / creatorId / type / fileName / size / mtime / mime / sourceUrl / downloadId / starred / tags / state`。
+- 平台/博主/类型优先沿用旧条目，缺失才用 `VRPath.parseRelPath(rel)` 反解。
+- **合并保真**：`starred`、`tags`、`thumbKey`、`width/height/duration`、`title`（新值为空时用旧值）一律保留——重建索引不能丢用户数据。
+- 未扫描到的旧条目 → `state:'missing'`，**不删除**（状态机 §13.5）。
+
+**快照**
+
+- 位置 `<absRoot>/_library/index-YYYYMMDD.json`（同一自然日覆盖；读时取最新可解析的一个）。
+- 结构（**不存 absPath**：换根后无意义，重建时按当前根重算）：
+
+```js
+{ version: 1, at, root: absRoot, subdir,
+  count, files: [{ relPath, size, mtime, platform, creatorId, type, fileName, starred, tags }] }
+```
+
+- 写入：`_library` 不存在则创建；`createWritable()` 直写，失败清半成品。
+- 保留最近 7 个 `index-*.json`，更早的删除（只匹配本命名，不碰其他文件）。
+- 读不到 → `LIB_E_NO_SNAPSHOT`；JSON 损坏 → `LIB_E_SNAPSHOT_PARSE`（继续找更早的）。
+
+**reconcile（物理存在性，按优先级）**
+
+1. 有 `downloadId` → `downloads.search({id})`，`exists===false` 即 missing（无需句柄，最快）。
+2. 有句柄 → `getFile()` 判 relPath 是否还在。
+3. 都没有 → `unknown`（**不改状态**，不猜）。
+
+返回 `{missing, checked, unknown}`；missing 条目置 `state:'missing'`，重新出现则回 `ok`。
+
+**API（§13.4 的细化，签名不变）**
+
+```js
+VRIndex.setRoot(handle, absRoot) -> Promise<{absRoot}>
+VRIndex.resolveRoot() -> Promise<{handle|null, absRoot|null, source}>
+VRIndex.status() -> Promise<{count, missing, hasRoot, absRoot, snapshotAt}>
+VRIndex.build({mode:"downloads"|"snapshot"|"full", onProgress}) -> Promise<{total, ok, missing, mode, truncated?}>
+VRIndex.reconcile() -> Promise<{missing, checked, unknown}>
+VRIndex.snapshot() -> Promise<string>       // 返回落盘绝对路径
+```
+
+`onProgress({phase, done, total})`，phase ∈ `downloads / snapshot / full / merge / write`。
+
+**错误码补充**
+
+| 码 | 触发 | 文案 | 降级 |
+|---|---|---|---|
+| `LIB_E_NO_SNAPSHOT` | `_library` 下没有快照 | 没有可用快照 | 提示改用 downloads / 全量 |
+| `LIB_E_SNAPSHOT_PARSE` | 快照 JSON 损坏 | 快照损坏，已跳过 | 继续找更早的 |
+| `LIB_E_AUTH_LOST` | 句柄回到 `prompt` | 目录授权已失效 | 引导重新授权 |
+
+**设置页维护入口（只做维护，不做浏览）**
+
+| 控件 | 行为 |
+|---|---|
+| 重建索引 | `build({mode:'downloads'})`，显示条数 |
+| 写快照 | `snapshot()`，显示路径；无句柄时置灰 |
+| 授权目录并全量扫描 | `showDirectoryPicker` → `setRoot(handle, absRoot)` → `build({mode:'full'})` |
+| 状态行 | `已入库 N 条 / 缺失 M / 快照 <日期>` |
+
+**验收（S2，8 条）**
+
+1. `build(downloads)` 从下载历史重建条目，字段与自动入库一致（relPath/platform/type/size/absPath）。
+2. `build(full)` 收齐图片/视频/音频，跳过非媒体、`.part`、`_verify/`、`_回收站/`、`_library/`。
+3. 重建后旧条目的 `starred`/`tags` 保留。
+4. `snapshot()` 真的写出 `_library/index-YYYYMMDD.json`，`files` 条数 == 索引条数。
+5. 清空 IDB 后 `build(snapshot)` 能恢复条目（快照破死锁）。
+6. 删掉一个物理文件 → `reconcile()` 标 `missing`，条目仍在库里。
+7. 无句柄时 `full`/`snapshot` 报 `LIB_E_NO_PERM`，`downloads` 仍可用。
+8. 设置页三个按钮可点、状态正确、控制台零 error。
+
+**测试**：`tools/cdp-indexer-test.py`——OPFS 注入句柄跑 full / snapshot / reconcile（同 §13.10 的绕行办法），另做一次真实下载验证 downloads 源；跑完清理文件与索引。
+
 ---
 
 ## 十四、版本记录
@@ -1089,4 +1204,5 @@ Log      = { id, planId, kind, at, srcName, dstName,
 | v1.6 | 2026-10-24 | **确定根目录与落盘模式**：新增 §4.5——rootDir 定为 `E:\test\video-rod\download`；给出直写（默认，零拷贝）与归档（不动 Chrome 设置）两种模式及代价；设置页六件事（显示/选择文件夹/打开 Chrome 下载设置/校验落盘/模式切换/换根迁移）；迁移拆为"结构迁移"与"换根迁移"；§10 已拍板更新；§13.3/§13.4/§13.1/§13.9 同步（新增 archive.js、settings-page API、S1a/S1b 切分） |
 | v1.7 | 2026-10-24 | **根目录方案改为「系统下载目录下的 video-rod 子目录」**：§4.5 重写——A 模式（默认，零拷贝、不改 Chrome 设置、自动跟随下载目录变化）与 B 模式（自定义目录，需搬移）；新增「探测真实下载根目录」算法（微下载 + 反推，顺带解决 OneDrive 重定向）；迁移扩为三种（结构迁移 / 改子目录名 / A↔B 换根）；§10 已拍板与 §13.1/§13.3/§13.4/§13.9 同步 |
 | v1.8 | 2026-10-24 | **S1b 迁移规格定死**：新增 §13.10——扩展无通用文件写权限，迁移只能走 FSA 句柄（`planRebase` 参数由路径改为 DirectoryHandle）；三种形态共用扫描/预演/复制/校验/删源/日志/回滚；冲突只比 size 不比 mtime；异常→错误码映射；迁移后索引同步口径；8 条验收；测试用 OPFS 句柄注入绕开原生目录选择器 |
+| v1.9 | 2026-10-24 | **S2 索引规格定死**：新增 §13.11——三源分工（downloads 只 upsert 不判缺失；snapshot/full 扫不到标 `missing` 不删除）；根解析三档（内存 → VRDB handle → 旧授权库）；快照不存 absPath、按当前根重算；reconcile 优先 `downloads.exists` 再 FSA；设置页三个维护入口；8 条验收；测试 `tools/cdp-indexer-test.py` |
 

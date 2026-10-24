@@ -245,6 +245,19 @@
 - **理由**：临时件和交付物混放会导致 ① 误提交大文件（profile 动辄几十 MB）；② 找不到最新版本；③ 换机/交接时无法区分"要留的"和"可扔的"。把边界写死比靠记忆可靠。
 - **影响**：`deliverables/DELIVERABLES.md` 新增 §1.1「工作区边界」并升 v1.6；`.gitignore` 增 `/.work/`；`E:\test\` 已清理为仅 `video-rod`（本项目）与 `wechatca2`（无关项目）；两个草稿脚本转正为 `tools/cdp-library-test.py`、`tools/probe-file-access/run-probe.py`。
 
+## ADR-030 索引三源与「缺失不删」语义
+
+- **日期**：2026-10-24 ｜ **状态**：✅
+- **背景**：S2 要支持重建索引，来源有三种：下载历史（downloads）、磁盘快照（`_library/index-*.json`）、FSA 全量扫描。三者覆盖面不同——下载历史只认识"经本扩展下载"的文件，快照可能过期，全量扫描需要用户授权。若统一按"扫不到就删条目"，换根、换机、清下载历史都会把索引误清空，连带丢掉星标与标签。
+- **决策**：
+  1. **三源分工**：`downloads` 只做 upsert，不判定缺失；`snapshot` / `full` 覆盖全量，扫不到的旧条目标 `state:'missing'`，**永不自动删除**。
+  2. **missing 是状态不是删除**：文件重新出现（重新扫描/校对命中）即回 `ok`；条目本身保留，用户数据（starred/tags/thumbKey/title）不随重建丢失。
+  3. **快照不存 absPath**：只存 `relPath + size + mtime + 元数据`；换根后按"当前根 + relPath"重算，避免快照把旧根路径带回来。
+  4. **无句柄不假装全量**：没有 FSA 授权时只允许 downloads 源；`full`/`snapshot` 直接报 `LIB_E_NO_PERM`。
+  5. **reconcile 三级判定**：先 `downloads.search({id}).exists`（免授权）→ 再 FSA `getFile()` → 都没有记 `unknown`，不改状态。
+- **理由**：§5 原则一"文件系统是唯一真相，索引可随时重建"。误删索引条目会丢用户数据，代价远高于多几条 `missing`；而"猜一个路径当作存在"会在换机/换根后产生幽灵条目，比诚实标灰更糟。
+- **影响**：`js/library/indexer.js`、`options.html` 资源库维护区、`tools/cdp-indexer-test.py`；S3 缩略图与 S5 删除都依赖 `missing` 语义（标灰、可重新定位，不自动清理）。
+
 ---
 
 *新增决策在此追加，编号顺延。*
