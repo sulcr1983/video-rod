@@ -636,7 +636,239 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 
 ---
 
-## 十三、版本记录
+## 十三、实现规格（开工即写码，不留待研究项）
+
+> 本节是 v1.4 新增的**实现级规格**：文件清单、模块职责、函数签名、数据结构、状态机、错误码、接入点全部定死。
+> 原则：**括号级细节可以边写边调，接口与数据契约定死后不再改**。所有模块均为普通 `<script>`（IIFE + 全局命名空间），零构建。
+
+### 13.1 文件清单（新增 / 修改）
+
+**前端（资源库页面）**
+
+| # | 文件 | 类型 | 职责 | 依赖 |
+|---|---|---|---|---|
+| 1 | `library.html` | 新增 | 资源库独立页面：顶栏/侧栏/网格/列表/时间线/灯箱/视频弹层/右键菜单/批量条/回收站/迁移弹窗 | 下列全部 js + css |
+| 2 | `css/library.css` | 新增 | 页面样式（沿用 popup 浅色变量） | — |
+| 3 | `js/library/path.js` | 新增 | 目录拼装、相对/绝对路径互转、`file://` URL 编码、长度与保留名校验 | `naming.js`（仅 `sanitizeName`） |
+| 4 | `js/library/db.js` | 新增 | IndexedDB 封装（file/thumb/setting/handle/oplog 五个 store） | — |
+| 5 | `js/library/indexer.js` | 新增 | 三源建索引（downloads.search / 快照 / FSA 全量扫描）+ 失效条目核对 + 快照写回 | `db.js`、`path.js`、SW 桥 |
+| 6 | `js/library/thumbs.js` | 新增 | 缩略图队列（并发 2、懒生成、失败占位、WebP 缓存） | `db.js` |
+| 7 | `js/library/trash.js` | 新增 | 软删除、恢复、清空、重命名（走 FSA 写权限） | `db.js`、`path.js` |
+| 8 | `js/library/migrate.js` | 新增 | 迁移 dry-run / 执行 / 校验 / 回滚（日志 JSON） | `db.js`、`path.js` |
+| 9 | `js/library/ui.js` | 新增 | 状态容器 + 过滤/排序/渲染（网格、列表、时间线、侧栏、博主速览） | `db.js` |
+| 10 | `js/library/lightbox.js` | 新增 | 图片灯箱：缩放、拖拽、切换、缩略图带、信息栏 | `ui.js` |
+| 11 | `js/library/video.js` | 新增 | 视频弹层：**自绘控件**、↑↓ 切换、←→ ±5s（Shift ±30s）、空格、连播、进度气泡 | `ui.js` |
+| 12 | `js/library/keyboard.js` | 新增 | 全局键盘路由：`/` `J/K` `Enter` `F` `Esc`，按弹层优先级分发 | `ui.js`、`lightbox.js`、`video.js` |
+| 13 | `js/library/bridge.js` | 新增 | 页面 ↔ SW 消息桥：超时、重试、错误码归一 | `chrome.runtime` |
+| 14 | `js/library/settings.js` | 新增 | 资源库设置读写（`chrome.storage.local` 的 `vrLibSettings`） | — |
+| 15 | `lib/`（可选） | 新增 | PhotoSwipe 5 / justified-layout 的**无需构建成品文件**（按 §6.2 能抄就抄） | — |
+
+**后端（Service Worker 侧）**
+
+| # | 文件 | 类型 | 职责 |
+|---|---|---|---|
+| 16 | `js/sw-library.js` | 新增 | SW 侧资源库服务：索引快照落盘、文件操作（删除/恢复/迁移/重命名）、打开所在文件夹、批量查询 downloadId → 绝对路径 |
+| 17 | `js/background.js` | 修改（仅顶部 1 行） | `importScripts("js/sw-library.js")`；不改任何内核逻辑 |
+| 18 | `manifest.json` | 修改 | `permissions` 增 `unlimitedStorage`；`web_accessible_resources` 放行 `library.html` 所需的本地资源（如需）；`options_ui` 不变 |
+
+**接入现有功能**
+
+| # | 文件 | 类型 | 改动 |
+|---|---|---|---|
+| 19 | `js/popup-videorod.js` | 修改 | 下载前用 `VRPath.buildRelPath()` 拼 `平台/博主/类型/文件名`，再交给 `vrDownloadWithName` |
+| 20 | `popup.html` / `options.html` | 修改 | 各加一个「打开资源库」入口（`chrome.tabs.create({url: 'library.html'})`） |
+| 21 | `lib/third-party-libraries.md` | 修改 | 新增引入组件时登记来源/版本/许可 |
+
+**测试**
+
+| # | 文件 | 类型 | 用途 |
+|---|---|---|---|
+| 22 | `tools/cdp-library-test.py` | 新增 | 资源库页面 CDP 回归（对应 TESTING §8 的 A–I 九组） |
+| 23 | `tools/probe-file-access/` | 新增（临时） | P0 探针扩展（见 §13.7），验证完可删 |
+
+### 13.2 现有代码接入点（已核实，非猜测）
+
+| 能力 | 真实入口 | 规格 |
+|---|---|---|
+| 命名引擎 | `js/naming.js` → `buildNameFromInfo(info, url, opts)`，`opts = {tpl, ext, index, date, keepEmoji}`；返回**可能带 `/`** 的路径串（内部 `sanitizeName(..., {keepPath:true})`） | 资源库**不重复实现命名**：先 `buildNameFromInfo` 得到文件名段，再由 `VRPath.buildRelPath()` 拼三段目录 |
+| 导出方式 | `js/naming.js` 尾部 `return {...}`，以 UMD 形式挂 `self.VideoRodNaming` / `module.exports` | `path.js` 通过 `self.VideoRodNaming.sanitizeName` 取用，不复制其实现 |
+| 下载入口 | `js/background.js` → `vrDownloadWithName(url, filename, extra)` → `Promise<downloadId \| null>`；内部 `vrQueueFilename(url, filename, conflictAction)` | 资源库页面**统一走这个入口**，不直接调 `chrome.downloads.download`（否则星愿下文件名会丢，见 ADR-027） |
+| 设置存储 | `js/popup-videorod.js` → `chrome.storage.local`，键 `vrSettings` / `vrRecentDirs` | 资源库用**新键** `vrLibSettings`，不与 popup 设置混写 |
+| 权限 | `manifest.json` 已有 `downloads` / `storage` / `scripting` / `tabs` | 仅需补 `unlimitedStorage`（缩略图缓存） |
+| SW 形态 | `background.service_worker = js/background.js`（无 `type: module`） | 只能用 `importScripts`，不能用 `import` |
+| content script | `js/content-script.js` 全站 `document_start`；`naming.js` 仅 x.com 注入 | 资源库页面**不注入**任何 content script，纯扩展页运行 |
+
+### 13.3 数据契约
+
+**IndexedDB：`vr-library`（version 1）**
+
+```js
+file:    keyPath "relPath"
+         索引: platform / creatorId / type / mtime / starred
+         字段: relPath, absPath, platform, platformName, creatorFull, creatorId,
+               type, fileName, size, mtime, width?, height?, duration?,
+               thumbKey?, sourceUrl?, title?, downloadId?, starred(0|1), tags(string[]),
+               state: "ok" | "missing"
+thumb:   keyPath "thumbKey"     字段: blob(WebP), w, h, at
+setting: keyPath "key"          字段: value
+handle:  keyPath "key"          字段: handle(FileSystemDirectoryHandle)
+oplog:   keyPath "id" autoInc    字段: at, op, payload, result   // 迁移/删除审计
+```
+
+**设置键（`chrome.storage.local` → `vrLibSettings`）**
+
+```js
+{
+  rootLabel: "D:\\Media\\video-rod",   // 仅显示用，真实根目录由 Chrome 下载设置决定
+  sort: "new", view: "grid", group: "none",
+  autoplay: true, hoverPreview: true,
+  thumbQuality: 0.72, thumbMaxEdge: 480,
+  deepVerify: false                    // 迁移时是否追加 SHA-256
+}
+```
+
+**消息协议（页面 → SW → 页面）**：统一信封 `{ action, payload }`，SW 回 `{ ok: true, data }` 或 `{ ok: false, code, message }`
+
+| action | 入参 | 出参 data | 说明 |
+|---|---|---|---|
+| `vrLib.ping` | — | `{version}` | 就绪探测 |
+| `vrLib.resolvePaths` | `{downloadIds: number[]}` | `{ [id]: absPath }` | `downloads.search` 批量取绝对路径 |
+| `vrLib.listDownloads` | `{since?: number, limit?: number}` | `FileMeta[]` | 增量拉取下载记录 |
+| `vrLib.writeSnapshot` | `{json: string}` | `{absPath}` | 写 `_library/index-<日期>.json` |
+| `vrLib.readSnapshot` | — | `{json, at} \| null` | 读最新快照 |
+| `vrLib.openFolder` | `{absPath}` | `{ok}` | 打开所在文件夹（`downloads.show` 或 shell 兜底） |
+| `vrLib.trash` | `{relPaths: string[]}` | `{moved, failed: [{relPath, code}]}` | 软删除（FSA 写权限） |
+| `vrLib.restore` | `{trashPaths: string[]}` | `{restored, failed}` | 恢复 |
+| `vrLib.purge` | `{confirm: "PURGE"}` | `{removed}` | 清空回收站（不可恢复） |
+| `vrLib.rename` | `{relPath, newName}` | `{relPath}` | 同目录改名 |
+| `vrLib.migratePlan` | `{mapping}` | `Plan` | dry-run |
+| `vrLib.migrateRun` | `{planId}` | `Log` | 执行 |
+| `vrLib.migrateRollback` | `{logId}` | `{rolledBack, failed}` | 回滚 |
+
+### 13.4 模块 API（签名定死）
+
+```js
+// path.js
+VRPath.PLATFORM_DIR = { bilibili:"B站", xiaohongshu:"小红书", x:"X", youtube:"YouTube", web:"其他网页" };
+VRPath.TYPE_DIR     = { video:"视频", image:"图片", audio:"音频" };
+VRPath.buildRelPath({ platform, creatorFull, creatorId, type, fileName }) -> string   // 三段+文件名，已 sanitize
+VRPath.parseRelPath(relPath) -> { platform, creatorFull, creatorId, type, fileName }
+VRPath.toFileUrl(absPath) -> string        // 每段 encodeURI，转义 # % ? 空格
+VRPath.checkLength(relPath) -> { ok, total, overflow }
+VRPath.creatorSegment(creatorFull, creatorId) -> string   // "影视飓风(@946974)"；缺 ID 时用 "待整理"
+
+// db.js
+VRDB.open() -> Promise<IDBDatabase>
+VRDB.putFiles(files[]) / VRDB.getAllFiles() / VRDB.getFile(relPath)
+VRDB.patchFile(relPath, patch) / VRDB.deleteFiles(relPaths[])
+VRDB.putThumb(key, blob, w, h) / VRDB.getThumb(key)
+VRDB.getSetting(key, def) / VRDB.setSetting(key, v)
+VRDB.getHandle() / VRDB.setHandle(h)
+VRDB.log(op, payload, result) / VRDB.listLogs(limit)
+
+// indexer.js
+VRIndex.build({ mode: "downloads" | "snapshot" | "full" }, onProgress) -> Promise<{total, ok, missing}>
+VRIndex.reconcile() -> Promise<{missing: string[]}>      // 校对 existsSync 等价：FSA 能读才算存在
+VRIndex.snapshot() -> Promise<string>                    // 生成并写回快照
+
+// thumbs.js
+VRThumbs.enqueue(fileEntry) / VRThumbs.pump() / VRThumbs.clear()
+// 并发 2；失败标 thumbKey=null 并显示类型占位，不重试超过 1 次
+
+// trash.js
+VRTrash.softDelete(relPaths[]) -> Promise<{moved, failed}>
+VRTrash.restore(trashPaths[]) -> Promise<{restored, failed}>
+VRTrash.purge() -> Promise<{removed}>
+VRTrash.list() -> Promise<TrashItem[]>
+
+// migrate.js
+VRMigrate.plan({mapping}) -> Promise<Plan>               // items: {from, to, action:"move"|"skip"|"conflict", size}
+VRMigrate.run(planId, onProgress) -> Promise<Log>
+VRMigrate.rollback(logId) -> Promise<{rolledBack, failed}>
+
+// ui.js
+VRUI.state  = { platform, creator, type, q, sort, view, group, starredOnly, tag, focusId }
+VRUI.filter(state) -> FileEntry[]
+VRUI.render() / VRUI.setView(v) / VRUI.setGroup(g) / VRUI.setTag(t)
+VRUI.toggleStar(relPath) / VRUI.setFocus(relPath|null) / VRUI.moveFocus(step)
+
+// video.js
+VRVideo.open(entry, queue) / VRVideo.switch(step) / VRVideo.seekBy(sec) / VRVideo.toggle() / VRVideo.close()
+// 控件全部自绘；<video tabindex="-1">；ended 时按 queue 顺序自动下一个
+
+// lightbox.js
+VRLightbox.open(index, list) / VRLightbox.paint() / VRLightbox.nav(step) / VRLightbox.zoomBy(d) / VRLightbox.close()
+
+// bridge.js
+VRBridge.call(action, payload, {timeout=8000}) -> Promise<data>
+// 超时 / SW 未就绪 / 无响应分别归一为 LIB_E_TIMEOUT / LIB_E_SW_DOWN / LIB_E_NO_HANDLER
+```
+
+### 13.5 状态机
+
+| 对象 | 状态迁移 |
+|---|---|
+| 索引 | `EMPTY` →(build) `BUILDING` →(成功) `READY`；无快照且无授权 → `DEGRADED`（横幅：重新授权目录）；快照过期 → `STALE`（后台增量补齐） |
+| 条目 | `OK` →(文件消失/移动) `MISSING` →(重新定位) `OK`；`MISSING` 只标灰、不自动删除索引 |
+| 删除 | `ACTIVE` →(软删除) `TRASHED` →(恢复) `ACTIVE`；`TRASHED` →(清空) `PURGED`（不可逆） |
+| 迁移 | `PLANNED` →(复制) `COPYING` →(校验) `VERIFIED` →(删源) `SOURCE_DELETED` → `DONE`；任一步异常 → `ABORTED`，允许从日志回滚 |
+| 视频 | `IDLE` →(open) `LOADING` →(canplay) `READY` →(play) `PLAYING` ⇄ `PAUSED` →(ended) `ENDED` →(next) `LOADING`；`ENDED` 且无下一项 → `FINISHED` |
+
+### 13.6 错误码与降级矩阵
+
+| 码 | 触发 | 用户可见文案 | 降级动作 |
+|---|---|---|---|
+| `LIB_E_NO_PERM` | FSA 写权限未授予 | 需要一次性授权目录才能删除/迁移 | 按钮置灰 + 授权引导 |
+| `LIB_E_AUTH_LOST` | 会话重启后 `queryPermission()="prompt"` | 目录授权已失效 | 横幅重授权；读路径不受影响（`file://` 仍在） |
+| `LIB_E_FILE_GONE` | 条目对应的物理文件不存在 | 文件已不在原位置 | 标 `MISSING`，提供"重新定位" |
+| `LIB_E_PATH_TOO_LONG` | 拼装后 > 240 字符 | 路径过长，已自动截断标题 | 缩短标题段 + 保留序号 |
+| `LIB_E_ENOSPC` | 迁移/写入时磁盘满 | 磁盘空间不足，已停止 | 停止后续条目，不删源，保留日志 |
+| `LIB_E_EBUSY` | 文件被占用（杀软/播放器） | 文件被其他程序占用 | 重试 1 次后跳过该条，继续其余 |
+| `LIB_E_HASH_MISMATCH` | 深度校验不一致 | 复制校验失败 | 不删源，标冲突，允许回滚 |
+| `LIB_E_SNAPSHOT_STALE` | 快照日期早于最近下载 | 索引可能不是最新 | 后台增量补齐，不阻塞浏览 |
+| `LIB_E_TIMEOUT` / `LIB_E_SW_DOWN` | SW 未启动/繁忙 | 后台未就绪，正在重试 | 指数退避重试 2 次后提示 |
+
+### 13.7 P0 前置探针规格（必须先跑）
+
+**形式**：`tools/probe-file-access/` 建一个最小 MV3 扩展（`manifest.json` + `probe.html` + `probe.js`），开发者模式加载后点「开始探测」。
+
+**三件事与判定**
+
+| # | 探测 | 通过判定 | 不通过的后继动作 |
+|---|---|---|---|
+| 1 | `<img src="file:///D:/...jpg">` | `naturalWidth > 0` | 图片改走 FSA `getFile()` + `createObjectURL` |
+| 2 | `<video src="file:///D:/...mp4">` | `readyState >= 3` 且 `currentTime = 5` 可写回读 | 视频改走 FSA 读取（大文件一次性 blob 有内存风险 → 加"用系统播放器打开"兜底） |
+| 3 | `chrome.downloads.search({limit:5})` | 返回项 `filename` 为绝对路径（含盘符/根） | 索引改从 `vrLibSettings.rootLabel` + FSA 扫描建立，每次会话需授权 |
+
+**执行要求**：三项结果写回 `docs/TESTING.md` §8，**任一不通过则 §4.4 的退化路径正式生效**，不得直接进 P1。
+
+### 13.8 组件取用决策（能抄就抄）
+
+| 组件 | 决策 | 理由 |
+|---|---|---|
+| **PhotoSwipe 5** | **抄**：取 `dist/` UMD + CSS 进 `lib/` | 手势/缩放惯性/过渡动画成熟，自研边界情况多 |
+| **justified-layout** | **抄**：取单文件 dist | 等比行式布局算法简单但调参烦，直接复用 |
+| 视频弹层与键盘 | **自研** | 原生 `controls` 会吞 ↑↓/空格（§6 已实测），任何通用播放器都不满足"↑↓ 切队列" |
+| 缩略图带 | PhotoSwipe 自带则用；否则用原型实现 | 避免重复造轮子 |
+| 右键菜单 / 星标 / 标签 | **自研** | 与平台/博主筛选强耦合，通用组件改造成本更高 |
+| 缩略图生成 | 浏览器原生 `createImageBitmap` + `OffscreenCanvas` | 无替代库必要 |
+
+### 13.9 实施与提交切分（每步可独立验收）
+
+| 步骤 | 内容 | 产出 | 验收 | 建议提交信息 |
+|---|---|---|---|---|
+| **S0** | P0 探针 | 探测扩展 + 结果记录 | 三项有明确通过/失败结论 | `chore: P0 探针——file:// 直读与 downloads 绝对路径实测` |
+| **S1** | `path.js` + 下载路径接管 | 新下载自动落三段中文目录 | `node tools/test-naming.js` 全绿 + 真机下 3 个平台各 1 个文件 | `feat(library): 下载落位改为 平台/博主/类型 三段中文目录` |
+| **S2** | `db.js` + `indexer.js` + `sw-library.js` | 索引可建、可重建、有快照 | 1k 文件首屏 < 2s；清空下载历史后仍能列出 | `feat(library): 索引服务——downloads/快照/全量三源 + 快照破死锁` |
+| **S3** | `library.html` + `ui.js` + `thumbs.js` | 可浏览、可筛选、可搜索 | TESTING §8 的 A/C/D 组 | `feat(library): 资源库页面——平台/博主/类型/标签/星标浏览` |
+| **S4** | `lightbox.js` + `video.js` + `keyboard.js` | 看图/看视频/键盘 | TESTING §8 的 E/F/H/I 组 | `feat(library): 灯箱与视频弹层——缩略图带 + 自绘控件键盘` |
+| **S5** | `trash.js` + `migrate.js` + 右键菜单 | 删除/恢复/迁移 | TESTING §8 的 B/G 组 + 迁移 dry-run 与回滚 | `feat(library): 删除回收站与旧文件迁移——可恢复、可回滚` |
+
+> 每一档都必须：`git status` 干净 → 测试通过 → 截图归档 → 才进下一档。**不允许一次提交跨两档。**
+
+---
+
+## 十四、版本记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
@@ -644,6 +876,6 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 | v1.1 | 2026-10-24 | 新增 §0 背景与需求覆盖矩阵、§6.1 开源 UX 取舍；落地视频键盘/连播、时间线视图、右键菜单、悬停预览；修正 §2.4 与 §4.4 关于 `file://` 的表述矛盾；新增 §11 审计指北 |
 | v1.2 | 2026-10-24 | **回应审计报告**：新增 §12 独立复核（6 条 S1 逐条判断 + 3 处不采纳理由 + 3 处审计未发现项）；§5 增 `creatorId` 逐平台提取规则；§5.4 校验改为 size+首尾采样并补异常处理；§6 视频改为自绘控件（ATK-21 已实测修复）；§4.4 增 FSA 退化代价与索引重建死锁破解；§8 风险表 +7 条；§11.4 增 GPL-3.0 与策略锁目录；对抗性结论改为"2 条条件性阻断" |
 | v1.3 | 2026-10-24 | **开源交互全量落地**：② §6 交互清单新增星标、只看星标、标签 chips、J/K/Enter/F 键盘导航、灯箱缩略图带、进度条时间气泡；③ §6.1 八项开源 UX 中 6 项标 ✅、1 项以时间气泡替代、1 项只取轻量标签；④ 新增 §6.2"只学交互、不抄代码"实现边界；⑤ §7 P3 补入新增交互；⑥ §9 验收新增 15–19 五条；⑦ §11.3 补"能验证/不能验证"三行；① 曾按"已公开开源"口径改写许可证段落 |
-| v1.4 | 2026-10-24 | **口径定稿 + 实现规格**：① 确认项目为**私有仓库、本机自用、不分发**，GPL-3.0 不触发分发义务；§0.1 明确"**开源代码能抄就抄**，按引入成本择优"；② §2.3 改为可直接引入 PhotoSwipe 5 / justified-layout 的无需构建成品；③ §6.2 从"只学交互不抄代码"改写为"抄代码策略"；④ 新增 §14 实现规格（前后端文件清单、模块职责、函数签名、数据结构、错误码、状态机、验收探针），确保开工前无待研究项 |
+| v1.4 | 2026-10-24 | **口径定稿 + 实现规格**：① 确认项目为**私有仓库、本机自用、不分发**，GPL-3.0 不触发分发义务；§0.1 明确"**开源代码能抄就抄**，按引入成本择优"；② §2.3 改为可直接引入 PhotoSwipe 5 / justified-layout 的无需构建成品；③ §6.2 从"只学交互不抄代码"改写为"抄代码策略"；④ 新增 §13 实现规格（前后端文件清单、模块职责、函数签名、数据结构、错误码、状态机、P0 探针、S0–S5 提交切分），确保开工前无待研究项 |
 | —— | —— | 注：v1.3 曾按"已公开开源"改写、并自加"全部自研"约束；v1.4 均已作废，以本行为准 |
 
