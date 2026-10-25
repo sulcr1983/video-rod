@@ -29,6 +29,7 @@
         <div class="nav-label">资源库</div>
         <ul>
           <li><a href="#anchorLibrary" title="资源库">资源库</a></li>
+          <li><a href="#anchorImage" title="图片下载">图片下载</a></li>
         </ul>
       </div>
 
@@ -858,6 +859,114 @@
     </section>
 
     <!-- 其他设置 -->
+    <section id="anchorImage">
+      <h2 class="optionsTitle">图片下载</h2>
+      <div class="optionBox" id="ImageOption">
+        <div class="list loose">
+          <p class="about-muted" style="margin:0 0 8px;">
+            鼠标停在图片上会出现下载按钮；右下角浮标可以打开整页清单。改动即时生效，与清单面板里的设置是同一份数据。
+          </p>
+
+          <div class="item">
+            <div>
+              <div>悬停按钮</div>
+              <div class="about-muted">停在图片上时出现「下载原图」</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgHover" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>全部按钮</div>
+              <div class="about-muted">悬停条上显示「全部 N」</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgBatch" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>右下浮标</div>
+              <div class="about-muted">本页图片清单入口</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgPanel" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>优先原图</div>
+              <div class="about-muted">按五级候选找最大的一张；关掉则用当前显示的那张</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgPreferOriginal" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>最小尺寸（短边像素）</div>
+              <div class="about-muted">小于此值的图不参与扫描，范围 16–4096</div>
+            </div>
+            <input id="ImgMinSize" type="number" min="16" max="4096" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>悬停延迟（毫秒）</div>
+              <div class="about-muted">停多久才出按钮，范围 0–1500</div>
+            </div>
+            <input id="ImgHoverDelay" type="number" min="0" max="1500" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>批量并发</div>
+              <div class="about-muted">同时下载几张，范围 1–8；太高反而排队更慢</div>
+            </div>
+            <input id="ImgConcurrency" type="number" min="1" max="8" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>单批上限</div>
+              <div class="about-muted">一次最多下多少张，范围 1–2000</div>
+            </div>
+            <input id="ImgBatchLimit" type="number" min="1" max="2000" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>快捷键</div>
+              <div class="about-muted">Alt+Shift+D 下载悬停图 / Alt+Shift+A 打开清单（可在 chrome://extensions/shortcuts 改键）</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgHotkeys" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="anchorOtherSettings">
       <h2 class="optionsTitle" data-i18n="otherSettings"></h2>
       <div class="optionBox" id="OtherOption">
@@ -1131,6 +1240,7 @@
   <script src="js/library/db.js" defer></script>
   <script src="js/library/indexer.js" defer></script>
   <script src="js/library/migrate.js" defer></script>
+  <script src="js/lib-image-util.js" defer></script>
   <script src="js/library/settings.js" defer></script>
   <script src="js/library/migrate-ui.js" defer></script>
   <script src="js/vr-download-hook.js" defer></script>

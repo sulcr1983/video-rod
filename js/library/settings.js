@@ -392,6 +392,11 @@
             bind();
             bindIndex();
             refreshIndex();
+            // 图片下载设置（I5）：控件在 #anchorImage，与清单面板同一份存储
+            if ($('anchorImage')) {
+                bindImageSettings();
+                renderImageSettings();
+            }
         });
     }
 
@@ -400,6 +405,98 @@
     } else {
         init();
     }
+
+    /* ---------------- 图片下载设置（I5） ---------------- */
+
+    /* 与清单面板共用同一份 vrLibSettings；这里只做「把控件和存储对上」这件事。 */
+    var IMG_FIELDS = [
+        { id: 'ImgHover', key: 'imgHover', type: 'bool' },
+        { id: 'ImgBatch', key: 'imgBatch', type: 'bool' },
+        { id: 'ImgPanel', key: 'imgPanel', type: 'bool' },
+        { id: 'ImgPreferOriginal', key: 'imgPreferOriginal', type: 'bool' },
+        { id: 'ImgHotkeys', key: 'imgHotkeys', type: 'bool' },
+        { id: 'ImgMinSize', key: 'imgMinSize', type: 'num' },
+        { id: 'ImgHoverDelay', key: 'imgHoverDelay', type: 'num' },
+        { id: 'ImgConcurrency', key: 'imgConcurrency', type: 'num' },
+        { id: 'ImgBatchLimit', key: 'imgBatchLimit', type: 'num' }
+    ];
+
+    function imgUtil() {
+        return root.VRImageUtil || null;
+    }
+
+    /** 把存储里的图片设置刷到设置页控件上 */
+    function renderImageSettings() {
+        var U = imgUtil();
+        if (!U) { return; }
+        chrome.storage.local.get(KEY, function (obj) {
+            var m = U.mergeSettings((obj && obj[KEY]) || {});
+            IMG_FIELDS.forEach(function (f) {
+                var el = $(f.id);
+                if (!el) { return; }
+                if (f.type === 'bool') {
+                    el.checked = !!m[f.key];
+                } else if (document.activeElement !== el) {
+                    el.value = String(m[f.key]);
+                }
+            });
+        });
+    }
+
+    /** 写一项图片设置（数值越界就夹住，非法就回滚到原值） */
+    function saveImageSetting(field, raw) {
+        var U = imgUtil();
+        if (!U) { return; }
+        var val;
+        if (field.type === 'bool') {
+            val = !!raw;
+        } else {
+            var v = U.validateSetting(field.key, raw);
+            if (!v.ok) {
+                // 非法：把控件回滚成当前值，并给个就地提示
+                var el = $(field.id);
+                if (el) {
+                    var rg = U.RANGES[field.key] || [];
+                    el.title = v.reason + (rg.length ? '（' + rg[0] + '–' + rg[1] + '）' : '');
+                    el.classList.add('vr-bad');
+                    setTimeout(function () { el.classList.remove('vr-bad'); }, 1600);
+                    chrome.storage.local.get(KEY, function (o) {
+                        var cur = U.mergeSettings((o && o[KEY]) || {});
+                        el.value = String(cur[field.key]);
+                    });
+                }
+                return;
+            }
+            val = v.value;
+        }
+        chrome.storage.local.get(KEY, function (o) {
+            var merged = U.mergeSettings(Object.assign({}, (o && o[KEY]) || {}, {}));
+            merged[field.key] = val;
+            var put = {};
+            put[KEY] = merged;
+            chrome.storage.local.set(put, function () {
+                // 与资源库设置模块的内存态保持同步
+                state = Object.assign({}, state || {}, {});
+            });
+        });
+    }
+
+    function bindImageSettings() {
+        IMG_FIELDS.forEach(function (f) {
+            var el = $(f.id);
+            if (!el) { return; }
+            var ev = f.type === 'bool' ? 'change' : 'change';
+            el.addEventListener(ev, function () {
+                saveImageSetting(f, f.type === 'bool' ? el.checked : el.value);
+            });
+        });
+    }
+
+    root.VRImgSettings = {
+        render: renderImageSettings,
+        bind: bindImageSettings,
+        fields: IMG_FIELDS
+    };
 
     root.VRSettings = {
         DEFAULTS: DEFAULTS,

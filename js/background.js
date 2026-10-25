@@ -805,27 +805,50 @@ function vrImgSeenUrls() {
     return new Promise(function (resolve) {
         try {
             chrome.storage.local.get('vrImgDownloaded', function (o) {
-                resolve(Object.assign(Object.create(null), (o && o.vrImgDownloaded) || {}));
+                const stored = (o && o.vrImgDownloaded) || {};
+                // 外部可能清过表（设置页/测试），缓存要跟着失效，
+                // 否则会拿旧缓存把已清掉的记录又写回去（踩过）
+                if (!Object.keys(stored).length) { vrImgSeenCache = null; }
+                resolve(Object.assign(Object.create(null), stored));
             });
         } catch (e) { resolve(Object.create(null)); }
     });
 }
 
+/* 去重表写入必须串行。
+ *
+ * 早先是「读-改-写」直接发：批量下载 5 张时 5 个调用并发跑，
+ * 各自读到同一个旧 map，然后依次写回 —— 后写的把先写的覆盖掉，
+ * 5 张最后只剩 1~2 条记录。表现是「明明下过却不去重」（实测踩过）。
+ *
+ * 改成一条 promise 链：前一次写完才读下一次，谁也覆盖不了谁。
+ * 内存里也留一份，省掉每轮的 get。 */
+let vrImgSeenCache = null;
+let vrImgSeenChain = Promise.resolve();
+
 function vrImgRememberUrl(key) {
     if (!key) { return; }
-    try {
-        chrome.storage.local.get('vrImgDownloaded', function (o) {
-            const map = (o && o.vrImgDownloaded) || {};
-            map[key] = Date.now();
-            const keys = Object.keys(map);
-            if (keys.length > VR_IMG_SEEN_MAX) {
-                keys.sort(function (a, b) { return map[a] - map[b]; });
-                const drop = keys.length - VR_IMG_SEEN_MAX;
-                for (let i = 0; i < drop; i++) { delete map[keys[i]]; }
-            }
-            chrome.storage.local.set({ vrImgDownloaded: map });
+    vrImgSeenChain = vrImgSeenChain.then(function () {
+        return new Promise(function (resolve) {
+            const apply = function (map) {
+                map[key] = Date.now();
+                const keys = Object.keys(map);
+                if (keys.length > VR_IMG_SEEN_MAX) {
+                    keys.sort(function (a, b) { return map[a] - map[b]; });
+                    const drop = keys.length - VR_IMG_SEEN_MAX;
+                    for (let i = 0; i < drop; i++) { delete map[keys[i]]; }
+                }
+                chrome.storage.local.set({ vrImgDownloaded: map }, function () { resolve(); });
+            };
+            if (vrImgSeenCache) { apply(vrImgSeenCache); return; }
+            try {
+                chrome.storage.local.get('vrImgDownloaded', function (o) {
+                    vrImgSeenCache = (o && o.vrImgDownloaded) || {};
+                    apply(vrImgSeenCache);
+                });
+            } catch (e) { resolve(); }
         });
-    } catch (e) { /* ignore */ }
+    }).catch(function () { /* 单条失败不影响后续 */ });
 }
 
 // 文件名确定事件：官方约束每扩展只许注册一个监听器，suggest 必须同步调用。
@@ -1757,7 +1780,34 @@ chrome.downloads.onChanged.addListener(function (item) {
 /**
  * 浏览器 扩展快捷键
  */
-chrome.commands.onCommand.addListener(function (command) {
+/* 图片下载快捷键（I5）：Alt+Shift+D 下载悬停图 / Alt+Shift+A 开清单。
+ * 走 chrome.commands 而不是页面 keydown——全局生效、不与站点按键冲突、
+ * 用户还能在 chrome://extensions/shortcuts 自己改键。 */
+function vrImgHotkey(command, tab) {
+    if (!tab || !tab.id) { return; }
+    var action = command === 'imgDownload' ? 'download'
+        : (command === 'imgPanelOpen' ? 'panel' : '');
+    if (!action) { return; }
+    chrome.storage.local.get('vrLibSettings', function (o) {
+        var st = (o && o.vrLibSettings) || {};
+        if (st.imgHotkeys === false) { return; }              // 快捷键总开关
+        if (action === 'download' && st.imgHover === false) { return; }
+        if (action === 'panel' && st.imgPanel === false) { return; }
+        chrome.tabs.sendMessage(tab.id, { Message: 'vrImg.hotkey', action: action }, function () {
+            void chrome.runtime.lastError;   // 页面上没有内容脚本（如 chrome://）属正常
+        });
+    });
+}
+
+chrome.commands.onCommand.addListener(function (command, tab) {
+    if (command === 'imgDownload' || command === 'imgPanelOpen') {
+        // 快捷键可能在没有 tab 上下文时触发，补一次查询
+        if (tab && tab.id) { vrImgHotkey(command, tab); return; }
+        chrome.tabs.query({ active: true, currentWindow: true }, function (list) {
+            if (list && list[0]) { vrImgHotkey(command, list[0]); }
+        });
+        return;
+    }
     runCommands(command);
 });
 

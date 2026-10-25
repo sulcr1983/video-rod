@@ -17,11 +17,11 @@
 ## 1. 一句话现状
 
 这不是从零开始的项目，也**不是**还在评审阶段：本地资源库主线已经落地 **S0 → S1a → S1b → 自动入库 → S2 索引 → S3 资源库页面 → S4 查看器 v2 → S5 删除与回收站 → S5b 批量选择/重命名**；
-图片线 **I1+I2（单张悬停）+ I3（本页一键全下）+ I4（浮标 + 清单面板）** 已全部落地；
+图片线 **I1+I2（单张悬停）+ I3（本页一键全下）+ I4（浮标 + 清单面板）+ I5（设置项 + 快捷键）** 已全部落地；
 **YouTube 播放器下载**（1080p/4K 直选、音视频轨无损合并成 MP4）已可用，
 且**已接入资源库入库链路**（FSA 直写后主动调 `vrLib.ingest`，不再等 indexer 全量扫描）。
-**十六套回归全绿**（`node` ×4 + `cdp` ×12）；合计 616 条断言。
-下一步是 **图片线 I5–I6**（设置/快捷键 → 图集）与 **YouTube 的深水区**（SABR 复放、流式落盘、WebM）。
+**十八套回归全绿**（`node` ×5 + `cdp` ×13）；合计 711 条断言。
+下一步是 **图片线 I6**（图集）与 **YouTube 的深水区**（SABR 复放、流式落盘、WebM）。
 
 | 项 | 值 |
 |---|---|
@@ -178,6 +178,8 @@ $py = "C:\Users\XPENG\AppData\Local\Programs\Python\Python312\python.exe"
 node tools/test-path.js            # 57/57   纯 Node，无浏览器
 node tools/test-image-util.js      # 58/58   纯 Node，图片候选链/扫描过滤
 node tools/test-image-batch.js     # 27/27   纯 Node，批量队列并发/取消/去重/上限
+node tools/test-image-tier.js      # 57/57   纯 Node，尺寸档位/过滤/排序
+node tools/test-image-settings.js  # 47/47   纯 Node，设置项校验与合并
 & $py tools/cdp-s1a-test.py        # 17/17   设置页 + 三段目录真落盘（会留下一个下载文件）
 & $py tools/cdp-index-test.py      # 14/14   下载 → 自动入库 → 设置页刷新（自动清理）
 & $py tools/cdp-migrate-test.py    # 39/39   OPFS 句柄注入，三种迁移 + 回滚
@@ -189,13 +191,12 @@ node tools/test-image-batch.js     # 27/27   纯 Node，批量队列并发/取�
 & $py tools/cdp-image-test.py        # 34/34   图片悬停：悬停/下载/候选优先/过滤/开关（需测试站 18080）
 & $py tools/cdp-image-batch-test.py  # 35/35   图片批量：确认条/进度/取消/去重/上限（需测试站 18080）
 & $py tools/cdp-image-panel-test.py  # 46/46   I4 浮标 + 清单面板（需测试站 18080）
+& $py tools/cdp-image-settings-test.py # 48/48 I5 设置项 + 快捷键（需测试站 18080）
 & $py tools/yt-download-test.py      # 21/21   YouTube 下载：离线端到端（打桩取格式，其余全真跑）
 ```
 
-> **合计 16 套 / 616 条断言**（按各套自报断言累加：57+58+27+57+17+14+39+35+30+27+27+47+34+35+46+21）。
-> **当前实测 16/16 全绿**（`cdp-run.py --suite full` 一次跑完，约 6 分钟；输出末行 `✅ 全部通过`）。
-> 旧文档写的「13 套 380 条」「15/16 绿」都已过期 —— 前者漏算了后加的三套，
-> 后者的 C1 回归已按 §7.4-15 修好，现稳定全绿。
+> **合计 18 套 / 711 条断言**（57+58+27+57+47+17+14+39+35+30+27+27+47+34+35+46+48+21）。
+> **当前实测 18/18 全绿**（`cdp-run.py --suite full` 一次跑完，约 7 分钟；输出末行 `✅ 全部通过`）。
 > `node tools/test-image-tier.js`（57/57）排在四个 node 单测里，`cdp-run.py --suite full` 会自动带上。
 > `cdp-image-test.py` 依赖 `test-site` 的图片夹具与 18080 端口，
 > 会真下载到 `Downloads\video-rod\其他网页\127.0.0.1\图片\`，脚本结束自行清理。
@@ -360,7 +361,30 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
     修法：给 `VRLib` 加 `ingestDirect(info)` + `vrLib.ingest` 消息，写入方落盘成功后显式调一次；
     `yt-download.js` 的 `save()` 改为返回 `{via, relPath, absPath, size}`（含 uniquify 后的真实文件名），
     `finish()` 里调 `ingestSaved()`。下载器兜底那条不调（它自己会入库）。
-17. **测试清理不要无差别删目录**：`clean_disk()` 早先会删下载目录里所有图片，一次几十个会触发宿主的
+17. **去重表并发写入会互相覆盖**（I5 发现的真 bug）：`vrImgRememberUrl` 原来是
+    「读-改-写」直接发，批量下 5 张时 5 个调用并发跑，各自读到同一个旧 map 再依次写回，
+    **后写的把先写的覆盖掉** —— 5 张最后只剩 1~2 条记录，表现为「明明下过却不去重」。
+    修法：改成一条 promise 链串行写 + 内存缓存；`vrImgSeenUrls` 读到存储为空时清缓存
+    （外部清表后不能拿旧缓存又写回去）。
+18. **一次 patch 改多处 = 全部白改**：I5 实现时一个 patch 里三处替换，第三处匹配失败抛
+    `AssertionError`，整个 `open(...).write()` 没执行，前两处白改。表现极迷惑：
+    UI 变了（因为第三处是 DOM 逻辑，早先已生效），但 `settings` 变量从未声明，
+    存储永远写不进去。**教训：一次 patch 只改一处，改完立刻 grep 验证。**
+19. **`toast` 在 `image-hover.js` 里不存在**（它在 `image-batch.js`）。快捷键下载里直接调
+    会 `ReferenceError`，把 Promise 永久卡住 → `sendResponse` 永不触发，前端表现为「无响应」。
+    修法：加 `note()`，优先用 `VRImgBridge.toast`，否则退回 console。
+20. **`display:flex` 盖掉 `hidden`**：`.vr-foot` 写了 `display:flex`，`hidden` 属性失效，
+    设置区打开时底部还挂着「已选 0 张 / 下载选中」。必须显式写 `.vr-foot[hidden]{display:none}`
+    （I3 的 `.vr-wrap` 踩过同一个坑，这已经是第二次）。
+21. **测试里 `chrome.*` 在主世界不可用**：`cdp.eval` 默认页面主世界，读写 storage 全部报
+    `Cannot read properties of undefined (reading 'local')`；`VRImageUtil` / `VRImgPanel` /
+    `VRImgHover` 这些内容脚本对象在主世界也是 `undefined`。
+    规矩：**存储与 `tabs.sendMessage` 一律在扩展页执行，页面侧只做 DOM 操作**；
+    断言内容脚本状态要用 DOM 表现间接验证。
+22. **测试产物判定不能写死日期**：文件名形如 `20261025_测试站 F：xxx.jpg`，日期每天都变。
+    早先写死 `20261024_` 前缀，第二天就失效 → 「快捷键下载落盘 0 个文件」假失败。
+    改成**含「测试站」**判定。
+23. **测试清理不要无差别删目录**：`clean_disk()` 早先会删下载目录里所有图片，一次几十个会触发宿主的
     安全删除阈值，整套测试被拦掉（表现为退出码 1 但没有任何 FAIL 行）。改成**按文件名前缀**
     只删测试站产物（`测试站` / `20261024_测试站`），`disk_images()` 同口径，增量统计也不会把用户文件算进去。
 

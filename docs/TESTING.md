@@ -1034,3 +1034,58 @@ YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进�
 1. **不测**「YouTube 接口通不通」——那由 `tools/yt-ext-test.py` 单独跑，且允许失败（受风控影响）。
 2. 只覆盖 MP4 容器：WebM/Opus 档不在本套断言内。
 3. 4K 长视频的内存峰值未做压力测试（>1GB 有 OOM 风险，见实现文档 §6）。
+
+---
+
+## 23. 图片设置与快捷键验收（I5）
+
+> 实现口径：`docs/IMAGE-I5-IMPL.md`。
+
+### 23.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 设置项定义 | `js/lib-image-util.js` 新增 `DEFAULT_SETTINGS` / `RANGES` / `parseIntRange` / `validateSetting` / `mergeSettings`（纯函数） |
+| 面板设置区 | `js/image-panel.js` 标题栏齿轮 → 替换主体的设置区：5 个开关 + 4 个数值 + 恢复默认 |
+| 上游设置页 | `options.html` 新增 `#anchorImage` 分区 + 侧栏项；`js/library/settings.js` 加 `VRImgSettings` 读写 |
+| 快捷键 | manifest 声明 `imgDownload`（Alt+Shift+D）/ `imgPanelOpen`（Alt+Shift+A），SW `chrome.commands` 转发 `vrImg.hotkey` |
+| 悬停延迟可配 | `js/image-hover.js` 的 `SHOW_DELAY` 改为 `showDelay`（读 `imgHoverDelay`） |
+
+### 23.2 单测（`tools/test-image-settings.js`）**47/47**
+
+`DEFAULT_SETTINGS` 键与类型、`RANGES` 边界、`parseIntRange` 九种输入、
+`validateSetting` 十二种情况（含边界 16/4096/8/0）、`mergeSettings` 十三种合并场景。
+
+### 23.3 端到端（`tools/cdp-image-settings-test.py`）**48/48**
+
+| 组 | 断言 |
+|---|---|
+| A | 扩展加载、未写入时无该键、面板兜底 100、扩展页 `mergeSettings` 兜底 |
+| B | 面板打开、齿轮存在、设置区打开、标题变化、5 个开关全开、4 个数值与默认一致 |
+| C | 改最小尺寸 → 落库 1200 且面板张数降到 2；延迟/并发/上限逐项落库 |
+| D | 非数字/空值/超上限 → 标红 + 提示 + **不落库**；恢复 100 后张数回 8 |
+| E | 面板改 → 设置页读到（4 个数值 + 开关状态） |
+| F | 设置页改 → 面板读到；设置页超范围不落库 |
+| G | 关「全部按钮」→ 悬停条只剩一个；关「右下浮标」→ 宿主消失；都能开回 |
+| H | 恢复默认：第一次点击变「确定恢复？」，确认后四项回默认 |
+| I | 快捷键：找 tab、悬停记录目标、`panel` 开面板、`download` 落盘 1 个文件、关开关后落库 |
+| J | 关悬停 → 宿主移除；开回 → 按钮恢复 |
+| L | 控制台 0 error |
+
+### 23.4 关键坑（都已修）
+
+1. **`settings` 变量根本没声明**：一次 patch 三处替换，第三处失败导致整个写文件没执行，
+   前两处白改。表现是「UI 变了但存储永远空」。**教训：一次 patch 只改一处，改完立刻 grep 验证。**
+2. **`toast` 在 `image-hover.js` 里不存在**：它在 `image-batch.js`。快捷键下载里直接调会
+   `ReferenceError`，把 Promise 永久卡住 → `sendResponse` 永不触发。改用 `note()` 兜底。
+3. **`display:flex` 盖掉 `hidden`**：设置区打开时底部仍显示「已选 0 张」。
+   修法：显式写 `.vr-foot[hidden] { display:none }`（I3 的 `.vr-wrap` 踩过同一个坑）。
+
+### 23.5 测试脚手架的坑
+
+1. **`chrome.storage` 在页面主世界不可用**：`cdp.eval` 默认主世界，读写全报
+   `Cannot read properties of undefined`。存储与 `chrome.tabs.sendMessage` 一律在扩展页执行。
+2. **`VRImageUtil` / `VRImgPanel` / `VRImgHover` 都在隔离世界**：主世界 `typeof` 为
+   `undefined`，断言要用 DOM 表现间接验证。
+3. **写 storage 是异步的**：改完立刻断言必挂，加 `wait_setting()` 轮询。
+4. **文件名日期前缀每天变**：早先写死 `20261024_` 判测试产物，第二天失效。改成含「测试站」。

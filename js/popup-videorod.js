@@ -1093,7 +1093,20 @@
                     // 明确加载失败的图（complete 且无固有尺寸）直接跳过，
                     // 还没加载完的保留——可能是懒加载，扫描后正好触发加载
                     if (im.complete && !im.naturalWidth) { continue; }
-                    if (w && h && (w < 120 || h < 120)) { continue; }   // 跳过图标/小图
+                    // 跳过图标/小图：判**显示尺寸**而不是原始像素。
+                    // 早先只看 naturalWidth<120，一张 640x480 的图标被 CSS 缩成 16px 显示
+                    // 仍然会通过 —— 和页面悬停踩的是同一个坑（见 docs/RESEARCH-COMPETITOR-IMAGE.md）。
+                    var box = null;
+                    try { box = im.getBoundingClientRect(); } catch (e) { box = null; }
+                    var dw = box ? Math.round(box.width) : (im.clientWidth || 0);
+                    var dh = box ? Math.round(box.height) : (im.clientHeight || 0);
+                    if (dw > 0 && dh > 0) {
+                        if (Math.min(dw, dh) < 48) { continue; }
+                        var ratio = Math.max(dw, dh) / Math.min(dw, dh);
+                        if (ratio > 6) { continue; }
+                    } else if (w && h && (w < 120 || h < 120)) {
+                        continue;   // 量不到显示尺寸时退回原始像素兜底
+                    }
                     push(src, w, h, im.alt);
                 }
                 // background-image（只扫前 3000 个节点，避免卡）
