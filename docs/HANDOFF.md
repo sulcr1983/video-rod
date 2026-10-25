@@ -326,7 +326,7 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 交互与验收对照原型 `deliverables/prototypes/library-prototype-v1.html`（v1.3）与 LIBRARY-PLAN §6。
 
-### 7.3 图片下载实现（I1–I3 已完成，I4–I6 未做）
+### 7.3 图片下载实现（I1–I5 已完成，I6 仅模式 A）
 
 - **I1 ✅** `js/lib-image-util.js`：纯函数（`self.VRImageUtil`，Node 可 require）。五级候选链（`a[href]` → srcset 最大 w → data-* 懒加载 → `data-ri` JSON → `currentSrc`）、`scanImages` 过滤（短边 <100 / data URI / SVG / 占位图）、`extFromContentType`。
 - **I2 ✅** `js/image-hover.js`：悬停 300ms 出「下载原图」，Shadow DOM 隔离，滚动/缩放/移开即隐藏；读 `vrLibSettings.imgHover`（缺省开），关闭即移除宿主节点。
@@ -339,8 +339,12 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 - **I4 ✅** `js/image-panel.js`：右下浮标 + 清单面板（档位筛选/搜索/排序/批量下载）。
   - ⚠️ **默认关闭**：批量下载是低频操作，不该占常驻 UI（竞品 Image Downloader / Image Harvest 也都不放页面浮标）。设置里可开回。
 - **I5 ✅** 设置区（面板内 + `options.html` 双入口）+ 快捷键 `Alt+Shift+D`（下悬停图）/ `Alt+Shift+A`（开清单）。
-- **I6 ❌ 仍未做**：`js/image-album.js` 不存在，SW 侧 `vrImg.albumScan/albumProgress/albumStop` **一条都没实现**。
-  设计见 `docs/IMAGE-DOWNLOAD-PLAN.md` §1.5 + §2b（三种模式：自动滚动 / 分页翻页 / 站点 API）。
+- **I6 ✅ 模式 A（自动滚动）已做**：`js/image-album.js`（采集 + 面板内入口/进度/停止），
+  SW 侧 `vrImg.albumScan/albumProgress/albumStop` 三条协议，任务状态落 `chrome.storage.session`，
+  滚动动作由 `chrome.scripting.executeScript` 注入到目标标签页执行。
+  - 模式 B（分页翻页）未做：`mode:"paging"` 如实返回 `IMG_E_UNSUPPORTED`，不假装接单。
+  - 模式 C（站点 API）未做，设计里本就留作后续按平台补。
+  - 验收：`tools/cdp-image-album-test.py`（40 条）。设计见 `docs/IMAGE-DOWNLOAD-PLAN.md` §1.5 + §2b。
 - 图片落库走**已经跑通的自动入库链路**，不要再另写一套。
 
 ### 7.4 已知缺口 / 技术债（先认账，别当成新发现）

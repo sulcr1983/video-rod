@@ -38,7 +38,6 @@ MOVED = {
 
 # 明确未实现的功能（未实现是事实，不算文档漂移——但要在 TODO 里列着）
 NOT_IMPLEMENTED = {
-    'js/image-album.js',       # I6 图集
     'js/library/archive.js',   # B 模式自定义目录
     'js/album.js',
     'js/image-collection.js',

@@ -12,7 +12,7 @@
 |---|---|
 | 资源库 S0 → S5b | ✅ 全部落地 |
 | 图片线 I1 → I5 | ✅ 全部落地（本轮刚修完 I4/I5 的三个 bug + 补齐发现能力） |
-| **图片线 I6（图集）** | ❌ **未开始**（`js/image-collection.js`、`js/album.js` 都不存在） |
+| **图片线 I6（图集）** | ✅ **模式 A 已落地**（模式 B 翻页 / C 站点 API 未做） |
 | YouTube 下载 | ✅ 链路已通（VISIONOS 客户端可用，32 条格式带直链，最高 2160p） |
 | **YouTube 深水区** | ❌ 未做（SABR 复放、流式落盘、WebM） |
 
@@ -20,16 +20,39 @@
 
 ---
 
+## 一之二、2026-10-25 晚已完成（本轮）
+
+| 项 | 状态 | 落地 |
+|---|---|---|
+| **deepVerify 设置 UI** | ✅ 完成 | `options.html` 加开关（`id="DeepVerify"`），`js/library/settings.js` 加字段与默认 `false` |
+| **library.html 首次自动索引** | ✅ 完成 | `js/library/ui.js` 加 `ensureIndex()`：空则先试 `build({mode:'full'})`，无句柄退回 `snapshot`，都失败静默跳过；用 session 标志防重复 |
+| **I6 图集（模式 A 自动滚动）** | ✅ 完成 | `js/image-album.js`（386 行）+ SW 三条协议 + 面板入口；`tools/cdp-image-album-test.py` 40/40 |
+| **存量下载迁 FSA** | ✅ 完成 | `js/library/save.js`（584 行，FSA 优先 / downloads 兜底）+ `vrDownloadWithName` 统一改造；`tools/test-save.js` 42/42 |
+
+### 存量迁 FSA 的具体口径
+
+- **统一入口**：改 `vrDownloadWithName`，4 处调用方（自动下载 / X 按钮 / 秒存 / 图片下载）自动受益
+- **FSA 不可用照常降级**：用户没授权目录时仍走 `chrome.downloads`，功能不废
+- **FSA 成功返回 `{__fsa, path}`** 而非 downloadId —— 调用方要判这个，否则会把成功计成失败（已适配 3 处）
+- **FSA 写完后主动入库**：`save.js` 内部调 `ingest`，补上「没有下载事件 → 入库链路收不到」的缺口
+- **popup 抓图改走 SW 协议**（`vrImg.download`）：popup 上下文拿不到 SW 的目录句柄
+- **m3u8 分片仍走 downloads**：分片是 blob 且要逐个落盘，FSA 需用户手势授权，不适合；已在代码注释说明
+
+---
+
 ## 二、真正未做的（按建议优先级）
 
-### P1 · 图片线 I6 图集（唯一整块未开始的功能）
+### P1 · 图片线 I6 图集（模式 A 已落地，B/C 未做）
 
-`HANDOFF` 里写「下一步是 I6」，核实确认**确实没做**：
+**2026-10-25 更新**：模式 A（自动滚动）已实现并验收通过。
 
-| 预期文件（按设计文档口径） | 状态 |
+| 文件 | 状态 |
 |---|---|
-| `js/image-album.js`（content script） | ❌ 不存在 |
-| SW 侧 `vrImg.albumScan` / `albumProgress` / `albumStop` | ❌ **一条都没实现**（`background.js` 里 0 处引用） |
+| `js/image-album.js`（content script） | ✅ 已实现（采集 + 面板内入口/进度/停止） |
+| SW 侧 `vrImg.albumScan` / `albumProgress` / `albumStop` | ✅ 已实现（状态落 `chrome.storage.session`，滚动走 `executeScript`） |
+| 模式 B（分页翻页） | ❌ 未做：`mode:"paging"` 会如实返回 `IMG_E_UNSUPPORTED` |
+| 模式 C（站点 API） | ❌ 未做（设计里本就留作后续按平台补） |
+| 验收 | `tools/cdp-image-album-test.py` 40/40 通过 |
 
 **注意**：HANDOFF 里只写了「I6 图集」四个字，实际设计在
 `docs/IMAGE-DOWNLOAD-PLAN.md` §1.5 与 §2b（第 209 行），包含三种模式：
@@ -107,7 +130,8 @@ blob 落盘成 UUID、http 下载丢名退化成 URL 末段、`suggest()` 被忽
 ## 六、我的建议顺序
 
 1. **先补 `deepVerify` 设置 UI 和 `library.html` 自动索引** —— 都是一两小时的小活，补完资源库体验才闭环
-2. **再做 I6 图集** —— 唯一整块未开始的功能，但要先读 `IMAGE-DOWNLOAD-PLAN.md`
+2. **再做 I6 图集** —— 模式 A 已完成；剩下的是 B（翻页）与 C（站点 API），
+   动手前先读 `IMAGE-DOWNLOAD-PLAN.md` §1.5，且 B 要评估风控代价
 3. **然后存量下载迁 FSA** —— 文件名退化是**用户可感知**的问题（下下来的文件叫 UUID），比 YouTube 深水区更值得先修
 4. **YouTube 深水区放最后** —— 现状可用，只是 4K 长视频有 OOM 风险，属于「不碰就没事」
 5. **B 模式（archive.js）** —— 如果 Sunny 实际不用自定义目录，可以一直不做

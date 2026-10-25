@@ -48,7 +48,7 @@
 | 文档 | 内容 | 未实现部分 |
 |---|---|---|
 | **`LIBRARY-PLAN.md`** | 资源库主线方案 | `archive.js`（B 模式）、`bridge.js`（能力已并入） |
-| **`IMAGE-DOWNLOAD-PLAN.md`** | 图片下载总方案 | **I6 图集**（`js/image-album.js` + SW 三条协议） |
+| **`IMAGE-DOWNLOAD-PLAN.md`** | 图片下载总方案 | I6 图集：模式 A（滚动）已落地，B（翻页）/C（站点 API）未做 |
 | **`DESIGN.md`** | 早期设计稿 | `image-scanner.js` / `bilibili.js` / `youtube.js` 都换了落点，已加阅读须知 |
 | **`BUILD-PLAN.md`** | 构建计划 | 构建链未建（无 `package.json`） |
 | **`FRONTEND-UI-SYSTEM.md`** | UI 体系 | 部分设想未落地 |

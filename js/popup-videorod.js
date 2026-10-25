@@ -1222,8 +1222,19 @@
             var filename = dir + '/' + cleanPath(names[i]);
             if (isDownloaded(filename)) { return; }
             markDownloaded(filename);
-            chrome.downloads.download({ url: im.src, filename: filename }, function () {
-                chrome.runtime.lastError && console.warn(chrome.runtime.lastError);
+            // 交给 SW 落盘（vrImg.download），不再直接调 chrome.downloads。
+            // Chrome 147 起 downloads 的文件名保护失效（ADR-040），SW 侧会优先走
+            // FSA 直写保住文件名，拿不到句柄才回退下载器。
+            chrome.runtime.sendMessage({
+                Message: 'vrImg.download',
+                url: im.src,
+                title: names[i],
+                index: i,
+                pageUrl: (G && G.pageUrl) || ''
+            }, function (r) {
+                if (chrome.runtime.lastError || !r || !r.ok) {
+                    console.warn('[video-rod] 抓图落盘失败', chrome.runtime.lastError || r);
+                }
             });
             ok++;
         });

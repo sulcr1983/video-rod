@@ -21,6 +21,11 @@ if (typeof self.VRLib === 'undefined') {
 if (typeof self.VRImageUtil === 'undefined') {
     try { importScripts("/js/lib-image-util.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
+/* VRSave 依赖 VRPath（算相对路径）与 VRLib（FSA 写完后主动入库），
+ * 所以必须放在这两个之后加载。 */
+if (typeof self.VRSave === 'undefined') {
+    try { importScripts("/js/library/save.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
 
 // Service Worker 5分钟后会强制终止扩展
 // https://bugs.chromium.org/p/chromium/issues/detail?id=1271154
@@ -407,6 +412,39 @@ function vrDownloadWithName(url, filename, extra) {
         extra || {}
     );
     delete opts.meta;   // meta 只用于资源库预登记，不是 chrome.downloads 的合法参数
+
+    // Chrome 147 起 chrome.downloads 的文件名保护全面失效（ADR-040）：
+    // blob 落盘成 UUID、http 丢名退化成 URL 末段、suggest() 被忽略。
+    // 所以优先走 FSA 直写；FSA 不可用（用户没授权目录 / 非 SW 环境）才回退下载器。
+    // 回退时返回的 id 仍走原来的记账链路，行为与改造前一致，不会把功能搞挂。
+    const save = self.VRSave;
+    if (save && typeof save.saveFile === 'function') {
+        return save.saveFile({
+            relPath: filename,
+            blobOrUrl: url,
+            mime: (extra && extra.mime) || '',
+            referrer: (extra && extra.referrer) || '',
+            meta: (extra && extra.meta) || null,
+            prefer: 'auto'
+        }).then(function (r) {
+            if (r && r.ok && r.mode === 'fsa') {
+                // FSA 直写没有下载事件，入库已在 save.js 内部做完了。
+                // 这里返回一个「假 downloadId」会污染记账表（那张表靠真 id 撤账），
+                // 所以统一返回 null 并打标记，让调用方知道「下成功了但不是下载器下的」。
+                vrAbortFilename(url, filename);
+                return { __fsa: true, path: r.path };
+            }
+            if (r && r.ok && r.mode === 'downloads') {
+                return r.downloadId || null;
+            }
+            vrAbortFilename(url, filename);
+            return null;
+        }).catch(function () {
+            vrAbortFilename(url, filename);
+            return null;
+        });
+    }
+
     return new Promise(function (resolve) {
         chrome.downloads.download(opts, function (id) {
             if (chrome.runtime.lastError || id === undefined) {
@@ -667,6 +705,12 @@ async function vrImgDownload(msg) {
     } catch (e) {
         downloadId = null;
     }
+    // FSA 直写成功时没有 downloadId（也没走下载器），返回的是 {__fsa, path}。
+    // 这是**成功**，不能当失败处理——否则批量下载会把已落盘的图计成失败。
+    if (downloadId && typeof downloadId === 'object' && downloadId.__fsa) {
+        if (ruleId) { vrImgClearRefererRule(ruleId); }   // 没发下载请求，规则立刻撤
+        return { ok: true, fsa: true, downloadId: null, path: downloadId.path || relPath };
+    }
     if (downloadId === null || downloadId === undefined) {
         // 没发起下载，规则立刻撤
         if (ruleId) { vrImgClearRefererRule(ruleId); }
@@ -791,6 +835,331 @@ function vrImgBatchCancel(msg) {
     const batchId = String((msg && msg.batchId) || '');
     const st = VR_IMG_BATCH.get(batchId);
     if (st) { st.canceled = true; }
+}
+
+/* ==========================================================
+ * 图集扫描（I6 模式 A：自动滚动）
+ * 协议见 docs/IMAGE-DOWNLOAD-PLAN.md §2.6
+ *
+ * 为什么状态要落 chrome.storage.session 而不是只放内存：
+ *   MV3 的 SW 空闲 30s 就会被回收，扫一个长图集很容易超过。任务状态（已滚几屏、
+ *   已收集哪些 URL）放内存等于「SW 一睡就全丢」，面板轮询回来只能看到空白。
+ *   落 session 后，内容脚本每 400ms 的轮询会把 SW 叫醒，接着从断点继续滚。
+ *   用 session 而不是 local：这些是临时任务数据，浏览器关掉就该消失。
+ * ========================================================== */
+
+var VR_ALBUM_KEY = 'vrImgAlbumTasks';
+var VR_ALBUM_MAX_TASKS = 8;          // 只留最近几个任务，防 session 存储无限长
+var VR_ALBUM_MAX_URLS = 1000;        // 单任务收集上限，防极端页面把存储撑爆
+var VR_ALBUM_SETTLE_MS = 450;        // 滚动后等懒加载的固定时间
+var VR_ALBUM_RUNNING = new Set();    // 正在跑的 taskId（防同一任务被并发续跑）
+var VR_ALBUM_STOP = new Set();       // 用户点了停止的 taskId（内存侧快速判定）
+
+function vrAlbumArea() {
+    return chrome.storage.session || chrome.storage.local;
+}
+
+function vrAlbumReadAll() {
+    return new Promise(function (resolve) {
+        try {
+            vrAlbumArea().get(VR_ALBUM_KEY, function (o) {
+                void chrome.runtime.lastError;
+                resolve((o && o[VR_ALBUM_KEY]) || {});
+            });
+        } catch (e) { resolve({}); }
+    });
+}
+
+function vrAlbumWriteAll(map) {
+    return new Promise(function (resolve) {
+        try {
+            var obj = {};
+            obj[VR_ALBUM_KEY] = map;
+            vrAlbumArea().set(obj, function () {
+                void chrome.runtime.lastError;
+                resolve();
+            });
+        } catch (e) { resolve(); }
+    });
+}
+
+function vrAlbumGet(taskId) {
+    return vrAlbumReadAll().then(function (map) { return map[taskId] || null; });
+}
+
+function vrAlbumPut(task) {
+    if (!task || !task.taskId) { return Promise.resolve(); }
+    task.updatedAt = Date.now();
+    return vrAlbumReadAll().then(function (map) {
+        map[task.taskId] = task;
+        var ids = Object.keys(map);
+        if (ids.length > VR_ALBUM_MAX_TASKS) {
+            ids.sort(function (a, b) { return (map[a].updatedAt || 0) - (map[b].updatedAt || 0); });
+            var drop = ids.length - VR_ALBUM_MAX_TASKS;
+            for (var i = 0; i < drop; i++) { delete map[ids[i]]; }
+        }
+        return vrAlbumWriteAll(map);
+    });
+}
+
+function vrAlbumNewId() {
+    return 'a-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+/** 进度广播：和批量下载一样 200ms 节流，扫得快时不会把消息通道刷爆 */
+function vrAlbumEmit(task, force) {
+    if (!task) { return; }
+    var now = Date.now();
+    if (!force && now - (task.lastEmit || 0) < 200 && task.state === 'scanning') { return; }
+    task.lastEmit = now;
+    try {
+        chrome.runtime.sendMessage({
+            Message: 'vrImg.albumProgress',
+            taskId: task.taskId,
+            page: task.page,
+            maxPages: task.maxPages,
+            collected: task.urls.length,
+            state: task.state
+        }, function () {
+            void chrome.runtime.lastError;   // 页面已关时必读，否则控制台报未捕获
+        });
+    } catch (e) { /* content 不在，忽略 */ }
+}
+
+function vrAlbumSleep(ms) {
+    return new Promise(function (r) { setTimeout(r, ms); });
+}
+
+function vrAlbumRunScript(tabId, func, args) {
+    return new Promise(function (resolve) {
+        try {
+            chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                func: func,
+                args: args || []
+            }, function (res) {
+                if (chrome.runtime.lastError) {
+                    resolve({ ok: false, message: chrome.runtime.lastError.message });
+                    return;
+                }
+                var r = res && res[0] ? res[0].result : null;
+                resolve({ ok: true, result: r });
+            });
+        } catch (e) {
+            resolve({ ok: false, message: String(e && e.message || e) });
+        }
+    });
+}
+
+/* 滚一屏。必须在目标页里执行：SW 没有 DOM，也没有视口。 */
+function vrAlbumScrollStep() {
+    var before = window.scrollY || 0;
+    var vh = window.innerHeight || 0;
+    var step = Math.max(200, Math.floor(vh * 0.9));
+    window.scrollTo(0, before + step);
+    var docH = Math.max(
+        (document.documentElement && document.documentElement.scrollHeight) || 0,
+        (document.body && document.body.scrollHeight) || 0
+    );
+    var after = window.scrollY || 0;
+    return {
+        before: before,
+        y: after,
+        innerH: vh,
+        docH: docH,
+        moved: after > before,
+        atBottom: after + vh >= docH - 4
+    };
+}
+
+/**
+ * 采集当前页已加载的图片。
+ * 走 self.__vrImgAlbumCollect（image-album.js 挂的入口）：过滤口径必须与面板/悬停一致。
+ * 内容脚本没注入时返回 null，由调用方按失败处理。
+ */
+function vrAlbumCollectStep(min) {
+    if (typeof self.__vrImgAlbumCollect !== 'function') { return null; }
+    return self.__vrImgAlbumCollect(min);
+}
+
+/**
+ * 扫描主循环。可重入：SW 被回收后由 albumProgress 的轮询再次拉起，从 task.page 接着滚。
+ */
+async function vrAlbumLoop(taskId) {
+    if (VR_ALBUM_RUNNING.has(taskId)) { return; }
+    VR_ALBUM_RUNNING.add(taskId);
+    try {
+        let task = await vrAlbumGet(taskId);
+        if (!task) { return; }
+        if (task.state !== 'scanning') { return; }
+
+        const seen = Object.create(null);
+        for (let i = 0; i < task.urls.length; i++) { seen[task.urls[i].url] = 1; }
+
+        while (task.state === 'scanning') {
+            if (VR_ALBUM_STOP.has(taskId)) {
+                task.state = 'stopped';
+                break;
+            }
+            // 每轮都回读一次状态：停止可能来自「另一个 SW 实例」（SW 被回收后
+            // 内存里的 VR_ALBUM_STOP 就没了），只信存储里的 state 才不会白滚。
+            const live = await vrAlbumGet(taskId);
+            if (!live) { return; }
+            if (live.state !== 'scanning') {
+                task.state = live.state;
+                break;
+            }
+            if (task.page >= task.maxPages) { task.state = 'done'; break; }
+
+            const sc = await vrAlbumRunScript(task.tabId, vrAlbumScrollStep);
+            if (!sc.ok) {
+                task.state = 'error';
+                task.message = '无法在目标页执行滚动：' + (sc.message || '页面可能已关闭');
+                break;
+            }
+            const geo = sc.result || {};
+            task.page += 1;
+
+            // 滚动后等懒加载。固定等待而不是 MutationObserver：SW 里没有 DOM，
+            // 观察器只能放页面侧，反而要多一轮消息；这里 450ms 已覆盖绝大多数站点。
+            await vrAlbumSleep(VR_ALBUM_SETTLE_MS);
+
+            const got = await vrAlbumRunScript(task.tabId, vrAlbumCollectStep, [task.minSize]);
+            if (got.ok && Array.isArray(got.result)) {
+                for (let i = 0; i < got.result.length; i++) {
+                    const it = got.result[i];
+                    if (!it || !it.url || seen[it.url]) { continue; }
+                    seen[it.url] = 1;
+                    task.urls.push(it);
+                    if (task.urls.length >= VR_ALBUM_MAX_URLS) { break; }
+                }
+            }
+
+            // 到页面底部时再补采一次：最后一屏的图常常在滚动后 1s 才 naturalWidth > 0，
+            // 只采一次会少几张（表现为「明明到底了却少几张」）。
+            if (geo.atBottom) {
+                await vrAlbumSleep(VR_ALBUM_SETTLE_MS);
+                const again = await vrAlbumRunScript(task.tabId, vrAlbumCollectStep, [task.minSize]);
+                if (again.ok && Array.isArray(again.result)) {
+                    for (let i = 0; i < again.result.length; i++) {
+                        const it = again.result[i];
+                        if (!it || !it.url || seen[it.url]) { continue; }
+                        seen[it.url] = 1;
+                        task.urls.push(it);
+                        if (task.urls.length >= VR_ALBUM_MAX_URLS) { break; }
+                    }
+                }
+                task.state = 'done';
+                break;
+            }
+
+            // 滚不动了（页面已到顶或没有可滚区域）也算到底
+            if (!geo.moved) {
+                task.state = 'done';
+                break;
+            }
+
+            await vrAlbumPut(task);
+            vrAlbumEmit(task);
+        }
+
+        task.message = task.message || '';
+        await vrAlbumPut(task);
+        vrAlbumEmit(task, true);
+    } catch (e) {
+        try {
+            const t = await vrAlbumGet(taskId);
+            if (t) {
+                t.state = 'error';
+                t.message = String((e && e.message) || e);
+                await vrAlbumPut(t);
+                vrAlbumEmit(t, true);
+            }
+        } catch (e2) { /* 收尾失败也不影响已有数据 */ }
+    } finally {
+        VR_ALBUM_RUNNING.delete(taskId);
+    }
+}
+
+async function vrAlbumScan(msg, tabId) {
+    const mode = String((msg && msg.mode) || 'scroll');
+    if (mode !== 'scroll') {
+        // B 模式（分页翻页）尚未实现：如实拒绝，不做「假装支持」
+        return { ok: false, code: 'IMG_E_UNSUPPORTED', message: '翻页模式尚未实现，请用滚动模式' };
+    }
+    const maxPages = Math.max(1, Math.min(50, Number(msg && msg.maxPages) || 10));
+    const id = String((msg && msg.taskId) || vrAlbumNewId());
+    const min = Math.max(16, Number(msg && msg.minSize) || 100);
+
+    if (!tabId) {
+        return { ok: false, code: 'IMG_E_NO_TAB', message: '拿不到标签页 ID' };
+    }
+
+    const task = {
+        taskId: id,
+        tabId: tabId,
+        mode: 'scroll',
+        maxPages: maxPages,
+        minSize: min,
+        page: 0,
+        urls: [],
+        state: 'scanning',
+        message: '',
+        updatedAt: Date.now(),
+        lastEmit: 0
+    };
+    VR_ALBUM_STOP.delete(id);
+    await vrAlbumPut(task);
+    vrAlbumEmit(task, true);
+    // 不 await：扫描要跑几十秒，立刻回 taskId 让面板能开始轮询
+    vrAlbumLoop(id);
+    return { ok: true, taskId: id, maxPages: maxPages, state: 'scanning' };
+}
+
+async function vrAlbumProgress(msg) {
+    const id = String((msg && msg.taskId) || '');
+    if (!id) { return { ok: false, code: 'IMG_E_NO_TASK' }; }
+    let task = await vrAlbumGet(id);
+    if (!task) {
+        return { ok: false, code: 'IMG_E_NO_TASK', message: '任务不存在（可能已过期）' };
+    }
+    // 轮询顺带当「续跑探针」：SW 被回收后内存里没有循环，这里把它重新拉起来
+    if (task.state === 'scanning' && !VR_ALBUM_RUNNING.has(id) && !VR_ALBUM_STOP.has(id)) {
+        vrAlbumLoop(id);
+    }
+    const out = {
+        ok: true,
+        taskId: id,
+        page: task.page,
+        maxPages: task.maxPages,
+        collected: task.urls.length,
+        state: task.state,
+        message: task.message || ''
+    };
+    if (msg && msg.withItems) {
+        out.items = task.urls.slice();
+    }
+    return out;
+}
+
+async function vrAlbumStop(msg) {
+    const id = String((msg && msg.taskId) || '');
+    if (!id) { return { ok: false, code: 'IMG_E_NO_TASK' }; }
+    VR_ALBUM_STOP.add(id);
+    const task = await vrAlbumGet(id);
+    if (!task) { return { ok: false, code: 'IMG_E_NO_TASK', message: '任务不存在' }; }
+    if (task.state === 'scanning') {
+        task.state = 'stopped';
+        await vrAlbumPut(task);
+        vrAlbumEmit(task, true);
+    }
+    return {
+        ok: true,
+        taskId: id,
+        page: task.page,
+        collected: task.urls.length,
+        state: task.state
+    };
 }
 
 /* 已下载去重表：chrome.storage.local 键 vrImgDownloaded，上限 2000 条按时间淘汰 */
@@ -1164,6 +1533,32 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         sendResponse({ ok: true, canceled: true });
         return true;
     }
+    // 图集扫描（I6 模式 A）：长任务，状态落 storage.session；滚动由 executeScript 到目标标签页
+    if (Message && (Message.Message === 'vrImg.albumScan' || Message.action === 'vrImg.albumScan')) {
+        const scanTabId = parseInt(Message.tabId, 10) || (sender && sender.tab ? sender.tab.id : 0);
+        vrAlbumScan(Message, scanTabId).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
+        });
+        return true;
+    }
+    if (Message && (Message.Message === 'vrImg.albumProgress' || Message.action === 'vrImg.albumProgress')) {
+        vrAlbumProgress(Message).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
+        });
+        return true;
+    }
+    if (Message && (Message.Message === 'vrImg.albumStop' || Message.action === 'vrImg.albumStop')) {
+        vrAlbumStop(Message).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
+        });
+        return true;
+    }
     if (!G.initLocalComplete || !G.initSyncComplete) {
         sendResponse("error");
         return true;
@@ -1337,7 +1732,8 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
                 const fname = (Message.filename || "")
                     .replace(/\.(mp4|m4v|webm|mov)$/i, "") + "." + ext;
                 vrDownloadWithName(url, fname).then(function (id) {
-                    if (id === null) {
+                    // FSA 直写成功返回 {__fsa,path}，不是 null —— 只有真 null 才算失败
+                    if (id === null || id === undefined) {
                         console.warn("[video-rod] X按钮下载失败", chrome.runtime.lastError);
                     }
                 });
@@ -1711,7 +2107,8 @@ async function vrSaveContextMedia(info, isImage) {
     const filename = (dir + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
 
     vrDownloadWithName(info.srcUrl, filename).then(function (id) {
-        if (id === null) {
+        // 同上：FSA 成功返回对象，只有真 null 才是失败
+        if (id === null || id === undefined) {
             console.warn('[video-rod] 秒存失败', chrome.runtime.lastError);
         }
     });
