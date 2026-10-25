@@ -32,6 +32,7 @@
 | `imgHotkeys` | bool | `true` | — | 启用 `Alt+Shift+D` / `Alt+Shift+A` |
 | `imgHoverDelay` | int | `300` | 0–1500 | 悬停多久出按钮（ms） |
 | `imgBgScan` | bool | `true` | — | **2026-10-25 新增**：清单面板是否也扫 CSS `background-image`。很多站点把封面做成背景图，只看 `<img>` 会漏；但背景图扫描要 `getComputedStyle`，长页面上有开销，故给开关 |
+| `imgHoverMinSize` | int | **`600`** | 16–4096 | **2026-10-25 新增**：悬停按钮的显示尺寸门槛，宽高都要 ≥ 此值才出按钮。判**显示尺寸**不是原图像素（缩略图列表不该满屏冒按钮）。改完即时生效 |
 
 > `imgHoverDelay` 是本次新增：原来写死 300ms，有人嫌快有人嫌慢，做成可调。
 > `imgBgScan` 是 2026-10-25 新增（`js/lib-image-util.js` 的 `scanBackgrounds`）。

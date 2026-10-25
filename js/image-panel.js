@@ -1027,7 +1027,8 @@
         { key: 'imgPanel', type: 'bool', label: '右下浮标', hint: '本页图片清单入口' },
         { key: 'imgPreferOriginal', type: 'bool', label: '优先原图', hint: '按五级候选找最大的一张；关掉则用当前显示的那张' },
         { key: 'imgBgScan', type: 'bool', label: '扫背景图', hint: '把 CSS 背景图也算进来；长页面上会略慢' },
-        { key: 'imgMinSize', type: 'num', label: '面板最小尺寸', hint: '清单面板只列短边≥此值的图（悬停按钮固定 600，不受此项影响）', unit: 'px' },
+        { key: 'imgHoverMinSize', type: 'num', label: '悬停门槛', hint: '页面图宽高都≥此值才出按钮（判显示尺寸）', unit: 'px' },
+        { key: 'imgMinSize', type: 'num', label: '面板最小尺寸', hint: '清单只列原图短边≥此值的图（与悬停门槛互不影响）', unit: 'px' },
         { key: 'imgHoverDelay', type: 'num', label: '悬停延迟', hint: '停多久才出按钮', unit: 'ms' },
         { key: 'imgConcurrency', type: 'num', label: '批量并发', hint: '同时下载几张；太高反而排队更慢', unit: '张' },
         { key: 'imgBatchLimit', type: 'num', label: '单批上限', hint: '一次最多下多少张，防误点', unit: '张' },
@@ -1229,6 +1230,9 @@
                 if (open && !settingsOpen) { renderAll(); }
             } catch (e) { /* 忽略 */ }
         }
+        // 悬停门槛改了不用刷面板（它只管悬停按钮），
+        // 但内容脚本靠 storage.onChanged 自动生效，这里不需要额外动作。
+        // 留着这个分支是为了让「改过什么」一目了然，别误以为漏了处理。
     }
 
     /* 自定义档位：用面板内联输入，不用 prompt/alert——

@@ -947,8 +947,16 @@
 
           <div class="item">
             <div>
-              <div>面板最小尺寸（短边像素）</div>
-              <div class="about-muted">图片清单只列短边≥此值的图，范围 16–4096；页面悬停按钮固定 600×600，不受此项影响</div>
+              <div>悬停门槛（显示尺寸）</div>
+              <div class="about-muted">页面上的图宽高都 ≥ 此值才出「下载原图」按钮，范围 16–4096。判的是显示尺寸，不是原图像素</div>
+            </div>
+            <input id="ImgHoverMinSize" type="number" min="16" max="4096" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>面板最小尺寸（原图像素）</div>
+              <div class="about-muted">图片清单只列原图短边 ≥ 此值的图，范围 16–4096；与上面的悬停门槛互不影响</div>
             </div>
             <input id="ImgMinSize" type="number" min="16" max="4096" class="width100" style="width:110px;" />
           </div>
