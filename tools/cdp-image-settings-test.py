@@ -336,6 +336,23 @@ def main():
     cdp.wait_js(sid, "!!document.getElementById('vr-img-panel-host')", 10.0)
     time.sleep(0.5)
 
+    # 悬停用例需要一张 ≥600×600 的图（悬停门槛是 600，夹具页的 s1 只有 160px）。
+    # 单独注入，不改夹具页 —— 否则会打乱「面板 8 张」的断言。
+    ev(cdp, sid, """(function(){
+      if (document.getElementById('hoverbig')) { return true; }
+      const im = document.createElement('img');
+      im.id = 'hoverbig';
+      im.src = 'media/cover.jpg';
+      im.width = 640; im.height = 640;
+      im.style.cssText = 'display:block;margin:24px 0';
+      document.body.appendChild(im);
+      return true;
+    })()""")
+    cdp.wait_js(sid, """(function(){
+      const e = document.getElementById('hoverbig');
+      return e && e.complete && e.naturalWidth > 0;
+    })()""", 8.0)
+
     # ---------------- A. 默认值 ----------------
     st = get_settings(cdp, osid)
     check("A2 未写入时存储里没有 imgMinSize", st.get("imgMinSize"), None)
@@ -462,7 +479,7 @@ def main():
     toggle_sw(cdp, sid, "imgBatch")
     check("G1 全部按钮开关落库 false", wait_setting(cdp, osid, "imgBatch", False), False)
     time.sleep(0.5)
-    hover_img(cdp, sid, "#s1", 1.6)
+    hover_img(cdp, sid, "#hoverbig", 1.6)
     hb = hover_bar(cdp, sid)
     check("G2 悬停条只剩一个按钮", [hb.get("oneHidden"), hb.get("allHidden")], [False, True])
 
@@ -517,7 +534,7 @@ def main():
     # 先把鼠标停到一张图上（快捷键靠「最后悬停的图」）
     # 注意：VRImgHover 在内容脚本的隔离世界，主世界读不到；
     # 用「悬停条真的出现了」来证明内容脚本已记录目标。
-    hover_img(cdp, sid, "#s1", 1.2)
+    hover_img(cdp, sid, "#hoverbig", 1.2)
     hb = hover_bar(cdp, sid)
     check("I2 悬停条已出现（说明记录了目标）", hb.get("vis"), True)
 
@@ -553,7 +570,7 @@ def main():
     set_settings(cdp, osid, {"imgHover": True})
     wait_setting(cdp, osid, "imgHover", True)
     # hover_img 自带轮询（宿主是懒创建的，不能等它自己出现）
-    hover_img(cdp, sid, "#s1")
+    hover_img(cdp, sid, "#hoverbig")
     check("J2 开回悬停后按钮恢复", hover_bar(cdp, sid).get("vis"), True)
 
     # ---------------- K. 截图 ----------------

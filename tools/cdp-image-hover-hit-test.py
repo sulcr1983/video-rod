@@ -181,8 +181,8 @@ def main():
     cdp.wait_js(sid, "!!document.getElementById('vr-img-hover-host')", 10.0)
     time.sleep(0.4)
 
-    check("A2 夹具页加载（8 张图）",
-          ev(cdp, sid, "document.images.length"), 8)
+    check("A2 夹具页加载（9 张图）",
+          ev(cdp, sid, "document.images.length"), 9)
 
     # ---------------- B. 小显示尺寸：都不该出按钮 ----------------
     # 不该出按钮的用例：等足 1.2s（超过 showDelay 300ms 很多）后断言仍不可见
@@ -196,11 +196,20 @@ def main():
     hover(cdp, sid, "#igone", 1.2)
     check("B5 隐藏图不出按钮", bar_state(cdp, sid).get("vis"), False)
 
-    # 边界：48px 应通过（轮询等，不赌固定时间）
-    hover(cdp, sid, "#i48", 0.3)
+    # 边界：门槛已从 48 提到 600（2026-10-25 用户要求）。
+    # 599 差 1px 也不认；600 刚好通过。
+    # 599px 是大图，滚动+渲染要时间；先确保它加载完再悬停
+    cdp.wait_js(sid, """(function(){
+      const e = document.getElementById('i599');
+      return e && e.complete && e.naturalWidth > 0;
+    })()""", 8.0)
+    hover(cdp, sid, "#i599", 1.2)
+    check("B6 599px 边界不出按钮（差 1px）", bar_state(cdp, sid).get("vis"), False)
+
+    hover(cdp, sid, "#i600", 0.3)
     st = wait_bar(cdp, sid, lambda b: b.get("vis"), 5.0)
-    check("B6 48px 边界应出按钮", st.get("vis"), True)
-    check("B7 按钮文案是「下载原图」", st.get("text"), "下载原图")
+    check("B7 600px 边界应出按钮", st.get("vis"), True)
+    check("B8 按钮文案是「下载原图」", st.get("text"), "下载原图")
 
     # ---------------- C. 覆盖层：仍要出按钮 ----------------
     hover(cdp, sid, "#c1", 0.3)
@@ -270,8 +279,12 @@ def main():
       const f = h.shadowRoot.querySelector('.vr-float .n');
       return f ? f.textContent.trim() : null;
     })()""")
-    # 8 张里：16/32/40/细条/隐藏 共 5 张被过滤 → 剩 3 张（48px + 两张覆盖层图）
-    check("E1 面板角标只统计合格图（3 张）", num, "3")
+    # 夹具共 9 张 img：
+    #   16/32/40（原图 640x480，但显示太小）/ 细条 1200x6（长宽比超限）/ 隐藏图 → 5 张被挡
+    #   剩 4 张：i599(原图1200)、i600(原图1200)、c1(640x480)、c2(1200)
+    # 注意面板门槛是 imgMinSize(默认 100) 判**原始像素**，与悬停的 600 无关，
+    # 所以 i599 虽然悬停不出按钮，面板里仍然会列出来。
+    check("E1 面板角标只统计合格图（4 张）", num, "4")
 
     return finish(cdp, osid)
 

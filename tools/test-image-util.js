@@ -180,10 +180,10 @@ arr('候选 ⑤currentSrc 先于 src', U.collectCandidates(onlyCurrent, makeDoc(
     ['https://example.com/y.jpg', 'https://example.com/x.jpg']);
 
 /* ---------------- scanImages ---------------- */
-const big1 = makeImg({ src: '/media/a.jpg', nw: 640, nh: 480 });
-const big2 = makeImg({ src: '/media/b.png', nw: 300, nh: 300 });
+const big1 = makeImg({ src: '/media/a.jpg', nw: 1200, nh: 900 });
+const big2 = makeImg({ src: '/media/b.png', nw: 800, nh: 800 });
 const tiny = makeImg({ src: '/media/tiny.png', nw: 16, nh: 16 });
-const dup = makeImg({ src: '/media/a.jpg', nw: 640, nh: 480 });
+const dup = makeImg({ src: '/media/a.jpg', nw: 1200, nh: 900 });
 const dataImg = makeImg({ src: '/media/c.jpg', currentSrc: 'data:image/png;base64,AAAA', nw: 400, nh: 400 });
 const svgImg2 = makeImg({ src: '/media/icon.svg', nw: 400, nh: 400 });
 const phImg2 = makeImg({ src: '/media/placeholder.png', nw: 400, nh: 400 });
@@ -193,7 +193,7 @@ const doc = makeDoc([big1, big2, tiny, dup, dataImg, svgImg2, phImg2, broken]);
 const found = U.scanImages(doc, {});
 arr('扫描 过滤后 2 张', found.map(x => x.url),
     ['https://example.com/media/a.jpg', 'https://example.com/media/b.png']);
-eq('扫描 首张尺寸', `${found[0].w}x${found[0].h}`, '640x480');
+eq('扫描 首张尺寸', `${found[0].w}x${found[0].h}`, '1200x900');
 eq('扫描 ok 标记', found[0].ok, true);
 ok('扫描 附带候选', Array.isArray(found[0].candidates) && found[0].candidates.length === 1);
 ok('扫描 坏图（natural=0）虽有宽高属性也跳过', !found.some(x => x.url.indexOf('broken') >= 0));
@@ -202,12 +202,40 @@ const noDedupe = U.scanImages(doc, { dedupe: false });
 arr('扫描 关闭去重 3 张', noDedupe.map(x => x.url),
     ['https://example.com/media/a.jpg', 'https://example.com/media/b.png', 'https://example.com/media/a.jpg']);
 
-arr('扫描 提高阈值', U.scanImages(doc, { minWidth: 450, minHeight: 450 }).map(x => x.url),
+// 阈值提到 850：a.jpg(1200x900) 过，b.png(800x800) 被筛掉
+arr('扫描 提高阈值', U.scanImages(doc, { minWidth: 850, minHeight: 850 }).map(x => x.url),
     ['https://example.com/media/a.jpg']);
 arr('扫描 limit 生效', U.scanImages(doc, { limit: 1 }).map(x => x.url),
     ['https://example.com/media/a.jpg']);
 arr('扫描 无 doc', U.scanImages(null, {}), []);
 arr('扫描 空文档', U.scanImages(makeDoc([]), {}), []);
+
+/* ---------------- 600×600 门槛（用户明确要求） ---------------- */
+// 判「显示尺寸」：宽和高都必须 ≥600 才出下载按钮
+function withBox(nw, nh, sw, sh) {
+    const e = makeImg({ src: '/media/t.png', nw: nw, nh: nh });
+    e.getBoundingClientRect = () => ({ width: sw, height: sh, x: 0, y: 0, right: sw, bottom: sh });
+    e.clientWidth = sw;
+    e.clientHeight = sh;
+    return e;
+}
+eq('门槛 MIN_SHOW = 600', U.MIN_SHOW, 600);
+ok('600x600 刚好通过', U.isWorthDownloading(withBox(600, 600, 600, 600), {}));
+ok('800x600 通过', U.isWorthDownloading(withBox(800, 600, 800, 600), {}));
+ok('599x600 不通过（宽不够）', !U.isWorthDownloading(withBox(599, 600, 599, 600), {}));
+ok('600x599 不通过（高不够）', !U.isWorthDownloading(withBox(600, 599, 600, 599), {}));
+ok('500x500 显示不通过（哪怕原图 3000x3000）',
+   !U.isWorthDownloading(withBox(3000, 3000, 500, 500), {}));
+ok('16x16 图标不通过', !U.isWorthDownloading(withBox(640, 480, 16, 16), {}));
+ok('1200x150 横幅不通过（长宽比 8:1）',
+   !U.isWorthDownloading(withBox(1200, 150, 1200, 150), {}));
+ok('1000x600 通过（比例 1.67 在允许范围）',
+   U.isWorthDownloading(withBox(1000, 600, 1000, 600), {}));
+// 量不到显示尺寸时退回原始像素兜底
+ok('无 getBoundingClientRect 时按原始像素判：1200x900 通过',
+   U.isWorthDownloading(makeImg({ src: '/media/t.png', nw: 1200, nh: 900 }), {}));
+ok('无 getBoundingClientRect 时按原始像素判：300x300 不通过',
+   !U.isWorthDownloading(makeImg({ src: '/media/t.png', nw: 300, nh: 300 }), {}));
 
 /* ---------------- 去 resize 参数拿原图 ---------------- */
 // 各家 CDN 的降分辨率参数写法不同，都要能剥掉

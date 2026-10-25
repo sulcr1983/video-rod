@@ -357,14 +357,28 @@
         let n = 0;
         try {
             const ms = settings.imgMinSize || U.MIN_SIZE;
-            items = U.scanImages(document, { minWidth: ms, minHeight: ms, dedupe: true });
+            // 面板门槛跟随设置项 `imgMinSize`（默认 100），**不是**悬停那个 600。
+            // 用户的选择：悬停按钮只在大图上出现（避免打扰），但清单面板是「主动去看全部图」，
+            // 漏图比打扰更糟。
+            //
+            // 两个维度要分开传，不能都用 ms：
+            //   minWidth/minHeight → 判**原始像素**，这是 imgMinSize 的本义
+            //                        （设 1200 就只要原图 ≥1200 的）
+            //   minShow            → 判**显示尺寸**，只用来挡图标/按钮，用固定的 48
+            // 早先图省事把 minShow 也传成 ms，结果 imgMinSize=1200 时
+            // 连「原图 1200 但显示 160px」的图都被挡掉，面板直接空（踩过）。
+            items = U.scanImages(document, {
+                minWidth: ms, minHeight: ms, minShow: U.PANEL_MIN_SHOW, dedupe: true
+            });
             // 站点常把封面做成 CSS 背景图（img 标签里没有），只看 <img> 会整片漏掉。
             // 追加在后面，按 URL 去重，避免和 img 结果重复。
             if (settings.imgBgScan !== false) {
                 try {
                     const seenUrl = Object.create(null);
                     for (let i = 0; i < items.length; i++) { seenUrl[items[i].url] = 1; }
-                    const bgs = U.scanBackgrounds(document, { minShow: U.MIN_SHOW, dedupe: true });
+                    // 背景图没有「原始像素」概念（容器尺寸即图片尺寸），
+                    // 只用固定的显示门槛挡图标
+                    const bgs = U.scanBackgrounds(document, { minShow: U.PANEL_MIN_SHOW, dedupe: true });
                     for (let i = 0; i < bgs.length; i++) {
                         if (seenUrl[bgs[i].url]) { continue; }
                         seenUrl[bgs[i].url] = 1;
@@ -978,7 +992,7 @@
         { key: 'imgPanel', type: 'bool', label: '右下浮标', hint: '本页图片清单入口' },
         { key: 'imgPreferOriginal', type: 'bool', label: '优先原图', hint: '按五级候选找最大的一张；关掉则用当前显示的那张' },
         { key: 'imgBgScan', type: 'bool', label: '扫背景图', hint: '把 CSS 背景图也算进来；长页面上会略慢' },
-        { key: 'imgMinSize', type: 'num', label: '最小尺寸', hint: '短边小于此值的图不参与扫描', unit: 'px' },
+        { key: 'imgMinSize', type: 'num', label: '面板最小尺寸', hint: '清单面板只列短边≥此值的图（悬停按钮固定 600，不受此项影响）', unit: 'px' },
         { key: 'imgHoverDelay', type: 'num', label: '悬停延迟', hint: '停多久才出按钮', unit: 'ms' },
         { key: 'imgConcurrency', type: 'num', label: '批量并发', hint: '同时下载几张；太高反而排队更慢', unit: '张' },
         { key: 'imgBatchLimit', type: 'num', label: '单批上限', hint: '一次最多下多少张，防误点', unit: '张' },
