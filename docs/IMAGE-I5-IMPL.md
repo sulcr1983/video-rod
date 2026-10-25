@@ -24,15 +24,17 @@
 |---|---|---|---|---|
 | `imgHover` | bool | `true` | — | 悬停显示「下载原图」按钮（I1/I2） |
 | `imgBatch` | bool | `true` | — | 悬停条显示「全部 N」按钮（I3） |
-| `imgPanel` | bool | `true` | — | 右下角浮标 + 清单面板（I4） |
+| `imgPanel` | bool | **`false`** | — | 右下角浮标 + 清单面板（I4）。**2026-10-25 改为默认关**：批量下载是低频操作，不该占常驻 UI（竞品 Image Downloader / Image Harvest 也都不放页面浮标，见 `docs/RESEARCH-COMPETITOR-IMAGE.md` §2）。设置里可开回。 |
 | `imgMinSize` | int | `100` | 16–4096 | 最小尺寸（短边像素），滤掉图标/装饰图 |
 | `imgPreferOriginal` | bool | `true` | — | 优先取原图（五级候选），关掉则直接用 `currentSrc` |
 | `imgConcurrency` | int | `3` | 1–8 | 批量并发数 |
 | `imgBatchLimit` | int | `200` | 1–2000 | 单批上限 |
 | `imgHotkeys` | bool | `true` | — | 启用 `Alt+Shift+D` / `Alt+Shift+A` |
 | `imgHoverDelay` | int | `300` | 0–1500 | 悬停多久出按钮（ms） |
+| `imgBgScan` | bool | `true` | — | **2026-10-25 新增**：清单面板是否也扫 CSS `background-image`。很多站点把封面做成背景图，只看 `<img>` 会漏；但背景图扫描要 `getComputedStyle`，长页面上有开销，故给开关 |
 
 > `imgHoverDelay` 是本次新增：原来写死 300ms，有人嫌快有人嫌慢，做成可调。
+> `imgBgScan` 是 2026-10-25 新增（`js/lib-image-util.js` 的 `scanBackgrounds`）。
 
 ---
 
