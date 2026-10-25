@@ -66,6 +66,18 @@
     },
     "preview": {
       "description": "__MSG_preview__"
+    },
+    "imgDownload": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "下载鼠标悬停的图片"
+    },
+    "imgPanelOpen": {
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
+      "description": "打开本页图片清单"
     }
   },
   "host_permissions": [

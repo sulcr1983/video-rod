@@ -48,6 +48,21 @@ def downloads(cdp, osid):
                                 bytes:d.bytesReceived, error:d.error || ''})))))""")
 
 
+def wait_setting(cdp, osid, key, expect, timeout=5.0):
+    """等某一项真的落库。storage.set 是异步的，写完立刻 navigate，
+    内容脚本会读到旧值（踩过：imgBatch/imgPanel 的恢复用例假失败）。"""
+    t0 = time.time()
+    last = None
+    while time.time() - t0 < timeout:
+        cur = ev(cdp, osid, """new Promise(r=>chrome.storage.local.get('vrLibSettings',
+              o=>r((o&&o.vrLibSettings)||{})))""")
+        last = cur.get(key)
+        if last == expect:
+            return last
+        time.sleep(0.1)
+    return last
+
+
 def set_settings(cdp, osid, patch):
     return ev(cdp, osid, """new Promise(r => chrome.storage.local.get('vrLibSettings', o => {
       const s = Object.assign({}, (o && o.vrLibSettings) || {}, %s);
@@ -61,13 +76,14 @@ def clear_seen(cdp, osid):
 
 # 只清「测试站」自己产生的文件，不无差别删整个目录——
 # 一次删几十个会触发宿主的安全删除阈值，测试直接被拦掉（踩过）。
-TEST_PREFIXES = ("测试站", "20261024_测试站")
+# 文件名形如「20261025_测试站 E：xxx.jpg」——日期每天都会变，不能写死日期前缀。
+TEST_MARK = "测试站"
 
 
 def is_test_artifact(name):
     if not name.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
         return False
-    return any(name.startswith(pfx) for pfx in TEST_PREFIXES)
+    return TEST_MARK in name
 
 
 def clean_disk(dl_dir):
@@ -172,6 +188,35 @@ def hover(cdp, sid, selector, wait=0.65):
     move(cdp, sid, r["cx"], r["cy"])
     time.sleep(wait)
     return r
+
+
+def stable_click_bar(cdp, sid, timeout=6.0):
+    """点悬停条上的「全部」按钮。
+    坐标要等到连续两次读数一致才点——wait_bar 只保证「可见」，
+    但 icon-only 切换/布局回流会让坐标在可见之后还变一次（踩过两次）。
+
+    注意别在这里高频轮询：每次 hover_bar_state 都是一次 CDP 往返，
+    轮询太密会把连接拖到 timeout（实测 150s 卡死后 Connection timed out）。
+    """
+    t0 = time.time()
+    prev = None
+    tries = 0
+    while time.time() - t0 < timeout and tries < 6:
+        tries += 1
+        b = hover_bar_state(cdp, sid)
+        if not b.get("all") or b["all"]["hidden"]:
+            time.sleep(0.2)
+            continue
+        cur = (round(b["all"]["cx"]), round(b["all"]["cy"]))
+        if prev == cur:
+            click_at(cdp, sid, b["all"]["cx"], b["all"]["cy"])
+            return b
+        prev = cur
+        time.sleep(0.25)
+    b = hover_bar_state(cdp, sid)
+    if b.get("all") and not b["all"]["hidden"]:
+        click_at(cdp, sid, b["all"]["cx"], b["all"]["cy"])
+    return b
 
 
 def click_at(cdp, sid, x, y):
@@ -319,12 +364,17 @@ def main():
 
     # ---------------- C. 确认条 ----------------
     # 按钮可能因为「窄图收图标」在首帧改过一次布局，点之前重新取一次坐标
-    bar = hover_bar_state(cdp, sid)
+    bar = stable_click_bar(cdp, sid)
     if not bar.get("all") or bar["all"]["hidden"]:
         check("C0 悬停条「全部」可用", False, True)
         return finish(cdp, osid)
-    click_at(cdp, sid, bar["all"]["cx"], bar["all"]["cy"])
-    cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"))
+    cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"), 15.0)
+    if not cf.get("cfOn"):
+        # 全套连跑时按钮位置可能还在动，第一次点空 —— 重悬停 + 再点一次（踩过）
+        hover(cdp, sid, "#b1")
+        time.sleep(0.5)
+        stable_click_bar(cdp, sid)
+        cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"), 10.0)
     check("C1 确认条出现", cf.get("cfOn"), True)
     check("C2 文案含 5 张图", "5" in cf["cfText"] and "张图" in cf["cfText"], True)
     check("C3 按钮文案「下载 5 张」", cf["cfGo"], "下载 5 张")
@@ -352,7 +402,12 @@ def main():
     if not bar.get("all") or bar["all"]["hidden"]:
         check("D0 悬停条「全部」可用", False, True)
         return finish(cdp, osid)
-    click_at(cdp, sid, bar["all"]["cx"], bar["all"]["cy"])
+    # 坐标必须在「点的前一瞬」重取：wait_bar 拿到的是那一刻的快照，
+    # 之后 icon-only 切换 / 布局回流都会让旧坐标点空（踩过两次）
+    bar2 = stable_click_bar(cdp, sid)
+    if not bar2.get("all") or bar2["all"]["hidden"]:
+        check("D0b 点击前按钮仍可用", False, True)
+        return finish(cdp, osid)
     cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"))
     check("D1 再次打开确认条", cf.get("cfOn"), True)
     ids_before_d = {d["id"] for d in downloads(cdp, osid)}
@@ -397,10 +452,27 @@ def main():
     check("D9 五个文件字节数与源图一致", sizes, expect)
 
     # ---------------- E. 去重 ----------------
+    # 去重表是异步写的：D 组刚下完 5 张，记录可能还没全落库。
+    # 不等就直接开第二次批量，最后一张会漏判成「没下过」→ E3 假失败（踩过）。
+    t0 = time.time()
+    seen_n = 0
+    while time.time() - t0 < 8:
+        seen_n = ev(cdp, osid,
+                    "new Promise(r=>chrome.storage.local.get('vrImgDownloaded',"
+                    "o=>r(Object.keys(o.vrImgDownloaded||{}).length)))")
+        if seen_n >= 5:
+            break
+        time.sleep(0.2)
+    if seen_n < 5:
+        print(f"      ⚠ 去重表只有 {seen_n} 条（期望 5），E 组可能不稳")
+
     ids_before_e = {d["id"] for d in downloads(cdp, osid)}
     hover(cdp, sid, "#b1")
     bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 6.0)
-    click_at(cdp, sid, bar["all"]["cx"], bar["all"]["cy"])
+    bar = stable_click_bar(cdp, sid)          # 等坐标稳定再点
+    if not bar.get("all") or bar["all"]["hidden"]:
+        check("E1 再次打开确认条", False, True)
+        return finish(cdp, osid)
     cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"))
     check("E1 再次打开确认条", cf.get("cfOn"), True)
     go = ev(cdp, sid, """(function(){
@@ -469,11 +541,10 @@ def main():
     g0_txt = bar["all"]["text"] or bar["all"]["aria"]
     check("G0 30 张页出现「全部 30」按钮", "全部 30" in g0_txt, True)
     # icon-only 切换会让按钮宽度变化，点之前重取一次坐标
-    bar = hover_bar_state(cdp, sid)
+    bar = stable_click_bar(cdp, sid)
     if not bar.get("all") or bar["all"]["hidden"]:
         check("G0c 点击前按钮仍可用", False, True)
         return finish(cdp, osid)
-    click_at(cdp, sid, bar["all"]["cx"], bar["all"]["cy"])
     cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"))
     if not cf.get("cfOn"):
         check("G0b 确认条打开", False, True)
@@ -526,12 +597,23 @@ def main():
     check("H1 imgBatch=false 时无批量宿主", off["batchHost"], False)
 
     set_settings(cdp, osid, {"imgBatch": True})
+    wait_setting(cdp, osid, "imgBatch", True)
+    # G 组在 30 张页上跑批量，浏览器此时内存/渲染压力大，直接 navigate 有概率挂住
+    # （实测连跑三次都卡在这一行，且没有任何异常输出 = 导航请求本身没返回）。
+    # 先导航到空白页卸掉 30 张图的页面，再进目标页。
+    try:
+        cdp.navigate(sid, "about:blank")
+        time.sleep(0.5)
+    except Exception:
+        pass
     cdp.navigate(sid, PAGE)
     cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 8.0)
-    # 导航后内容脚本要重新注入，宿主节点不是立刻就有
-    cdp.wait_js(sid, "!!document.getElementById('vr-img-hover-host')", 8.0)
+    # 导航后内容脚本要重新注入，宿主节点不是立刻就有。
+    # 30 张页跑完 G 组后浏览器内存压力大，重新注入可能比 8s 更慢 —— 放宽到 15s。
+    cdp.wait_js(sid, "!!document.getElementById('vr-img-hover-host')", 15.0)
+    time.sleep(0.4)
     hover(cdp, sid, "#b1")
-    bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 6.0)
+    bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 8.0)
     h2_txt = (bar["all"]["text"] or bar["all"]["aria"]) if bar.get("all") else ""
     check("H2 imgBatch=true 恢复「全部 5」", "全部 5" in h2_txt, True)
 

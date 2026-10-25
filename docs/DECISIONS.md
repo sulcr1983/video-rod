@@ -530,6 +530,34 @@
 - **影响**：`js/background.js`（`ytCollectFormats`）、`js/yt/yt-download.js`（错误分类）；
   详见 `docs/YT-CLIENT-STATUS.md`。回归 `yt-download-test.py` 21/21 未变。
 
+## ADR-047 图片设置两处入口共用一份 `vrLibSettings`
+
+- **日期**：2026-10-25 ｜ **状态**：✅
+- **背景**：I5 要暴露 9 个图片设置项（开关/尺寸/延迟/并发/上限/快捷键）。
+  只放清单面板里，用户找不到；只放上游设置页，改完还得回面板看效果。
+- **决策**：**两处都做，共用同一份 `chrome.storage.local` 的 `vrLibSettings`**：
+  1. 面板标题栏齿轮 → 设置区（替换主体，不叠第二层遮罩）；
+  2. `options.html` 新增 `#anchorImage` 分区，控件复用上游 `.switch` 样式；
+  3. 两边都监听 `storage.onChanged`，改一边另一边即时反映。
+- **理由**：设置跟着功能走（面板里能边改边看效果），同时保留「集中配置」的入口。
+  共用一份存储就不会出现「两个地方的值不一致」这种最难排查的问题。
+- **影响**：`js/lib-image-util.js`（`DEFAULT_SETTINGS`/`mergeSettings`）、`js/image-panel.js`、
+  `options.html`、`js/library/settings.js`（`VRImgSettings`）；TESTING §23。
+
+## ADR-048 快捷键走 `chrome.commands`，不走页面 keydown
+
+- **日期**：2026-10-25 ｜ **状态**：✅
+- **背景**：`Alt+Shift+D` 下载悬停图、`Alt+Shift+A` 开清单。页面内 `keydown` 实现最简单，
+  但会被站点抢、输入框里误触、用户无法改键。
+- **决策**：manifest 声明 `chrome.commands`（`imgDownload` / `imgPanelOpen`），
+  SW 收到 `onCommand` 后查设置开关，再 `tabs.sendMessage({Message:'vrImg.hotkey'})` 转发。
+  内容脚本里 `image-hover.js` 记录 `lastHoveredImg`，快捷键直接用它——鼠标不动时没有新事件，
+  所以必须在 `mouseover` 时就把 img 存下来。
+- **理由**：`chrome.commands` 全局生效、不与站点冲突，用户还能在
+  `chrome://extensions/shortcuts` 自己改键；代价只是多一跳消息。
+- **影响**：`manifest.json`（commands）、`js/background.js`（`vrImgHotkey`）、
+  `js/image-hover.js`（`hotkeyDownload` / `lastHoveredImg`）、`js/image-panel.js`（`panel` 动作）。
+
 ---
 
 *新增决策在此追加，编号顺延。*

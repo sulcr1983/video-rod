@@ -26,6 +26,7 @@
     const COUNT_THROTTLE = 1000;
 
     let enabled = true;
+    let settings = U.mergeSettings({});   // 全部设置项（含 imgMinSize 等）
     let host = null;
     let shadow = null;
     let floatBtn = null;
@@ -40,6 +41,12 @@
     let sortSel = null;
     let selCountEl = null;
     let dlBtn = null;
+    let footEl = null;             // 面板底部（已选 N + 下载按钮）
+    let gearBtn = null;            // 设置齿轮
+    let setBox = null;             // 设置区主体
+    let setFoot = null;            // 设置区底部按钮
+    let settingsOpen = false;
+    let setErr = null;
     let customRow = null;          // 自定义档位的内联输入行
     let customInput = null;
     let customOk = null;
@@ -61,7 +68,10 @@
 
     function applySettings(s) {
         const was = enabled;
-        enabled = !(s && s.imgPanel === false);
+        settings = U.mergeSettings(s || {});
+        enabled = settings.imgPanel !== false;
+        // 设置页改了值也要同步到面板的控件上（两边共用一份存储）
+        try { if (setBox) { syncSettingsUI(); } } catch (e) { /* 忽略 */ }
         if (!enabled) { teardown(); return; }
         // 从关到开：重建 UI（teardown 已经把宿主删了）
         if (!was) {
@@ -89,6 +99,18 @@
         '<circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
     const ICON_CLOSE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
         'stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+    const ICON_GEAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="3"/>' +
+        '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06' +
+        'a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09' +
+        'a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06' +
+        'a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09' +
+        'a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06' +
+        'a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09' +
+        'a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06' +
+        'a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09' +
+        'a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
     const CSS = `
 :host { all: initial; }
@@ -231,6 +253,45 @@
   background: linear-gradient(transparent, rgba(0, 0, 0, .78));
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+/* ---------- 设置区 ---------- */
+.vr-set { padding: 4px 16px 16px; overflow-y: auto; flex: 1; }
+.vr-set[hidden] { display: none; }
+.vr-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 0; border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.vr-row:last-child { border-bottom: 0; }
+.vr-row .lab { flex: 1; min-width: 0; }
+.vr-row .lab .n2 { font-size: 12.5px; color: #e5e7eb; }
+.vr-row .lab .h { font-size: 11px; color: rgba(255, 255, 255, .42); margin-top: 2px; }
+.vr-row .num {
+  width: 76px; height: 28px; padding: 0 8px; text-align: right;
+  border-radius: 7px; border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .05); color: #fff; font: inherit; font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.vr-row .num:focus { outline: none; border-color: #3b82f6; }
+.vr-row .num.bad { border-color: #f87171; }
+.vr-row .unit { font-size: 11px; color: rgba(255, 255, 255, .4); width: 30px; }
+.vr-sw {
+  position: relative; width: 38px; height: 22px; border-radius: 11px; cursor: pointer;
+  background: rgba(255, 255, 255, .16); border: 0; padding: 0;
+  transition: background .15s; flex: 0 0 38px;
+}
+.vr-sw::after {
+  content: ''; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px;
+  border-radius: 50%; background: #fff; transition: transform .15s;
+}
+.vr-sw.on { background: #2563eb; }
+.vr-sw.on::after { transform: translateX(16px); }
+.vr-set .err2 { color: #f87171; font-size: 11px; margin-top: 6px; }
+.vr-set .err2[hidden] { display: none; }
+.vr-set-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-top: 1px solid rgba(255, 255, 255, .08);
+}
+.vr-set-foot .sp { flex: 1; }
+.vr-set-foot[hidden] { display: none; }
 .vr-custom { margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .vr-custom[hidden] { display: none; }
 .vr-custom .vr-kw { flex: 0 0 110px; min-width: 90px; }
@@ -246,6 +307,10 @@
   padding: 10px 16px; border-top: 1px solid rgba(255, 255, 255, .08);
   background: rgba(255, 255, 255, .02);
 }
+/* display:flex 会盖掉 hidden 属性，必须显式声明（踩过） */
+.vr-foot[hidden] { display: none; }
+.vr-body[hidden] { display: none; }
+.vr-filters[hidden] { display: none; }
 .vr-foot .s { flex: 1; font-size: 11.5px; color: rgba(255, 255, 255, .6); }
 .vr-foot .s b { color: #fff; }
 
@@ -291,7 +356,8 @@
         if (!floatBtn || !enabled) { return; }
         let n = 0;
         try {
-            items = U.scanImages(document, { minWidth: U.MIN_SIZE, minHeight: U.MIN_SIZE, dedupe: true });
+            const ms = settings.imgMinSize || U.MIN_SIZE;
+            items = U.scanImages(document, { minWidth: ms, minHeight: ms, dedupe: true });
             n = items.length;
         } catch (e) { n = 0; }
         if (!n || floatOff()) {
@@ -587,8 +653,13 @@
 
     function closePanel() {
         open = false;
+        // 先把面板摘掉：toggleSettings 会走 renderAll()，它万一抛错，
+        // 后面的 mask/panel 就永远摘不掉 —— 表现为「× 点了没反应」（踩过）。
         if (mask) { mask.classList.remove('on'); }
         if (panel) { panel.classList.remove('on'); }
+        if (settingsOpen) {
+            try { toggleSettings(false); } catch (e) { /* 关不掉设置区也不能挡住关闭 */ }
+        }
     }
 
     /* ---------------- UI 构建 ---------------- */
@@ -646,7 +717,14 @@
         xBtn.title = '关闭（Esc）';
         xBtn.innerHTML = ICON_CLOSE;
         xBtn.addEventListener('click', closePanel);
+        gearBtn = document.createElement('button');
+        gearBtn.type = 'button';
+        gearBtn.className = 'vr-x';
+        gearBtn.title = '设置';
+        gearBtn.innerHTML = ICON_GEAR;
+        gearBtn.addEventListener('click', () => toggleSettings());
         head.appendChild(titleEl);
+        head.appendChild(gearBtn);
         head.appendChild(xBtn);
 
         /* 过滤区 */
@@ -806,6 +884,7 @@
         /* 底部 */
         const foot = document.createElement('div');
         foot.className = 'vr-foot';
+        footEl = foot;
         selCountEl = document.createElement('span');
         selCountEl.className = 's';
         dlBtn = document.createElement('button');
@@ -823,9 +902,13 @@
         foot.appendChild(dlBtn);
         foot.appendChild(closeBtn);
 
+        buildSettings();
+
         panel.appendChild(head);
         panel.appendChild(filters);
         panel.appendChild(body);
+        panel.appendChild(setBox);
+        panel.appendChild(setFoot);
         panel.appendChild(foot);
 
         grid.addEventListener('click', onGridClick);
@@ -869,6 +952,217 @@
 
         refreshCount();
         return true;
+    }
+
+    /* ---------------- 设置区 ---------------- */
+
+    /* 设置项定义：键、标题、说明、控件类型。
+     * 顺序就是面板里的显示顺序（功能开关在前，数值在后，快捷键最后）。 */
+    const SET_FIELDS = [
+        { key: 'imgHover', type: 'bool', label: '悬停按钮', hint: '鼠标停在图片上时出现「下载原图」' },
+        { key: 'imgBatch', type: 'bool', label: '全部按钮', hint: '悬停条上显示「全部 N」' },
+        { key: 'imgPanel', type: 'bool', label: '右下浮标', hint: '本页图片清单入口' },
+        { key: 'imgPreferOriginal', type: 'bool', label: '优先原图', hint: '按五级候选找最大的一张；关掉则用当前显示的那张' },
+        { key: 'imgMinSize', type: 'num', label: '最小尺寸', hint: '短边小于此值的图不参与扫描', unit: 'px' },
+        { key: 'imgHoverDelay', type: 'num', label: '悬停延迟', hint: '停多久才出按钮', unit: 'ms' },
+        { key: 'imgConcurrency', type: 'num', label: '批量并发', hint: '同时下载几张；太高反而排队更慢', unit: '张' },
+        { key: 'imgBatchLimit', type: 'num', label: '单批上限', hint: '一次最多下多少张，防误点', unit: '张' },
+        { key: 'imgHotkeys', type: 'bool', label: '快捷键', hint: 'Alt+Shift+D 下载悬停图 / Alt+Shift+A 开清单' }
+    ];
+
+    let setCtrls = {};   // key -> { kind:'bool', el } | { kind:'num', input, err }
+
+    function buildSettings() {
+        setBox = document.createElement('div');
+        setBox.className = 'vr-set';
+        setBox.hidden = true;
+
+        for (const f of SET_FIELDS) {
+            const row = document.createElement('div');
+            row.className = 'vr-row';
+
+            const lab = document.createElement('div');
+            lab.className = 'lab';
+            const n2 = document.createElement('div');
+            n2.className = 'n2';
+            n2.textContent = f.label;
+            const h = document.createElement('div');
+            h.className = 'h';
+            h.textContent = f.hint;
+            lab.appendChild(n2);
+            lab.appendChild(h);
+            row.appendChild(lab);
+
+            if (f.type === 'bool') {
+                const sw = document.createElement('button');
+                sw.type = 'button';
+                sw.className = 'vr-sw';
+                sw.setAttribute('role', 'switch');
+                sw.setAttribute('aria-label', f.label);
+                sw.setAttribute('data-key', f.key);
+                sw.addEventListener('click', () => {
+                    const next = !sw.classList.contains('on');
+                    writeSetting(f.key, next);
+                });
+                row.appendChild(sw);
+                setCtrls[f.key] = { kind: 'bool', el: sw };
+            } else {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'num';
+                input.setAttribute('inputmode', 'numeric');
+                input.setAttribute('data-key', f.key);
+                input.setAttribute('aria-label', f.label);
+                const unit = document.createElement('span');
+                unit.className = 'unit';
+                unit.textContent = f.unit || '';
+                input.addEventListener('change', () => {
+                    const v = U.validateSetting(f.key, input.value);
+                    if (!v.ok) {
+                        input.classList.add('bad');
+                        showSetErr(f.label + '：' + v.reason);
+                        return;
+                    }
+                    input.classList.remove('bad');
+                    showSetErr('');
+                    writeSetting(f.key, v.value);
+                });
+                input.addEventListener('input', () => { input.classList.remove('bad'); showSetErr(''); });
+                row.appendChild(input);
+                row.appendChild(unit);
+                setCtrls[f.key] = { kind: 'num', input };
+            }
+            setBox.appendChild(row);
+        }
+
+        setErr = document.createElement('div');
+        setErr.className = 'err2';
+        setErr.hidden = true;
+        setBox.appendChild(setErr);
+
+        setFoot = document.createElement('div');
+        setFoot.className = 'vr-set-foot';
+        setFoot.hidden = true;
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = 'vr-btn2';
+        resetBtn.textContent = '恢复默认';
+        let armed = false;
+        let armTimer = 0;
+        resetBtn.addEventListener('click', () => {
+            if (!armed) {
+                armed = true;
+                resetBtn.textContent = '确定恢复？';
+                armTimer = setTimeout(() => {
+                    armed = false;
+                    resetBtn.textContent = '恢复默认';
+                }, 3000);
+                return;
+            }
+            clearTimeout(armTimer);
+            armed = false;
+            resetBtn.textContent = '恢复默认';
+            writeSettings(U.mergeSettings({}), true);
+        });
+        const sp = document.createElement('span');
+        sp.className = 'sp';
+        const doneBtn = document.createElement('button');
+        doneBtn.type = 'button';
+        doneBtn.className = 'vr-btn2 primary';
+        doneBtn.textContent = '完成';
+        doneBtn.addEventListener('click', () => toggleSettings(false));
+        setFoot.appendChild(resetBtn);
+        setFoot.appendChild(sp);
+        setFoot.appendChild(doneBtn);
+    }
+
+    function showSetErr(msg) {
+        if (!setErr) { return; }
+        setErr.textContent = msg || '';
+        setErr.hidden = !msg;
+    }
+
+    /** 把当前 settings 刷到控件上 */
+    function syncSettingsUI() {
+        for (const f of SET_FIELDS) {
+            const c = setCtrls[f.key];
+            if (!c) { continue; }
+            const v = settings[f.key];
+            if (c.kind === 'bool') {
+                c.el.classList.toggle('on', !!v);
+                c.el.setAttribute('aria-checked', v ? 'true' : 'false');
+            } else if (document.activeElement !== c.input) {
+                c.input.value = String(v);
+                c.input.classList.remove('bad');
+            }
+        }
+    }
+
+    function toggleSettings(force) {
+        if (!setBox) { return; }
+        const next = (force === undefined) ? !settingsOpen : !!force;
+        settingsOpen = next;
+        setBox.hidden = !next;
+        setFoot.hidden = !next;
+        // 设置打开时把网格/过滤/底部操作收起来，避免两块内容抢空间
+        const bodyEl = grid && grid.parentNode;
+        if (bodyEl) { bodyEl.hidden = next; }
+        if (footEl) { footEl.hidden = next; }
+        const filtersEl = setBox.parentNode && setBox.parentNode.querySelector('.vr-filters');
+        if (filtersEl) { filtersEl.hidden = next; }
+        if (next) {
+            syncSettingsUI();
+            showSetErr('');
+            titleEl.textContent = '图片下载设置';
+        } else {
+            renderAll();
+        }
+    }
+
+    /** 写一个设置项：落库 + 本地立即生效 */
+    function writeSetting(key, value) {
+        const patch = {};
+        patch[key] = value;
+        writeSettings(patch, false);
+    }
+
+    function writeSettings(patch, replaceAll) {
+        const next = replaceAll
+            ? U.mergeSettings(patch)
+            : U.mergeSettings(Object.assign({}, settings, patch));
+        settings = next;
+
+        // 先落库：UI 刷新万一抛错，也不能把「保存」这件事带崩（踩过——
+        // syncSettingsUI 放在前面时，任何 UI 异常都会让 storage 那行永远不执行）
+        try {
+            chrome.storage.local.get('vrLibSettings', o => {
+                try {
+                    const merged = U.mergeSettings(Object.assign({}, (o && o.vrLibSettings) || {}, next));
+                    chrome.storage.local.set({ vrLibSettings: merged }, () => {
+                        // 把最后一次写入结果留在这里，方便排查「设置没生效」
+                        try {
+                            const le = chrome.runtime.lastError;
+                            self.__vrLastSet = le ? ('ERR: ' + le.message) : 'ok';
+                        } catch (x) { /* 忽略 */ }
+                    });
+                } catch (e2) {
+                    self.__vrLastSet = 'ERR: ' + String((e2 && e2.message) || e2);
+                }
+            });
+        } catch (e) {
+            self.__vrLastSet = 'ERR_OUTER: ' + String((e && e.message) || e);
+        }
+
+        // 再刷 UI（包起来，出错不影响已保存的值）
+        try { syncSettingsUI(); } catch (e) { /* 忽略 */ }
+
+        // 尺寸变了要重扫（items 里存的是旧阈值的结果）
+        if (Object.prototype.hasOwnProperty.call(patch, 'imgMinSize')) {
+            try {
+                refreshCount();
+                if (open && !settingsOpen) { renderAll(); }
+            } catch (e) { /* 忽略 */ }
+        }
     }
 
     /* 自定义档位：用面板内联输入，不用 prompt/alert——
@@ -924,6 +1218,9 @@
         host = shadow = floatBtn = floatNum = mask = panel = grid = titleEl = null;
         emptyEl = tierRow = kwInput = sortSel = selCountEl = dlBtn = null;
         customRow = customInput = customOk = customCancel = customErr = null;
+        footEl = gearBtn = setBox = setFoot = setErr = null;
+        setCtrls = {};
+        settingsOpen = false;
         open = false;
         selected.clear();
     }
@@ -958,6 +1255,16 @@
         boot();
     }
 
+    /* 快捷键：SW 转发 vrImg.hotkey/panel 过来 */
+    try {
+        chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+            if (!msg || msg.Message !== 'vrImg.hotkey' || msg.action !== 'panel') { return; }
+            if (!enabled) { sendResponse({ ok: false, code: 'IMG_E_OFF' }); return; }
+            openPanel();
+            sendResponse({ ok: true });
+        });
+    } catch (e) { /* 忽略 */ }
+
     self.VRImgPanel = {
         open: openPanel,
         close: closePanel,
@@ -969,8 +1276,11 @@
                 keyword: keyword,
                 sortMode: sortMode,
                 selected: Array.from(selected),
-                shown: currentList().length
+                shown: currentList().length,
+                settingsOpen: settingsOpen,
+                settings: Object.assign({}, settings)
             };
-        }
+        },
+        _settings: () => Object.assign({}, settings)
     };
 })();

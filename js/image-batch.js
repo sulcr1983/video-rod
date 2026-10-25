@@ -544,6 +544,10 @@
             if (!enabled) { return Promise.resolve({ ok: false, succeeded: 0, fail: 0 }); }
             return runQueue(items, opts);
         },
+        /** 让同页其它模块也能弹提示（悬停的快捷键下载会用到） */
+        toast(text) {
+            try { toast(text); } catch (e) { /* 忽略 */ }
+        },
         onCount(fn) {
             countListener = fn;
             if (typeof fn === 'function') { fn(cachedCount); }

@@ -20,6 +20,15 @@
     'use strict';
 
     var MIN_SIZE = 100;
+    /* 显示尺寸门槛：图标/按钮普遍 16–40px，内容图基本 > 100px。
+     * 判显示尺寸而不是原始像素，是因为一张 500px 的图标被 CSS 缩成 16px 显示时，
+     * 原始尺寸仍然够大，只看 naturalWidth 会满屏冒按钮（用户实测反馈）。 */
+    var MIN_SHOW = 48;
+    /* 细长装饰条的门槛：用「短边/长边」比来判断，不用面积。
+     * 面积法会误杀正常的方形小图（48×48=2304 比 400×2=800 还大，
+     * 任何固定面积阈值都同时拦不住细条又放过方图 —— 踩过两次）。
+     * 短边 ≥ 48 已经挡掉了图标；这里只需要再挡「长宽比 > 6:1」的条状图。 */
+    var MAX_ASPECT = 6;
 
     /** 可下载的位图扩展名（svg 不算：多为图标） */
     var IMAGE_EXT = {
@@ -302,6 +311,58 @@
      * @param {object} opts {minWidth, minHeight, dedupe, limit}
      * @returns {Array<{el, url, w, h, ok, candidates}>}
      */
+    /**
+     * 取图片的显示尺寸（CSS 像素）。优先 getBoundingClientRect（含 transform 缩放）。
+     * @returns {{w:number, h:number}} 未布局/隐藏时为 0
+     */
+    function shownSize(el) {
+        var w = 0;
+        var h = 0;
+        var measured = false;
+        try {
+            if (el.getBoundingClientRect) {
+                var r = el.getBoundingClientRect();
+                w = Math.round(r.width);
+                h = Math.round(r.height);
+                measured = true;
+            }
+        } catch (e) { /* 忽略 */ }
+        if (measured && (!w || !h)) {
+            w = el.clientWidth || 0;
+            h = el.clientHeight || 0;
+        }
+        // 没有布局信息的环境（Node 单测的假 DOM、或 display:none 的子元素）
+        // 退回原始像素：不能因为「量不到」就把图判死，否则单测和懒加载场景全挂。
+        if (!w || !h) {
+            w = Number(el.naturalWidth) || 0;
+            h = Number(el.naturalHeight) || 0;
+        }
+        return { w: w, h: h };
+    }
+
+    /**
+     * 这张图是否值得下载（悬停与面板共用同一套规则，避免两边口径不一致）。
+     * @param {Element} el img
+     * @param {object} opts { minNatural, minShow, maxAspect }
+     */
+    function isWorthDownloading(el, opts) {
+        if (!el || el.tagName !== 'IMG') { return false; }
+        var o = opts || {};
+        var minNatural = o.minNatural == null ? MIN_SIZE : Number(o.minNatural);
+        var minShow = o.minShow == null ? MIN_SHOW : Number(o.minShow);
+        var maxAspect = o.maxAspect == null ? MAX_ASPECT : Number(o.maxAspect);
+        var nw = Number(el.naturalWidth) || 0;
+        var nh = Number(el.naturalHeight) || 0;
+        if (nw < minNatural || nh < minNatural) { return false; }
+        var sh = shownSize(el);
+        if (sh.w <= 0 || sh.h <= 0) { return false; }
+        if (Math.min(sh.w, sh.h) < minShow) { return false; }
+        // 长宽比过大的条状图（400×2 分隔线、横幅装饰）不认
+        var ratio = Math.max(sh.w, sh.h) / Math.min(sh.w, sh.h);
+        if (ratio > maxAspect) { return false; }
+        return true;
+    }
+
     function scanImages(doc, opts) {
         if (!doc || !doc.querySelectorAll) { return []; }
         var o = opts || {};
@@ -327,6 +388,10 @@
                 if (!url) { continue; }
                 if (isDataUri(url) || isSvgUrl(url) || isPlaceholderUrl(url)) { continue; }
                 if (nw < minW || nh < minH) { continue; }
+                // 显示尺寸过滤：小图标/按钮/表情不进列表（默认开，可传 checkShow:false 关掉）
+                if (o.checkShow !== false && !isWorthDownloading(el, {
+                    minNatural: minW, minShow: o.minShow, maxAspect: o.maxAspect
+                })) { continue; }
                 if (dedupe && seen[url]) { continue; }
                 seen[url] = 1;
                 out.push({
@@ -427,9 +492,112 @@
         return arr;
     }
 
+    /* ---------------- 设置项（I5） ---------------- */
+
+    /* 缺省值。改这里等于改「恢复默认」的目标，也等于所有读取方的兜底。 */
+    var DEFAULT_SETTINGS = {
+        imgHover: true,
+        imgBatch: true,
+        /* 右下角浮标默认关：批量下载是低频操作，不该占常驻 UI。
+         * 业界（Image Downloader / Image Harvest）都把批量放在扩展自己的界面里，
+         * 页面上不放常驻入口。需要时点扩展 → 「抓图」即可，设置里可开回。
+         * 依据见 docs/RESEARCH-COMPETITOR-IMAGE.md §2。 */
+        imgPanel: false,
+        imgMinSize: 100,
+        imgPreferOriginal: true,
+        imgConcurrency: 3,
+        imgBatchLimit: 200,
+        imgHotkeys: true,
+        imgHoverDelay: 300
+    };
+
+    /* 每个数值项的范围。超出就夹到边界，不静默丢弃（用户填 9999 应得到 4096 而不是 100）。 */
+    var RANGES = {
+        imgMinSize: [16, 4096],
+        imgConcurrency: [1, 8],
+        imgBatchLimit: [1, 2000],
+        imgHoverDelay: [0, 1500]
+    };
+
+    /**
+     * 把任意输入解析成 [min,max] 内的整数。
+     * 非法（空/非数字）返回 fallback；超范围夹到边界。
+     */
+    function parseIntRange(raw, min, max, fallback) {
+        var s = String(raw == null ? '' : raw).trim();
+        if (!s) { return fallback; }
+        var n = parseInt(s, 10);
+        if (!isFinite(n) || isNaN(n)) { return fallback; }
+        if (n < min) { return min; }
+        if (n > max) { return max; }
+        return n;
+    }
+
+    /** 校验单项，返回 {ok, value, reason}。UI 用它决定要不要红字。 */
+    function validateSetting(key, raw) {
+        if (!(key in DEFAULT_SETTINGS)) {
+            return { ok: false, value: null, reason: '未知设置项' };
+        }
+        var def = DEFAULT_SETTINGS[key];
+        if (typeof def === 'boolean') {
+            return { ok: true, value: !!raw, reason: '' };
+        }
+        var rg = RANGES[key] || [0, 999999];
+        var s = String(raw == null ? '' : raw).trim();
+        if (!s) { return { ok: false, value: def, reason: '不能为空' }; }
+        if (!/^-?\d+$/.test(s)) { return { ok: false, value: def, reason: '请输入整数' }; }
+        var n = parseInt(s, 10);
+        if (n < rg[0] || n > rg[1]) {
+            return { ok: false, value: def, reason: '范围 ' + rg[0] + '–' + rg[1] };
+        }
+        return { ok: true, value: n, reason: '' };
+    }
+
+    /**
+     * 把外部传入的设置合并到缺省值上。
+     * · 缺的键补默认
+     * · 数值键夹到范围
+     * · 布尔键强制布尔
+     * · 未知键保留（别丢用户数据，也方便将来加项）
+     */
+    function mergeSettings(raw) {
+        var out = {};
+        var k;
+        for (k in DEFAULT_SETTINGS) {
+            if (Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, k)) {
+                out[k] = DEFAULT_SETTINGS[k];
+            }
+        }
+        var src = raw || {};
+        for (k in src) {
+            if (!Object.prototype.hasOwnProperty.call(src, k)) { continue; }
+            if (k in DEFAULT_SETTINGS) {
+                var def = DEFAULT_SETTINGS[k];
+                if (typeof def === 'boolean') {
+                    out[k] = !!src[k];
+                } else {
+                    var rg = RANGES[k] || [0, 999999];
+                    out[k] = parseIntRange(src[k], rg[0], rg[1], def);
+                }
+            } else {
+                out[k] = src[k];
+            }
+        }
+        return out;
+    }
+
     return {
         MIN_SIZE: MIN_SIZE,
+        MIN_SHOW: MIN_SHOW,
+        MAX_ASPECT: MAX_ASPECT,
+        shownSize: shownSize,
+        isWorthDownloading: isWorthDownloading,
         IMAGE_EXT: IMAGE_EXT,
+        DEFAULT_SETTINGS: DEFAULT_SETTINGS,
+        RANGES: RANGES,
+        parseIntRange: parseIntRange,
+        validateSetting: validateSetting,
+        mergeSettings: mergeSettings,
         TIERS: TIERS,
         shortSide: shortSide,
         parseTierMin: parseTierMin,

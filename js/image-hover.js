@@ -21,11 +21,13 @@
     const U = self.VRImageUtil;
     if (!U) { return; }
 
-    const SHOW_DELAY = 300;
     const HIDE_DELAY = 300;
+    let showDelay = 300;           // 可配（imgHoverDelay），缺省 300ms
     const DONE_MS = 1200;
     const FAIL_MS = 1800;
     const MIN = U.MIN_SIZE;
+    /* 显示尺寸门槛（见 eligible 注释）：图标/按钮普遍在 16–40px，内容图基本 > 100px */
+    const MIN_SHOW = U.MIN_SHOW;
 
     const HOST_ID = 'vr-img-hover-host';
 
@@ -39,6 +41,7 @@
     let allTxt = null;
     let allNarrow = false;         // 图太窄时「全部 N」收成图标
     let currentImg = null;
+    let lastHoveredImg = null;     // 快捷键用：鼠标最后停过的 img（鼠标不动时没有新事件）
     let state = 'hidden';          // hidden | pending | shown | busy | done | fail
     let showTimer = 0;
     let hideTimer = 0;
@@ -48,7 +51,11 @@
     /* ---------------- 设置 ---------------- */
 
     function applySettings(s) {
-        enabled = !(s && s.imgHover === false);
+        const m = (self.VRImageUtil && self.VRImageUtil.mergeSettings)
+            ? self.VRImageUtil.mergeSettings(s || {})
+            : (s || {});
+        enabled = m.imgHover !== false;
+        if (typeof m.imgHoverDelay === 'number') { showDelay = m.imgHoverDelay; }
         if (!enabled) { teardown(); }
     }
 
@@ -230,6 +237,9 @@
                 syncAllLabel();
             }
         }
+        // 量宽度前把待写样式刷掉：切了 icon-only 之后同一帧读 offsetWidth 可能拿到旧值，
+        // 导致定位用的是「变窄前」的宽度，按钮会先出现在错误位置再跳一下（用户可见抖动）。
+        void wrap.offsetWidth;
         const bw = wrap.offsetWidth || 96;
         const bh = wrap.offsetHeight || 30;
         const vw = document.documentElement.clientWidth || window.innerWidth;
@@ -259,13 +269,23 @@
         resetTimer = 0;
         clickSeq++;               // 新图出现即作废上一张图的异步回调
         currentImg = img;
-        wrap.classList.add('on');
-        // 先复位状态，再刷新「全部 N」文案：数量计算可能慢或抛错，
-        // 放在后面一旦失败，按钮就停在上一轮的 done/disabled 态（踩过）
+        // 顺序很重要：**先复位状态、先算「全部 N」文案，最后才显示并定位**。
+        // 早先是 add('on') → syncAllLabel() → place()，显示时文案还是上一轮的，
+        // 数量算完变宽后按钮已经按旧宽度定位过 —— 表现为「按钮先出现再跳一下」，
+        // 用户点下去会点空（实测 C1 用例就是这个原因失败）。
         setState('shown', '下载原图');
         btn.title = '下载原图';
+        // 先切成 flex 让它可测量（display:none 时 offsetWidth 恒为 0），
+        // 但用 opacity:0 藏起来；等文案与定位都定稿后再显形 ——
+        // 这样既能量到真实宽度，又不会让用户看到「先出现再跳一下」。
+        wrap.style.opacity = '0';
+        wrap.classList.add('on');
         try { syncAllLabel(); } catch (e) { /* 数量算不出来不影响单张下载 */ }
-        place(img);
+        place(img);                 // place 里已 void offsetWidth，量到的是最终宽度
+        void wrap.offsetWidth;      // 定位写下去之后再刷一次，避免最后一帧还在动
+        // 显式写 '1' 而不是空串：空串依赖 CSS 默认值，若样式表里有 transition/初始值
+        // 可能没立刻回到不透明，测试与用户都会看到「按钮在但看不见」（踩过）
+        wrap.style.opacity = '1';
         state = 'shown';
     }
 
@@ -308,18 +328,61 @@
 
     /* ---------------- 悬停判定 ---------------- */
 
+    /**
+     * 这张图值不值得给悬停按钮 —— 判定规则全部在 lib-image-util.isWorthDownloading，
+     * 与清单面板共用一套，避免「悬停能出、面板不列」这种口径不一致。
+     *
+     * 关键：判**显示尺寸**，不是原始像素。一张 500px 的图标被 CSS 缩成 16px 显示时，
+     * 原始尺寸仍然够大，只看 naturalWidth 会让满屏头像/按钮/表情都冒下载图标
+     * （用户实测反馈的核心问题）。
+     */
     function eligible(img) {
         if (!img || img.tagName !== 'IMG' || !img.isConnected) { return false; }
         if (host && (img === host || (host.contains && host.contains(img)))) { return false; }
-        // 只认已成功解码的图：宽高属性可能只是占位（坏图/懒加载占位）
-        const nw = Number(img.naturalWidth) || 0;
-        const nh = Number(img.naturalHeight) || 0;
-        if (nw < MIN || nh < MIN) { return false; }
+        if (!U.isWorthDownloading(img, { minNatural: MIN, minShow: MIN_SHOW })) { return false; }
         const raw = img.currentSrc || img.src || img.getAttribute('src') || '';
         const url = U.absolutize(raw, document.baseURI);
         if (!url) { return false; }
         if (U.isDataUri(url) || U.isSvgUrl(url) || U.isPlaceholderUrl(url)) { return false; }
         return true;
+    }
+
+    /**
+     * 用元素栈兜底找图。
+     * 站点的播放按钮/遮罩（微博的 SPAN.mwbv-icon、B 站的 div）会盖在图上，
+     * mouseover 的 target 是遮罩，composedPath() 里根本没有 IMG —— 只查路径必然漏。
+     */
+    function imgAtPoint(x, y) {
+        if (typeof document.elementsFromPoint !== 'function') { return null; }
+        var list = null;
+        try { list = document.elementsFromPoint(x, y); } catch (e) { return null; }
+        if (!list || !list.length) { return null; }
+        for (var i = 0; i < list.length; i++) {
+            var n = list[i];
+            if (n && n.tagName === 'IMG') { return n; }
+        }
+        return null;
+    }
+
+    /**
+     * 指针是否还在这个元素的矩形内（留 1px 容差，避免边界抖动）。
+     * 优先用事件的 clientX/clientY；这两个值为 0 或缺失时退回 relatedTarget 判断。
+     */
+    function pointerInRect(el, ev) {
+        if (!el || !el.getBoundingClientRect) { return false; }
+        let r = null;
+        try { r = el.getBoundingClientRect(); } catch (e) { return false; }
+        if (!r || !r.width || !r.height) { return false; }
+        const x = Number(ev.clientX);
+        const y = Number(ev.clientY);
+        // clientX/clientY 同时为 0 多半是拿不到真实指针位置（不是真的在左上角）
+        if (!x && !y) {
+            // 退路：如果 relatedTarget 是这张图的子孙，说明还在图里
+            const to = ev.relatedTarget;
+            if (to && to.nodeType === 1 && el.contains && el.contains(to)) { return true; }
+            return false;
+        }
+        return x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1;
     }
 
     function pathOf(ev) {
@@ -354,8 +417,11 @@
             hideTimer = 0;
             return;
         }
-        const img = pickImg(ev);
+        // 先查事件路径；遮罩盖住时路径里没有 IMG，用元素栈兜底
+        const img = pickImg(ev) || imgAtPoint(ev.clientX, ev.clientY);
         if (!img) { return; }
+        // 快捷键要能拿到「鼠标最后停过的那张」——鼠标不动时不会再有 mouseover
+        lastHoveredImg = img;
         if (img === currentImg && (state === 'shown' || state === 'pending')) {
             clearTimeout(hideTimer);
             hideTimer = 0;
@@ -373,16 +439,22 @@
             if (currentImg !== img || state !== 'pending') { return; }
             if (!eligible(img)) { currentImg = null; state = 'hidden'; return; }
             show(img);
-        }, SHOW_DELAY);
+        }, showDelay);
     }, true);
 
     document.addEventListener('mouseout', ev => {
         if (!enabled) { return; }
         if (fromHost(ev)) { return; }
-        const img = pickImg(ev);
-        if (!img || img !== currentImg) { return; }
         const to = ev.relatedTarget;
         if (to && host && (to === host || (host.contains && host.contains(to)))) { return; }
+        if (!currentImg) { return; }
+        // 用「指针是否还在当前图矩形内」判断，不依赖事件坐标：
+        //  · 遮罩内部移动时指针仍在矩形内 → 不隐藏（这是覆盖层场景要的）
+        //  · 真正移出图片 → 隐藏
+        // mouseout 的 clientX/clientY 在部分浏览器里是目标元素坐标而非指针位置，
+        // 用它判断会误判（踩过：按钮粘住不消失）。
+        const inRect = pointerInRect(currentImg, ev);
+        if (inRect) { return; }
         onLeaveImage();
     }, true);
 
@@ -411,6 +483,16 @@
         setTimeout(() => finish(null), 8000);
     }
 
+    /* 轻量提示：优先用面板的 toast（同页存在时），否则退回 console。
+     * 本文件原来没有 toast，直接调会 ReferenceError 把 Promise 卡死（踩过）。 */
+    function note(msg) {
+        try {
+            const B = self.VRImgBridge;
+            if (B && typeof B.toast === 'function') { B.toast(msg); return; }
+        } catch (e) { /* 忽略 */ }
+        try { console.info('[video-rod] ' + msg); } catch (e) { /* 忽略 */ }
+    }
+
     function pageTitle() {
         return String(document.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     }
@@ -436,6 +518,57 @@
             hideNow();
         }, DONE_MS);
     }
+
+    /**
+     * 快捷键下载：不依赖按钮是否显示，直接用「最后悬停的那张图」。
+     * 与点按钮的区别只是不碰 UI 状态（用户可能根本没等按钮出来）。
+     */
+    function hotkeyDownload() {
+        const img = lastHoveredImg || currentImg;
+        if (!img || !img.isConnected) {
+            note('把鼠标移到图片上再按');
+            return Promise.resolve({ ok: false, code: 'IMG_E_NO_TARGET' });
+        }
+        if (hotkeyBusy) { return Promise.resolve({ ok: false, code: 'IMG_E_BUSY' }); }
+        hotkeyBusy = true;
+        const pageUrl = location.href;
+        const title = pageTitle();
+        const candidates = U.collectCandidates(img, document);
+        if (!candidates.length) {
+            hotkeyBusy = false;
+            note('这张图没有可下载的地址');
+            return Promise.resolve({ ok: false, code: 'IMG_E_NO_URL' });
+        }
+        return new Promise(resolve => {
+            send({
+                Message: 'vrImg.resolve',
+                action: 'vrImg.resolve',
+                candidates: candidates,
+                currentSrc: U.absolutize(img.currentSrc || img.src || '', document.baseURI),
+                pageUrl: pageUrl
+            }, res => {
+                const url = (res && res.url) || candidates[candidates.length - 1];
+                send({
+                    Message: 'vrImg.download',
+                    action: 'vrImg.download',
+                    url: url,
+                    candidates: candidates,
+                    pageUrl: pageUrl,
+                    title: title
+                }, r2 => {
+                    hotkeyBusy = false;
+                    if (r2 && r2.ok) {
+                        note('已下载：' + (r2.name || '图片'));
+                    } else {
+                        note('下载失败：' + ((r2 && r2.message) || (r2 && r2.code) || '未知原因'));
+                    }
+                    resolve(r2 || { ok: false });
+                });
+            });
+        });
+    }
+
+    let hotkeyBusy = false;
 
     function onClick(ev) {
         ev.preventDefault();
@@ -475,4 +608,30 @@
             });
         });
     }
+
+    /* ---------------- 快捷键入口（由 SW 的 chrome.commands 转发） ---------------- */
+
+    try {
+        chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+            if (!msg || msg.Message !== 'vrImg.hotkey') { return; }
+            const action = msg.action || '';
+            if (action === 'download') {
+                hotkeyDownload().then(r => sendResponse(r || { ok: false }));
+                return true;
+            }
+            if (action === 'panel') {
+                // 面板归 image-panel.js 管，这里只应答一下表示收到
+                sendResponse({ ok: true });
+                return;
+            }
+        });
+    } catch (e) { /* 无权限时快捷键不可用，不影响悬停 */ }
+
+    /* 测试用：把「最后悬停的图」和下载入口暴露出去 */
+    self.VRImgHover = {
+        hotkeyDownload: hotkeyDownload,
+        lastHovered: () => lastHoveredImg,
+        _state: () => ({ enabled: enabled, showDelay: showDelay, state: state,
+                         hasLast: !!lastHoveredImg })
+    };
 })();

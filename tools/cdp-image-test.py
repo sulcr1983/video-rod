@@ -87,11 +87,15 @@ def hover(cdp, sid, selector, wait=0.65):
 def button_state(cdp, sid):
     return ev(cdp, sid, """(function(){
       const host = document.getElementById('vr-img-hover-host');
-      if (!host) { return {host:false}; }
+      // 三个分支必须返回同样的键，否则调用方读不到字段会抛 KeyError（踩过：wrapX）
+      const empty = {host:false, btn:false, text:'', cls:'', disabled:false,
+                     visible:false, inShadow:false, x:0, y:0, w:0, h:0, cx:0, cy:0,
+                     wrapX:null, wrapY:null, wrapW:null, wrapH:null};
+      if (!host) { return empty; }
       const sr = host.shadowRoot;
       const wrap = sr && sr.querySelector('.vr-wrap');
       const b = sr && sr.querySelector('button.vr-btn');
-      if (!b) { return {host:true, btn:false}; }
+      if (!b) { return Object.assign({}, empty, {host:true}); }
       const r = b.getBoundingClientRect();
       const wr = wrap ? wrap.getBoundingClientRect() : null;
       return {
@@ -225,12 +229,15 @@ def main():
     check("B1 页面加载（5 张图、无注入节点）", [base["imgs"], base["big1"], base["host"]], [5, True, False])
 
     # 快速划过：不应出现
+    # 「移开」要移到一个确定没有图的位置：(2,2) 在左上角，某些布局下可能正好压着图，
+    # 那样 mouseout 会判「指针还在图内」而不隐藏 —— 用视口右下角的空白区更稳。
     r = rect(cdp, sid, "#big2")
     move(cdp, sid, 2, 2)
     time.sleep(0.05)
     move(cdp, sid, r["cx"], r["cy"])
     time.sleep(0.08)
-    move(cdp, sid, 2, 2)
+    away = ev(cdp, sid, "(function(){return {x: window.innerWidth - 4, y: window.innerHeight - 4};})()")
+    move(cdp, sid, away["x"], away["y"])
     time.sleep(0.55)
     st = button_state(cdp, sid)
     check("B2 快速划过不出现按钮", bool(st.get("visible")), False)
@@ -248,10 +255,13 @@ def main():
 
     # 移开隐藏：产品是「移开 300ms 后开始隐藏」，实测到真正不可见约 450ms
     # （mouseout 触发 + 计时器 + 一轮渲染），等 0.8s 再断言，别卡在边界上
-    move(cdp, sid, 4, 4)
+    # 移开要移到确定没有图的位置：左上角 (4,4) 在某些布局下正好压着 #big1，
+    # mouseout 会判「指针还在图内」而不隐藏 —— B6 假失败（连跑全套时复现）。
+    away = ev(cdp, sid, "(function(){return {x: window.innerWidth - 4, y: window.innerHeight - 4};})()")
+    move(cdp, sid, away["x"], away["y"])
     t0 = time.time()
     gone = False
-    while time.time() - t0 < 1.2:
+    while time.time() - t0 < 2.5:   # 全套连跑时渲染更慢，1.2s 偶尔不够
         if not button_state(cdp, sid).get("visible"):
             gone = True
             break
@@ -326,7 +336,12 @@ def main():
         check(f"{tag}1 悬停样式图片出现按钮", bool(st.get("visible")), True)
         if not st.get("visible"):
             return None
-        click(cdp, sid, st["cx"], st["cy"])
+        # 点击前重取坐标：按钮显示后「全部 N」文案定稿会让宽度变一次，
+        # hover 时读到的坐标可能还是定稿前的（用户表现就是「点了没反应」）
+        st2 = wait_button(cdp, sid, 3.0)
+        cx = st2.get("cx") or st["cx"]
+        cy = st2.get("cy") or st["cy"]
+        click(cdp, sid, cx, cy)
         rec2, el2 = wait_new_download(cdp, osid, before)
         check(f"{tag}2 下载完成", bool(rec2), True)
         if not rec2:
@@ -372,8 +387,11 @@ def main():
     set_img_hover(cdp, osid, True)
     cdp.reload(sid)
     cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 8.0)
-    hover(cdp, sid, "#big1")
-    check("I2 imgHover=true 恢复按钮", bool(button_state(cdp, sid).get("visible")), True)
+    # reload 后内容脚本要重新注入，给一点时间再悬停；
+    # 单次 hover 偶尔抓不到刚注入的实例（连跑多套时更明显），用重试版
+    time.sleep(0.5)
+    st_on = hover_until_shown(cdp, sid, "#big1", attempts=3, timeout=4.0)
+    check("I2 imgHover=true 恢复按钮", bool(st_on.get("visible")), True)
 
     return finish(cdp, osid)
 
