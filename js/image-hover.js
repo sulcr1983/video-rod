@@ -26,8 +26,10 @@
     const DONE_MS = 1200;
     const FAIL_MS = 1800;
     const MIN = U.MIN_SIZE;
-    /* 显示尺寸门槛（见 eligible 注释）：图标/按钮普遍在 16–40px，内容图基本 > 100px */
-    const MIN_SHOW = U.MIN_SHOW;
+    /* 显示尺寸门槛：宽高都要 ≥ 此值才出按钮。可配（imgHoverMinSize），缺省 600。
+     * 判**显示尺寸**不是原始像素 —— 一张 3000px 的原图被缩成 200px 展示时，
+     * 用户要的是「页面上看着够大的图」，缩略图列表不该满屏冒按钮。 */
+    let minShow = U.MIN_SHOW;
 
     const HOST_ID = 'vr-img-hover-host';
 
@@ -60,6 +62,9 @@
             : (s || {});
         enabled = m.imgHover !== false;
         if (typeof m.imgHoverDelay === 'number') { showDelay = m.imgHoverDelay; }
+        if (typeof m.imgHoverMinSize === 'number' && m.imgHoverMinSize > 0) {
+            minShow = m.imgHoverMinSize;
+        }
         if (!enabled) { teardown(); }
     }
 
@@ -403,7 +408,7 @@
     function eligible(img) {
         if (!img || img.tagName !== 'IMG' || !img.isConnected) { return false; }
         if (host && (img === host || (host.contains && host.contains(img)))) { return false; }
-        if (!U.isWorthDownloading(img, { minNatural: MIN, minShow: MIN_SHOW })) { return false; }
+        if (!U.isWorthDownloading(img, { minNatural: MIN, minShow: minShow })) { return false; }
         const raw = img.currentSrc || img.src || img.getAttribute('src') || '';
         const url = U.absolutize(raw, document.baseURI);
         if (!url) { return false; }

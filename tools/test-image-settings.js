@@ -25,8 +25,11 @@ const D = U.DEFAULT_SETTINGS;
 // 注意排序：imgHotkeys 在 imgHover 之前（大写 H 的码位小于小写 o）
 ok('A1 键齐全', Object.keys(D).sort(), [
     'imgBatch', 'imgBatchLimit', 'imgBgScan', 'imgConcurrency', 'imgHotkeys', 'imgHover',
-    'imgHoverDelay', 'imgMinSize', 'imgPanel', 'imgPreferOriginal'
+    'imgHoverDelay', 'imgHoverMinSize', 'imgMinSize', 'imgPanel', 'imgPreferOriginal'
 ]);
+// 悬停门槛可配：默认 600，与面板的 imgMinSize(100) 是两个独立口径
+ok('A1b 悬停门槛默认 600', D.imgHoverMinSize, 600);
+ok('A1c 面板门槛默认 100（与悬停不同）', D.imgMinSize, 100);
 // 浮标默认关（批量是低频操作，不该占常驻 UI，见 docs/RESEARCH-COMPETITOR-IMAGE.md）
 ok('A2 布尔项默认值', [D.imgHover, D.imgBatch, D.imgPanel, D.imgPreferOriginal, D.imgHotkeys],
     [true, true, false, true, true]);

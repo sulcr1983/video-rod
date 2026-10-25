@@ -181,8 +181,8 @@ def main():
     cdp.wait_js(sid, "!!document.getElementById('vr-img-hover-host')", 10.0)
     time.sleep(0.4)
 
-    check("A2 夹具页加载（9 张图）",
-          ev(cdp, sid, "document.images.length"), 9)
+    check("A2 夹具页加载（10 张图）",
+          ev(cdp, sid, "document.images.length"), 10)
 
     # ---------------- B. 小显示尺寸：都不该出按钮 ----------------
     # 不该出按钮的用例：等足 1.2s（超过 showDelay 300ms 很多）后断言仍不可见
@@ -271,6 +271,32 @@ def main():
     check("D9 设置区打开时点 × 也能关", st.get("open"), False)
     check("D10 设置区打开时遮罩也摘掉", st.get("maskOn"), False)
 
+    # ---------------- D2. 门槛可配：改设置后行为真的跟着变 ----------------
+    # 这条是「可配置」的核心验证：不是只测默认 600，而是改一个值看行为变化。
+    # i599 是 599×599、i600 是 600×600，用它们做对照。
+    ok_set = set_settings(cdp, osid, {"imgHoverMinSize": 500})
+    check("D11 门槛设为 500 已落库", ok_set, True)
+    time.sleep(0.4)
+
+    hover(cdp, sid, "#i599", 0.3)
+    st = wait_bar(cdp, sid, lambda b: b.get("vis"), 5.0)
+    check("D12 门槛降到 500 后，599px 出按钮", st.get("vis"), True)
+
+    hover(cdp, sid, "#i400", 1.2)
+    check("D13 门槛 500 时，400px 仍不出按钮", bar_state(cdp, sid).get("vis"), False)
+
+    # 调高到 700：600 那张就该不出了
+    ok_set = set_settings(cdp, osid, {"imgHoverMinSize": 700})
+    check("D14 门槛设为 700 已落库", ok_set, True)
+    time.sleep(0.4)
+
+    hover(cdp, sid, "#i600", 1.2)
+    check("D15 门槛升到 700 后，600px 不出按钮", bar_state(cdp, sid).get("vis"), False)
+
+    # 复原默认 600
+    set_settings(cdp, osid, {"imgHoverMinSize": 600})
+    time.sleep(0.3)
+
     # ---------------- E. 面板列表也过滤小图 ----------------
     open_panel(cdp, sid)
     time.sleep(0.6)
@@ -279,14 +305,30 @@ def main():
       const f = h.shadowRoot.querySelector('.vr-float .n');
       return f ? f.textContent.trim() : null;
     })()""")
-    # 夹具共 9 张 img：
+    # 夹具共 10 张 img：
     #   16/32/40（原图 640x480，但显示太小）/ 细条 1200x6（长宽比超限）/ 隐藏图 → 5 张被挡
-    #   剩 4 张：i599(原图1200)、i600(原图1200)、c1(640x480)、c2(1200)
-    # 注意面板门槛是 imgMinSize(默认 100) 判**原始像素**，与悬停的 600 无关，
-    # 所以 i599 虽然悬停不出按钮，面板里仍然会列出来。
-    check("E1 面板角标只统计合格图（4 张）", num, "4")
+    #   剩 5 张：i599(srcset-1200)、i600(original-1200)、i400(thumb-320)、c1(cover 640x480)、c2(thumb-320)
+    # 注意面板门槛是 imgMinSize(默认 100) 判**原始像素**，与悬停门槛无关，
+    # 所以 i599 虽然悬停可能不出按钮，面板里仍然会列出来。
+    check("E1 面板角标只统计合格图（5 张）", num, "5")
 
     return finish(cdp, osid)
+
+
+def set_settings(cdp, osid, patch):
+    """合并写入设置并等落库。"""
+    ev(cdp, osid, """new Promise(r => chrome.storage.local.get('vrLibSettings', o => {
+      const s = Object.assign({}, (o && o.vrLibSettings) || {}, %s);
+      chrome.storage.local.set({vrLibSettings: s}, () => r(s));
+    }))""" % json.dumps(patch))
+    t0 = time.time()
+    while time.time() - t0 < 5:
+        cur = ev(cdp, osid, """new Promise(r=>chrome.storage.local.get('vrLibSettings',
+              o=>r((o&&o.vrLibSettings)||{})))""")
+        if all(cur.get(k) == v for k, v in patch.items()):
+            return True
+        time.sleep(0.1)
+    return False
 
 
 def cleanup(cdp, osid):
