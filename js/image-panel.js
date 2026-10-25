@@ -42,6 +42,7 @@
     let selCountEl = null;
     let dlBtn = null;
     let footEl = null;             // 面板底部（已选 N + 下载按钮）
+    let albumBox = null;           // 图集扫描条（image-album.js 填充）
     let gearBtn = null;            // 设置齿轮
     let setBox = null;             // 设置区主体
     let setFoot = null;            // 设置区底部按钮
@@ -297,6 +298,27 @@
 .vr-custom .vr-kw { flex: 0 0 110px; min-width: 90px; }
 .vr-custom .err { color: #f87171; font-size: 11px; }
 .vr-custom .err[hidden] { display: none; }
+
+/* ---------- 图集扫描（I6，由 image-album.js 填充） ---------- */
+.vr-album {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 8px 16px; border-bottom: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .015);
+}
+.vr-album .msg { flex: 1; min-width: 160px; font-size: 11.5px; color: rgba(255, 255, 255, .62); }
+.vr-album .msg b { color: #fff; font-variant-numeric: tabular-nums; }
+.vr-album.busy .msg b { color: #60a5fa; }
+.vr-album .num {
+  width: 52px; height: 26px; padding: 0 6px; text-align: right;
+  border-radius: 7px; border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .05); color: #fff; font: inherit; font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.vr-album .num:focus { outline: none; border-color: #3b82f6; }
+.vr-album .num[hidden] { display: none; }
+.vr-album .vr-btn2[hidden] { display: none; }
+/* display:flex 会盖掉 hidden 属性，必须显式声明（本文件里踩过一次） */
+.vr-album[hidden] { display: none; }
 .vr-empty {
   padding: 40px 0; text-align: center; color: rgba(255, 255, 255, .45); font-size: 12.5px;
 }
@@ -881,6 +903,11 @@
         filters.appendChild(line3);
         filters.appendChild(customRow);
 
+        /* 图集扫描条：容器由本文件建，内容由 image-album.js 填（职责分离，
+         * 面板不需要知道图集是怎么滚的）。按钮只在这里，不另做浮标。 */
+        albumBox = document.createElement('div');
+        albumBox.className = 'vr-album';
+
         /* 主体 */
         const body = document.createElement('div');
         body.className = 'vr-body';
@@ -933,6 +960,7 @@
         buildSettings();
 
         panel.appendChild(head);
+        panel.appendChild(albumBox);
         panel.appendChild(filters);
         panel.appendChild(body);
         panel.appendChild(setBox);
@@ -946,6 +974,13 @@
         root.appendChild(mask);
         root.appendChild(panel);
         document.documentElement.appendChild(host);
+
+        // 图集条的内容归 image-album.js（它在 manifest 里排在本文件之后）。
+        // 面板每次重建都会换掉 DOM，所以这里主动通知它重挂，不靠它自己猜时机。
+        try {
+            const A = self.VRImgAlbum;
+            if (A && A.mount) { A.mount(albumBox); }
+        } catch (e) { /* 图集模块缺失不影响面板主功能 */ }
 
         document.addEventListener('keydown', onKey, true);
 
@@ -1139,6 +1174,8 @@
         if (footEl) { footEl.hidden = next; }
         const filtersEl = setBox.parentNode && setBox.parentNode.querySelector('.vr-filters');
         if (filtersEl) { filtersEl.hidden = next; }
+        // 图集条也收起来：设置区里出现「图集扫描」按钮会让人误以为它是个设置项
+        if (albumBox) { albumBox.hidden = next; }
         if (next) {
             syncSettingsUI();
             showSetErr('');
@@ -1240,6 +1277,11 @@
     function teardown() {
         clearTimeout(countTimer);
         countTimer = 0;
+        // 先让图集模块松手（它还握着容器引用，清空后再拆宿主会报错）
+        try {
+            const A = self.VRImgAlbum;
+            if (A && A.unmount) { A.unmount(); }
+        } catch (e) { /* 忽略 */ }
         try { if (observer) { observer.disconnect(); } } catch (e) { /* ignore */ }
         observer = null;
         try { document.removeEventListener('keydown', onKey, true); } catch (e) { /* ignore */ }
@@ -1248,6 +1290,7 @@
         emptyEl = tierRow = kwInput = sortSel = selCountEl = dlBtn = null;
         customRow = customInput = customOk = customCancel = customErr = null;
         footEl = gearBtn = setBox = setFoot = setErr = null;
+        albumBox = null;
         setCtrls = {};
         settingsOpen = false;
         open = false;

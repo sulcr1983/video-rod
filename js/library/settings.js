@@ -20,7 +20,10 @@
         customRoot: '',
         detectedRoot: '',
         verifyPassed: false,
-        lastVerifyAt: 0
+        lastVerifyAt: 0,
+        // 迁移时是否对源/目标文件做完整 SHA-256 比对（migrate.js 读这个键）。
+        // 默认关：大文件要读两遍，代价明显；浅校验（首尾采样）已能挡住绝大多数问题。
+        deepVerify: false
     };
 
     var state = null;
@@ -43,12 +46,21 @@
         });
     }
 
+    /**
+     * 写设置：先读一遍存储再合并 patch。
+     * 为什么不是直接覆盖内存 state：这份 vrLibSettings 与图片设置（imgHover/imgMinSize…）
+     * 共用同一个键，内存里的 state 只装资源库自己的字段；
+     * 整体覆盖会把别人刚写进去的键抹掉（用户在图片面板改完再回来点这个开关就丢）。
+     */
     function save(patch, cb) {
-        state = Object.assign({}, state, patch);
-        var o = {};
-        o[KEY] = state;
-        chrome.storage.local.set(o, function () {
-            if (cb) { cb(state); }
+        chrome.storage.local.get(KEY, function (obj) {
+            var cur = Object.assign({}, obj && obj[KEY], patch);
+            state = Object.assign({}, DEFAULTS, cur);
+            var o = {};
+            o[KEY] = cur;
+            chrome.storage.local.set(o, function () {
+                if (cb) { cb(state); }
+            });
         });
     }
 
@@ -160,6 +172,8 @@
         idbGet('root').then(function (h) {
             if (h && h.name) { text('vrLibCustomMsg', '已授权目录：' + h.name, '#2e7d32'); }
         }).catch(function () { /* 无句柄属正常 */ });
+
+        renderLibSettings();
     }
 
     /* ---------------- 校验落盘 ---------------- */
@@ -391,6 +405,7 @@
             render();
             bind();
             bindIndex();
+            bindLibSettings();
             refreshIndex();
             // 图片下载设置（I5）：控件在 #anchorImage，与清单面板同一份存储
             if ($('anchorImage')) {
@@ -407,6 +422,34 @@
     }
 
     /* ---------------- 图片下载设置（I5） ---------------- */
+
+    /* 资源库自身的开关（非图片）。
+     * 单独一张表：这些键由 migrate.js / indexer.js 直接读原始 storage，
+     * 不经过 VRImageUtil.mergeSettings，混进 IMG_FIELDS 会让「图片设置」语义变模糊。 */
+    var LIB_FIELDS = [
+        { id: 'DeepVerify', key: 'deepVerify', type: 'bool' }
+    ];
+
+    /** 把存储里的资源库开关刷到控件上（state 已在 init 里 load 过） */
+    function renderLibSettings() {
+        if (!state) { return; }
+        LIB_FIELDS.forEach(function (f) {
+            var el = $(f.id);
+            if (el) { el.checked = !!state[f.key]; }
+        });
+    }
+
+    function bindLibSettings() {
+        LIB_FIELDS.forEach(function (f) {
+            var el = $(f.id);
+            if (!el) { return; }
+            el.addEventListener('change', function () {
+                var patch = {};
+                patch[f.key] = !!el.checked;
+                save(patch);
+            });
+        });
+    }
 
     /* 与清单面板共用同一份 vrLibSettings；这里只做「把控件和存储对上」这件事。 */
     var IMG_FIELDS = [
@@ -501,6 +544,7 @@
 
     root.VRSettings = {
         DEFAULTS: DEFAULTS,
+        LIB_FIELDS: LIB_FIELDS,
         get: function () { return state ? Object.assign({}, state) : null; },
         reload: function (cb) { load(cb || function () {}); },
         verify: verify,

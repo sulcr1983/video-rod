@@ -39,6 +39,7 @@ _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 SUITES = {
     "full": [
         ("node", "tools/test-path.js"),
+        ("node", "tools/test-save.js"),
         ("node", "tools/test-image-util.js"),
         ("node", "tools/test-image-batch.js"),
         ("node", "tools/test-image-tier.js"),
@@ -57,6 +58,7 @@ SUITES = {
         ("cdp", "tools/cdp-image-settings-test.py"),
         ("cdp", "tools/cdp-image-hover-hit-test.py"),
         ("cdp", "tools/cdp-image-discover-test.py"),
+        ("cdp", "tools/cdp-image-album-test.py"),
         ("cdp", "tools/yt-download-test.py"),
     ],
     "yt": [
@@ -80,6 +82,7 @@ SUITES = {
         ("cdp", "tools/cdp-image-settings-test.py"),
         ("cdp", "tools/cdp-image-hover-hit-test.py"),
         ("cdp", "tools/cdp-image-discover-test.py"),
+        ("cdp", "tools/cdp-image-album-test.py"),
     ],
     "docs": [
         ("py", "tools/check-doc-sync.py"),

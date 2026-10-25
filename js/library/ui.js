@@ -572,6 +572,94 @@
         if (root.VRTrashUI) { root.VRTrashUI.refreshBadge(); }
     }
 
+    /* ---------------- 首次打开自动索引 ----------------
+     * 索引为空时用户看到的是「还没有资源」，还得自己去设置页点重建——
+     * 这一步没有信息量，所以首次进页面就替用户做掉。
+     * 但全量扫描很慢：用 storage.session 记住「本次浏览器会话已试过」，
+     * 刷新页面不再重扫（关浏览器即清，下次会话还能再兜一次）。
+     */
+
+    var AUTO_INDEX_KEY = 'vrLibAutoIndexAt';
+    var autoIndexRan = false;        // 同一页面生命周期内只跑一次
+    var toastTimer = 0;
+
+    function toast(msg, sticky) {
+        var el = $('libToast');
+        if (!el) { return; }
+        el.textContent = msg;
+        el.hidden = false;
+        clearTimeout(toastTimer);
+        // 建索引可能几十秒，提示要一直挂着；普通提示 3 秒自动消失
+        if (!sticky) { toastTimer = setTimeout(function () { el.hidden = true; }, 3000); }
+    }
+
+    function hideToast() {
+        clearTimeout(toastTimer);
+        var el = $('libToast');
+        if (el) { el.hidden = true; }
+    }
+
+    /** session 存储读一取一；老 Chrome 没有 session 就退到 local */
+    function sessionStore() {
+        try { return chrome.storage.session || chrome.storage.local; } catch (e) { return null; }
+    }
+
+    function storeGet(key) {
+        return new Promise(function (resolve) {
+            var s = sessionStore();
+            if (!s) { resolve(null); return; }
+            try {
+                s.get(key, function (o) { resolve((o && o[key]) || null); });
+            } catch (e) { resolve(null); }
+        });
+    }
+
+    function storeSet(key, val) {
+        return new Promise(function (resolve) {
+            var s = sessionStore();
+            if (!s) { resolve(false); return; }
+            var o = {};
+            o[key] = val;
+            try { s.set(o, function () { resolve(true); }); } catch (e) { resolve(false); }
+        });
+    }
+
+    /** 返回 true 表示本次真的建出了条目（调用方据此重新读库） */
+    async function autoIndexOnce() {
+        if (autoIndexRan) { return false; }
+        if (typeof root.VRIndex === 'undefined' || typeof root.VRDB === 'undefined') { return false; }
+        autoIndexRan = true;
+
+        if (await storeGet(AUTO_INDEX_KEY)) { return false; }
+        // 先占位再干活：万一中途失败，也不至于每次刷新都重扫一遍慢操作
+        await storeSet(AUTO_INDEX_KEY, Date.now());
+
+        toast('正在建立索引…', true);
+        var built = false;
+        try {
+            // 有目录句柄时全量扫描最准（能发现索引里没记录过的文件）
+            await root.VRIndex.build({ mode: 'full' });
+            built = true;
+        } catch (eFull) {
+            try {
+                // 没授权过目录就退到快照：只重放上次写下的索引，不碰文件系统
+                await root.VRIndex.build({ mode: 'snapshot' });
+                built = true;
+            } catch (eSnap) {
+                // 两条路都不通（多半是用户从未授权目录）：静默放弃，
+                // 让页面停在原有空态并保留「去设置页」入口，不弹错打断浏览
+            }
+        }
+        hideToast();
+        return built;
+    }
+
+    async function boot() {
+        await loadData();
+        if (all.length) { return; }          // 已有数据，不必扫
+        if (await autoIndexOnce()) { await loadData(); }
+    }
+
     function setView(v) {
         state.view = v === 'list' ? 'list' : 'grid';
         $('libViewGrid').classList.toggle('on', state.view === 'grid');
@@ -837,7 +925,7 @@
         initRename();
         initBatch();
         bind();
-        loadData();
+        boot();
     }
 
     if (document.readyState === 'loading') {
