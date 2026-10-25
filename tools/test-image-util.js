@@ -209,6 +209,87 @@ arr('扫描 limit 生效', U.scanImages(doc, { limit: 1 }).map(x => x.url),
 arr('扫描 无 doc', U.scanImages(null, {}), []);
 arr('扫描 空文档', U.scanImages(makeDoc([]), {}), []);
 
+/* ---------------- 去 resize 参数拿原图 ---------------- */
+// 各家 CDN 的降分辨率参数写法不同，都要能剥掉
+eq('resize 微博 ?w=300',
+   U.stripResizeParams('https://wx1.sinaimg.cn/large/abc.jpg?w=300'),
+   'https://wx1.sinaimg.cn/large/abc.jpg');
+eq('resize 七牛 imageView2',
+   U.stripResizeParams('https://cdn.com/a.jpg?imageView2/2/w/300'),
+   'https://cdn.com/a.jpg');
+eq('resize 阿里 OSS x-oss-process',
+   U.stripResizeParams('https://b.oss.com/a.jpg?x-oss-process=image/resize,w_300'),
+   'https://b.oss.com/a.jpg');
+eq('resize 多参数只剥尺寸，保留其它',
+   U.stripResizeParams('https://cdn.com/a.jpg?w=300&v=2&quality=80'),
+   'https://cdn.com/a.jpg?v=2');
+eq('resize 没有尺寸参数返回空',
+   U.stripResizeParams('https://cdn.com/a.jpg?v=2&t=1'), '');
+eq('resize 无查询串返回空',
+   U.stripResizeParams('https://cdn.com/a.jpg'), '');
+eq('resize 非 http 返回空',
+   U.stripResizeParams('data:image/png;base64,xx'), '');
+eq('resize 空值返回空', U.stripResizeParams(''), '');
+eq('resize 大小写不敏感',
+   U.stripResizeParams('https://cdn.com/a.jpg?W=300'), 'https://cdn.com/a.jpg');
+// 只剥查询参数，路径里的尺寸段不动（风险高）：
+// ?v=1 不含尺寸参数 → 本来就返回空串（不改动原地址）
+eq('resize 路径里的尺寸不动且无尺寸参数时返回空',
+   U.stripResizeParams('https://cdn.com/300x300/a.jpg?v=1'), '');
+
+/* ---------------- 背景图解析 ---------------- */
+eq('bg 普通 url',
+   U.parseBgImage('url("https://cdn.com/a.jpg")', 'https://x.com/'), 'https://cdn.com/a.jpg');
+eq('bg 无引号',
+   U.parseBgImage('url(https://cdn.com/a.jpg)', 'https://x.com/'), 'https://cdn.com/a.jpg');
+eq('bg 相对地址补全',
+   U.parseBgImage('url("/img/a.jpg")', 'https://x.com/p/1'), 'https://x.com/img/a.jpg');
+eq('bg none 返回空', U.parseBgImage('none', 'https://x.com/'), '');
+eq('bg 渐变无 url 返回空',
+   U.parseBgImage('linear-gradient(red, blue)', 'https://x.com/'), '');
+eq('bg 空值返回空', U.parseBgImage('', 'https://x.com/'), '');
+ok('bg SVG 不算（矢量不可当图片存）',
+   U.parseBgImage('url("data:image/svg+xml,<svg/>")', 'https://x.com/') === '');
+
+/* ---------------- 正则过滤 ---------------- */
+const pool = [
+    { url: 'https://wx1.sinaimg.cn/a.jpg' },
+    { url: 'https://cdn.other.com/b.png' },
+    { url: 'https://wx2.sinaimg.cn/c.webp' }
+];
+arr('过滤 子串', U.filterByKeyword(pool, 'sinaimg').map(x => x.url),
+    ['https://wx1.sinaimg.cn/a.jpg', 'https://wx2.sinaimg.cn/c.webp']);
+arr('过滤 正则', U.filterByKeyword(pool, '/sinaimg\\.cn/').map(x => x.url),
+    ['https://wx1.sinaimg.cn/a.jpg', 'https://wx2.sinaimg.cn/c.webp']);
+arr('过滤 正则带 flags', U.filterByKeyword(pool, '/\\.PNG$/i').map(x => x.url),
+    ['https://cdn.other.com/b.png']);
+arr('过滤 正则不匹配', U.filterByKeyword(pool, '/^https://////zzz/'), []);
+arr('过滤 正则写错退回子串', U.filterByKeyword(pool, '/[unclosed').map(x => x.url), []);
+arr('过滤 空关键字返回全部', U.filterByKeyword(pool, '').length, 3);
+arr('过滤 空列表', U.filterByKeyword([], 'x'), []);
+
+/* ---------------- <picture> 的 source ---------------- */
+eq('picture srcset 最大 w 值', U.largestSrcsetPixels('a.jpg 400w, b.jpg 1200w, c.jpg 800w'), 1200);
+eq('picture srcset 用 x 描述符', U.largestSrcsetPixels('a.jpg 1x, b.jpg 2x'), 2000);
+eq('picture srcset 无描述符', U.largestSrcsetPixels('a.jpg'), 0);
+eq('picture srcset 空', U.largestSrcsetPixels(''), 0);
+
+// 模拟 <picture><source><img></picture>
+const picParent = {
+    tagName: 'PICTURE',
+    querySelectorAll: () => [
+        { getAttribute: (n) => n === 'srcset' ? 'small.webp 400w, big.webp 1200w' : null },
+        { getAttribute: (n) => n === 'srcset' ? 'mid.webp 800w' : null }
+    ]
+};
+const picImg = { tagName: 'IMG', parentNode: picParent };
+eq('picture 取最大 source',
+   U.pickLargestPictureSource(picImg, 'https://x.com/p/'),
+   'https://x.com/p/big.webp');
+eq('picture 非 picture 父级返回空',
+   U.pickLargestPictureSource({ tagName: 'IMG', parentNode: { tagName: 'DIV' } }, 'https://x.com/'), '');
+eq('picture 无父级返回空', U.pickLargestPictureSource({ tagName: 'IMG' }, 'https://x.com/'), '');
+
 /* ---------------- 汇总 ---------------- */
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail) {

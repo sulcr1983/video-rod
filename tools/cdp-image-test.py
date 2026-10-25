@@ -74,11 +74,13 @@ def hover(cdp, sid, selector, wait=0.65):
     r = rect(cdp, sid, selector)
     if not r:
         return None
-    # 两次不同坐标的移动，确保离开原位置
+    # 移开要「等过 HIDE_DELAY(300ms)」：只等 50ms 的话上一张的 shown 状态没退干净，
+    # 下一次 mouseover 会走进 `img === currentImg && state==='pending'` 分支而不出按钮。
+    # 这是全套连跑时 B3 偶发失败的真因（单独跑不复现）。
     move(cdp, sid, 1, 1)
-    time.sleep(0.05)
+    time.sleep(0.4)
     move(cdp, sid, 3, 3)
-    time.sleep(0.05)
+    time.sleep(0.08)
     move(cdp, sid, r["cx"], r["cy"])
     time.sleep(wait)
     return r
@@ -247,9 +249,16 @@ def main():
     st = button_state(cdp, sid)
     check("B3 悬停出现『下载原图』", [st.get("visible"), st.get("text")], [True, "下载原图"])
     check("B4 按钮在 Shadow DOM 内", st.get("inShadow"), True)
-    # I3 起悬停条里有两个按钮，位置断言看整组（wrap）的右边缘，不是单个按钮
-    within = (abs((st["wrapX"] + st["wrapW"]) - (img["x"] + img["w"] - 8)) <= 2 and
-              abs(st["wrapY"] - (img["y"] + 8)) <= 2)
+    # I3 起悬停条里有两个按钮，位置断言看整组（wrap）的右边缘，不是单个按钮。
+    # 必须读**当前**图片矩形：hover() 返回的是 scrollIntoView 之前的坐标，
+    # 滚动后布局已变，用旧值算期望会假失败（踩过）。
+    cur = ev(cdp, sid, """(function(){
+      const e = document.querySelector('#big1');
+      const b = e.getBoundingClientRect();
+      return {x: b.x, y: b.y, w: b.width, h: b.height};
+    })()""")
+    within = (abs((st["wrapX"] + st["wrapW"]) - (cur["x"] + cur["w"] - 8)) <= 2 and
+              abs(st["wrapY"] - (cur["y"] + 8)) <= 2)
     check("B5 按钮贴图片右上角（内缩 8px）", within, True)
     shot(cdp, sid, "image-hover-button.png")
 

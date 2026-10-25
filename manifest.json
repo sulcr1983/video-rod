@@ -126,6 +126,8 @@
       "js": [
         "js/lib-image-util.js",
         "js/image-batch.js",
+        "js/lib/floating-ui.core.umd.min.js",
+        "js/lib/floating-ui.dom.umd.min.js",
         "js/image-hover.js",
         "js/image-panel.js"
       ],

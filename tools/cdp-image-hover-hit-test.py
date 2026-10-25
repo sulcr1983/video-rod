@@ -157,9 +157,17 @@ def main():
     cdp.send("Runtime.enable", {}, osid)
     cdp.send("Page.enable", {}, osid)
     cdp.wait_js(osid, "!!chrome.downloads", 8)
-    # 干净起点
-    ev(cdp, osid, "new Promise(r => chrome.storage.local.remove('vrLibSettings', () => r(1)))")
-    time.sleep(0.3)
+    # 干净起点。浮标默认关（批量低频、不占常驻 UI），本套的 D 组要点面板，
+    # 必须显式打开并等落库 —— 否则宿主不建，D 组全崩（踩过）。
+    ev(cdp, osid, """new Promise(r => chrome.storage.local.set(
+      {vrLibSettings: {imgPanel: true, imgHover: true, imgBatch: true}}, () => r(1)))""")
+    t0 = time.time()
+    while time.time() - t0 < 5:
+        cur = ev(cdp, osid, """new Promise(r=>chrome.storage.local.get('vrLibSettings',
+              o=>r((o&&o.vrLibSettings)||{})))""")
+        if cur.get("imgPanel") is True:
+            break
+        time.sleep(0.1)
 
     tid = cdp.send("Target.createTarget", {"url": "about:blank"})["targetId"]
     sid = cdp.attach(tid)

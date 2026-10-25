@@ -414,6 +414,7 @@
         { id: 'ImgBatch', key: 'imgBatch', type: 'bool' },
         { id: 'ImgPanel', key: 'imgPanel', type: 'bool' },
         { id: 'ImgPreferOriginal', key: 'imgPreferOriginal', type: 'bool' },
+        { id: 'ImgBgScan', key: 'imgBgScan', type: 'bool' },
         { id: 'ImgHotkeys', key: 'imgHotkeys', type: 'bool' },
         { id: 'ImgMinSize', key: 'imgMinSize', type: 'num' },
         { id: 'ImgHoverDelay', key: 'imgHoverDelay', type: 'num' },
