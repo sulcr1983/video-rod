@@ -1078,6 +1078,11 @@
             func: function () {
                 var out = [];
                 var seen = {};
+                // 与 js/lib-image-util.js 的 MIN_SHOW / MAX_ASPECT 保持一致。
+                // 这里是 executeScript 注入到页面的函数，拿不到外部模块变量，
+                // 只能就地写一份；改门槛时**两处都要改**（当前 600 / 6）。
+                var MIN_SHOW = 600;
+                var MAX_ASPECT = 6;
                 function push(src, w, h, alt) {
                     if (!src || src.indexOf('data:') === 0 || seen[src]) { return; }
                     seen[src] = 1;
@@ -1100,11 +1105,13 @@
                     try { box = im.getBoundingClientRect(); } catch (e) { box = null; }
                     var dw = box ? Math.round(box.width) : (im.clientWidth || 0);
                     var dh = box ? Math.round(box.height) : (im.clientHeight || 0);
+                    // 门槛与页面悬停共用同一份常量（MIN_SHOW / MAX_ASPECT），
+                    // 不在这里写死数字 —— 早先写死 48，用户把门槛调到 600 后两边就不一致了。
                     if (dw > 0 && dh > 0) {
-                        if (Math.min(dw, dh) < 48) { continue; }
+                        if (Math.min(dw, dh) < MIN_SHOW) { continue; }
                         var ratio = Math.max(dw, dh) / Math.min(dw, dh);
-                        if (ratio > 6) { continue; }
-                    } else if (w && h && (w < 120 || h < 120)) {
+                        if (ratio > MAX_ASPECT) { continue; }
+                    } else if (w && h && (w < MIN_SHOW || h < MIN_SHOW)) {
                         continue;   // 量不到显示尺寸时退回原始像素兜底
                     }
                     push(src, w, h, im.alt);

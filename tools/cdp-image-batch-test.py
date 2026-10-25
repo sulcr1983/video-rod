@@ -497,6 +497,9 @@ def main():
     seen_left = ev(cdp, osid, "new Promise(r=>chrome.storage.local.get('vrImgDownloaded',o=>r(Object.keys(o.vrImgDownloaded||{}).length)))")
     check("F0 去重表已清空", seen_left, 0)
     set_settings(cdp, osid, {"imgBatchLimit": 2})
+    # 必须等上限真的落库再悬停：storage.set 是异步的，不等会读到旧值 200，
+    # 按钮文案就还是「下载 5 张」（踩过）
+    wait_setting(cdp, osid, "imgBatchLimit", 2)
     # 先让上一批的下载记录全部落定并登记进 downloads.search，再记基线；
     # 否则会漏计「基线之后才出现」的旧记录，F3 多数出 2 条（踩过）。
     time.sleep(0.5)

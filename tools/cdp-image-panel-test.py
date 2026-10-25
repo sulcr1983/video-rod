@@ -278,8 +278,10 @@ def main():
     cdp.send("Page.enable", {}, osid)
     cdp.wait_js(osid, "!!chrome.downloads", 8)
     clear_seen(cdp, osid)
+    # imgMinSize 显式设 100：面板扫描跟随这个设置项（不是悬停的 600 门槛），
+    # 夹具页里 160×160 显示的小图也要被列出来。
     set_settings(cdp, osid, {"imgHover": True, "imgBatch": True, "imgPanel": True,
-                             "imgBatchLimit": 200, "imgConcurrency": 3})
+                             "imgBatchLimit": 200, "imgConcurrency": 3, "imgMinSize": 100})
     # 等设置真的落库再导航：storage.set 是异步的，写进去前就 navigate，
     # 内容脚本会读到旧值（浮标默认已是 false，读旧值就永远不建宿主）——A3 会假失败。
     t0 = time.time()

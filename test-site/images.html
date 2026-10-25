@@ -3,18 +3,26 @@
 <head>
   <meta charset="utf-8">
   <title>测试站 C：图片批量保存</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; }
+    img { display: block; margin-bottom: 12px; }
+  </style>
 </head>
 <body>
   <h1>图片夹具</h1>
-  <!-- 有效大图 1 -->
-  <img id="big1" src="media/cover.jpg" width="640" height="480">
-  <!-- 有效大图 2 -->
-  <img id="big2" src="media/sprite.png" width="300" height="300">
-  <!-- 小图：应被 <120×120 过滤 -->
+  <!-- 有效大图 1：800×700，宽高都 ≥600，应出现下载按钮 -->
+  <img id="big1" src="media/cover.jpg" width="800" height="700">
+  <!-- 有效大图 2：700×650，宽高都 ≥600 -->
+  <img id="big2" src="media/sprite.png" width="700" height="650">
+  <!-- 小图：16×16，远小于 600，应被过滤 -->
   <img id="tiny" src="media/tiny.png" width="16" height="16">
   <!-- 重复 URL：应去重 -->
-  <img id="dup" src="media/cover.jpg" width="640" height="480">
+  <img id="dup" src="media/cover.jpg" width="800" height="700">
   <!-- 坏图：加载失败应被过滤 -->
-  <img id="broken" src="media/test.mp4" width="640" height="480">
+  <img id="broken" src="media/test.mp4" width="800" height="700">
+  <!-- 宽够但高不够：800×400，高 < 600，应被过滤（验「宽高都要 ≥600」） -->
+  <img id="wide" src="media/sprite.png" width="800" height="400">
+  <!-- 高够但宽不够：400×800，宽 < 600，应被过滤 -->
+  <img id="tall" src="media/cover.jpg" width="400" height="800">
 </body>
 </html>

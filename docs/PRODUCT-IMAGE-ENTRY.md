@@ -107,7 +107,8 @@
 |---|---|---|
 | **右下角浮标默认关闭** | `js/lib-image-util.js` | `imgPanel: false`。批量低频，不该占常驻 UI；需要时点扩展 → 抓图，或设置里开回 |
 | **popup 抓图的小图过滤口径修正** | `js/popup-videorod.js` | 原来只判 `naturalWidth < 120`（和页面悬停犯同一个错），改为判显示尺寸 |
-| 悬停小图过滤 | `js/lib-image-util.js` / `js/image-hover.js` | 显示短边 < 48px 不认；长宽比 > 6:1 的条状图不认 |
+| 悬停小图过滤 | `js/lib-image-util.js` / `js/image-hover.js` | **显示尺寸宽高都要 ≥ 600px**（2026-10-25 用户要求「尺寸太小的不要出现按钮」，原为 48）；长宽比 > 6:1 的条状图不认 |
+| 面板门槛分离 | `js/image-panel.js` | 面板跟随设置项 `imgMinSize`（判原始像素），显示尺寸这层固定 48（`PANEL_MIN_SHOW`）——两处口径不能混 |
 | 面板 ×/遮罩关闭失效 | `js/image-panel.js` | 先摘面板再收设置区，且包 try/catch |
 | 悬停按钮抖动（点空） | `js/image-hover.js` | 先算文案再定位，`opacity:0` 藏抖动 |
 

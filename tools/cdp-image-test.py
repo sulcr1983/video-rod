@@ -228,7 +228,8 @@ def main():
               big1: !!document.getElementById('big1'),
               host: !!document.getElementById('vr-img-hover-host')};
     })()""")
-    check("B1 页面加载（5 张图、无注入节点）", [base["imgs"], base["big1"], base["host"]], [5, True, False])
+    # 夹具现有 7 张 img：big1/big2/tiny/dup/broken/wide/tall
+    check("B1 页面加载（7 张图、无注入节点）", [base["imgs"], base["big1"], base["host"]], [7, True, False])
 
     # 快速划过：不应出现
     # 「移开」要移到一个确定没有图的位置：(2,2) 在左上角，某些布局下可能正好压着图，
@@ -316,9 +317,9 @@ def main():
       box.id = 'vr-test-fixtures';
       box.style.cssText = 'margin:24px 0; display:flex; flex-wrap:wrap; gap:16px';
       box.innerHTML = `
-        <a id="lnk" href="/media/original-1200.png"><img id="linked" src="/media/thumb-320.png" width="160" height="160"></a>
-        <img id="srcset" src="/media/srcset-400.png" srcset="/media/srcset-400.png 400w, /media/srcset-1200.png 1200w" width="200" height="200">
-        <img id="lazy" src="/media/thumb-320.png" data-original-src="/media/original-1200.png" width="160" height="160">
+        <a id="lnk" href="/media/original-1200.png"><img id="linked" src="/media/thumb-320.png" width="640" height="640"></a>
+        <img id="srcset" src="/media/srcset-400.png" srcset="/media/srcset-400.png 400w, /media/srcset-1200.png 1200w" width="660" height="660">
+        <img id="lazy" src="/media/thumb-320.png" data-original-src="/media/original-1200.png" width="620" height="620">
         <img id="tiny" src="/media/tiny.png" width="16" height="16">
         <img id="svgimg" src="/media/icon.svg" width="120" height="120">
         <img id="ph" src="/media/placeholder.png" width="300" height="150">
