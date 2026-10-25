@@ -81,6 +81,9 @@ SUITES = {
         ("cdp", "tools/cdp-image-hover-hit-test.py"),
         ("cdp", "tools/cdp-image-discover-test.py"),
     ],
+    "docs": [
+        ("py", "tools/check-doc-sync.py"),
+    ],
     "core": [
         ("node", "tools/test-path.js"),
         ("cdp", "tools/cdp-s1a-test.py"),
@@ -177,7 +180,9 @@ def shutdown(proc):
 def run_one(kind, script, env, label):
     print(f"\n{'=' * 60}\n▶ {label}  {script}\n{'=' * 60}", flush=True)
     t0 = time.time()
-    cmd = ([sys.executable, "-u", script] if kind == "cdp"
+    # cdp / py 都走 Python；node 走 node。
+    # 区别：cdp 需要浏览器环境，py 是纯脚本（如文档一致性核查）。
+    cmd = ([sys.executable, "-u", script] if kind in ("cdp", "py")
            else [os.environ.get("VR_NODE", "node"), script])
     # -u：不缓冲。否则子进程输出会被攒到结束才吐，卡住时看不到卡在哪一步。
     p = subprocess.run(cmd, cwd=ROOT, env=env)
@@ -232,7 +237,7 @@ def main():
             env["VR_CDP"] = f"http://127.0.0.1:{port}"
 
         for kind, script in plan:
-            if not run_one(kind, script, env, "单测" if kind == "node" else "CDP"):
+            if not run_one(kind, script, env, {"node": "单测", "py": "脚本"}.get(kind, "CDP")):
                 ok = False
                 print(f"!! {script} 失败，后续套件继续跑（便于一次看全）", flush=True)
     finally:

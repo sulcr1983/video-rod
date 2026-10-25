@@ -1,6 +1,6 @@
 # 苏哥的钓鱼竿 — 交接文档
 
-> 更新：2026-10-24（三线合并轮）｜ 代码 HEAD：`909ceb8`（YouTube 下载 + 图片 I4 + 入库打通）
+> 更新：2026-10-25（图片线收尾 + 文档对齐轮）
 > 用途：**接手 AI 的第一份必读文件**。读完本文 → `docs/LIBRARY-PLAN.md`（主线方案）→ `docs/TESTING.md` §10~§23（已验收记录）。
 > 本文只写「现在是什么状态、怎么跑、别踩什么坑」，设计论证在 LIBRARY-PLAN 里。
 
@@ -20,13 +20,15 @@
 图片线 **I1+I2（单张悬停）+ I3（本页一键全下）+ I4（浮标 + 清单面板）+ I5（设置项 + 快捷键）** 已全部落地；
 **YouTube 播放器下载**（1080p/4K 直选、音视频轨无损合并成 MP4）已可用，
 且**已接入资源库入库链路**（FSA 直写后主动调 `vrLib.ingest`，不再等 indexer 全量扫描）。
-**十八套回归全绿**（`node` ×5 + `cdp` ×13）；合计 711 条断言。
+**二十套回归全绿**（`node` ×5 + `cdp` ×15）；合计 **574 条断言**（2026-10-25 实测，`--suite full`）。
+图片线 I1–I5 全部落地并修完实测反馈的三个 bug；悬停定位已改用 `@floating-ui/dom`。
 下一步是 **图片线 I6**（图集）与 **YouTube 的深水区**（SABR 复放、流式落盘、WebM）。
+**未完成项的权威清单见 `docs/TODO-VERIFIED.md`**（本文 §7 有过时内容，以那份为准）。
 
 | 项 | 值 |
 |---|---|
 | 仓库 | `E:\test\video-rod`（`origin` = `github-video-rod:sulcr1983/video-rod.git`） |
-| 分支 / HEAD | `master` / `909ceb8 fix(yt): FSA 写盘漏剥 video-rod 前缀；docs: 单任务收尾` |
+| 分支 / HEAD | `master` / 见 `git log -1`（本文不硬编码 HEAD，避免每次提交都漂移） |
 | 形态 | Chrome MV3 扩展（猫抓 cat-catch 的 fork），Service Worker 版 background |
 | 下载根目录 | `<Chrome 下载目录>\video-rod\<平台>\<博主(@ID)>\<类型>\<文件名>`（本机实测 `D:\Users\liq21\Downloads\video-rod`） |
 | 索引 | IndexedDB `vr-library` v1（5 个 store） |
@@ -294,7 +296,14 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
 
 ---
 
-## 7. 未完成（按建议顺序）
+## 7. 未完成（⚠️ 本节部分内容已过时，权威清单见 `docs/TODO-VERIFIED.md`）
+
+> **2026-10-25 核实**：本节写于 10-24，下列条目**已经做完但仍标「未做」**，不要重做——
+> - I4 浮标 + 清单面板 → ✅ `js/image-panel.js` 已上线
+> - I5 设置 UI / 快捷键 → ✅ 已上线（面板设置区 + `Alt+Shift+D` / `Alt+Shift+A`）
+> - 缩略图 → ✅ `js/library/thumbs.js` 已上线
+> - 查看器自绘控件 → ✅ `video.js` / `keyboard.js` / `lightbox.js` 已上线
+> - YouTube 活链路 → ✅ `docs/YT-CLIENT-STATUS.md` 记录 VISIONOS 可用（32 条格式带直链）
 
 ### 7.1 S2 已完成（不要重做）
 
@@ -327,22 +336,32 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
   SW 侧 `vrImg.batch` / `vrImg.batchCancel` 做并发池 + 进度广播（200ms 节流）；去重表 `vrImgDownloaded`（上限 2000 条）；单批上限 `imgBatchLimit`（缺省 200）。
   - 图宽 < 140px 时「全部 N」收成纯图标（数字放 `aria-label`），避免两个按钮盖满小图。
   - **又一个必踩的坑**：DNR 规则 id 不能用 `Date.now() % 900`——并发时同一毫秒会撞 id，先完成的把别人的规则删了，表现为「5 张只下到 3 张」。必须单调递增；且规则要等 `downloads.onChanged` 到终态再撤，`download()` 一返回就撤会丢 Referer。
-- **未做**：I4 浮标 + 清单面板、I5 设置 UI/快捷键、I6 图集。消息协议与工具函数已预留，直接接入口即可。
+- **I4 ✅** `js/image-panel.js`：右下浮标 + 清单面板（档位筛选/搜索/排序/批量下载）。
+  - ⚠️ **默认关闭**：批量下载是低频操作，不该占常驻 UI（竞品 Image Downloader / Image Harvest 也都不放页面浮标）。设置里可开回。
+- **I5 ✅** 设置区（面板内 + `options.html` 双入口）+ 快捷键 `Alt+Shift+D`（下悬停图）/ `Alt+Shift+A`（开清单）。
+- **I6 ❌ 仍未做**：`js/image-album.js` 不存在，SW 侧 `vrImg.albumScan/albumProgress/albumStop` **一条都没实现**。
+  设计见 `docs/IMAGE-DOWNLOAD-PLAN.md` §1.5 + §2b（三种模式：自动滚动 / 分页翻页 / 站点 API）。
 - 图片落库走**已经跑通的自动入库链路**，不要再另写一套。
 
 ### 7.4 已知缺口 / 技术债（先认账，别当成新发现）
 
 1. **B 模式（自定义目录）还不完整**：`archive.js` 未实现。现在切到 `custom` 只改设置，**新下载仍落系统下载目录**；`VRMigrate` 只能搬存量文件。
-2. **资源库查看器是基础版**：图片/视频可全屏看、←/→ 翻页，但视频用原生 controls；自绘控件、↑↓ 队列与连播留 S4。
-3. **缩略图未生成**：`thumb` store 建了但为空，S3 才做。
-4. **深校验开关未进 UI**：`vrLibSettings.deepVerify` 引擎已支持，设置页没有控件。
+2. ~~**资源库查看器是基础版**~~ → ✅ **已做**（S4 完成）：`lightbox.js` / `video.js` / `keyboard.js` 都已上线，
+   视频自绘控件（进度/音量/倍速/全屏/连播）、↑↓ 切条、←→ ±5s、Shift ±30s、空格 全部可用。
+3. ~~**缩略图未生成**~~ → ✅ **已做**：`js/library/thumbs.js` 已上线。
+4. **深校验开关未进 UI** ✅ **确认仍未做**：`vrLibSettings.deepVerify` 引擎已支持
+   （`js/library/migrate.js:402` 读取），但 `options.html` / `settings.js` 里**0 处引用**，用户开不了。
 5. **文档漂移**：`docs/DESIGN.md` 里写的 `js/image-scanner.js`、`js/bilibili.js`、`js/youtube.js` 不存在，能力实际在 `popup-videorod.js` / `x-button.js`。
 6. **构建链缺失**：产不出 `.crx/.zip`，只能开发者模式加载。
 7. **自动入库的未覆盖项**：批量并发、SW 中途被杀、图片类型（`type=image`）真机未验（TESTING §11.4）。
 8. **迁移的未覆盖项**：原生目录选择器未自动化（只剩「拿句柄」一步）、配额不足/文件占用分支未构造（TESTING §12.5）。
 9. **索引的未覆盖项**：1k 文件首屏性能未测（S2 只测正确性，真实首屏要等 S3）；快照保留 7 份的清理分支、downloads 超 5000 条的 `truncated` 分支未构造（TESTING §13.5）。
 10. **原生目录选择器仍未自动化**：`VRIndex` 的 full/snapshot 只用 OPFS 句柄验证过，「用户点选目录」靠手动；S3 做页面时要顺便把这一步的人工验收写进 TESTING。
-11. **YouTube 线没验过活链路**：`tools/yt-download-test.py` 21/21 全绿（打桩取格式，其余全真跑），但「真从 YouTube 取格式」只在我这边被 IP 风控挡住过，**需要 Sunny 在自己浏览器里点一次按钮复验**；若长期不通，退路线 B（SABR 复放，`docs/YT-FEASIBILITY.md` §5 已有可行性证据）。
+11. ~~**YouTube 线没验过活链路**~~ → ✅ **已验证**（2026-10-24 22:5x，见 `docs/YT-CLIENT-STATUS.md`）：
+    MWEB 已被 Google 关闭；**VISIONOS 客户端可用**——32 条格式全带直链、最高 2160p、取格式 0.2 秒、
+    `Range: bytes=0-15` 返回 `206 + ftypdash`（真实 MP4 字节）。
+    ⚠️ 遗留：浏览器侧完整拉流速度极慢（2–170 KB/s，同代理下 Python 有 1.4–2.0 MB/s），
+    属网络环境问题非代码问题；SABR 复放仍是备选路线。
 12. **YouTube 的内存上限**：双轨全量进内存再合并，4K 长视频（>1GB）有 OOM 风险（>700MB 会在提示行预警）。要根治得改流式：边拉边按 `tfdt` 交织落盘。
 13. **YouTube 只覆盖 MP4 容器**：WebM(VP9)/Opus 档被过滤。4K 有 AV1-in-MP4 兜底，实际很少缺档，但真碰上就只有低清。
 14. **存量下载路径没迁到 FSA**：弹窗下载 / 图片批量 / m3u8 仍走 `chrome.downloads`，在 Chrome 147 上文件名会退化成 UUID 或 URL 末段（ADR-040）。要么整体迁 FSA，要么接受「名字不对」。
@@ -355,6 +374,8 @@ $env:CDP='http://127.0.0.1:9333'; python tools/cdp-library-test.py   # 42/42
       `MutationObserver` 只对「有 img 进/出」触发重算，纯文本变动不重扫。
     - 测试侧：G 组改成 `wait_bar()` 轮询等按钮真正可见，并在**点击前重取一次坐标**。
     现在单跑和 `--suite full` 都稳定 35/35。
+    **2026-10-25 追加**：悬停定位改用 `@floating-ui/dom`（`autoUpdate` 自动重算），
+    手写的 `void offsetWidth` / `opacity:0` 防抖已删除，这类「坐标定稿前就定位」的问题从根上消失。
 16. **FSA 直写的文件不会自动入库**：`sw-library` 的常规入库靠 `chrome.downloads` 的 complete 事件
     （`writeOne` 用 `d.filename` 反推相对路径）。YouTube 走 FSA 直写（ADR-040），**根本没有下载事件**，
     等下载器那条链路永远等不到 → 资源库里不出现这张卡，只能靠 indexer 全量扫描兜底（慢且要手动触发）。

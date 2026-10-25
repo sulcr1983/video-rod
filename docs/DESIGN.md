@@ -35,6 +35,16 @@ Chrome MV3 扩展，沿用猫抓底座的三件套，新功能以**独立模块�
 
 ## 2. 模块划分与边界
 
+> ⚠️ **阅读须知**：本章是**早期设计稿**（2026-10 初），标注「（新）」的是**当时计划**的文件。
+> 实际实施时部分文件改了名或合并了能力，**判断现状请以代码为准**，或用 `python tools/check-doc-sync.py` 核查。
+>
+> 已知差异（2026-10-25 核实）：
+> | 设计稿写的 | 实际落点 |
+> |---|---|
+> | `js/image-scanner.js`（新） | 能力在 `js/lib-image-util.js`（纯函数扫描）+ `js/image-hover.js` / `js/image-batch.js` / `js/image-panel.js` |
+> | `js/bilibili.js`（新） | **未单独建**：走「嗅探增强」路线（ADR-019），能力在 `js/popup-videorod.js` / `js/x-button.js` |
+> | `js/youtube.js`（新） | **实际是 `js/yt/yt-page.js`** + `yt-download.js` / `fmp4-merge.js` / `nsig-sandbox.js` |
+
 | 模块 | 文件（规划） | 职责 | 依赖 |
 |---|---|---|---|
 | 智能起名引擎 | `js/naming.js`（新） | 页面识别（文章/推特/B站/小红书）→ 取标题/正文/作者 → 模板填充 → 清洗（非法字符/截断60字/重名序号/空段清理） | 无（纯函数） |

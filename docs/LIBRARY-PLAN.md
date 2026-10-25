@@ -197,7 +197,8 @@ C 作为兜底：如果哪天不想维护，直接让 Billfish 以"索引模式"
 - 非法字符、保留名（CON/COM1…）同 `naming.js` 现有规则
 
 ### 4.3 与现有代码的衔接
-- `js/naming.js` **不改**：新增目录变量 `${platform} ${creator} ${type}` 由新模块 `js/library-path.js` 在调用 `buildNameFromInfo` 前拼装
+- `js/naming.js` **不改**：新增目录变量 `${platform} ${creator} ${type}` 由新模块拼装
+  - ⚠️ **实际落点**：`js/library/path.js`（原计划名 `js/library-path.js`，实施时并入 `library/` 目录）
 - 下载入口统一改为：`<根>/<平台中文>/<博主>/<类型中文>/<文件名>`
 - **旧文件自动迁移**（已拍板）：见 §5.3，先 dry-run 预览，再执行，全程可回滚
 
@@ -718,7 +719,7 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 | 10 | `js/library/lightbox.js` | 新增 | 图片灯箱：缩放、拖拽、切换、缩略图带、信息栏 | `ui.js` |
 | 11 | `js/library/video.js` | 新增 | 视频弹层：**自绘控件**、↑↓ 切换、←→ ±5s（Shift ±30s）、空格、连播、进度气泡 | `ui.js` |
 | 12 | `js/library/keyboard.js` | 新增 | 全局键盘路由：`/` `J/K` `Enter` `F` `Esc`，按弹层优先级分发 | `ui.js`、`lightbox.js`、`video.js` |
-| 13 | `js/library/bridge.js` | 新增 | 页面 ↔ SW 消息桥：超时、重试、错误码归一 | `chrome.runtime` |
+| 13 | ~~`js/library/bridge.js`~~ | ~~新增~~ | 页面 ↔ SW 消息桥：超时、重试、错误码归一 | ⚠️ **实际未单独建**：该能力并入 `js/library/sw-library.js`（消息路由）+ `js/background.js`（转发） |
 | 14 | `js/library/settings.js` | 已建 | 资源库设置读写 + 设置页渲染（根目录显示/选择、落盘模式、校验落盘、迁移入口） | `db.js` |
 | 14b | `js/library/archive.js` | 新增 | `custom` 模式：下载完成后把文件从系统下载目录搬入自定义目录（复制→校验→删源） | `db.js`、`path.js` |
 | 15 | `lib/`（可选） | 新增 | PhotoSwipe 5 / justified-layout 的**无需构建成品文件**（按 §6.2 能抄就抄） | — |
@@ -727,8 +728,8 @@ FSA 属条件性（仅当探针失败才触发）；GPL-3.0 因**私有库自用
 
 | # | 文件 | 类型 | 职责 |
 |---|---|---|---|
-| 16 | `js/sw-library.js` | 新增 | SW 侧资源库服务：索引快照落盘、文件操作（删除/恢复/迁移/重命名）、打开所在文件夹、批量查询 downloadId → 绝对路径 |
-| 17 | `js/background.js` | 修改（仅顶部 1 行） | `importScripts("js/sw-library.js")`；不改任何内核逻辑 |
+| 16 | `js/library/sw-library.js` | 新增 | SW 侧资源库服务：索引快照落盘、文件操作（删除/恢复/迁移/重命名）、打开所在文件夹、批量查询 downloadId → 绝对路径<br>⚠️ **实际路径**：原计划 `js/sw-library.js`，实施时移到 `js/library/` |
+| 17 | `js/background.js` | 修改（仅顶部 1 行） | `importScripts("js/library/sw-library.js")`；不改任何内核逻辑 |
 | 18 | `manifest.json` | 修改 | `permissions` 增 `unlimitedStorage`；`web_accessible_resources` 放行 `library.html` 所需的本地资源（如需）；`options_ui` 不变 |
 
 **接入现有功能**
