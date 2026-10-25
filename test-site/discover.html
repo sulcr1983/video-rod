@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 H：图片发现覆盖度</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; }
+    h1 { font-size: 18px; }
+    h2 { font-size: 14px; margin: 22px 0 8px; }
+    .note { color: #666; font-size: 13px; }
+    .row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+
+    /* 背景图容器：img 标签里没有这张图 */
+    .bgbox {
+      width: 320px; height: 240px; border-radius: 10px;
+      background-image: url("media/cover.jpg");
+      background-size: cover; background-position: center;
+    }
+    /* 带 resize 参数的图：应能派生出无参数版本 */
+    .sized img { width: 320px; height: 240px; object-fit: cover; }
+    /* 普通图，作为对照 */
+    .plain img { width: 320px; height: 240px; object-fit: cover; }
+  </style>
+</head>
+<body>
+  <h1>图片发现覆盖度夹具</h1>
+  <p class="note">
+    验证三件事：<br>
+    <b>A</b>：<code>&lt;picture&gt;</code> 里的 <code>&lt;source srcset&gt;</code> 能取到最大那张
+    （img 自身只有 400w 兜底小图）。<br>
+    <b>B</b>：CSS <code>background-image</code> 能被扫到（img 标签里没有这张图）。<br>
+    <b>C</b>：URL 带 resize 参数时能派生出无参数版本（候选链里应出现 <code>cover-nosize.jpg</code>）。
+  </p>
+
+  <h2>A：picture + source srcset</h2>
+  <div class="row">
+    <picture id="pic1">
+      <source srcset="media/original-1200.png 1200w, media/srcset-400.png 400w" type="image/png">
+      <img id="pimg" src="media/srcset-400.png" width="320" height="240" alt="picture 兜底小图">
+    </picture>
+  </div>
+
+  <h2>B：CSS 背景图（img 标签里没有）</h2>
+  <div class="row">
+    <div class="bgbox" id="bg1" role="img" aria-label="背景图封面"></div>
+  </div>
+
+  <h2>C：带 resize 参数的图</h2>
+  <div class="row">
+    <span class="sized">
+      <img id="sized" src="media/cover.jpg?w=300&quality=80" width="320" height="240" alt="带尺寸参数">
+    </span>
+    <span class="plain">
+      <img id="plain" src="media/sprite.png" width="320" height="240" alt="无参数对照">
+    </span>
+  </div>
+</body>
+</html>

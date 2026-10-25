@@ -122,6 +122,113 @@
      * 取 srcset 里尺寸最大的一项（w 优先，其次 x，无描述符取最后一项）。
      * @returns {string} 绝对 URL；解析不出时返回 ''
      */
+    /* 各家 CDN 用查询参数降分辨率的写法（社区通用做法，IDC 2.8 也做这条）：
+     *   微博/知乎  imageView2/2/w/300、?w=300
+     *   通用       width/height/size/quality/resize/scale/crop
+     *   阿里 OSS   x-oss-process=image/resize,w_300
+     *   七牛       ?imageView2/2/w/300
+     * 去掉这些参数往往就能拿到原图；有些站点还会在路径里写尺寸（/300x300/），
+     * 那部分风险高，先不动，只处理查询参数。
+     */
+    var RESIZE_KEYS = [
+        'w', 'h', 'width', 'height', 'size', 'quality', 'q',
+        'resize', 'scale', 'crop', 'fit', 'thumb', 'thumbnail',
+        'imageview2', 'imageview', 'x-oss-process', 'x-oss-image',
+        'type', 'mode', 'interlace', 'sharpen', 'watermark'
+    ];
+    var RESIZE_RE = new RegExp(
+        '^(?:' + RESIZE_KEYS.map(function (k) {
+            return k.replace(/[-]/g, '\\-');
+        }).join('|') + ')$', 'i');
+
+    /**
+     * 去掉 URL 查询串里「降分辨率」相关的参数，尝试拿到原图。
+     * @returns {string} 与原地址不同才返回，否则返回空串
+     */
+    function stripResizeParams(url) {
+        var s = String(url || '');
+        if (!/^https?:/i.test(s)) { return ''; }
+        var qAt = s.indexOf('?');
+        if (qAt < 0) { return ''; }
+        var head = s.slice(0, qAt);
+        var query = s.slice(qAt + 1);
+        if (!query) { return ''; }
+
+        var kept = [];
+        var dropped = 0;
+        var parts = query.split('&');
+        for (var i = 0; i < parts.length; i++) {
+            var seg = parts[i];
+            if (!seg) { continue; }
+            var eq = seg.indexOf('=');
+            var key = eq < 0 ? seg : seg.slice(0, eq);
+            var bare = key.split('?')[0];
+            // 七牛/又拍这类写法把参数塞进键里：imageView2/2/w/300、!/fw/300
+            // 只匹配「整键」会漏，取第一个 / 之前的部分做前缀判断。
+            // 只有「键里真的含 /」时才做前缀判断（七牛 imageView2/2/w/300）；
+            // 否则 quality=80 这类普通键会被 head 误判成 quality 而删掉（踩过）。
+            var slashAt = bare.indexOf('/');
+            var keyHead = slashAt > 0 ? bare.slice(0, slashAt) : '';
+            if (RESIZE_RE.test(bare) || (keyHead && RESIZE_RE.test(keyHead))) {
+                dropped++;
+                continue;
+            }
+            kept.push(seg);
+        }
+        if (!dropped) { return ''; }
+        var out = kept.length ? (head + '?' + kept.join('&')) : head;
+        return out === s ? '' : out;
+    }
+
+    /**
+     * 从 <picture> 的兄弟 <source> 里挑最大的一张。
+     * 响应式站点的典型结构：
+     *   <picture>
+     *     <source srcset="big.webp 1200w, mid.webp 800w" type="image/webp">
+     *     <img src="small.jpg">        ← 只有兜底小图
+     *   </picture>
+     * 只看 img.src 会拿到最小的那张。
+     *
+     * @returns {string} 绝对地址；没有则空串
+     */
+    function pickLargestPictureSource(img, baseUrl) {
+        if (!img || !img.parentNode) { return ''; }
+        var parent = img.parentNode;
+        if (!parent || String(parent.tagName || '').toUpperCase() !== 'PICTURE') { return ''; }
+        var sources;
+        try { sources = parent.querySelectorAll('source'); } catch (e) { return ''; }
+        if (!sources || !sources.length) { return ''; }
+
+        var best = '';
+        var bestPixels = -1;
+        for (var i = 0; i < sources.length; i++) {
+            var ss = attr(sources[i], 'srcset');
+            if (!ss) { continue; }
+            var one = pickLargestSrcset(ss, baseUrl);
+            if (!one) { continue; }
+            // 用 srcset 里的最大 w 值做比较；拿不到就用序号靠前的
+            var pixels = largestSrcsetPixels(ss);
+            if (pixels > bestPixels) { bestPixels = pixels; best = one; }
+        }
+        return best;
+    }
+
+    /** srcset 里最大的 w 描述符；没有 w 就用 x * 1000 近似 */
+    function largestSrcsetPixels(srcset) {
+        var parts = String(srcset || '').split(',');
+        var max = 0;
+        for (var i = 0; i < parts.length; i++) {
+            var t = parts[i].trim().split(/\s+/);
+            var d = String(t[1] || '');
+            var m = d.match(/^([\d.]+)(w|x)$/i);
+            if (!m) { continue; }
+            var n = parseFloat(m[1]) || 0;
+            if (m[2].toLowerCase() === 'x') { n = n * 1000; }
+            if (n > max) { max = n; }
+        }
+        return max;
+    }
+
     function pickLargestSrcset(srcset, baseUrl) {
         var raw = String(srcset || '').trim();
         if (!raw) { return ''; }
@@ -287,17 +394,28 @@
             }
             // ② srcset 最大项
             add(pickLargestSrcset(attr(img, 'srcset') || img.srcset || '', base));
+            // ②b <picture> 里的 <source srcset>：img 自身常常只有兜底小图，
+            //    真正的大图写在兄弟 source 上（响应式站点普遍这么做）。
+            add(pickLargestPictureSource(img, base));
             // ③ 懒加载原始地址
             for (var i = 0; i < DATA_ATTRS.length; i++) {
                 add(attr(img, DATA_ATTRS[i]));
             }
-            // ④ 父级 data-ri 元数据
+            // ④ 父级 data-ri 元数据（不能丢：有些站点把原图地址写在祖先属性里）
             var meta = dataRiCandidates(img, base);
             for (var j = 0; j < meta.length; j++) { add(meta[j]); }
-            // ⑤ 页面实际显示
+            // ⑤ 页面实际显示（必须先加进来，下面的派生才有对象可派生）
             add(img.currentSrc || '');
             add(attr(img, 'src'));
             add(img.src || '');
+            // ⑥ 去掉 resize 参数拿原图（很多 CDN 用 ?w=300 降分辨率）
+            //    放在最后，但整体顺序仍是「大图优先」：
+            //    派生结果会插到对应原地址之后，校验时先试大图、失败再退回显示地址。
+            var derived = out.slice();
+            for (var k = 0; k < derived.length; k++) {
+                var big = stripResizeParams(derived[k]);
+                if (big) { add(big); }
+            }
         } catch (e) { /* 单级异常不影响其它级 */ }
 
         return out;
@@ -361,6 +479,84 @@
         var ratio = Math.max(sh.w, sh.h) / Math.min(sh.w, sh.h);
         if (ratio > maxAspect) { return false; }
         return true;
+    }
+
+    /**
+     * 从 CSS background-image 里抠出图片地址。
+     * 站点常把封面做成 div 的背景图（img 标签里根本没有），只看 <img> 会整片漏掉。
+     *
+     * 只取一个 url()：多层背景里第一层才是可见内容图，后面的多是渐变/装饰。
+     * 也顺手处理 -webkit-image-set 与 image-set（取第一项）。
+     *
+     * @param {string} css background-image 的 computed 值
+     * @returns {string} 绝对地址；没有则空串
+     */
+    function parseBgImage(css, baseUrl) {
+        var v = String(css || '');
+        if (!v || v === 'none') { return ''; }
+        // image-set(...) 里也是 url()，统一按 url() 抓第一个
+        var m = v.match(/url\(\s*["']?([^"')]+)["']?\s*\)/i);
+        if (!m) { return ''; }
+        var raw = m[1].trim();
+        if (!raw || /^data:image\/svg/i.test(raw)) { return ''; }
+        return absolutize(raw, baseUrl);
+    }
+
+    /**
+     * 扫描页面上「用背景图显示」的元素。
+     * 与 <img> 共用同一套尺寸规则：容器显示尺寸够大才认。
+     *
+     * 性能：getComputedStyle 会强制样式计算，所以先按标签白名单 + 面积预筛，
+     * 只对「可能是内容容器」的元素取值，避免在长页面上把主线程卡死。
+     */
+    function scanBackgrounds(doc, opts) {
+        if (!doc || !doc.querySelectorAll) { return []; }
+        var o = opts || {};
+        var minShow = o.minShow == null ? MIN_SHOW : Number(o.minShow);
+        var maxAspect = o.maxAspect == null ? MAX_ASPECT : Number(o.maxAspect);
+        var dedupe = o.dedupe !== false;
+        var limit = Number(o.limit) || 0;
+        var base = baseOf(doc);
+        var win = doc.defaultView || (typeof window !== 'undefined' ? window : null);
+        if (!win || !win.getComputedStyle) { return []; }
+
+        var SEL = 'div,section,article,a,span,figure,li,td,header';
+        var nodes;
+        try { nodes = doc.querySelectorAll(SEL); } catch (e) { return []; }
+        if (!nodes) { return []; }
+
+        var out = [];
+        var seen = Object.create(null);
+        for (var i = 0; i < nodes.length; i++) {
+            var el = nodes[i];
+            try {
+                // 面积预筛：小容器直接跳过，省掉昂贵的 getComputedStyle
+                var box = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+                if (!box || box.width < minShow || box.height < minShow) { continue; }
+                var dw = Math.round(box.width);
+                var dh = Math.round(box.height);
+                var ratio = Math.max(dw, dh) / Math.min(dw, dh);
+                if (ratio > maxAspect) { continue; }
+
+                var css = win.getComputedStyle(el).backgroundImage;
+                var url = parseBgImage(css, base);
+                if (!url) { continue; }
+                if (isDataUri(url) || isSvgUrl(url) || isPlaceholderUrl(url)) { continue; }
+                if (dedupe && seen[url]) { continue; }
+                seen[url] = 1;
+                out.push({
+                    el: el,
+                    url: url,
+                    w: dw,
+                    h: dh,
+                    ok: true,
+                    bg: true,                       // 标记来源，面板可区分
+                    candidates: [url]
+                });
+                if (limit > 0 && out.length >= limit) { break; }
+            } catch (e) { /* 单个元素失败跳过 */ }
+        }
+        return out;
     }
 
     function scanImages(doc, opts) {
@@ -464,14 +660,42 @@
     }
 
     /** URL 关键词过滤（大小写不敏感子串）；关键词为空则原样返回 */
+    /**
+     * 按关键字过滤 URL。
+     *
+     * 输入以 `/` 开头且以 `/` 结尾（可带 flags，如 `/sinaimg\.cn/i`）时按**正则**处理，
+     * 否则按子串。不加开关：抓素材时「只要某域名的大图」用正则最直接，
+     * 而多一个开关就多一份要解释的 UI（IDC 做了三模式，我们用这一个约定就够）。
+     *
+     * @param {Array} items [{url, ...}]
+     * @param {string} kw 关键字或 /regex/flags
+     */
     function filterByKeyword(items, kw) {
-        var k = String(kw == null ? '' : kw).trim().toLowerCase();
+        var k = String(kw == null ? '' : kw).trim();
         var arr = items || [];
         if (!k) { return arr.slice(); }
+
+        var re = null;
+        if (k.length >= 2 && k.charAt(0) === '/') {
+            var end = k.lastIndexOf('/');
+            if (end > 0) {
+                try {
+                    re = new RegExp(k.slice(1, end), k.slice(end + 1));
+                } catch (e) {
+                    re = null;   // 正则写错就退回子串匹配，不要抛错让面板崩
+                }
+            }
+        }
+
         var out = [];
         for (var i = 0; i < arr.length; i++) {
-            var u = String((arr[i] && arr[i].url) || '').toLowerCase();
-            if (u.indexOf(k) >= 0) { out.push(arr[i]); }
+            var u = String((arr[i] && arr[i].url) || '');
+            if (re) {
+                re.lastIndex = 0;
+                if (re.test(u)) { out.push(arr[i]); }
+            } else if (u.toLowerCase().indexOf(k.toLowerCase()) >= 0) {
+                out.push(arr[i]);
+            }
         }
         return out;
     }
@@ -503,6 +727,10 @@
          * 页面上不放常驻入口。需要时点扩展 → 「抓图」即可，设置里可开回。
          * 依据见 docs/RESEARCH-COMPETITOR-IMAGE.md §2。 */
         imgPanel: false,
+        /* 清单面板是否也扫 CSS 背景图。很多站点把封面做成 div 的 background-image，
+         * 只看 <img> 会整片漏掉；但背景图扫描要 getComputedStyle，长页面上有开销，
+         * 所以给一个可关的开关（默认开）。 */
+        imgBgScan: true,
         imgMinSize: 100,
         imgPreferOriginal: true,
         imgConcurrency: 3,
@@ -591,6 +819,11 @@
         MIN_SHOW: MIN_SHOW,
         MAX_ASPECT: MAX_ASPECT,
         shownSize: shownSize,
+        stripResizeParams: stripResizeParams,
+        parseBgImage: parseBgImage,
+        pickLargestPictureSource: pickLargestPictureSource,
+        largestSrcsetPixels: largestSrcsetPixels,
+        scanBackgrounds: scanBackgrounds,
         isWorthDownloading: isWorthDownloading,
         IMAGE_EXT: IMAGE_EXT,
         DEFAULT_SETTINGS: DEFAULT_SETTINGS,

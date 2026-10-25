@@ -24,7 +24,7 @@ function ok(name, got, expect) {
 const D = U.DEFAULT_SETTINGS;
 // 注意排序：imgHotkeys 在 imgHover 之前（大写 H 的码位小于小写 o）
 ok('A1 键齐全', Object.keys(D).sort(), [
-    'imgBatch', 'imgBatchLimit', 'imgConcurrency', 'imgHotkeys', 'imgHover',
+    'imgBatch', 'imgBatchLimit', 'imgBgScan', 'imgConcurrency', 'imgHotkeys', 'imgHover',
     'imgHoverDelay', 'imgMinSize', 'imgPanel', 'imgPreferOriginal'
 ]);
 // 浮标默认关（批量是低频操作，不该占常驻 UI，见 docs/RESEARCH-COMPETITOR-IMAGE.md）

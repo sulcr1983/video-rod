@@ -120,6 +120,26 @@ Image Harvest 用 JSZip 把批量结果打成一个 zip 下载。
 
 ---
 
+## 五之二、本轮已抄的三条（2026-10-25 下午）
+
+| 能力 | 实现 | 覆盖场景 |
+|---|---|---|
+| **`<picture>` 的 `<source srcset>`** | `pickLargestPictureSource()` | 响应式站点：`img` 只有 400w 兜底小图，大图写在兄弟 `source` 上 |
+| **CSS `background-image`** | `parseBgImage()` + `scanBackgrounds()` | 封面做成 `div` 背景图的站点（img 标签里根本没有） |
+| **去掉 resize 参数拿原图** | `stripResizeParams()` | `?w=300`、七牛 `imageView2/2/w/300`、阿里 `x-oss-process=image/resize,w_300` |
+| **URL 正则过滤** | `filterByKeyword()` 增强 | 输入 `/sinaimg\.cn/` 即按正则匹配；写错自动退回子串 |
+
+单测：`tools/test-image-util.js` **89/89**（新增 31 条）。
+端到端：`tools/cdp-image-discover-test.py` **17/17** + `test-site/discover.html` 夹具。
+
+### 实施中踩的两个坑
+
+1. **派生必须在「显示地址」之后做**：我一开始把 `stripResizeParams` 放在候选链第 4 级，
+   那时 `out` 还是空的（这张图没有 srcset、没有链接）→ 派生无对象，一条都产不出。
+   正确顺序是「先把显示地址加进来，再对已有候选做派生」。
+2. **调整顺序时误删了 `data-ri` 那一级**：单测立刻报出来（89→88），及时补回。
+   **教训：改候选链这种有序列表，改完必须立刻跑单测。**
+
 ## 六、对我们的三条具体建议（按性价比排序）
 
 ### 建议 1（最高优先，也是 Sunny 的诉求）：**入口收进扩展，去掉常驻浮标**

@@ -40,6 +40,10 @@
     let allBtn = null;             // 「全部 N」批量入口（I3）
     let allTxt = null;
     let allNarrow = false;         // 图太窄时「全部 N」收成图标
+    /* autoUpdate 的清理句柄：每次 show 换图都要先撤掉旧的，否则监听器越积越多。
+     * 必须声明在顶部——hideNow/teardown 定义在 startAutoUpdate 之前，
+     * 若 let 写在中间，那些函数被提前调用时会撞 TDZ。 */
+    let stopAutoUpdate = null;
     let currentImg = null;
     let lastHoveredImg = null;     // 快捷键用：鼠标最后停过的 img（鼠标不动时没有新事件）
     let state = 'hidden';          // hidden | pending | shown | busy | done | fail
@@ -209,6 +213,7 @@
     }
 
     function teardown() {
+        stopAutoUpdateNow();
         clearTimeout(showTimer);
         clearTimeout(hideTimer);
         clearTimeout(resetTimer);
@@ -219,15 +224,28 @@
         state = 'hidden';
     }
 
+    /**
+     * 定位悬停条。
+     *
+     * 用 @floating-ui/dom 算位置，不再手算 left/top：
+     *   · offset(8)        贴图片右上角内缩 8px
+     *   · flip()           上方放不下就翻到下方（图片贴顶时不出界）
+     *   · shift({padding:8}) 左右夹回视口，留 8px 安全边
+     *   · autoUpdate       尺寸/滚动/缩放变化时自动重算 —— 这是替代手写
+     *                      `void offsetWidth` 和 `opacity:0` 防抖的关键：
+     *                      按钮宽度被「全部 N」文案撑开时，它会自己重新定位，
+     *                      不会再出现「先出现再跳一下、点下去点空」。
+     *
+     * 参考点是图片本身（img 有 getBoundingClientRect，直接当 reference）。
+     */
     function place(img) {
-        if (!wrap) { return; }
+        if (!wrap || !img) { return; }
         const r = img.getBoundingClientRect();
+
         // 图太窄时把「全部 N」收成纯图标，避免整条盖满小图。
-        // 两条触发条件：
         //  1) 图宽 < 140（头像/图标那种）；
         //  2) 完整按钮组（约 200px）超过图宽的 75%——否则鼠标停在图片中心
         //     就已经落在按钮上，会触发 mouseout 把按钮自己藏起来（实测踩过）。
-        // 用固定估算值判断，不读 offsetWidth，否则收成图标后组变窄会来回抖。
         if (allBtn && !allBtn.hidden) {
             const estFullW = 200;
             const narrow = r.width < 140 || (r.width < 320 && estFullW > r.width * 0.75);
@@ -237,20 +255,51 @@
                 syncAllLabel();
             }
         }
-        // 量宽度前把待写样式刷掉：切了 icon-only 之后同一帧读 offsetWidth 可能拿到旧值，
-        // 导致定位用的是「变窄前」的宽度，按钮会先出现在错误位置再跳一下（用户可见抖动）。
-        void wrap.offsetWidth;
-        const bw = wrap.offsetWidth || 96;
-        const bh = wrap.offsetHeight || 30;
-        const vw = document.documentElement.clientWidth || window.innerWidth;
-        const vh = document.documentElement.clientHeight || window.innerHeight;
-        // 右上角，内缩 8px；图片贴边时夹回视口
-        let left = r.right - bw - 8;
-        let top = r.top + 8;
-        left = Math.max(4, Math.min(left, vw - bw - 4));
-        top = Math.max(4, Math.min(top, vh - bh - 4));
-        wrap.style.left = left + 'px';
-        wrap.style.top = top + 'px';
+
+        const F = self.FloatingUIDOM;
+        if (!F || !F.computePosition) {
+            // 兜底：万一库没加载（例如老版本 manifest 缓存），退回手算，
+            // 保证「按钮至少能出现」，不至于整块功能失效。
+            const bw = wrap.offsetWidth || 96;
+            const bh = wrap.offsetHeight || 30;
+            const vw = document.documentElement.clientWidth || window.innerWidth;
+            const vh = document.documentElement.clientHeight || window.innerHeight;
+            let left = r.right - bw - 8;
+            let top = r.top + 8;
+            left = Math.max(4, Math.min(left, vw - bw - 4));
+            top = Math.max(4, Math.min(top, vh - bh - 4));
+            wrap.style.left = left + 'px';
+            wrap.style.top = top + 'px';
+            return;
+        }
+
+        // 目标是「贴在图片内部右上角，内缩 8px」：
+        //   placement top-end  → 按钮底边贴图片上边（在图片外面），不符合
+        //   用 top-end + offset 负值 → 把按钮往下推进图片内部
+        //   offset({mainAxis: -(bh+8), alignmentAxis: -8})：mainAxis 沿「上方」反向推进
+        // 但 mainAxis 依赖按钮高度，需要在测量后才知道，所以用函数式 offset。
+        F.computePosition(img, wrap, {
+            placement: 'top-end',
+            strategy: 'fixed',
+            middleware: [
+                // top-end 把按钮右上角对到图片右上角（在外侧）。
+                // mainAxis 正值 = 沿「上方」外侧推；要压回图片内部得用负值。
+                //   -(h + 8)：按钮整体下移进图片，顶部内缩 8px
+                //   alignmentAxis: -8：end 方向内侧再收 8px（实测该值方向为「向里为正」的反向）
+                F.offset(({ rects }) => ({
+                    mainAxis: -(rects.floating.height + 8),
+                    alignmentAxis: 8
+                })),
+                F.flip({ padding: 4 }),
+                F.shift({ padding: 8 })
+            ]
+        }).then(({ x, y }) => {
+            if (!wrap) { return; }
+            wrap.style.left = x + 'px';
+            wrap.style.top = y + 'px';
+        }).catch(() => {
+            // 定位失败不能让按钮消失：保留上一次位置
+        });
     }
 
     function setState(s, text) {
@@ -275,24 +324,39 @@
         // 用户点下去会点空（实测 C1 用例就是这个原因失败）。
         setState('shown', '下载原图');
         btn.title = '下载原图';
-        // 先切成 flex 让它可测量（display:none 时 offsetWidth 恒为 0），
-        // 但用 opacity:0 藏起来；等文案与定位都定稿后再显形 ——
-        // 这样既能量到真实宽度，又不会让用户看到「先出现再跳一下」。
-        wrap.style.opacity = '0';
         wrap.classList.add('on');
         try { syncAllLabel(); } catch (e) { /* 数量算不出来不影响单张下载 */ }
-        place(img);                 // place 里已 void offsetWidth，量到的是最终宽度
-        void wrap.offsetWidth;      // 定位写下去之后再刷一次，避免最后一帧还在动
-        // 显式写 '1' 而不是空串：空串依赖 CSS 默认值，若样式表里有 transition/初始值
-        // 可能没立刻回到不透明，测试与用户都会看到「按钮在但看不见」（踩过）
-        wrap.style.opacity = '1';
+        place(img);
+        // 交给 autoUpdate：图片/按钮尺寸变化（「全部 N」文案定稿）、页面滚动、
+        // 窗口缩放都会自动重算位置。手写的 `void offsetWidth` 与 `opacity:0`
+        // 防抖都不再需要 —— 那是为了掩盖「定位算在文案定稿前」的问题，
+        // 现在由库负责重算，按钮不会先出现再跳（这正是之前点空的根因）。
+        startAutoUpdate(img);
         state = 'shown';
+    }
+
+    function startAutoUpdate(img) {
+        stopAutoUpdate && stopAutoUpdate();
+        stopAutoUpdate = null;
+        const F = self.FloatingUIDOM;
+        if (!F || !F.autoUpdate || !wrap || !img) { return; }
+        try {
+            stopAutoUpdate = F.autoUpdate(img, wrap, () => { place(img); });
+        } catch (e) { /* 库异常不影响按钮显示 */ }
+    }
+
+    function stopAutoUpdateNow() {
+        if (stopAutoUpdate) {
+            try { stopAutoUpdate(); } catch (e) { /* 忽略 */ }
+            stopAutoUpdate = null;
+        }
     }
 
     function hideNow() {
         clearTimeout(showTimer);
         clearTimeout(hideTimer);
         showTimer = hideTimer = 0;
+        stopAutoUpdateNow();
         if (wrap) { wrap.classList.remove('on'); }
         currentImg = null;
         if (state !== 'busy') {

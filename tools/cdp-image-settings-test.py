@@ -220,7 +220,9 @@ def click_set_btn(cdp, sid, text):
 def hover_bar(cdp, sid):
     return ev(cdp, sid, """(function(){
       const h = document.getElementById('vr-img-hover-host');
-      if (!h) { return {host:false}; }
+      // 各分支返回同样的键，否则调用方读到 undefined（踩过多次）
+      const empty = {host:false, vis:false, oneHidden:null, allHidden:null, one:null, all:null};
+      if (!h) { return empty; }
       const sr = h.shadowRoot;
       const w = sr.querySelector('.vr-wrap');
       const one = sr.querySelector('button.vr-btn:not(.all)');
@@ -247,7 +249,13 @@ def move(cdp, sid, x, y):
                                           "button": "none", "buttons": 0}, sid)
 
 
-def hover_img(cdp, sid, selector, wait=0.8):
+def hover_img(cdp, sid, selector, wait=0.8, expect_vis=True):
+    """悬停到某张图并等悬停条出现。
+
+    宿主是「第一次悬停才懒创建」的，固定 sleep 容易抓空 —— 这里改成
+    「移入后轮询等可见」，最多试 3 轮。`expect_vis=False` 时只做悬停不等待
+    （用于「本来就不该出现」的用例）。
+    """
     r = ev(cdp, sid, """(function(){
       const e = document.querySelector(%s);
       if (!e) { return null; }
@@ -257,10 +265,18 @@ def hover_img(cdp, sid, selector, wait=0.8):
     })()""" % json.dumps(selector))
     if not r:
         return None
-    move(cdp, sid, 1, 1); time.sleep(0.05)
-    move(cdp, sid, 3, 3); time.sleep(0.05)
-    move(cdp, sid, r["cx"], r["cy"])
-    time.sleep(wait)
+    for attempt in range(3):
+        move(cdp, sid, 1, 1); time.sleep(0.05)
+        move(cdp, sid, 3, 3); time.sleep(0.05)
+        move(cdp, sid, r["cx"], r["cy"])
+        time.sleep(wait + attempt * 0.3)
+        if not expect_vis:
+            return r
+        t0 = time.time()
+        while time.time() - t0 < 2.5:
+            if hover_bar(cdp, sid).get("vis"):
+                return r
+            time.sleep(0.12)
     return r
 
 
@@ -535,10 +551,10 @@ def main():
     hb = hover_bar(cdp, sid)
     check("J1 关悬停后宿主移除", hb.get("host"), False)
     set_settings(cdp, osid, {"imgHover": True})
-    cdp.wait_js(sid, "!!document.getElementById('vr-img-hover-host')", 8.0)
-    hover_img(cdp, sid, "#s1", 1.2)
-    hb = hover_bar(cdp, sid)
-    check("J2 开回悬停后按钮恢复", hb.get("vis"), True)
+    wait_setting(cdp, osid, "imgHover", True)
+    # hover_img 自带轮询（宿主是懒创建的，不能等它自己出现）
+    hover_img(cdp, sid, "#s1")
+    check("J2 开回悬停后按钮恢复", hover_bar(cdp, sid).get("vis"), True)
 
     # ---------------- K. 截图 ----------------
     set_settings(cdp, osid, {"imgPanel": True, "imgHover": True, "imgBatch": True})

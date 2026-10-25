@@ -358,6 +358,20 @@
         try {
             const ms = settings.imgMinSize || U.MIN_SIZE;
             items = U.scanImages(document, { minWidth: ms, minHeight: ms, dedupe: true });
+            // 站点常把封面做成 CSS 背景图（img 标签里没有），只看 <img> 会整片漏掉。
+            // 追加在后面，按 URL 去重，避免和 img 结果重复。
+            if (settings.imgBgScan !== false) {
+                try {
+                    const seenUrl = Object.create(null);
+                    for (let i = 0; i < items.length; i++) { seenUrl[items[i].url] = 1; }
+                    const bgs = U.scanBackgrounds(document, { minShow: U.MIN_SHOW, dedupe: true });
+                    for (let i = 0; i < bgs.length; i++) {
+                        if (seenUrl[bgs[i].url]) { continue; }
+                        seenUrl[bgs[i].url] = 1;
+                        items.push(bgs[i]);
+                    }
+                } catch (e) { /* 背景图扫描失败不影响 img 结果 */ }
+            }
             n = items.length;
         } catch (e) { n = 0; }
         if (!n || floatOff()) {
@@ -963,6 +977,7 @@
         { key: 'imgBatch', type: 'bool', label: '全部按钮', hint: '悬停条上显示「全部 N」' },
         { key: 'imgPanel', type: 'bool', label: '右下浮标', hint: '本页图片清单入口' },
         { key: 'imgPreferOriginal', type: 'bool', label: '优先原图', hint: '按五级候选找最大的一张；关掉则用当前显示的那张' },
+        { key: 'imgBgScan', type: 'bool', label: '扫背景图', hint: '把 CSS 背景图也算进来；长页面上会略慢' },
         { key: 'imgMinSize', type: 'num', label: '最小尺寸', hint: '短边小于此值的图不参与扫描', unit: 'px' },
         { key: 'imgHoverDelay', type: 'num', label: '悬停延迟', hint: '停多久才出按钮', unit: 'ms' },
         { key: 'imgConcurrency', type: 'num', label: '批量并发', hint: '同时下载几张；太高反而排队更慢', unit: '张' },
