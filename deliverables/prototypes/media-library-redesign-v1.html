@@ -867,6 +867,90 @@ a.pi-row:hover .go{opacity:1}
 .author-retry .i{width:11px;height:11px}
 .avatar.ghost{background:var(--surface-3);color:var(--faint)}
 
+/* ---- 关键值块：把"标签:值"变成"大数字 + 小标签" ---- */
+.pi-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:12px}
+.pi-stats .stat{
+  display:flex;flex-direction:column;gap:2px;min-width:0;
+  padding:9px 10px;border-radius:9px;
+  background:var(--surface-2);border:1px solid var(--line-2);
+  transition:background .12s,border-color .12s;
+}
+.pi-stats .stat:hover{background:var(--surface-3);border-color:var(--line)}
+.pi-stats .stat b{
+  font-size:13.5px;font-weight:660;letter-spacing:-.3px;color:var(--ink);
+  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;line-height:1.25;
+}
+.pi-stats .stat span{font-size:10px;color:var(--muted);letter-spacing:.01em}
+
+/* ---- 折叠区：长串字段（ID/路径/直链）默认收起 ---- */
+.pi-fold{margin:2px 0 0}
+.pi-fold summary{
+  display:flex;align-items:center;gap:5px;padding:5px 0;
+  cursor:pointer;list-style:none;font-size:10.5px;color:var(--muted);
+  transition:color .12s;
+}
+.pi-fold summary::-webkit-details-marker{display:none}
+.pi-fold summary:hover{color:var(--ink-2)}
+.pi-fold summary i{
+  font-style:normal;font-size:9px;transition:transform .16s var(--ease);
+  color:var(--faint);margin-left:2px;
+}
+.pi-fold[open] summary i{transform:rotate(90deg)}
+.pi-fold summary .n{
+  font-size:9px;color:var(--faint);background:var(--surface-2);
+  padding:0 5px;border-radius:99px;margin-left:auto;
+}
+
+/* ---- 资源树：每行带占比条，越多的平台底色越满 ---- */
+.tree-node{position:relative;isolation:isolate;overflow:hidden}
+.tree-node::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:var(--pct,0%);
+  background:var(--pc,var(--ink));opacity:.05;border-radius:inherit;z-index:-1;
+  transition:opacity .12s,width .28s var(--ease);
+}
+.tree-node.plat::before{opacity:.075}
+.tree-node:hover::before{opacity:.1}
+.tree-node.active::before{opacity:.13}
+/* 作者级：缩进 + 一根树线，和平台级拉开层次 */
+.tree-node.lv2{padding-left:26px}
+.tree-node.lv2 .av{margin-left:-9px;margin-right:5px}
+.tree{overflow-x:hidden}
+.tree-node.lv2::after{
+  content:"";position:absolute;left:-9px;top:3px;bottom:3px;width:1px;
+  background:var(--line);border-radius:1px;
+}
+/* 作者头像是首字母圆点，比文件夹图标更能区分"某个人" */
+/* 作者：淡底 + 彩色首字母（不是实心），和平台的"实心色点"区分开，也不抢眼 */
+.tree-node .av{
+  width:17px;height:17px;flex:0 0 17px;border-radius:50%;
+  display:grid;place-items:center;font-size:8.5px;font-weight:700;
+  color:var(--pc,#6B7480);letter-spacing:0;
+  background:color-mix(in srgb,var(--pc,#9AA3AF) 15%,transparent);
+}
+
+/* ---- 资源树：每行带占比条，越多的平台底色越满 ---- */
+.tree-node{position:relative;isolation:isolate;overflow:hidden}
+.tree-node::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:var(--pct,0%);
+  background:var(--pc,var(--ink));opacity:.05;border-radius:inherit;z-index:-1;
+  transition:opacity .12s,width .28s var(--ease);
+}
+.tree-node.plat::before{opacity:.075}
+.tree-node:hover::before{opacity:.1}
+.tree-node.active::before{opacity:.13}
+/* 作者级：缩进 + 一根树线，和平台级拉开层次 */
+.tree-node.lv2{padding-left:26px}
+.tree-node.lv2 .av{margin-left:-9px;margin-right:5px}
+/* 作者头像是首字母圆点，比文件夹图标更能区分"某个人" */
+/* 作者：淡底 + 彩色首字母（不是实心），和平台的"实心色点"区分开，也不抢眼 */
+.tree-node .av{
+  width:17px;height:17px;flex:0 0 17px;border-radius:50%;
+  display:grid;place-items:center;font-size:8.5px;font-weight:700;
+  color:var(--pc,#6B7480);letter-spacing:0;
+  background:color-mix(in srgb,var(--pc,#9AA3AF) 15%,transparent);
+}
+
 /* ---- 信息栏 v3：分组 + 标签/值对齐，信息一个不删 ---- */
 .pi-group{border-top:1px solid var(--line-2);padding:12px 0 2px}
 .pi-label{
@@ -1538,34 +1622,50 @@ kbd{
 
       <section class="pi-group">
         <h3 class="pi-label">文件</h3>
-        <dl class="pi-list">
-          <div class="pi-item"><dt>大小</dt><dd id="pvSize">51.4 MB</dd></div>
-          <div class="pi-item"><dt>分辨率</dt><dd id="pvRes">3840 × 2160</dd></div>
-          <div class="pi-item"><dt id="pvThirdK">时长</dt><dd id="pvThirdV">01:24</dd></div>
-          <div class="pi-item"><dt>格式</dt><dd id="pvFmt">MP4</dd></div>
-          <div class="pi-item"><dt>保存时间</dt><dd id="pvSaved">—</dd></div>
-          <div class="pi-item"><dt>文件名</dt><dd class="mono" id="pvFileName">—</dd></div>
-          <div class="pi-item hidden" id="pvStateRow"><dt>状态</dt><dd id="pvState" style="color:var(--danger)">—</dd></div>
-          <div class="pi-item"><dt>路径</dt><dd class="mono" id="pvPath">douyin/qqdd/videos/c2.mp4</dd>
-            <button class="inline-copy" id="pvPathCopy" title="复制完整路径"><svg class="i"><use href="#i-copy"/></svg></button></div>
-        </dl>
+        <!-- 一眼要看的三个值：做大，横排 -->
+        <div class="pi-stats">
+          <div class="stat"><b id="st1v">—</b><span id="st1k">分辨率</span></div>
+          <div class="stat"><b id="st2v">—</b><span id="st2k">大小</span></div>
+          <div class="stat"><b id="st3v">—</b><span id="st3k">保存</span></div>
+        </div>
+        <div class="pi-item hidden" id="pvStateRow"><dt>状态</dt><dd id="pvState" style="color:var(--danger)">—</dd></div>
+        <!-- 其余收起来：信息一个不少，但不占版面 -->
+        <details class="pi-fold">
+          <summary>更多文件信息<i>›</i></summary>
+          <dl class="pi-list">
+            <div class="pi-item"><dt>大小</dt><dd id="pvSize">51.4 MB</dd></div>
+            <div class="pi-item"><dt>分辨率</dt><dd id="pvRes">3840 × 2160</dd></div>
+            <div class="pi-item"><dt id="pvThirdK">时长</dt><dd id="pvThirdV">01:24</dd></div>
+            <div class="pi-item"><dt>格式</dt><dd id="pvFmt">MP4</dd></div>
+            <div class="pi-item"><dt>保存时间</dt><dd id="pvSaved">—</dd></div>
+            <div class="pi-item"><dt>文件名</dt><dd class="mono" id="pvFileName">—</dd></div>
+            <div class="pi-item"><dt>路径</dt><dd class="mono" id="pvPath">douyin/qqdd/videos/c2.mp4</dd>
+              <button class="inline-copy" id="pvPathCopy" title="复制完整路径"><svg class="i"><use href="#i-copy"/></svg></button></div>
+          </dl>
+        </details>
       </section>
 
       <section class="pi-group">
         <h3 class="pi-label">来源 <span class="pi-badge" id="pvSrcBadge"><svg class="i"><use href="#i-circle-check"/></svg>已记录</span></h3>
         <dl class="pi-list">
           <div class="pi-item"><dt>平台</dt><dd id="pvSrcPlat">X / Twitter</dd></div>
-          <div class="pi-item hidden" id="pvUidRow"><dt>作者 ID</dt><dd class="mono" id="pvUid">—</dd></div>
-          <div class="pi-item"><dt>作品 ID</dt><dd class="mono" id="pvWorkId">—</dd></div>
           <a class="pi-item" id="pvPageRow" href="#" target="_blank" rel="noopener">
             <dt>原帖</dt><dd class="mono" id="pvPageVal">—</dd><span class="go">↗</span>
           </a>
           <div class="pi-item" id="pvMediaRow"><dt>直链</dt><dd class="mono" id="pvMediaVal">—</dd>
             <span class="tag-warn" id="pvExpireWarn" title="CDN 直链带签名，会过期；回溯请用「原帖」"><svg class="i"><use href="#i-triangle-alert"/></svg></span>
             <button class="inline-copy" id="pvCopyBtn"><svg class="i"><use href="#i-copy"/></svg>复制</button></div>
-          <div class="pi-item"><dt>下载时间</dt><dd id="pvTimeVal">—</dd></div>
           <div class="pi-item hidden" id="pvSrcMiss"><dt>提示</dt><dd class="pi-empty">历史素材：原帖与直链未记录</dd></div>
         </dl>
+        <!-- 长串 ID 很少看，收起来 -->
+        <details class="pi-fold">
+          <summary>溯源详情<i>›</i></summary>
+          <dl class="pi-list">
+            <div class="pi-item hidden" id="pvUidRow"><dt>作者 ID</dt><dd class="mono" id="pvUid">—</dd></div>
+            <div class="pi-item"><dt>作品 ID</dt><dd class="mono" id="pvWorkId">—</dd></div>
+            <div class="pi-item"><dt>下载时间</dt><dd id="pvTimeVal">—</dd></div>
+          </dl>
+        </details>
       </section>
 
       <section class="pi-group">
@@ -1790,10 +1890,28 @@ const TREE = [
 function renderTree(){
   const q = $('#treeSearch').value.trim().toLowerCase();
   const rows = TREE.filter(t=>!q || t.label.toLowerCase().includes(q));
+  /* 分母用真实素材数，别用 mock 里的 27，否则占比条对不上总数 */
+  const total = FILES.length || 1;
+  let curColor = '#9AA3AF';
   $('#tree').innerHTML = rows.map(t=>{
-    if(t.kind==='root') return `<button class="tree-node active"><svg class="i i-sm"><use href="#i-folder"/></svg><span class="label">${t.label}</span><span class="count">${t.count}</span></button>`;
-    if(t.kind==='plat') return `<button class="tree-node"><span class="dot" style="--pc:${PLAT[t.key].dot}"></span><span class="label">${t.label}</span><span class="count">${t.count}</span></button>`;
-    return `<button class="tree-node lv2"><svg class="i i-sm"><use href="#i-folder"/></svg><span class="label">${esc(t.label)}</span><span class="count">${t.count}</span></button>`;
+    /* root 就是全量，用 100%；其余按真实总数算占比 */
+    const pct = t.kind === 'root' ? 100
+      : Math.max(2, Math.min(100, Math.round(t.count / total * 100)));
+    if (t.kind === 'plat') { curColor = PLAT[t.key].dot; }
+    if (t.kind === 'root') {
+      return `<button class="tree-node active" style="--pct:${pct}%">` +
+        `<svg class="i i-sm"><use href="#i-folder"/></svg>` +
+        `<span class="label">${t.label}</span><span class="count">${total}</span></button>`;
+    }
+    if (t.kind === 'plat') {
+      return `<button class="tree-node plat" style="--pct:${pct}%;--pc:${curColor}">` +
+        `<span class="dot" style="--pc:${curColor}"></span>` +
+        `<span class="label">${esc(t.label)}</span><span class="count">${t.count}</span></button>`;
+    }
+    /* 作者级：首字母圆 + 平台色的淡底色，视觉上和平台分开 */
+    return `<button class="tree-node lv2" style="--pct:${pct}%;--pc:${curColor}">` +
+      `<span class="av">${esc(String(t.label).slice(0,1))}</span>` +
+      `<span class="label">${esc(t.label)}</span><span class="count">${t.count}</span></button>`;
   }).join('');
 }
 $('#treeSearch').addEventListener('input',renderTree);
@@ -2173,7 +2291,21 @@ function paintPreview(){
   $('#pvAvatar').textContent = (f.author||'?').slice(0,1);
   paintSrc(f);
   $('#pvCrumb').innerHTML = `<b>${p.label}</b> / ${esc(f.author)} / ${f.kind==='video'?'videos':'images'}`;
-  /* 文件组：信息全保留，按「标签 / 值」两列对齐 */
+  /* 一眼要看的三个值：分辨率 / 大小 / 时长（图片则是保存日期） */
+  const resBig = isV ? '3840 × 2160' : '2400 × 3200';
+  $('#st1v').textContent = resBig;
+  $('#st1k').textContent = '分辨率';
+  $('#st2v').textContent = fmt(f.size);
+  $('#st2k').textContent = '大小';
+  if (isV) {
+    $('#st3v').textContent = f.dur || '—';
+    $('#st3k').textContent = '时长';
+  } else {
+    $('#st3v').textContent = shortDate(f.savedAt || f.dlAt);
+    $('#st3k').textContent = '保存';
+  }
+
+  /* 折叠区里的完整信息照旧填 */
   $('#pvSize').textContent = fmt(f.size);
   $('#pvRes').textContent = isV ? '3840 × 2160' : '2400 × 3200';
   const thirdRow = $('#pvThirdK').parentElement;
