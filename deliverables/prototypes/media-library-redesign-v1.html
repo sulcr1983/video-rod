@@ -1156,6 +1156,23 @@ a.pi-item:hover dd .go{opacity:1}
 }
 .pv-paused-tip.on{opacity:1}
 
+/* ---------- 从缩略图放大进预览（View Transitions API） ----------
+   点封面 → 封面从卡片位置平滑长成预览舞台，而不是"啪一下全屏"
+   不支持该 API 的浏览器自动退回原逻辑，不影响功能 */
+::view-transition-group(vrmorph){
+  animation-duration:.34s;
+  animation-timing-function:cubic-bezier(.22,.61,.36,1);
+}
+::view-transition-old(vrmorph),
+::view-transition-new(vrmorph){
+  animation-duration:.34s;
+  animation-timing-function:cubic-bezier(.22,.61,.36,1);
+}
+/* 过渡期间把预览自身的分层进入关掉，避免两套动画打架 */
+.preview.vt-morph .pv-stage,
+.preview.vt-morph .pv-info,
+.preview.vt-morph .pv-film{animation:none}
+
 /* ---------- 快捷键面板 ---------- */
 .keysheet{
   position:fixed;inset:0;z-index:110;background:rgba(8,10,14,.62);
@@ -1753,7 +1770,7 @@ const FILES = [
 })();
 
 /* ---------- 状态 ---------- */
-const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[],autoplay:true};
+const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[],autoplay:true,loopEnd:false};
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = n => n>=1024? (n/1024).toFixed(1)+' GB' : n>=1? n.toFixed(1)+' MB' : Math.round(n*1024)+' KB';
@@ -1908,11 +1925,36 @@ $('#rescanBtn').addEventListener('click',()=>toast('已重新扫描，27 项'));
 function openPreview(f){
   if(!f) return;
   S.idx = S.list.findIndex(x=>x.id===f.id);
-  /* 先显示再渲染：paintPreview 里的 armAuto() 会检查预览是否可见，
-     顺序反了就会把连播计时直接 return 掉，表现为"打开不自动播" */
-  $('#preview').classList.remove('hidden');
-  document.body.style.overflow='hidden';
-  paintPreview();
+
+  /* 过渡期间关掉预览自身的分层进入，避免两套动画打架 */
+  const enter = () => {
+    $('#preview').classList.add('vt-morph');
+    $('#preview').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    paintPreview();
+  };
+  const cleanup = () => {
+    const m = $('#pvMedia'); if (m) { m.style.viewTransitionName = ''; }
+    $('#preview').classList.remove('vt-morph');
+  };
+
+  /* 从被点的那张卡的封面长出来：View Transitions 不支持就退回普通打开 */
+  const card = [...document.querySelectorAll('.card')].find(c => c.dataset.id === f.id);
+  const cover = card ? card.querySelector('.cover') : null;
+
+  if (!cover || typeof document.startViewTransition !== 'function') {
+    enter();
+    setTimeout(cleanup, 600);
+    return;
+  }
+
+  cover.style.viewTransitionName = 'vrmorph';
+  const vt = document.startViewTransition(() => {
+    cover.style.viewTransitionName = '';        /* 旧状态快照已拍完，清掉避免重名 */
+    enter();
+    $('#pvMedia').style.viewTransitionName = 'vrmorph';
+  });
+  vt.finished.finally(cleanup);
 }
 /* ---------- 来源链接（按平台规则拼，拿不到就留空，不编） ---------- */
 function srcLinks(f){
@@ -2216,14 +2258,16 @@ window.addEventListener('scroll',()=>{
    —— 图片停留 4 秒、动图 6 秒、视频以播完为准
    —— 手动切换后重新计时；最后一条自动停下，不循环（避免"看着看着回到开头"）
    ============================================================ */
-const AUTO_MS = { image: 4000, anim: 6000 };
+const AUTO_MS = { image: 3000, anim: 6000 };
 let autoTimer = null, wheelLock = 0;
 
 function updateAutoBtn(){
   const b = $('#autoBtn');
   b.classList.toggle('on', S.autoplay);
   b.setAttribute('aria-pressed', String(S.autoplay));
-  b.title = S.autoplay ? '连播：开（播完自动下一个）' : '连播：关';
+  b.title = (S.autoplay ? '连播：开' : '连播：关')
+    + ' ｜ 到底后：' + (S.loopEnd ? '回到第一条' : '停下')
+    + '（右键切换）';
 }
 
 function disarmAuto(){
@@ -2260,7 +2304,8 @@ function armAuto(){
 
 function goNext(){
   if (S.idx < S.list.length - 1) { S.idx++; paintPreview(); return; }
-  /* 到底了：停掉连播并说一声，别无声无息地不动 */
+  /* 到底了：看用户选的是「停下」还是「回到第一条」 */
+  if (S.loopEnd) { S.idx = 0; paintPreview(); toast('已回到第一条，继续连播'); return; }
   if (S.autoplay) { S.autoplay = false; updateAutoBtn(); disarmAuto(); toast('已经是最后一条，连播已暂停'); }
 }
 function goPrev(){
@@ -2280,6 +2325,13 @@ $('#preview').addEventListener('wheel', e => {
   if (e.deltaY > 0) { goNext(); } else if (e.deltaY < 0) { goPrev(); }
 }, { passive: false });
 
+/* 右键连播按钮：切换「到底停下 / 回到第一条」——这是个偏好，交给用户选 */
+$('#autoBtn').addEventListener('contextmenu', e => {
+  e.preventDefault();
+  S.loopEnd = !S.loopEnd;
+  updateAutoBtn();
+  toast(S.loopEnd ? '到底后：回到第一条继续播' : '到底后：停下');
+});
 $('#autoBtn').addEventListener('click', () => {
   S.autoplay = !S.autoplay;
   updateAutoBtn();
