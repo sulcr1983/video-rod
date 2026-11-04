@@ -837,6 +837,36 @@ a.pi-row:hover .go{opacity:1}
 }
 .pi-more-item:hover{border-color:var(--ink);transform:translateY(-1px)}
 .pi-more-item .cover{position:absolute;inset:0}
+/* 作者行三态：有 / 未获取（可重试）/ 未知来源 */
+.author-miss{
+  color:var(--danger);font-weight:600;
+  background:var(--danger-soft);padding:1px 6px;border-radius:4px;
+}
+.author-none{color:var(--muted);font-weight:500}
+.author-sub{color:var(--muted);font-weight:400;font-size:11px;margin-left:6px}
+.author-retry{
+  display:inline-grid;place-items:center;width:18px;height:18px;margin-left:5px;
+  border-radius:4px;color:var(--danger);opacity:.75;vertical-align:-3px;
+}
+.author-retry:hover{opacity:1;background:var(--danger-soft)}
+.author-retry .i{width:11px;height:11px}
+.avatar.ghost{background:var(--surface-3);color:var(--faint)}
+
+/* 作者行三态：有 / 未获取（可重试）/ 未知来源 */
+.author-miss{
+  color:var(--danger);font-weight:600;
+  background:var(--danger-soft);padding:1px 6px;border-radius:4px;
+}
+.author-none{color:var(--muted);font-weight:500}
+.author-sub{color:var(--muted);font-weight:400;font-size:11px;margin-left:6px}
+.author-retry{
+  display:inline-grid;place-items:center;width:18px;height:18px;margin-left:5px;
+  border-radius:4px;color:var(--danger);opacity:.75;vertical-align:-3px;
+}
+.author-retry:hover{opacity:1;background:var(--danger-soft)}
+.author-retry .i{width:11px;height:11px}
+.avatar.ghost{background:var(--surface-3);color:var(--faint)}
+
 /* ---- 信息栏 v3：分组 + 标签/值对齐，信息一个不删 ---- */
 .pi-group{border-top:1px solid var(--line-2);padding:12px 0 2px}
 .pi-label{
@@ -1184,6 +1214,8 @@ kbd{
         <button class="chip" data-plat="douyin" style="--pc:#00B8B8"><span class="dot"></span>抖音</button>
         <button class="chip" data-plat="weibo" style="--pc:#FF6B35"><span class="dot"></span>微博</button>
         <button class="chip" data-plat="youtube" style="--pc:#FF0000"><span class="dot"></span>YouTube</button>
+        <button class="chip" data-plat="instagram" style="--pc:#C13584"><span class="dot"></span>Instagram</button>
+        <button class="chip" data-plat="web" style="--pc:#8B93A1"><span class="dot"></span>网页</button>
       </div>
       <div class="tools">
         <span class="select">
@@ -1323,6 +1355,7 @@ kbd{
         <h3 class="pi-label">来源 <span class="pi-badge" id="pvSrcBadge"><svg class="i"><use href="#i-circle-check"/></svg>已记录</span></h3>
         <dl class="pi-list">
           <div class="pi-item"><dt>平台</dt><dd id="pvSrcPlat">X / Twitter</dd></div>
+          <div class="pi-item hidden" id="pvUidRow"><dt>作者 ID</dt><dd class="mono" id="pvUid">—</dd></div>
           <div class="pi-item"><dt>作品 ID</dt><dd class="mono" id="pvWorkId">—</dd></div>
           <a class="pi-item" id="pvPageRow" href="#" target="_blank" rel="noopener">
             <dt>原帖</dt><dd class="mono" id="pvPageVal">—</dd><span class="go">↗</span>
@@ -1446,6 +1479,8 @@ const PLAT = {
   douyin:{name:'抖音',dot:'#00B8B8',label:'抖音'},
   weibo:{name:'微博',dot:'#FF6B35',label:'微博'},
   youtube:{name:'YouTube',dot:'#FF0000',label:'YouTube'},
+  instagram:{name:'Instagram',dot:'#C13584',label:'Instagram'},
+  web:{name:'网页',dot:'#8B93A1',label:'网页'},
 };
 const FILES = [
   {id:'x/NASA/videos/a1',plat:'x',author:'NASA',authorId:'NASA',workId:'1847231904556712',source:'download',dlAt:'2026-11-04 15:42',title:'Artemis II 发射演练 4K 实拍：夜间推进剂加注全过程',kind:'video',size:184.6,dur:'00:42',h:212,tags:['太空','4K']},
@@ -1465,6 +1500,16 @@ const FILES = [
   {id:'weibo/tang/images/d2',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',source:'inferred',title:'折多山垭口日出，手机直出未修',kind:'image',size:4.6,h:36},
   {id:'youtube/Kurzgesagt/videos/dQw4w9WgXcQ',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'dQw4w9WgXcQ',source:'download',dlAt:'2026-11-04 16:20',title:'The Egg — A Short Story',kind:'video',size:412.8,dur:'07:54',h:2,tags:['科普','4K'],playlist:'Philosophy'},
   {id:'youtube/Kurzgesagt/videos/k9Yx7n2aQqE',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'k9Yx7n2aQqE',source:'download',dlAt:'2026-11-04 16:22',title:'What If You Detonated a Nuclear Bomb In The Marianas Trench',kind:'video',size:298.4,dur:'06:31',h:198,playlist:'Philosophy'},
+  /* 情况一：名字与可读账号完全相同（IG / X 常见）——只显示一次，不重复 */
+  {id:'instagram/yuki.photo/images/g1',plat:'instagram',author:'yuki.photo',authorHandle:'yuki.photo',authorSub:'Yuki ｜ 东京街头',authorUid:'4821937745',workId:'C8xQz1aPb',source:'download',dlAt:'2026-11-04 16:40',title:'东京深夜的便利店灯牌，随手拍的一卷',kind:'image',size:5.2,h:210,tags:['摄影']},
+  /* 情况二：平台有账号概念，但这次没抓到（接口没返回 / DOM 改版）——显示「未获取」+ 可重试 */
+  {id:'douyin/奇趣蛋蛋/videos/g2',plat:'douyin',author:'奇趣蛋蛋',authorState:'missing',workId:'7412884901234567892',source:'download',dlAt:'2026-11-04 16:44',title:'跳跳糖第 3 集：这次真的炸了',kind:'video',size:44.1,dur:'00:52',h:24},
+  /* 情况三：平台本身没有作者概念（通用网页图片）——名字显示「未知」，账号相关全部隐藏 */
+  {id:'web/未分类/images/g3',plat:'web',author:'',authorState:'unsupported',source:'download',dlAt:'2026-11-04 16:51',title:'网页里右键存下的一张长图（来源页已关）',kind:'image',size:3.7,h:132},
+  /* 情况四：名字也没抓到（接口失败 / 页面结构变了）—— 这是真缺陷，必须让人看见并能重试 */
+  {id:'xiaohongshu/未分类/videos/g4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
+  /* 情况四：名字也没抓到（接口失败 / 页面结构变了）—— 这是真缺陷，必须让人看见并能重试 */
+  {id:'xiaohongshu/未分类/videos/g4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
 ];
 // 补到 27 条，并**交错插回**，避免同一条素材连续出现（看起来像 bug）
 (() => {
@@ -1644,7 +1689,7 @@ function openPreview(f){
 }
 /* ---------- 来源链接（按平台规则拼，拿不到就留空，不编） ---------- */
 function srcLinks(f){
-  const a = f.authorId || '';
+  const a = f.authorHandle || f.authorId || '';
   if (f.source !== 'download') { return {}; }
   switch (f.plat) {
     case 'x': return {
@@ -1663,6 +1708,18 @@ function srcLinks(f){
       media: f.workId ? 'https://sns-video-bd.xhscdn.com/' + f.workId + '.mp4' : ''
     };
     case 'weibo': return { author: a ? 'https://weibo.com/n/' + a : '', page: '', media: '' };
+    case 'instagram': return {
+      author: a ? 'https://www.instagram.com/' + a.replace(/^@/, '') + '/' : '',
+      page: f.workId ? 'https://www.instagram.com/p/' + f.workId + '/' : '',
+      media: ''   /* IG 媒体是带签名的 CDN 直链，过期快，不伪造 */
+    };
+    case 'web': return {};   /* 通用网页图片：没有作者也没有作品页，不做假链接 */
+    case 'instagram': return {
+      author: a ? 'https://www.instagram.com/' + a.replace(/^@/, '') + '/' : '',
+      page: f.workId ? 'https://www.instagram.com/p/' + f.workId + '/' : '',
+      media: ''   /* IG 媒体是带签名的 CDN 直链，过期快，不伪造 */
+    };
+    case 'web': return {};   /* 通用网页图片：没有作者也没有作品页，不做假链接 */
     case 'youtube': return {
       /* 频道 ID 以 UC 开头用 channel/，否则当 @handle；yt-dlp 的 uploader_id 多为 @handle */
       author: a ? (a.slice(0, 2) === 'UC'
@@ -1691,11 +1748,63 @@ function shortUrl(u){
   }
   catch (e) { return u; }
 }
+/* ============================================================
+   作者行：三态 + 名字/账号去重
+   原则：主体信息（昵称）缺失要「显示状态」；辅助信息（ID）缺失要「隐藏」。
+   —— 留个空壳会像 bug，隐藏反而干净。
+   ============================================================ */
+function renderAuthorRow(f, s){
+  const aRow = $('#pvAuthorRow');
+  const name = String(f.author || '').trim();
+  const state = f.authorState || (name ? 'ok' : 'unsupported');
+  /* 可读账号：authorHandle 优先，其次旧字段 authorId */
+  const handle = String(f.authorHandle || f.authorId || '').trim();
+  const norm = v => String(v || '').replace(/^@/, '').toLowerCase();
+  /* 名字和账号其实是同一个东西（IG / X 很常见）→ 只显示一次 */
+  const dup = !!handle && !!name && norm(handle) === norm(name);
+
+  let main;
+  if (name) {
+    main = esc(name);
+  } else if (state === 'missing') {
+    /* 平台有这个概念，这次没抓到 —— 这是缺陷，要让人看见并能补救 */
+    main = '<span class="author-miss">未获取</span>'
+      + '<button class="author-retry" id="pvAuthorRetry" title="重新抓取"><svg class="i"><use href="#i-refresh-cw"/></svg></button>';
+  } else {
+    /* 平台本身没有作者概念 —— 这不是缺陷，说明白就行 */
+    main = '<span class="author-none">未知来源</span>';
+  }
+
+  const sub = f.authorSub ? '<span class="author-sub">' + esc(f.authorSub) + '</span>' : '';
+  const handleHtml = (handle && !dup) ? ' <em>@' + esc(handle.replace(/^@/, '')) + '</em>' : '';
+  $('#pvAuthor').innerHTML = main + handleHtml + (dup ? sub : '');
+
+  $('#pvAvatar').textContent = name ? name.slice(0, 1).toUpperCase() : '?';
+  $('#pvAvatar').classList.toggle('ghost', !name);
+
+  if (s.author) { aRow.setAttribute('href', s.author); aRow.classList.remove('plain'); }
+  else { aRow.removeAttribute('href'); aRow.classList.add('plain'); }
+
+  /* 内部 ID（抖音 uid / 微博 uid / 小红书 userId / IG pk）：只做溯源与去重，不占作者行 */
+  const uid = String(f.authorUid || '').trim();
+  $('#pvUidRow').classList.toggle('hidden', !uid);
+  if (uid) { $('#pvUid').textContent = uid; $('#pvUid').title = uid; }
+
+  const rt = $('#pvAuthorRetry');
+  if (rt) rt.addEventListener('click', e => {
+    e.preventDefault(); e.stopPropagation();
+    toast('重新抓取作者信息（原型未启用）');
+  });
+}
+
 function paintSrc(f){
   const inf = f.source !== 'download';
   const s = srcLinks(f);
   const hasPage = !!s.page, hasMedia = !!s.media;
-  const level = inf ? 'inferred' : (hasPage && hasMedia ? 'full' : ((hasPage || hasMedia) ? 'part' : 'none'));
+  /* 作者这一项也要计入总评：抓取失败是真缺失，不能因为「有原帖有直链」就标成完整 */
+  const authorBad = f.authorState === 'missing' || (!f.author && f.authorState !== 'unsupported');
+  let level = inf ? 'inferred' : (hasPage && hasMedia ? 'full' : ((hasPage || hasMedia) ? 'part' : 'none'));
+  if (authorBad && level === 'full') { level = 'part'; }
 
   const badge = $('#pvSrcBadge');
   badge.className = 'pi-badge' + (level === 'full' ? '' : ' mute');
@@ -1712,10 +1821,7 @@ function paintSrc(f){
   $('#pvWorkId').title = f.workId || '';
 
   const aRow = $('#pvAuthorRow');
-  $('#pvAuthor').innerHTML = esc(f.author || '未知') +
-    (f.authorId ? ' <em>@' + esc(f.authorId) + '</em>' : '');
-  if (s.author) { aRow.setAttribute('href', s.author); aRow.classList.remove('plain'); }
-  else { aRow.removeAttribute('href'); aRow.classList.add('plain'); }
+  renderAuthorRow(f, s);
 
   const top = $('#pvOpenTop');
   if (s.page) { top.setAttribute('href', s.page); top.style.display = ''; }
@@ -1960,9 +2066,17 @@ $('#pvStageEl').addEventListener('mousemove', () => {
 });
 
 function renderMore(f){
+  /* 空作者不算「同作者」——否则一堆没有作者的素材会被归成同一个人 */
+  if (!f.author) {
+    $('#pvMoreCount').textContent = '0';
+    $('#pvMoreGrid').innerHTML = '<span class="pi-empty" style="grid-column:1/-1">没有作者信息，无法按作者归类</span>';
+    return;
+  }
   const all = FILES.filter(x => x.author === f.author);
-  const list = all.filter(x => x.id !== f.id).slice(0, 12);
-  $('#pvMoreCount').textContent = all.length;
+  const others = all.filter(x => x.id !== f.id);
+  const list = others.slice(0, 12);
+  /* 计数要排除当前这条，否则「同作者 1 项」但网格是空的，看着像少了一张 */
+  $('#pvMoreCount').textContent = others.length;
   $('#pvMoreGrid').innerHTML = list.map(x =>
     `<button class="pi-more-item" data-mid="${esc(x.id)}" title="${esc(x.title)}"><div class="cover" style="--h:${x.h}"></div></button>`).join('');
 }
