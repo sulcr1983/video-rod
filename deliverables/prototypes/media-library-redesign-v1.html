@@ -69,9 +69,6 @@ button{cursor:pointer;border:0;background:none;padding:0}
 /* 只有资源树伸缩，其余块固定高度 ——
    否则窗口不够高时 flex-shrink 会把「收藏夹 / 资源树」这些小标题压成 0 高 */
 .sidebar > *{flex:0 0 auto}
-/* 只有资源树伸缩，其余块固定高度 ——
-   否则窗口不够高时 flex-shrink 会把「收藏夹 / 资源树」这些小标题压成 0 高 */
-.sidebar > *{flex:0 0 auto}
 .brand{display:flex;align-items:center;gap:10px;padding:0 4px}
 .brand .logo{
   width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
@@ -1507,6 +1504,486 @@ kbd{
   .actions{width:100%;overflow:auto}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+/* =========================================================================
+   主题层 B+D（2026-11-04）
+   —— B 纸感：暖白底 / 衬线大标题 / 胶囊控件 / 赭石点缀
+   —— D 影院：近黑底 / 暖橙强调 / 无边框靠亮度分层
+   —— 预览层固定走 D（局部变量覆盖），所以浅色界面里看视频是深色沉浸的
+   —— 只覆盖变量与样式，不改任何 class 名，JS 零影响
+   ========================================================================= */
+
+/* ---- B 纸感：浅色主调 ---- */
+:root{
+  --bg:#F7F4EE; --surface:#FFFDF8; --surface-2:#F2EEE6; --surface-3:#E8E2D4;
+  --ink:#1F1D1A; --ink-2:#4A443A; --muted:#8B8272; --faint:#A79C89;
+  --line:#E7E0D3; --line-2:#EFE9DD;
+  --primary:#1F1D1A; --primary-hover:#3A362E;
+  --accent:#A8502E; --accent-soft:#F7EAE3; --accent-ink:#8A3D22;
+  --danger:#A23B2E; --danger-soft:#F7E7E4;
+  --ok:#3F7A52; --ok-soft:#E7F0E9;
+  --r-sm:8px; --r:11px; --r-lg:13px; --r-xl:16px;
+  --sh-1:0 1px 2px rgba(80,64,40,.05);
+  --sh-2:0 2px 8px rgba(80,64,40,.09);
+  --sh-3:0 10px 28px rgba(80,64,40,.13);
+  --serif:Georgia,"Songti SC","Noto Serif SC","Source Han Serif SC",serif;
+  --sidebar:268px; --info:372px;
+}
+
+/* ---- D 影院：夜间模式（切主题即换人设，不是"浅色的深色版"） ---- */
+html[data-theme="dark"]{
+  --bg:#0A0B0E; --surface:#12141A; --surface-2:#181B22; --surface-3:#20242C;
+  --ink:#F4F6F9; --ink-2:#C3CAD4; --muted:#98A1AE; --faint:#6E7683;
+  --line:#1F232B; --line-2:#1A1D24;
+  --primary:#FF7A45; --primary-hover:#FF8F62;
+  --accent:#FF7A45; --accent-soft:#241A14; --accent-ink:#FF9A6B;
+  --danger:#E86466; --danger-soft:#2A1618;
+  --ok:#4FBF8B; --ok-soft:#132A21;
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 4px 16px rgba(0,0,0,.55);
+  --sh-3:0 18px 48px rgba(0,0,0,.7);
+}
+
+/* =========================================================================
+   字号 / 标题：衬线只用在 ≥20px 的地方（中文小字用衬线会糊）
+   ========================================================================= */
+h1{
+  font-family:var(--serif);font-size:32px;font-weight:600;
+  letter-spacing:-.2px;line-height:1.22;
+}
+h1 .pill{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:11px;font-weight:600;letter-spacing:0;
+}
+.pv-info h2{
+  font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:-.1px;line-height:1.34;
+}
+.crumb{font-size:11.5px}
+.ph-sub{font-size:12.5px;line-height:1.75;color:var(--muted)}
+
+/* =========================================================================
+   侧栏：比主区深半档的暖色，靠色差分层次（不用重边框）
+   ========================================================================= */
+.sidebar{
+  background:var(--surface-2);border-right:1px solid var(--line);
+  padding:18px 13px 12px;gap:15px;
+}
+.brand .logo{
+  width:32px;height:32px;flex:0 0 32px;border-radius:50%;
+  background:var(--primary);color:var(--surface);box-shadow:none;
+}
+.brand-name{font-family:var(--serif);font-size:16.5px;font-weight:600;letter-spacing:0}
+.brand-sub{font-size:8.5px;letter-spacing:.16em;color:var(--faint);margin-top:2px}
+
+.root-btn{
+  border-radius:9px;background:var(--surface);border:1px solid var(--line);
+  box-shadow:0 1px 2px rgba(80,64,40,.04);
+}
+.root-btn:hover{background:var(--surface);border-color:var(--surface-3)}
+.root-btn .rb-ico{border-radius:50%;background:var(--surface-2);border-color:transparent}
+
+.side-label{font-size:9px;letter-spacing:.16em;color:var(--muted);padding:2px 7px 0}
+.tree-search{
+  border-radius:999px;background:var(--surface);border:1px solid var(--line);
+  padding:7px 12px;
+}
+.tree-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+
+.tree-node{
+  border-radius:8px;padding:7px 9px;font-size:12.5px;color:var(--ink-2);
+}
+.tree-node:hover{background:var(--surface);color:var(--ink)}
+.tree-node.active{
+  background:var(--surface);color:var(--ink);font-weight:600;
+  box-shadow:0 1px 2px rgba(80,64,40,.06);
+}
+.tree-node.active::before{
+  left:-3px;width:2.5px;height:15px;background:var(--accent);border-radius:2px;
+}
+.tree-node .count{background:transparent;color:var(--faint);font-weight:500;font-size:10px;padding:0 2px}
+.tree-node.active .count{background:transparent;color:var(--accent)}
+.tree-node.lv2{padding-left:24px}
+
+.fav-row{border-radius:8px;padding:7px 9px;font-size:12.5px}
+.fav-row:hover{background:var(--surface)}
+.fav-row.active{background:var(--surface);box-shadow:0 1px 2px rgba(80,64,40,.06);font-weight:600}
+.fav-row.active::before{background:var(--accent)}
+
+.side-foot{border-top:1px solid var(--line);padding:13px 8px 2px;font-size:10.5px}
+.meter{height:3px;background:var(--surface-3)}
+.meter i{background:var(--accent)}
+
+/* =========================================================================
+   顶栏 / 按钮 / 控件：统一胶囊，先把圆角收成一套
+   ========================================================================= */
+.topbar{padding:14px 0;margin-bottom:22px}
+.searchbox{
+  border-radius:999px;padding:10px 16px;border:1px solid var(--line);
+  background:var(--surface);box-shadow:0 1px 2px rgba(80,64,40,.05);
+}
+.searchbox:focus-within{
+  border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);
+}
+.searchbox kbd{border-radius:99px;background:var(--surface-2);border-color:transparent}
+
+.btn{
+  border-radius:999px;padding:8px 15px;font-size:12.5px;font-weight:500;
+  box-shadow:none;border:1px solid var(--line);background:var(--surface);
+}
+.btn:hover{background:var(--surface-2);border-color:var(--surface-3);color:var(--ink)}
+.btn.small{padding:6px 12px;font-size:11.5px}
+.btn.primary{
+  background:var(--primary);border-color:var(--primary);color:var(--surface);
+  box-shadow:0 2px 8px rgba(31,29,26,.16);
+}
+.btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+.btn.ghost{border-color:transparent;background:transparent;box-shadow:none}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 30%,var(--line));background:var(--surface)}
+.btn.danger:hover{background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 55%,var(--line))}
+.btn.is-on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 32%,var(--line));color:var(--accent-ink)}
+
+/* 统计卡 */
+.stats{gap:9px}
+.stat{
+  border-radius:12px;padding:11px 13px;border:1px solid var(--line);
+  background:var(--surface);box-shadow:0 1px 2px rgba(80,64,40,.04);
+}
+.stat-ico{width:30px;height:30px;flex:0 0 30px;border-radius:50%;background:var(--surface-2);color:var(--ink-2)}
+.stat b{font-size:18px;font-weight:650;letter-spacing:-.2px}
+.stat span{font-size:10.5px;color:var(--muted)}
+
+/* 工具栏 / 分段 / 平台 chips */
+.toolbar{border-radius:13px;padding:9px;gap:11px;border:1px solid var(--line);background:var(--surface)}
+.seg{border-radius:999px;padding:3px;background:var(--surface-2);gap:1px}
+.seg button{border-radius:999px;padding:6px 12px;font-size:11.5px}
+.seg button.active{background:var(--surface);box-shadow:0 1px 2px rgba(80,64,40,.08)}
+.seg button.active b{color:var(--accent)}
+.chip{border-radius:999px;padding:6px 12px;background:var(--surface-2);border:1px solid transparent}
+.chip:hover{background:var(--surface-3)}
+.chip.active{
+  background:var(--accent-soft);color:var(--accent-ink);
+  border-color:color-mix(in srgb,var(--accent) 26%,transparent);
+}
+.select{border-radius:999px;padding:6px 10px 6px 12px;background:var(--surface)}
+.viewtoggle{border-radius:999px;padding:3px;background:var(--surface-2)}
+.viewtoggle button{border-radius:999px;padding:5px 9px}
+.viewtoggle button.active{background:var(--surface);box-shadow:0 1px 2px rgba(80,64,40,.08)}
+
+.batchbar{border-radius:12px;background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 20%,transparent)}
+.batchbar b{color:var(--accent-ink)}
+
+/* =========================================================================
+   卡片：16:10、圆角 12、hover 微浮（不做"顶部色条"那种花活）
+   ========================================================================= */
+.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px 16px}
+.card{
+  border-radius:12px;border:1px solid var(--line);background:var(--surface);
+  box-shadow:0 1px 2px rgba(80,64,40,.04);
+  transition:transform .18s var(--ease),box-shadow .18s var(--ease),border-color .18s;
+}
+.card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(80,64,40,.12);border-color:var(--line)}
+.card.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft),0 0 0 1px var(--accent)}
+.thumb{aspect-ratio:16/10}
+.card .badge{border-radius:999px;font-size:9px;padding:3px 7px}
+.card .duration{border-radius:999px;font-size:9.5px;padding:2px 6px}
+.card .title{font-size:12.5px;font-weight:600;line-height:1.5}
+.card .metarow{font-size:10.5px}
+.card .pathline{font-size:9.5px;color:var(--faint)}
+.card .tag{border-radius:99px;background:var(--surface-2);color:var(--muted);font-size:9.5px}
+
+/* =========================================================================
+   弹窗 / 抽屉 / 浮层：统一到 12-14px 圆角
+   ========================================================================= */
+.modal{border-radius:14px}
+.md-head{border-bottom-color:var(--line-2)}
+.md-input,.md-input-row .md-input{border-radius:9px}
+.md-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.md-ext{border-radius:0 9px 9px 0;background:var(--surface-2)}
+.md-err{border-radius:7px}
+
+.drawer{border-radius:0;border-left:1px solid var(--line);box-shadow:-16px 0 44px rgba(80,64,40,.14)}
+.dw-head{border-bottom:1px solid var(--line-2);padding:16px 18px}
+.dw-note{border-bottom:1px solid var(--line-2);padding:10px 18px}
+.dw-item{border-radius:10px}
+.dw-thumb{border-radius:7px}
+
+.ctx{border-radius:12px;padding:6px;box-shadow:0 14px 36px rgba(80,64,40,.18)}
+.ctx button{border-radius:8px;padding:7px 10px;font-size:12px}
+.ctx hr{border-top-color:var(--line-2)}
+
+.favpop{border-radius:13px;border:1px solid var(--line);box-shadow:0 16px 40px rgba(80,64,40,.18)}
+.favpop .fp-item{border-radius:8px}
+.favpop .fp-item.on .box{background:var(--accent);border-color:var(--accent)}
+.favpop .fp-new{color:var(--accent);border-radius:8px}
+.favpop .fp-new:hover{background:var(--accent-soft)}
+
+.toast{border-radius:999px;padding:8px 16px;font-size:12px;background:var(--ink);color:var(--surface);box-shadow:var(--sh-2)}
+
+/* 空状态 / 索引进度 */
+.e-ico{border-radius:16px;background:var(--surface-2);border-color:var(--line)}
+.scan-bar i{background:var(--accent)}
+
+/* =========================================================================
+   预览层：固定走 D 影院（局部变量覆盖，不受浅色主题影响）
+   —— 界面浅色便于管理，画面深色便于看片，这是 Eagle / Lightroom 的做法
+   ========================================================================= */
+.preview{
+  --surface:#12141A; --surface-2:#181B22; --surface-3:#20242C;
+  --ink:#F4F6F9; --ink-2:#C3CAD4; --muted:#98A1AE; --faint:#6E7683;
+  --line:#1F232B; --line-2:#1A1D24;
+  --accent:#FF7A45; --accent-soft:#2A1B14; --accent-ink:#FF9A6B;
+  --danger:#E86466; --danger-soft:#2A1618;
+  --ok:#4FBF8B; --ok-soft:#132A21;
+  --sh-1:0 1px 2px rgba(0,0,0,.5);
+  --sh-2:0 4px 16px rgba(0,0,0,.55);
+  --sh-3:0 18px 48px rgba(0,0,0,.7);
+  background:#0A0B0E;
+}
+.pv-head{background:#0C0E12;border-bottom:1px solid var(--line)}
+.pv-back{border-radius:999px;background:var(--surface-2);border-color:transparent;padding:7px 14px 7px 10px}
+.pv-back:hover{background:var(--surface-3)}
+.iconbtn{border-radius:50%}
+.iconbtn.on{background:var(--accent-soft);color:var(--accent-ink)}
+.pv-stage{
+  background:radial-gradient(120% 90% at 50% 32%,#1A1D24 0%,#07080A 74%);
+  border-radius:14px;margin:14px;
+}
+.pv-info{
+  background:#0C0E12;border-left:1px solid var(--line);padding:20px 20px 14px;
+}
+.pv-info h2{color:var(--ink)}
+.pv-eyebrow{letter-spacing:.11em}
+.pv-film{background:#0C0E12;border-top:1px solid var(--line)}
+.vctl{
+  border-radius:14px;background:linear-gradient(180deg,rgba(10,12,16,.62),rgba(10,12,16,.9));
+  border:1px solid rgba(255,255,255,.09);
+}
+.vbtn{border-radius:8px}
+.vbtn:hover{background:rgba(255,255,255,.14)}
+.gbar,.gifbar{border-radius:12px}
+.autobar{background:rgba(255,255,255,.1)}
+.autobar i{background:var(--accent)}
+.ratepop{border-radius:13px}
+.ratepop .rp-grid button{border-radius:8px}
+.ratepop .rp-grid button.cur{background:rgba(255,122,69,.26);color:#fff}
+.pi-badge{border-radius:99px}
+.pi-stats .stat{border-radius:10px;background:var(--surface-2);border-color:var(--line-2)}
+.pi-item dd.mono{color:var(--ink-2)}
+.pi-src{border-radius:10px}
+.pi-act{border-radius:99px}
+.pi-tag-add{border-radius:99px}
+
+/* ---- 封面渐变：整体提亮一档 ----
+   原来的暗部到 14% 明度，在暖白界面里像一块块黑斑；
+   提亮后仍保留高光与景深，但不再压住整个页面 ---- */
+.cover{
+  filter:saturate(.92) contrast(1.02);
+  background:
+    radial-gradient(38% 28% at 66% 12%, rgba(255,255,255,.24) 0%, transparent 72%),
+    radial-gradient(140% 105% at 20% 6%, hsl(var(--h) 52% 66% / .95) 0%, transparent 58%),
+    radial-gradient(95% 75% at 84% 28%, hsl(calc(var(--h) + 30) 48% 56% / .88) 0%, transparent 54%),
+    radial-gradient(130% 110% at 52% 114%, hsl(calc(var(--h) - 18) 38% 30%) 0%, transparent 68%),
+    linear-gradient(156deg, hsl(var(--h) 28% 42%), hsl(calc(var(--h) + 16) 32% 26%));
+}
+
+/* ---- 侧栏分区：收藏夹与资源树之间要能一眼分开 ---- */
+.side-fav{padding-bottom:2px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.side-label{padding-top:4px}
+
+/* 统计卡给一点浮起感，不然四张卡在暖白底上太轻 */
+.stat{box-shadow:0 1px 2px rgba(80,64,40,.05),0 4px 12px rgba(80,64,40,.04)}
+
+/* ---- 封面渐变：整体提亮一档 ----
+   原来的暗部到 14% 明度，在暖白界面里像一块块黑斑；
+   提亮后仍保留高光与景深，但不再压住整个页面 ---- */
+.cover{
+  filter:saturate(.92) contrast(1.02);
+  background:
+    radial-gradient(38% 28% at 66% 12%, rgba(255,255,255,.24) 0%, transparent 72%),
+    radial-gradient(140% 105% at 20% 6%, hsl(var(--h) 52% 66% / .95) 0%, transparent 58%),
+    radial-gradient(95% 75% at 84% 28%, hsl(calc(var(--h) + 30) 48% 56% / .88) 0%, transparent 54%),
+    radial-gradient(130% 110% at 52% 114%, hsl(calc(var(--h) - 18) 38% 30%) 0%, transparent 68%),
+    linear-gradient(156deg, hsl(var(--h) 28% 42%), hsl(calc(var(--h) + 16) 32% 26%));
+}
+
+/* ---- 侧栏分区：收藏夹与资源树之间要能一眼分开 ---- */
+.side-fav{padding-bottom:2px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.side-label{padding-top:4px}
+
+/* 统计卡给一点浮起感，不然四张卡在暖白底上太轻 */
+.stat{box-shadow:0 1px 2px rgba(80,64,40,.05),0 4px 12px rgba(80,64,40,.04)}
+
+/* ---- 封面：暖调 + 轻暗角，避免"深紫色块"在暖白底上发脏 ---- */
+.thumb .cover,
+.thumb.is-video .cover{filter:saturate(.94) brightness(1.03) sepia(.05)}
+.thumb .cover::after{
+  background:linear-gradient(180deg,rgba(70,48,26,.06) 0%,transparent 30%,transparent 66%,rgba(70,48,26,.17) 100%);
+}
+/* 徽标改白底深字：在浅色界面里比"黑底白字"轻，也不会和深色封面融在一起 */
+.card .badge{
+  background:rgba(255,253,248,.94);color:var(--ink);
+  border:1px solid rgba(31,29,26,.08);font-weight:650;
+  backdrop-filter:blur(10px);box-shadow:0 1px 3px rgba(60,40,20,.12);
+}
+.card .badge .dot{box-shadow:0 0 0 1.5px rgba(255,255,255,.9)}
+.card .duration{
+  background:rgba(20,16,10,.66);color:#fff;font-weight:600;
+  backdrop-filter:blur(6px);
+}
+/* 动图角标用赭石，和强调色一致 */
+.card .duration.anim{background:rgba(168,80,46,.9)}
+
+/* 统计数字再大一点，四张卡是页面里第二重要的信息 */
+.stat b{font-size:19px}
+
+/* ---- 封面：暖调 + 轻暗角，避免"深紫色块"在暖白底上发脏 ---- */
+.thumb .cover,
+.thumb.is-video .cover{filter:saturate(.94) brightness(1.03) sepia(.05)}
+.thumb .cover::after{
+  background:linear-gradient(180deg,rgba(70,48,26,.06) 0%,transparent 30%,transparent 66%,rgba(70,48,26,.17) 100%);
+}
+/* 徽标改白底深字：在浅色界面里比"黑底白字"轻，也不会和深色封面融在一起 */
+.card .badge{
+  background:rgba(255,253,248,.94);color:var(--ink);
+  border:1px solid rgba(31,29,26,.08);font-weight:650;
+  backdrop-filter:blur(10px);box-shadow:0 1px 3px rgba(60,40,20,.12);
+}
+.card .badge .dot{box-shadow:0 0 0 1.5px rgba(255,255,255,.9)}
+.card .duration{
+  background:rgba(20,16,10,.66);color:#fff;font-weight:600;
+  backdrop-filter:blur(6px);
+}
+/* 动图角标用赭石，和强调色一致 */
+.card .duration.anim{background:rgba(168,80,46,.9)}
+
+/* 统计数字再大一点，四张卡是页面里第二重要的信息 */
+.stat b{font-size:19px}
+
+/* ---- 预览层文字层级：深底上小字最容易糊，这里统一提一档 ---- */
+.pv-info{background:#12141A;border-left:1px solid #1F232B}
+.pv-info .pi-label{color:#8B94A2}
+.pv-info .pi-item dt{color:#A3ADBA}
+.pv-info .pi-item dd{color:#EDF1F6}
+.pv-info .pi-item dd.mono{color:#C3CAD4}
+.pv-info .pi-src{background:#181B22;border-color:#232830}
+.pv-info .pi-badge{background:#1B2A22;color:#6FCF9B}
+.pv-info .pi-badge.mute{background:#20242C;color:#8B94A2}
+.pv-info .pi-foot{color:#6E7683;border-top-color:#1F232B}
+.pv-info .pi-more{border-top-color:#1F232B}
+.pv-film .pv-film-item{opacity:.72}
+.pv-film .pv-film-item.on{opacity:1}
+
+/* ---- 右键菜单：加宽、行高加大，别让快捷键贴着边框 ---- */
+.ctx{min-width:212px;padding:7px;border-radius:13px;border:1px solid var(--line);
+  box-shadow:0 18px 44px rgba(60,42,22,.22),0 2px 8px rgba(60,42,22,.10)}
+.ctx button{padding:8px 11px;border-radius:9px;font-size:12px;font-weight:500;gap:10px}
+.ctx button .i{width:14px;height:14px;flex:0 0 14px;opacity:.7}
+.ctx button .kbd{margin-left:auto;padding-left:18px;font-size:10px;color:var(--faint);
+  font-family:ui-monospace,Consolas,monospace}
+.ctx hr{margin:5px 8px;border-top:1px solid var(--line-2)}
+.ctx button.danger{color:var(--danger)}
+.ctx button.danger .i{color:var(--danger);opacity:.85}
+
+/* 重命名/确认弹窗：圆角与输入框对齐到新体系 */
+.modal{border-radius:15px;border:1px solid var(--line);
+  box-shadow:0 24px 60px rgba(60,42,22,.24)}
+.md-head{padding:16px 18px 13px}
+.md-head h3{font-size:14px;font-weight:650}
+.md-body{padding:16px 18px 18px}
+.md-label{font-size:9.5px;letter-spacing:.12em;color:var(--muted)}
+.md-input{height:36px;border-radius:9px;font-size:13px}
+.md-ext{height:36px;border-radius:0 9px 9px 0;font-size:12.5px}
+.md-hint{font-size:11px;line-height:1.7}
+.md-foot .btn{min-width:78px;justify-content:center}
+
+/* 加入收藏夹浮层：和右键菜单同一套圆角与阴影 */
+.favpop{width:264px;border-radius:14px;padding:8px;
+  box-shadow:0 18px 44px rgba(60,42,22,.2),0 2px 8px rgba(60,42,22,.09)}
+.favpop .fp-item{padding:8px 9px;border-radius:9px;font-size:12px}
+.favpop .fp-head{padding:3px 6px 8px}
+
+/* ---- 右键菜单：加宽、行高加大，别让快捷键贴着边框 ---- */
+.ctx{min-width:212px;padding:7px;border-radius:13px;border:1px solid var(--line);
+  box-shadow:0 18px 44px rgba(60,42,22,.22),0 2px 8px rgba(60,42,22,.10)}
+.ctx button{padding:8px 11px;border-radius:9px;font-size:12px;font-weight:500;gap:10px}
+.ctx button .i{width:14px;height:14px;flex:0 0 14px;opacity:.7}
+.ctx button .kbd{margin-left:auto;padding-left:18px;font-size:10px;color:var(--faint);
+  font-family:ui-monospace,Consolas,monospace}
+.ctx hr{margin:5px 8px;border-top:1px solid var(--line-2)}
+.ctx button.danger{color:var(--danger)}
+.ctx button.danger .i{color:var(--danger);opacity:.85}
+
+/* 重命名/确认弹窗：圆角与输入框对齐到新体系 */
+.modal{border-radius:15px;border:1px solid var(--line);
+  box-shadow:0 24px 60px rgba(60,42,22,.24)}
+.md-head{padding:16px 18px 13px}
+.md-head h3{font-size:14px;font-weight:650}
+.md-body{padding:16px 18px 18px}
+.md-label{font-size:9.5px;letter-spacing:.12em;color:var(--muted)}
+.md-input{height:36px;border-radius:9px;font-size:13px}
+.md-ext{height:36px;border-radius:0 9px 9px 0;font-size:12.5px}
+.md-hint{font-size:11px;line-height:1.7}
+.md-foot .btn{min-width:78px;justify-content:center}
+
+/* 加入收藏夹浮层：和右键菜单同一套圆角与阴影 */
+.favpop{width:264px;border-radius:14px;padding:8px;
+  box-shadow:0 18px 44px rgba(60,42,22,.2),0 2px 8px rgba(60,42,22,.09)}
+.favpop .fp-item{padding:8px 9px;border-radius:9px;font-size:12px}
+.favpop .fp-head{padding:3px 6px 8px}
+
+/* 预览是全屏沉浸，右下角主题切换按钮要收起来 */
+body:has(.preview:not(.hidden)) .themebtn{display:none}
+
+/* 深色下侧栏与主区靠亮度分层，不用边框抢注意力 */
+html[data-theme="dark"] .sidebar{background:#0A0B0E;border-right:1px solid #171A20}
+html[data-theme="dark"] .root-btn{background:#12141A;border-color:#1F232B}
+html[data-theme="dark"] .tree-node:hover{background:#14171D}
+html[data-theme="dark"] .tree-node.active{background:#181C23;box-shadow:none}
+html[data-theme="dark"] .fav-row.active{background:#181C23;box-shadow:none}
+html[data-theme="dark"] .toolbar{background:#101318;border-color:#1B1F26}
+html[data-theme="dark"] .stat{background:#101318;border-color:#1B1F26}
+html[data-theme="dark"] .seg{background:#0E1116}
+html[data-theme="dark"] .seg button.active{background:#1B1F27;box-shadow:none}
+html[data-theme="dark"] .chip{background:#181B22}
+html[data-theme="dark"] .chip.active{background:#241A14;border-color:#4A2C1D}
+/* 暗色下卡片要浮在页面上：底部信息区也得跟着亮一档，否则文字糊在背景里 */
+html[data-theme="dark"] .card{background:#14171E;border-color:#1F232B;box-shadow:none}
+html[data-theme="dark"] .card:hover{background:#1A1E26;border-color:#2A303A}
+html[data-theme="dark"] .card .title{color:#EDF1F6}
+html[data-theme="dark"] .card .metarow{color:#98A1AE}
+html[data-theme="dark"] .card .authorline .nm{color:#A3ADBA}
+html[data-theme="dark"] .card .size{color:#C3CAD4}
+html[data-theme="dark"] .card .pathline{color:#5E6673}
+html[data-theme="dark"] .card .tag{background:#1F232B;color:#98A1AE}
+/* 暗色下徽标回到"深底亮字"：白底块在近黑界面上太跳 */
+html[data-theme="dark"] .card .badge{
+  background:rgba(10,12,16,.72);color:#E6EAF0;
+  border-color:rgba(255,255,255,.12);box-shadow:none;
+}
+html[data-theme="dark"] .card .badge .dot{box-shadow:none}
+html[data-theme="dark"] .card .duration{background:rgba(8,10,14,.82)}
+html[data-theme="dark"] .card .duration.anim{background:rgba(232,90,42,.92)}
+html[data-theme="dark"] .card.selected{border-color:#FF7A45;box-shadow:0 0 0 2px rgba(255,122,69,.22),0 0 0 1px #FF7A45}
+html[data-theme="dark"] .tree-node.active::before{background:#FF7A45;box-shadow:0 0 10px rgba(255,122,69,.65)}
+html[data-theme="dark"] .side-fav{border-bottom-color:#1B1F26}
+html[data-theme="dark"] .tree-search{background:#12141A;border-color:#1F232B}
+html[data-theme="dark"] .brand .logo{background:linear-gradient(145deg,#FF8A5B,#E85A2A);color:#1A0C05}
+html[data-theme="dark"] .stat-ico{background:#181B22}
+html[data-theme="dark"] .searchbox kbd{background:#1B1F27}
+html[data-theme="dark"] .toast{background:#EDF1F6;color:#0A0B0E}
+html[data-theme="dark"] .card:hover{background:#14171D;border-color:#262B34}
+html[data-theme="dark"] .searchbox{background:#12141A;border-color:#1F232B}
+html[data-theme="dark"] .btn{background:#14161C;border-color:#1F232B;color:#C3CAD4}
+html[data-theme="dark"] .btn:hover{background:#1B1F27;color:#F4F6F9}
+html[data-theme="dark"] .btn.primary{
+  background:linear-gradient(145deg,#FF8A5B,#E85A2A);border-color:transparent;color:#1A0C05;
+  box-shadow:0 4px 16px rgba(232,90,42,.3);
+}
+html[data-theme="dark"] .drawer{background:#0E1015;border-left-color:#1B1F26}
+html[data-theme="dark"] .modal{background:#12141A;border-color:#1F232B}
+html[data-theme="dark"] .ctx{background:#12141A;border-color:#1F232B}
+html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
+
 </style>
 </head>
 <body>
@@ -1647,12 +2124,12 @@ kbd{
           <div><b id="sImg">18</b><span>图片</span></div>
         </div>
         <div class="stat">
-          <span class="stat-ico"><svg class="i"><use href="#i-film"/></svg></span>
-          <div><b id="sVid">9</b><span>视频</span></div>
-        </div>
-        <div class="stat">
           <span class="stat-ico"><svg class="i"><use href="#i-repeat-1"/></svg></span>
           <div><b id="sAnim">0</b><span>动图</span></div>
+        </div>
+        <div class="stat">
+          <span class="stat-ico"><svg class="i"><use href="#i-film"/></svg></span>
+          <div><b id="sVid">9</b><span>视频</span></div>
         </div>
       </div>
     </section>
@@ -2051,14 +2528,14 @@ const PLAT = {
 const FILES = [
   {id:'x/NASA/videos/a1.mp4',plat:'x',author:'NASA',authorId:'NASA',workId:'1847231904556712',source:'download',dlAt:'2026-11-04 15:42',title:'Artemis II 发射演练 4K 实拍：夜间推进剂加注全过程',kind:'video',size:184.6,dur:'00:42',h:212,tags:['太空','4K']},
   {id:'x/NASA/videos/a2.mp4',plat:'x',author:'NASA',authorId:'NASA',workId:'1847018221930044',source:'download',dlAt:'2026-11-04 15:38',title:'SpaceX Crew-9 返回舱溅落，回收船近距离视角',kind:'video',size:96.2,dur:'01:18',h:196},
-  {id:'x/NASA/images/a3.jpg',plat:'x',author:'NASA',authorId:'NASA',workId:'1846903110021887',source:'download',dlAt:'2026-11-04 15:30',title:'韦伯望远镜新发布的蟹状星云红外合成图',kind:'image',size:8.4,h:268,tags:['天文']},
+  {id:'x/NASA/images/a3.jpg',plat:'x',author:'NASA',authorId:'NASA',workId:'1846903110021887',source:'download',dlAt:'2026-11-04 15:30',title:'韦伯望远镜新发布的蟹状星云红外合成图',kind:'image',size:8.4,h:228,tags:['天文']},
   {id:'x/NASA/images/a4.jpg',plat:'x',author:'NASA',authorId:'NASA',workId:'1846822100773155',source:'download',dlAt:'2026-11-04 15:29',title:'ISS 舱外活动：机械臂视角下的地球边缘',kind:'image',size:6.1,h:184},
   {id:'xiaohongshu/gx/images/b1.jpg',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d4',source:'download',dlAt:'2026-11-04 14:51',title:'租房改造第 3 期｜把 8㎡ 阳台变成小书房',kind:'image',size:3.2,h:342,tags:['家居']},
   {id:'xiaohongshu/gx/images/b2.jpg',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d4',source:'download',dlAt:'2026-11-04 14:51',title:'阳台改造前后对比：收纳全上墙，省出 2 平米',kind:'image',size:2.8,h:20},
   {id:'xiaohongshu/gx/images/b3.jpg',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',source:'inferred',title:'同款书桌清单（含链接）',kind:'image',size:1.9,h:48},
   {id:'xiaohongshu/gx/images/b5.gif',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d5',source:'download',dlAt:'2026-11-04 14:53',title:'收纳柜开合演示（动图，原速）',kind:'anim',fmt:'GIF',size:12.4,h:150,frames:86},
   {id:'weibo/tang/images/d3.webp',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',workId:'5123',source:'download',dlAt:'2026-11-03 20:41',title:'折多山云海延时（动图 WebP，含 24 帧）',kind:'anim',fmt:'WebP',size:6.8,h:198,frames:24},
-  {id:'douyin/qqdd/images/c3.apng.apng',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412',source:'download',dlAt:'2026-11-03 21:01',title:'跳跳糖爆开的瞬间（APNG 逐帧）',kind:'anim',fmt:'APNG',size:9.1,h:320,frames:18},
+  {id:'douyin/qqdd/images/c3.apng',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412',source:'download',dlAt:'2026-11-03 21:01',title:'跳跳糖爆开的瞬间（APNG 逐帧）',kind:'anim',fmt:'APNG',size:9.1,h:320,frames:18},
   {id:'xiaohongshu/gx/videos/b4.mp4',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',source:'inferred',title:'30 秒看完阳台改造全过程',kind:'video',size:31.3,dur:'00:31',h:12,tags:['改造']},
   {id:'douyin/qqdd/videos/c1.mp4',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412884901234567890',secUid:'MS4wLjABAAAA_x8',source:'download',dlAt:'2026-11-03 21:04',title:'把 100 颗跳跳糖倒进可乐，会发生什么',kind:'video',size:42.7,dur:'00:58',h:286},
   {id:'douyin/qqdd/videos/c2.mp4',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412884901234567891',secUid:'MS4wLjABAAAA_x8',source:'download',dlAt:'2026-11-03 21:03',title:'实验室里最危险的 5 个瞬间（上）',kind:'video',size:57.1,dur:'01:24',h:302},
