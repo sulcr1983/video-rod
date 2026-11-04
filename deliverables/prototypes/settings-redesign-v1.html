@@ -4,6 +4,18 @@
 <meta charset="UTF-8">
 <title>设置 — 苏哥的钓鱼竿</title>
 <style>
+
+/* ===== 界面字体：思源黑体（正文）+ 思源宋体（大标题）—— OFL 免费商用 =====
+   原型经 jsdelivr 演示；正式实现=子集化 woff2 自托管进扩展（离线可用，不依赖 CDN）
+   决策记录：DESIGN-SYSTEM-BD.md §字体（2026-11-04 苏哥拍板换字体） */
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:400;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/files/noto-sans-sc-chinese-simplified-400-normal.woff2') format('woff2');}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:500;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/files/noto-sans-sc-chinese-simplified-500-normal.woff2') format('woff2');}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:700;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/files/noto-sans-sc-chinese-simplified-700-normal.woff2') format('woff2');}
+@font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:700;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5/files/noto-serif-sc-chinese-simplified-700-normal.woff2') format('woff2');}
 :root{
   --bg:#F7F8FA; --surface:#FFFFFF; --surface-2:#F4F5F7; --surface-3:#EBEDF0;
   --ink:#0E1116; --ink-2:#3C444F; --muted:#6B7480; --faint:#98A0AC;
@@ -266,7 +278,7 @@ select.field{min-width:132px;cursor:pointer}
   --sh-1:0 1px 2px rgba(80,64,40,.05);
   --sh-2:0 2px 8px rgba(80,64,40,.09);
   --sh-3:0 10px 28px rgba(80,64,40,.13);
-  --serif:Georgia,"Songti SC","Noto Serif SC",serif;
+  --serif:"Noto Serif SC",Georgia,"Songti SC","Noto Serif SC",serif;
 }
 html[data-theme="dark"]{
   --bg:#0A0B0E; --surface:#12141A; --surface-2:#181B22; --surface-3:#20242C;
