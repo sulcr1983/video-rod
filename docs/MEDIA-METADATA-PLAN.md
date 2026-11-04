@@ -183,7 +183,12 @@ File System Access API 扫描只能看到 **文件名 / 大小 / mtime**，读�
 | `js/background.js` | 新增 `vrBuildMeta()` / `vrRecordMeta()`；`vrDownloadWithName()` 成功后调用；各下载入口补传 `pageUrl/author/authorId/authorUrl` | **中**——下载链是核心，埋点必须 try/catch 全包，失败静默 |
 | `js/x-button.js` | 消息体补 `pageUrl`（可由 user+statusId 拼） | 低 |
 | `js/douyin.js` / `js/xhs-batch.js` / `js/instagram.js` / `js/bili-whole.js` | 各自 meta 里补 `authorUrl` / `workId`（多数已有，只差拼链接） | 低 |
-| `js/library.js` | 读 storage → 合并 `_index/meta.json`；预览渲染「来源」块；搜索纳入 meta 字段；重命名/移动时改 key | **中**——`library.js` 1297 行，只加不改 |
+| `js/library/indexer.js` | 读 storage → 合并溯源字段进索引条目 | **中** |
+| `js/library/lightbox.js` | 预览渲染「来源」组（现有 `paintFacts()` 12 项平铺，改为分组） | **中** |
+| `js/library/ui.js` | 搜索纳入 meta 字段 | 低 |
+| `js/library/rename.js` | 重命名/移动时改 meta 的 key | 低 |
+
+> **2026-11-04 注**：合并后媒体库已模块化（`js/library/` 17 个模块），单文件 `js/library.js` 已归档为 `archive/library-legacy-singlefile.js`。本节落点已按新结构更正，逐项对照见 `docs/PROTOTYPE-MAPPING.md`。
 | `library.html` / `css/library.css` | 预览信息栏加「来源」区块（按原型 v1 落地） | 低 |
 | `docs/TESTING.md` | 新增 META-1~6 用例 | 低 |
 

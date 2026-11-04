@@ -186,7 +186,11 @@ GIF 想暂停/逐帧，只有一条路：把 GIF 拆成帧，用 canvas 自己�
 | `lib/gifuct-js/`（新增） | 放 UMD + LICENSE | 低 |
 | `library.html` | 预览层换成 Web Components 控件条；新增图片工具栏、GIF 控件条 | 中 |
 | `css/library.css` | 控件条样式（覆盖 media-chrome 的 CSS 变量以匹配设计系统） | 低 |
-| `js/library.js` | 接入控件条事件；图片加旋转/适应/1:1；GIF 播放循环 | **中**——预览是高频功能，需真机回归 |
+| `js/library/video.js` | 视频控件事件（现有 8 键，补逐帧/PiP/倍速键） | **中**——预览是高频功能，需真机回归 |
+| `js/library/lightbox.js` | 图片加旋转/1:1；GIF/WebP/APNG 帧控接入 | **中** |
+| `js/library/anim.js`（新建） | 动图解码与帧控 | **高**——依赖 ImageDecoder 预研 |
+
+> **2026-11-04 注**：合并后媒体库已由单文件 `js/library.js` 改为 `js/library/` 模块化（17 个模块），本节落点已按新结构更正。逐项对照见 `docs/PROTOTYPE-MAPPING.md`。
 | `docs/TESTING.md` | 新增 VW-1~10 用例 | 低 |
 
 **不动**：媒体库扫描、索引、标签、重命名/移动、批量操作、缩略图生成。
