@@ -34,14 +34,15 @@
     "scripting",
     "sidePanel",
     "contextMenus",
-    "offscreen"
+    "offscreen",
+    "unlimitedStorage"
   ],
   "commands": {
     "_execute_action": {
       "suggested_key": {
         "default": "Alt+Shift+V"
       },
-      "description": "打开钓鱼竿面板"
+      "description": "打开苏哥的钓鱼竿面板"
     },
     "enable": {
       "description": "__MSG_pause__ / __MSG_enable__"
@@ -66,6 +67,18 @@
     },
     "preview": {
       "description": "__MSG_preview__"
+    },
+    "imgDownload": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "下载鼠标悬停的图片"
+    },
+    "imgPanelOpen": {
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
+      "description": "打开本页图片清单"
     }
   },
   "host_permissions": [
@@ -91,6 +104,7 @@
       ],
       "js": [
         "js/naming.js",
+        "js/library/path.js",
         "js/x-button.js",
         "js/bulk-profile.js"
       ],
@@ -136,9 +150,44 @@
         "js/instagram.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.youtube.com/*"
+      ],
+      "js": [
+        "js/yt/yt-page.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "js/lib-image-util.js",
+        "js/image-batch.js",
+        "js/lib/floating-ui.core.umd.min.js",
+        "js/lib/floating-ui.dom.umd.min.js",
+        "js/image-hover.js",
+        "js/image-panel.js",
+        "js/image-album.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "default_locale": "en",
   "version": "2.7.2.1",
-  "incognito": "split"
+  "incognito": "split",
+  "sandbox": {
+    "pages": [
+      "js/yt/nsig-sandbox.html"
+    ]
+  },
+  "content_security_policy": {
+    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-inline' 'unsafe-eval'; object-src 'self'"
+  }
 }

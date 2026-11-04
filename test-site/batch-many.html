@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 E：批量取消夹具</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; }
+    h1 { font-size: 18px; }
+    .grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .grid img { width: 600px; height: 600px; object-fit: cover; border-radius: 6px; }
+    .note { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>批量取消夹具</h1>
+  <p class="note">30 张有效大图，用于验证「取消进行中的批量」——图少的时候批量瞬间完成，来不及点取消。</p>
+  <div class="grid" id="grid"></div>
+  <script>
+    // 用 5 张图轮换 30 个位置：同 URL 会被 scanImages 去重，所以必须加查询串区分
+    const names = ['cover.jpg', 'sprite.png', 'thumb-320.png', 'srcset-400.png', 'original-1200.png'];
+    const grid = document.getElementById('grid');
+    for (let i = 0; i < 30; i++) {
+      const img = document.createElement('img');
+      img.id = 'm' + i;
+      img.width = 120;
+      img.height = 120;
+      img.src = 'media/' + names[i % names.length] + '?v=' + i;
+      img.alt = String(i);
+      grid.appendChild(img);
+    }
+  </script>
+</body>
+</html>

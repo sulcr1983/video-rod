@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>苏哥的钓鱼竿 video-rod — 图片悬停下载原型 v1</title>
+<style>
+  :root{
+    --ink:#11161d; --text:#232a33; --dim:#5c6673; --mute:#8b93a3;
+    --line:#e6e9ef; --line2:#eef1f5; --hover:#f5f7fa; --card:#fff;
+    --cyan:#0f766e; --cyan-2:#14857a; --cyan-tint:#e6f4f2;
+    --bg:#f2f4f7; --bg-deep:#e9edf2;
+    --shadow:0 8px 24px rgba(17,22,29,.10); --shadow-lg:0 18px 48px rgba(17,22,29,.16);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit;border:0;background:none;cursor:pointer;color:inherit}
+  input,select{font:inherit;color:inherit}
+
+  /* ---------- 假站点外壳（演示"任意网页"） ---------- */
+  .site{max-width:1180px;margin:0 auto;padding:0 20px 90px}
+  .nav{
+    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;
+    height:56px;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);margin:0 -20px 18px;padding:0 20px;
+  }
+  .logo{font-weight:700;font-size:15px;letter-spacing:.2px}
+  .logo i{font-style:normal;color:#e5484d}
+  .nav .tabs{display:flex;gap:16px;margin-left:10px;color:var(--dim);font-size:12.5px}
+  .nav .tabs span.on{color:var(--ink);font-weight:600}
+  .nav .sp{flex:1}
+  .nav .me{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#ffb4a2,#e5989b)}
+  .head{margin:8px 0 16px}
+  .head h1{font-size:18px;margin:0 0 4px}
+  .head p{margin:0;color:var(--mute);font-size:12px}
+
+  /* 瀑布流 */
+  .feed{columns:4;column-gap:14px}
+  @media (max-width:1000px){.feed{columns:3}}
+  @media (max-width:720px){.feed{columns:2}}
+  .ph{
+    break-inside:avoid;margin:0 0 14px;border-radius:12px;overflow:hidden;
+    background:var(--card);border:1px solid var(--line);position:relative;
+  }
+  .ph .wrap{position:relative;overflow:hidden;cursor:zoom-in;aspect-ratio:var(--ar, 3 / 4);background:var(--bg-deep)}
+  .ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:var(--bg-deep)}
+  .ph .cap{padding:8px 10px 10px;font-size:11.5px;color:var(--dim);display:flex;gap:6px;align-items:center}
+  .ph .cap b{color:var(--text);font-weight:600}
+  .ph .cap .dot{width:2px;height:2px;border-radius:50%;background:var(--mute)}
+  /* 演示辅助：标出每张图的可下载状态 */
+  .ph.hot .wrap{outline:2px dashed rgba(15,118,110,.5);outline-offset:-2px}
+  .badge{
+    position:absolute;left:8px;top:8px;z-index:3;font-size:10px;padding:2px 7px;border-radius:20px;
+    background:rgba(17,22,29,.72);color:#fff;backdrop-filter:blur(6px);
+  }
+  .badge.skip{background:rgba(180,60,50,.82)}
+  .badge.done{background:rgba(15,118,110,.9)}
+
+  /* ---------- 悬停按钮条（单例，模拟 content script 注入） ---------- */
+  #hoverBar{
+    position:absolute;z-index:80;display:flex;gap:6px;align-items:center;
+    padding:5px;border-radius:10px;background:rgba(17,22,29,.86);backdrop-filter:blur(8px);
+    box-shadow:0 8px 22px rgba(0,0,0,.28);opacity:0;pointer-events:none;
+    transition:opacity .16s ease,transform .16s ease;transform:translateY(4px);
+  }
+  #hoverBar.on{opacity:1;pointer-events:auto;transform:translateY(0)}
+  #hoverBar button{
+    display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:7px;
+    background:rgba(255,255,255,.14);color:#fff;font-size:11.5px;white-space:nowrap;
+    transition:background .12s;
+  }
+  #hoverBar button:hover{background:rgba(255,255,255,.26)}
+  #hoverBar button.primary{background:var(--cyan);font-weight:600}
+  #hoverBar button.primary:hover{background:var(--cyan-2)}
+  #hoverBar button.ok{background:#1f8a5b}
+  #hoverBar button.bad{background:#a02c22}
+  #hoverBar .spin{
+    width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.35);
+    border-top-color:#fff;animation:sp .7s linear infinite;display:inline-block;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- 确认条 ---------- */
+  #confirm{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(10px);
+    z-index:90;display:flex;align-items:center;gap:10px;padding:10px 12px;
+    border-radius:12px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow-lg);
+    opacity:0;pointer-events:none;transition:.18s;
+  }
+  #confirm.on{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  #confirm .txt{font-size:12px;color:var(--dim)}
+  #confirm .txt b{color:var(--text)}
+  #confirm .mini{font-size:10.5px;color:var(--mute);margin-top:2px}
+  #confirm button{height:28px;padding:0 11px;border-radius:7px;font-size:11.5px;background:var(--bg-deep)}
+  #confirm button.primary{background:var(--cyan);color:#fff;font-weight:600}
+  #confirm button.primary:hover{background:var(--cyan-2)}
+
+  /* ---------- 批量进度条 ---------- */
+  #progress{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(10px);
+    z-index:91;width:380px;padding:10px 12px;border-radius:12px;background:#fff;
+    border:1px solid var(--line);box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:.18s;
+  }
+  #progress.on{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  #progress .row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
+  #progress .row b{color:var(--text)}
+  #progress .bar{height:5px;border-radius:3px;background:var(--bg-deep);margin-top:8px;overflow:hidden}
+  #progress .bar i{display:block;height:100%;width:0;background:var(--cyan);transition:width .2s}
+  #progress .cancel{margin-left:auto;font-size:11px;color:var(--mute);text-decoration:underline}
+
+  /* ---------- 页面浮标 ---------- */
+  #float{
+    position:fixed;right:18px;bottom:18px;z-index:70;width:44px;height:44px;border-radius:50%;
+    background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);
+    display:grid;place-items:center;transition:.16s;
+  }
+  #float:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+  #float .ico{font-size:17px}
+  #float .n{
+    position:absolute;right:-3px;top:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;
+    background:var(--cyan);color:#fff;font-size:10px;line-height:18px;text-align:center;font-weight:600;
+  }
+  #float.dim{opacity:.42}
+
+  /* ---------- 清单面板 ---------- */
+  #panelMask{
+    position:fixed;inset:0;background:rgba(9,11,14,.46);z-index:100;
+    display:none;align-items:center;justify-content:center;padding:24px;
+  }
+  #panelMask.on{display:flex}
+  #panel{
+    width:min(840px,94vw);max-height:82vh;background:#fff;border-radius:14px;
+    box-shadow:var(--shadow-lg);display:flex;flex-direction:column;overflow:hidden;
+  }
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+  .p-head .t{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:650}
+  .p-head .t .cnt{font-size:11px;font-weight:500;color:var(--mute)}
+  .p-head .x{margin-left:auto;width:26px;height:26px;border-radius:6px;color:var(--mute)}
+  .p-head .x:hover{background:var(--hover)}
+  .p-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:9px;font-size:11.5px;color:var(--dim)}
+  .p-filters label{display:flex;align-items:center;gap:4px}
+  .p-filters .sizes{display:flex;gap:4px}
+  .p-filters .sizes button{height:24px;padding:0 8px;border-radius:6px;background:var(--bg-deep);font-size:11px;color:var(--dim);border:1px solid transparent}
+  .p-filters .sizes button:hover{background:var(--line2)}
+  .p-filters .sizes button.on{background:var(--cyan);color:#fff;font-weight:600}
+  .p-filters .sizes button i{font-style:normal;opacity:.8;margin-left:3px;font-size:10px}
+  .p-filters input[type=number]{width:62px;height:24px;padding:0 6px;border:1px solid var(--line);border-radius:5px;background:#fff}
+  .p-filters input[type=text]{width:150px;height:24px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:#fff}
+  #customSize{display:none;gap:6px;align-items:center;margin-top:8px;font-size:11.5px;color:var(--dim)}
+  #customSize.on{display:flex}
+  .albumbar{display:flex;align-items:center;gap:8px;margin-top:9px;padding:7px 9px;border-radius:8px;background:var(--cyan-tint);font-size:11.5px;color:#0b5f59}
+  .albumbar b{font-weight:650}
+  .albumbar button{height:24px;padding:0 9px;border-radius:6px;background:#fff;color:var(--cyan);font-size:11px;border:1px solid rgba(15,118,110,.25)}
+  .albumbar button:hover{background:#fff;border-color:var(--cyan)}
+  .albumbar button:disabled{opacity:.45;cursor:not-allowed}
+  .albumbar .msg{margin-left:auto;color:#0b5f59;opacity:.85}
+  .p-actions{display:flex;gap:6px;margin-top:9px}
+  .p-actions button{height:26px;padding:0 9px;border-radius:6px;background:var(--bg-deep);font-size:11.5px}
+  .p-actions button:hover{background:var(--line2)}
+  .p-actions button.primary{background:var(--cyan);color:#fff;font-weight:600}
+  .p-actions button.primary:hover{background:var(--cyan-2)}
+  .p-actions .sel{margin-left:auto;color:var(--mute);font-size:11px;align-self:center}
+  .p-body{flex:1;overflow-y:auto;padding:12px 14px;background:#fbfcfd}
+  .pgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  @media (max-width:700px){.pgrid{grid-template-columns:repeat(3,1fr)}}
+  .cell{
+    position:relative;border-radius:8px;overflow:hidden;border:2px solid transparent;
+    background:var(--bg-deep);cursor:pointer;aspect-ratio:1/1;
+  }
+  .cell img{width:100%;height:100%;object-fit:cover;display:block}
+  .cell .meta{
+    position:absolute;left:0;right:0;bottom:0;padding:3px 5px;font-size:9.5px;color:#fff;
+    background:linear-gradient(transparent,rgba(0,0,0,.68));display:flex;justify-content:space-between;
+  }
+  .cell .tick{
+    position:absolute;right:5px;top:5px;width:16px;height:16px;border-radius:4px;
+    background:rgba(255,255,255,.9);border:1px solid var(--line);display:grid;place-items:center;
+    font-size:10px;color:transparent;
+  }
+  .cell.sel{border-color:var(--cyan)}
+  .cell.sel .tick{background:var(--cyan);border-color:var(--cyan);color:#fff}
+  .cell.done::after{content:"✓";position:absolute;left:5px;top:5px;background:rgba(31,138,91,.92);color:#fff;
+    width:16px;height:16px;border-radius:4px;font-size:10px;display:grid;place-items:center}
+  .p-foot{padding:10px 14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mute)}
+  .p-foot .kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;font-family:Consolas,monospace;font-size:10px;color:var(--dim);background:#fff}
+
+  /* ---------- toast ---------- */
+  #toasts{position:fixed;right:18px;bottom:76px;z-index:120;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+  .toast{
+    max-width:340px;padding:9px 11px;border-radius:9px;background:#11161d;color:#fff;font-size:11.5px;
+    box-shadow:0 10px 28px rgba(0,0,0,.28);opacity:0;transform:translateY(6px);transition:.18s;
+  }
+  .toast.on{opacity:1;transform:translateY(0)}
+  .toast b{color:#8fe3d6}
+  .toast .p{font-size:10.5px;color:#aab3c2;margin-top:3px;word-break:break-all}
+
+  /* ---------- 演示控制 ---------- */
+  #demo{
+    position:fixed;left:16px;bottom:16px;z-index:75;display:flex;gap:6px;align-items:center;
+    padding:7px 9px;border-radius:10px;background:#fff;border:1px solid var(--line);box-shadow:var(--shadow);
+    font-size:11px;color:var(--dim);
+  }
+  #demo button{height:24px;padding:0 8px;border-radius:6px;background:var(--bg-deep);font-size:11px}
+  #demo button.on{background:var(--cyan);color:#fff}
+  #demo .hint{color:var(--mute);font-size:10.5px}
+</style>
+</head>
+<body>
+
+<div class="site">
+  <div class="nav">
+    <div class="logo">小红书 <i>·</i> 发现</div>
+    <div class="tabs"><span class="on">推荐</span><span>穿搭</span><span>旅行</span><span>美食</span></div>
+    <div class="sp"></div>
+    <div class="me"></div>
+  </div>
+
+  <div class="head">
+    <h1>秋日穿搭灵感</h1>
+    <p>这是「任意网页」的模拟页面 · 把鼠标停在图片上试试 · 右下角有浮标</p>
+  </div>
+
+  <div class="feed" id="feed"></div>
+</div>
+
+<!-- 悬停按钮条（单例，模拟 content script 注入到 body 的 Shadow DOM） -->
+<div id="hoverBar">
+  <button id="hbOne" title="下载这一张"><span class="gl">⤓</span><span id="hbOneTxt">下载</span></button>
+  <button id="hbAll" class="primary" title="下载本页全部"><span class="gl">⤓</span><span id="hbAllTxt">全部 23</span></button>
+</div>
+
+<!-- 确认条 -->
+<div id="confirm">
+  <div>
+    <div class="txt">本页找到 <b id="cfTotal">23</b> 张图（已过滤 <b id="cfSkip">8</b> 张小图）</div>
+    <div class="mini">浏览器可能询问「是否允许下载多个文件」</div>
+  </div>
+  <button class="primary" id="cfGo">下载 23 张</button>
+  <button id="cfList">先看清单</button>
+  <button id="cfCancel">取消</button>
+</div>
+
+<!-- 批量进度 -->
+<div id="progress">
+  <div class="row"><span id="pgTxt">正在下载 0/23</span><a class="cancel" id="pgCancel">取消</a></div>
+  <div class="bar"><i id="pgBar"></i></div>
+</div>
+
+<!-- 页面浮标 -->
+<button id="float" title="本页图片（Alt+Shift+A）">
+  <span class="ico">🖼</span>
+  <span class="n" id="floatN">23</span>
+</button>
+
+<!-- 清单面板 -->
+<div id="panelMask">
+  <div id="panel" role="dialog" aria-modal="true" aria-label="本页图片">
+    <div class="p-head">
+      <div class="t">本页图片 <span class="cnt" id="pCount">23 张</span>
+        <button class="x" id="pClose" title="关闭 (Esc)">✕</button>
+      </div>
+      <div class="p-filters">
+        <span>尺寸</span>
+        <div class="sizes" id="sizeBtns">
+          <button data-edge="100" class="on">小<i>0</i></button>
+          <button data-edge="500">中<i>0</i></button>
+          <button data-edge="1200">大<i>0</i></button>
+          <button data-edge="2000">超大<i>0</i></button>
+          <button data-edge="custom">自定义</button>
+        </div>
+        <label>URL 含 <input type="text" id="fUrl" placeholder="例如 jpg / png"></label>
+        <label><input type="checkbox" id="fOnlyNew" checked> 只看未下载</label>
+      </div>
+      <div id="customSize">
+        宽 ≥ <input type="number" id="fW" value="100" min="0" step="10">
+        高 ≥ <input type="number" id="fH" value="100" min="0" step="10">
+      </div>
+      <div class="albumbar">
+        <span>图集：<b id="albumPages">第 1/3 页</b> · 已收集 <b id="albumCount">12</b> 张</span>
+        <button id="albumMore">加载下一页</button>
+        <button id="albumStop" disabled>停止</button>
+        <span class="msg" id="albumMsg">模拟站点分页；真实实现会后台打开下一页再抓图</span>
+      </div>
+      <div class="p-actions">
+        <button id="pAll">全选</button>
+        <button id="pInvert">反选</button>
+        <button class="primary" id="pDlSel">下载选中 <span id="pSelN">0</span></button>
+        <button id="pDlAll">下载全部</button>
+        <span class="sel" id="pTip"></span>
+      </div>
+    </div>
+    <div class="p-body"><div class="pgrid" id="pgrid"></div></div>
+    <div class="p-foot">
+      <span class="kbd">J</span><span class="kbd">K</span> 移动 · <span class="kbd">X</span> 勾选 ·
+      <span class="kbd">Enter</span> 下载选中 · <span class="kbd">Esc</span> 关闭
+      <span style="margin-left:auto">图片只在本地处理，不上传</span>
+    </div>
+  </div>
+</div>
+
+<!-- toast -->
+<div id="toasts"></div>
+
+<!-- 演示控制 -->
+<div id="demo">
+  <span>演示</span>
+  <button id="dHot">显示热点</button>
+  <button id="dReset">重置</button>
+  <span class="hint">悬停图片 → 按钮</span>
+</div>
+
+<script>
+/* ==========================================================
+ * 图片悬停下载 · 可交互原型 v1
+ * 演示三态：悬停按钮 / 页面浮标 / 清单面板
+ * 纯原生 JS，零依赖；演示数据在本地，不发起真实下载
+ * ========================================================== */
+(function(){
+  const $ = id => document.getElementById(id);
+
+  /* ---------- 演示数据 ---------- */
+  const PLATFORMS = ['小红书','小红书','小红书','B站','X'];
+  const CREATORS = [
+    {name:'小鱼', id:'@xiaoyu123', full:'小鱼(@xiaoyu123)'},
+    {name:'秋日穿搭', id:'@qiuri', full:'秋日穿搭(@qiuri)'},
+    {name:'老番茄', id:'@laofanqie', full:'老番茄(@laofanqie)'},
+    {name:'Ken', id:'@ken_shoots', full:'Ken(@ken_shoots)'}
+  ];
+  const TITLES = [
+    '秋日穿搭｜奶油色套装', '海边三天两夜', '梧桐叶落的时候', '咖色系通勤',
+    '周末咖啡店', '奶白针织开衫', '旅行背包清单', '落日与橘色毛衣',
+    '房间改造第3期', '手冲咖啡入门', '城市漫步路线', '白衬衫的7种穿法'
+  ];
+  const SIZES = [[1200,1600],[1600,1200],[1080,1440],[900,1200],[1440,1080],[800,1066]];
+
+  const PROMPTS = [
+    'autumn outfit flatlay cream knitwear warm tone','seaside travel golden hour','autumn leaves street walk',
+    'brown tone office outfit','weekend coffee shop cozy','white knit cardigan detail',
+    'travel backpack essentials flatlay','sunset orange sweater portrait','cozy room makeover interior',
+    'pour over coffee hands closeup','city walk street photography','white shirt styling lookbook'
+  ];
+  const IMG_SIZES = ['portrait_4_3','portrait_16_9','square_hd','landscape_4_3','portrait_4_3','landscape_16_9'];
+
+  const PAGES = 3;                 // 演示：图集共 3 页
+  let loadedPages = 1;             // 当前已抓取的页数
+
+  const MEDIA = [];
+  for (let p = 1; p <= PAGES; p++) {
+    TITLES.forEach((t, i) => {
+      const c = CREATORS[(i + p) % CREATORS.length];
+      const sz = SIZES[(i + p) % SIZES.length];
+      MEDIA.push({
+        id: (p - 1) * TITLES.length + i + 1,
+        page: p,
+        title: p > 1 ? t + ' · 第' + p + '页' : t,
+        creatorFull: c.full,
+        creator: c.name,
+        platform: PLATFORMS[(i + p) % PLATFORMS.length],
+        w: sz[0], h: sz[1],
+        // 演示用图集 URL：只用于「按 URL 过滤」与抓取演示
+        url: 'https://example.com/gallery/page-' + p + '/' + ((p - 1) * TITLES.length + i + 1) + '.jpg',
+        src: '',
+        state: 'idle'
+      });
+    });
+  }
+
+  /* 本地 SVG 封面：不依赖外网，保证原型随时可看 */
+  function svgCover(m, i){
+    const palettes = [
+      ['#8fb9d9','#4f7fa8'], ['#e0b48a','#b07b4f'], ['#9dc6a4','#5e8f6b'],
+      ['#c9a7c4','#8e6388'], ['#e6c98a','#b3934a'], ['#9fb8c9','#5f7d92'],
+      ['#d9a9a0','#a86a60'], ['#a9b6d9','#6b7aa8'], ['#bfd0a9','#7f9464'],
+      ['#d9c2a9','#a8865f'], ['#a9d3d0','#649a97'], ['#d3a9b8','#a06078']
+    ];
+    const [c1, c2] = palettes[i % palettes.length];
+    const H = Math.round(900 * m.h / m.w);
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="' + H + '" viewBox="0 0 900 ' + H + '">' +
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+          '<stop offset="0" stop-color="' + c1 + '"/><stop offset="1" stop-color="' + c2 + '"/>' +
+        '</linearGradient></defs>' +
+        '<rect width="900" height="' + H + '" fill="url(#g)"/>' +
+        '<circle cx="' + (140 + (i % 5) * 150) + '" cy="' + Math.round(H * 0.32) + '" r="90" fill="rgba(255,255,255,.18)"/>' +
+        '<rect x="70" y="' + Math.round(H * 0.55) + '" width="380" height="10" rx="5" fill="rgba(255,255,255,.28)"/>' +
+        '<rect x="70" y="' + (Math.round(H * 0.55) + 26) + '" width="240" height="10" rx="5" fill="rgba(255,255,255,.18)"/>' +
+        '<text x="50%" y="' + Math.round(H * 0.82) + '" fill="rgba(255,255,255,.94)" font-size="42" font-family="sans-serif" text-anchor="middle">' + m.title + '</text>' +
+        '<text x="50%" y="' + (Math.round(H * 0.82) + 44) + '" fill="rgba(255,255,255,.72)" font-size="24" font-family="sans-serif" text-anchor="middle">' + m.w + ' × ' + m.h + '</text>' +
+      '</svg>';
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  MEDIA.forEach((m, i) => { m.src = svgCover(m, i); });
+
+  /* 追加几张"必须过滤"的图，演示过滤规则 */
+  const JUNK = [
+    {id:101, title:'1×1 追踪像素', w:1, h:1, state:'skipped'},
+    {id:102, title:'logo 小图标', w:64, h:64, state:'skipped'},
+    {id:103, title:'loading 占位', w:32, h:32, state:'skipped'}
+  ];
+
+  const MIN_W = 100, MIN_H = 100;
+  const isUsable = m => m.w >= MIN_W && m.h >= MIN_H;
+
+  /* ---------- 渲染假页面 ---------- */
+  function renderFeed(){
+    const feed = $('feed');
+    feed.innerHTML = '';
+    MEDIA.filter(m => m.page <= loadedPages).forEach((m, i) => {
+      const el = document.createElement('div');
+      el.className = 'ph';
+      el.dataset.id = m.id;
+      el.innerHTML = `
+        <div class="wrap" style="--ar:${m.w} / ${m.h}">
+          <img src="${m.src}" alt="${esc(m.title)}" loading="lazy"
+               data-w="${m.w}" data-h="${m.h}" data-id="${m.id}">
+          <span class="badge${m.state === 'done' ? ' done' : ''}">${m.state === 'done' ? '✓ 已存' : m.w + '×' + m.h}</span>
+        </div>
+        <div class="cap"><b>${esc(m.title)}</b><span class="dot"></span>${esc(m.creator)}<span class="dot"></span>${esc(m.platform)}</div>`;
+      feed.appendChild(el);
+    });
+    // 让占位/小图也出现在页面里（默认不显示热点，仅演示过滤）
+    if (loadedPages === 1) {
+      const junk = document.createElement('div');
+      junk.className = 'ph';
+      junk.style.display = 'none';
+      junk.innerHTML = JUNK.map(j => `<img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=" data-w="${j.w}" data-h="${j.h}" data-junk="1">`).join('');
+      feed.appendChild(junk);
+    }
+  }
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  /* ---------- 落位模拟（与 S1a 规则一致） ---------- */
+  function fakePath(m, idx){
+    const platformDir = {小红书:'小红书','B站':'B站','X':'X'}[m.platform] || '其他网页';
+    const date = '20261024';
+    const name = `${date}_${sanitize(m.title)}${idx != null ? '_' + String(idx).padStart(2,'0') : ''}.jpg`;
+    return `${platformDir}/${m.creatorFull}/图片/${name}`;
+  }
+  function sanitize(s){ return String(s).replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').trim(); }
+
+  /* ---------- 悬停按钮（单例） ---------- */
+  let hoverTimer = 0, hideTimer = 0, curImg = null, curMedia = null;
+
+  document.addEventListener('mouseover', e => {
+    const img = e.target.closest && e.target.closest('.ph img');
+    if (!img || img === curImg) return;
+    clearTimeout(hideTimer);
+    hoverTimer = setTimeout(() => showBar(img), 300);
+  });
+
+  document.addEventListener('mouseout', e => {
+    const img = e.target.closest && e.target.closest('.ph img');
+    if (!img) return;
+    clearTimeout(hoverTimer);
+    hideTimer = setTimeout(() => {
+      // 鼠标已经移到按钮上就不隐藏
+      if ($('hoverBar').matches(':hover')) return;
+      hideBar();
+    }, 300);
+  });
+
+  function showBar(img){
+    const m = MEDIA.find(x => x.id === +img.dataset.id);
+    if (!m) { return; }
+    if (!isUsable(m)) {
+      // 小图/占位：只提示，不提供下载（演示过滤）
+      return;
+    }
+    curImg = img; curMedia = m;
+    const bar = $('hoverBar');
+    const r = img.getBoundingClientRect();
+    const pad = 8;
+    bar.style.left = (r.right + window.scrollX - 8 - 168) + 'px';
+    bar.style.top  = (r.bottom + window.scrollY - 8 - 40) + 'px';
+    bar.classList.add('on');
+
+    // 按钮状态回显
+    paintButton(m);
+  }
+
+  function paintButton(m){
+    const one = $('hbOne'), txt = $('hbOneTxt'), all = $('hbAll'), allTxt = $('hbAllTxt');
+    one.className = '';
+    if (m.state === 'done') { one.className = 'ok'; one.innerHTML = '<span class="gl">✓</span><span id="hbOneTxt">已存过</span>'; }
+    else { one.innerHTML = '<span class="gl">⤓</span><span id="hbOneTxt">下载</span>'; }
+    allTxt.textContent = '全部 ' + usableCount();
+  }
+
+  function hideBar(){
+    $('hoverBar').classList.remove('on');
+    curImg = null; curMedia = null;
+  }
+
+  $('hoverBar').addEventListener('mouseenter', () => clearTimeout(hideTimer));
+  $('hoverBar').addEventListener('mouseleave', () => { hideTimer = setTimeout(hideBar, 300); });
+
+  function usableCount(){
+    return MEDIA.filter(m => m.page <= loadedPages && isUsable(m) && m.state !== 'done').length;
+  }
+  function loadedUsableTotal(){
+    return MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).length;
+  }
+  function totalUsable(){
+    return MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).length;
+  }
+  function skippedCount(){
+    return MEDIA.filter(m => m.page <= loadedPages && !isUsable(m)).length + (loadedPages === 1 ? JUNK.length : 0);
+  }
+
+  /* ---------- 单张下载 ---------- */
+  $('hbOne').onclick = () => {
+    if (!curMedia) return;
+    const m = curMedia;
+    if (m.state === 'done') { toast('这张已经存过了', fakePath(m)); return; }
+    const btn = $('hbOne');
+    btn.className = '';
+    btn.innerHTML = '<span class="spin"></span><span>解析中</span>';
+    setTimeout(() => {
+      btn.className = 'ok';
+      btn.innerHTML = '<span class="gl">✓</span><span>已保存</span>';
+      m.state = 'done';
+      markCard(m);
+      toast('已存入资源库', fakePath(m));
+      $('floatN').textContent = usableCount();
+      $('hoverBar').classList.remove('on');
+    }, 650);
+  };
+
+  /* ---------- 全部下载（确认条） ---------- */
+  $('hbAll').onclick = () => {
+    hideBar();
+    $('cfTotal').textContent = totalUsable();
+    $('cfSkip').textContent = skippedCount();
+    $('cfGo').textContent = '下载 ' + totalUsable() + ' 张';
+    $('confirm').classList.add('on');
+  };
+  $('cfCancel').onclick = () => $('confirm').classList.remove('on');
+  $('cfList').onclick = () => { $('confirm').classList.remove('on'); openPanel(); };
+  $('cfGo').onclick = () => {
+    $('confirm').classList.remove('on');
+    runBatch(MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).filter(m => m.state !== 'done'));
+  };
+
+  /* ---------- 批量队列（并发 3） ---------- */
+  let batch = null;
+
+  function runBatch(list){
+    if (!list.length) { toast('没有需要下载的图片'); return; }
+    const total = list.length;
+    let done = 0, failed = 0, i = 0, cancelled = false;
+    batch = { cancel(){ cancelled = true; } };
+    $('progress').classList.add('on');
+    $('pgBar').style.width = '0%';
+    $('pgTxt').textContent = `正在下载 0/${total}`;
+
+    const next = () => {
+      if (cancelled || i >= total) {
+        finish();
+        return;
+      }
+      const m = list[i++];
+      setTimeout(() => {
+        // 演示：每 5 张模拟一次失败
+        if (i % 5 === 0) {
+          failed++;
+        } else {
+          m.state = 'done';
+          markCard(m);
+        }
+        done++;
+        $('pgTxt').textContent = `正在下载 ${done}/${total}` + (failed ? ` · 失败 ${failed}` : '');
+        $('pgBar').style.width = Math.round(done / total * 100) + '%';
+        $('floatN').textContent = usableCount();
+        if (i < total) next(); else finish();
+      }, 220);
+    };
+
+    function finish(){
+      $('pgTxt').textContent = cancelled ? `已取消 · 完成 ${done}/${total}` :
+        `完成 ${done}/${total}` + (failed ? ` · 失败 ${failed}` : '');
+      setTimeout(() => $('progress').classList.remove('on'), 1400);
+      if (!cancelled && failed === 0) toast(`已下载 ${done} 张`, `video-rod/<平台>/<博主>/图片/`);
+      batch = null;
+    }
+
+    next();
+  }
+
+  $('pgCancel').onclick = () => { if (batch) batch.cancel(); };
+
+  function markCard(m){
+    const el = document.querySelector(`.ph[data-id="${m.id}"]`);
+    if (!el) return;
+    let b = el.querySelector('.badge');
+    if (!b) { b = document.createElement('span'); b.className = 'badge'; el.querySelector('.wrap').appendChild(b); }
+    b.className = 'badge done';
+    b.textContent = '✓ 已存';
+  }
+
+  /* ---------- 浮标 ---------- */
+  $('float').onclick = openPanel;
+  document.addEventListener('scroll', () => {
+    // 接近站点右侧悬浮组件时半透明（演示：滚动超过 300 就 dim）
+    $('float').classList.toggle('dim', window.scrollY > 300);
+  }, { passive: true });
+
+  /* ---------- 清单面板 ---------- */
+  let panelOpen = false, selected = new Set(), focusIdx = 0, filtered = [];
+
+  function openPanel(){
+    panelOpen = true;
+    $('panelMask').classList.add('on');
+    applyFilter();
+  }
+  function closePanel(){
+    panelOpen = false;
+    $('panelMask').classList.remove('on');
+  }
+  $('pClose').onclick = closePanel;
+  $('panelMask').addEventListener('click', e => { if (e.target === $('panelMask')) closePanel(); });
+
+  function applyFilter(){
+    const fw = +$('fW').value || 0;
+    const fh = +$('fH').value || 0;
+    const kw = ($('fUrl').value || '').trim().toLowerCase();
+    const onlyNew = $('fOnlyNew').checked;
+    const loaded = MEDIA.filter(m => m.page <= loadedPages);
+
+    filtered = loaded.filter(m => {
+      let sizeOk;
+      if (preset === 'custom') {
+        sizeOk = m.w >= fw && m.h >= fh;
+      } else {
+        sizeOk = Math.min(m.w, m.h) >= +preset;   // 按短边判定，竖图不误判
+      }
+      return sizeOk && (!kw || m.url.toLowerCase().includes(kw)) && (!onlyNew || m.state !== 'done');
+    });
+    renderGrid();
+    paintCounts();
+    paintSizes();
+  }
+
+  /* ---------- 尺寸档位 ---------- */
+  let preset = '100';
+
+  function paintSizes(){
+    const loaded = MEDIA.filter(m => m.page <= loadedPages);
+    document.querySelectorAll('#sizeBtns button').forEach(b => {
+      const edge = b.dataset.edge;
+      if (edge === 'custom') return;
+      const n = loaded.filter(m => Math.min(m.w, m.h) >= +edge).length;
+      const i = b.querySelector('i');
+      if (i) i.textContent = n;
+    });
+  }
+
+  document.querySelectorAll('#sizeBtns button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('#sizeBtns button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      preset = b.dataset.edge;
+      $('customSize').classList.toggle('on', preset === 'custom');
+      applyFilter();
+    };
+  });
+  ['fW','fH'].forEach(id => $(id).addEventListener('input', () => { if (preset === 'custom') applyFilter(); }));
+
+  function renderGrid(){
+    const grid = $('pgrid');
+    grid.innerHTML = '';
+    filtered.forEach((m, idx) => {
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (selected.has(m.id) ? ' sel' : '') + (m.state === 'done' ? ' done' : '');
+      cell.dataset.id = m.id;
+      cell.innerHTML = `
+        <img src="${m.src}" loading="lazy" alt="">
+        <span class="tick">✓</span>
+        <span class="meta"><span>${m.w}×${m.h}</span><span>${m.platform}</span></span>`;
+      cell.onclick = e => {
+        if (e.shiftKey && filtered.length) {
+          const a = Math.min(focusIdx, idx), b = Math.max(focusIdx, idx);
+          for (let k = a; k <= b; k++) selected.add(filtered[k].id);
+        } else {
+          if (selected.has(m.id)) selected.delete(m.id); else selected.add(m.id);
+        }
+        focusIdx = idx;
+        renderGrid(); paintCounts();
+      };
+      grid.appendChild(cell);
+    });
+    if (!filtered.length) {
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:34px 0;text-align:center;color:#8b93a3">没有符合条件的图片</div>';
+    }
+  }
+
+  function paintCounts(){
+    $('pCount').textContent = filtered.length + ' 张';
+    $('pSelN').textContent = selected.size;
+    $('pTip').textContent = selected.size ? '' : '点格子勾选';
+  }
+
+  ['fW','fH','fUrl','fOnlyNew'].forEach(id => {
+    $(id).addEventListener('input', applyFilter);
+    $(id).addEventListener('change', applyFilter);
+  });
+
+  $('pAll').onclick = () => { filtered.forEach(m => selected.add(m.id)); renderGrid(); paintCounts(); };
+  $('pInvert').onclick = () => {
+    filtered.forEach(m => { if (selected.has(m.id)) selected.delete(m.id); else selected.add(m.id); });
+    renderGrid(); paintCounts();
+  };
+  $('pDlSel').onclick = () => {
+    const list = MEDIA.filter(m => selected.has(m.id) && isUsable(m) && m.state !== 'done');
+    if (!list.length) { toast('先勾选要下载的图片'); return; }
+    selected.clear();
+    closePanel();
+    runBatch(list);
+  };
+  $('pDlAll').onclick = () => {
+    selected.clear();
+    closePanel();
+    runBatch(MEDIA.filter(m => m.page <= loadedPages && isUsable(m)).filter(m => m.state !== 'done'));
+  };
+
+  /* ---------- 图集加载（模拟分页抓取） ---------- */
+  let albumTimer = 0, loadingMore = false;
+
+  $('albumMore').onclick = () => {
+    if (loadingMore) { return; }
+    if (loadedPages >= PAGES) { toast('已经是最后一页了'); return; }
+    const next = loadedPages + 1;
+    loadingMore = true;
+    $('albumMore').disabled = true;
+    $('albumStop').disabled = false;
+    $('albumMsg').textContent = '正在抓取第 ' + next + ' 页…';
+    albumTimer = setTimeout(() => {
+      loadedPages = next;
+      loadingMore = false;
+      renderFeed();
+      applyFilter();
+      $('albumPages').textContent = '第 ' + loadedPages + '/' + PAGES + ' 页';
+      $('albumCount').textContent = loadedUsableTotal();
+      $('albumMsg').textContent = loadedPages >= PAGES ? '已到最后一页' : '可继续加载';
+      $('albumMore').disabled = loadedPages >= PAGES;
+      $('albumStop').disabled = true;
+      $('floatN').textContent = usableCount();
+      toast('已抓取第 ' + next + ' 页，累计 ' + loadedUsableTotal() + ' 张');
+    }, 1200);
+  };
+
+  $('albumStop').onclick = () => {
+    if (!loadingMore) { return; }
+    clearTimeout(albumTimer);
+    loadingMore = false;
+    $('albumMsg').textContent = '已停止（已抓到的保留）';
+    $('albumMore').disabled = false;
+    $('albumStop').disabled = true;
+  };
+
+  /* ---------- 键盘 ---------- */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (panelOpen) { closePanel(); return; }
+      $('confirm').classList.remove('on');
+      hideBar();
+      return;
+    }
+    if (!panelOpen) return;
+    const k = e.key.toLowerCase();
+    if (k === 'j') { focusIdx = Math.min(filtered.length - 1, focusIdx + 1); focusCell(); }
+    else if (k === 'k') { focusIdx = Math.max(0, focusIdx - 1); focusCell(); }
+    else if (k === 'x') {
+      const m = filtered[focusIdx];
+      if (m) { if (selected.has(m.id)) selected.delete(m.id); else selected.add(m.id); renderGrid(); paintCounts(); }
+    } else if (e.key === 'Enter') { $('pDlSel').click(); }
+  });
+
+  function focusCell(){
+    const cells = document.querySelectorAll('#pgrid .cell');
+    cells.forEach(c => c.style.outline = '');
+    const c = cells[focusIdx];
+    if (c) { c.style.outline = '2px solid #0f766e'; c.scrollIntoView({ block: 'nearest' }); }
+  }
+
+  /* ---------- toast ---------- */
+  function toast(title, path){
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = `<div>${esc(title)}</div>` + (path ? `<div class="p">video-rod\\${esc(path).replace(/\//g,'\\')}</div>` : '');
+    $('toasts').appendChild(t);
+    requestAnimationFrame(() => t.classList.add('on'));
+    setTimeout(() => { t.classList.remove('on'); setTimeout(() => t.remove(), 240); }, 2600);
+  }
+
+  /* ---------- 演示控制 ---------- */
+  let hotOn = false;
+  $('dHot').onclick = () => {
+    hotOn = !hotOn;
+    $('dHot').classList.toggle('on', hotOn);
+    document.querySelectorAll('.ph').forEach(p => p.classList.toggle('hot', hotOn));
+  };
+  $('dReset').onclick = () => {
+    MEDIA.forEach(m => m.state = 'idle');
+    selected.clear();
+    loadedPages = 1;
+    renderFeed();
+    paintSizes();
+    $('floatN').textContent = usableCount();
+    $('albumPages').textContent = '第 1/' + PAGES + ' 页';
+    $('albumCount').textContent = loadedUsableTotal();
+    $('albumMsg').textContent = '模拟站点分页；真实实现会后台打开下一页再抓图';
+    $('albumMore').disabled = false;
+    $('albumStop').disabled = true;
+    if (hotOn) document.querySelectorAll('.ph').forEach(p => p.classList.add('hot'));
+    toast('已重置演示数据');
+  };
+
+  /* ---------- 启动 ---------- */
+  renderFeed();
+  $('floatN').textContent = usableCount();
+  $('albumCount').textContent = loadedUsableTotal();
+  paintSizes();
+  document.querySelectorAll('.ph img').forEach(img => {
+    img.addEventListener('error', () => { img.style.opacity = 0; });
+  });
+})();
+</script>
+</body>
+</html>

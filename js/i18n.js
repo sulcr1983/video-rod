@@ -11,5 +11,5 @@
     document.querySelectorAll('[data-i18n-placeholder]').forEach(function (element) {
         element.setAttribute('placeholder', i18n(element.dataset.i18nPlaceholder) ?? element.dataset.i18nPlaceholder);
     });
-    document.title = i18n(document.title) ?? document.title;
+    document.title = i18n(document.title) || document.title;
 })();

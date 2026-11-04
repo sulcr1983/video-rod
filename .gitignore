@@ -13,6 +13,15 @@ dist/
 # 临时诊断截图（tools/overlay-*.py 跑出来的）
 .tmp/
 
-# Python 缓存（tools 脚本 import 时生成）
+# Python 缓存（tools/ 下的 CDP 测试脚本会生成）
 __pycache__/
 *.pyc
+
+# 本机临时工作区（浏览器 profile / 测试媒体 / 一次性草稿，可整体删除）
+/.work/
+
+# 资源库根目录：下载内容不进 git
+/download/
+
+# 测试站视频夹具（从 .work/media 复制，可随时重建）
+/test-site/media/

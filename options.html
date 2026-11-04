@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
   <meta charset="UTF-8" />
-  <title>titleOption</title>
+  <title>苏哥的钓鱼竿 — 设置</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" type="text/css" href="css/public.css" media="all" />
   <link rel="stylesheet" type="text/css" href="css/options.css" media="all" />
@@ -14,74 +14,298 @@
   <script src="js/templates.js" defer></script>
 </head>
 
-<body>
-  <!-- 添加导航栏 -->
-  <nav class="sidebar" aria-label="Main Navigation">
-    <ul>
-      <li><a href="#anchorSuffix" data-i18n="suffix" title="suffix"></a></li>
-      <li><a href="#anchorType" data-i18n="type" title="type"></a></li>
-      <li><a href="#anchorRegexMatch" data-i18n="regexMatch" title="regexMatch"></a></li>
-      <li><a href="#anchorBlockUrl" data-i18n="blockUrl" title="blockUrl"></a></li>
-      <li><a href="#anchorScriptSettings" data-i18n="Script" title="Script"></a></li>
-      <li><a href="#anchorCopy" data-i18n="copy" title="copy"></a></li>
-      <li><a href="#anchorAria2Rpc" title="Aria2 RPC">Aria2 RPC</a></li>
-      <li><a href="#anchorSend2local" data-i18n="send2local" title="send2local"></a></li>
-      <li><a href="#anchorM3u8dl" data-i18n="sideurlprotocol" title="URL Protocol m3u8dl"></a></li>
-      <li><a href="#anchorInvokeApp" data-i18n="invokeApp" title="invokeApp"></a></li>
-      <li><a href="#anchorReplaceTags" data-i18n="replaceTags" title="replaceTags"></a></li>
-      <li><a href="#anchorDownloader" data-i18n="downloader" title="downloader"></a></li>
-      <li><a href="#anchorM3u8Parser" data-i18n="m3u8Parser" title="m3u8Parser"></a></li>
-      <li><a href="#anchorOtherSettings" data-i18n="otherSettings" title="otherSettings"></a></li>
-      <li><a href="#anchorCustomCSS" data-i18n="customCSS" title="customCSS"></a></li>
-      <li><a href="#anchorOperation" data-i18n="operation" title="operation"></a></li>
-      <li><a href="#anchorAbout" data-i18n="about" title="about"></a></li>
-    </ul>
-  </nav>
+<body class="options-page">
+  <div class="app-shell">
+    <nav class="sidebar" aria-label="设置导航">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">VR</span>
+        <div class="brand-text">
+          <strong>苏哥的钓鱼竿</strong>
+          <small>本地资源库与下载</small>
+        </div>
+      </div>
 
-  <div class="wrapper options">
+      <div class="nav-group">
+        <div class="nav-label">资源库</div>
+        <ul>
+          <li><a href="#anchorLibrary" title="资源库">资源库</a></li>
+          <li><a href="#anchorImage" title="图片下载">图片下载</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">抓取规则</div>
+        <ul>
+          <li><a href="#anchorSuffix" data-i18n="suffix" title="suffix"></a></li>
+          <li><a href="#anchorType" data-i18n="type" title="type"></a></li>
+          <li><a href="#anchorRegexMatch" data-i18n="regexMatch" title="regexMatch"></a></li>
+          <li><a href="#anchorBlockUrl" data-i18n="blockUrl" title="blockUrl"></a></li>
+          <li><a href="#anchorScriptSettings" data-i18n="Script" title="Script"></a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">下载与工具</div>
+        <ul>
+          <li><a href="#anchorCopy" data-i18n="copy" title="copy"></a></li>
+          <li><a href="#anchorAria2Rpc" title="Aria2 RPC">Aria2 RPC</a></li>
+          <li><a href="#anchorSend2local" data-i18n="send2local" title="send2local"></a></li>
+          <li><a href="#anchorM3u8dl" data-i18n="sideurlprotocol" title="URL Protocol m3u8dl"></a></li>
+          <li><a href="#anchorInvokeApp" data-i18n="invokeApp" title="invokeApp"></a></li>
+          <li><a href="#anchorReplaceTags" data-i18n="replaceTags" title="replaceTags"></a></li>
+          <li><a href="#anchorDownloader" data-i18n="downloader" title="downloader"></a></li>
+          <li><a href="#anchorM3u8Parser" data-i18n="m3u8Parser" title="m3u8Parser"></a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">通用</div>
+        <ul>
+          <li><a href="#anchorOtherSettings" data-i18n="otherSettings" title="otherSettings"></a></li>
+          <li><a href="#anchorCustomCSS" data-i18n="customCSS" title="customCSS"></a></li>
+          <li><a href="#anchorOperation" data-i18n="operation" title="operation"></a></li>
+          <li><a href="#anchorAbout" data-i18n="about" title="about"></a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <main class="content">
+      <header class="page-head">
+        <h1>设置</h1>
+        <p>苏哥的钓鱼竿 · 本地资源库与下载</p>
+      </header>
+
+      <div class="wrapper options">
+
+    <!-- 资源库（本地下载管理） -->
+    <section id="anchorLibrary">
+      <h2 class="optionsTitle"><span class="title-dot" aria-hidden="true"></span>资源库</h2>
+      <p class="section-desc">下载文件按「平台 / 博主 / 类型」落到本地目录，并自动进入资源库索引。这里负责位置、索引与迁移维护。</p>
+
+      <div class="card">
+        <h3 class="card-title">位置与模式</h3>
+
+        <div class="field">
+          <div class="field-label">当前根目录</div>
+          <div class="field-control">
+            <code id="vrLibRoot" class="path-code">未探测（点下方「校验落盘」）</code>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">子目录名</div>
+          <div class="field-control field-inline">
+            <input type="text" id="vrLibSubdir" value="video-rod" class="input-sm" />
+            <button type="button" id="vrLibSaveSubdir" class="button2">保存</button>
+            <span id="vrLibSubdirMsg" class="explain"></span>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">落盘模式</div>
+          <div class="field-control">
+            <select id="vrLibMode" class="select">
+              <option value="system">系统下载目录下的子目录（推荐，零拷贝）</option>
+              <option value="custom">自定义文件夹（下载后搬移）</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">自定义目录</div>
+          <div class="field-control field-inline">
+            <input type="text" id="vrLibCustomRoot" placeholder="例如 E:\test\video-rod\download" class="input-md" />
+            <button type="button" id="vrLibPickDir">选择文件夹并授权</button>
+            <span id="vrLibCustomMsg" class="explain"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">索引</h3>
+
+        <div class="field">
+          <div class="field-label">索引状态</div>
+          <div class="field-control field-inline">
+            <span id="vrLibIndex" class="status-text">未检测</span>
+            <button type="button" id="vrLibRefresh">刷新</button>
+            <button type="button" id="vrLibOpenPage">打开资源库</button>
+          </div>
+        </div>
+
+        <div class="field field-top">
+          <div class="field-label">最近入库</div>
+          <div class="field-control">
+            <div id="vrLibRecent" class="recent-list">—</div>
+          </div>
+        </div>
+
+        <div class="field field-top">
+          <div class="field-label">索引维护</div>
+          <div class="field-control">
+            <div class="action-row">
+              <button type="button" id="vrLibIdxBuild" class="button2">重建索引（下载记录）</button>
+              <button type="button" id="vrLibIdxSnap">写快照</button>
+              <button type="button" id="vrLibIdxFull">授权目录并全量扫描</button>
+            </div>
+            <div id="vrLibIdxMsg" class="explain field-hint"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">维护</h3>
+
+        <div class="field">
+          <div class="field-label">落盘校验</div>
+          <div class="field-control field-inline">
+            <button type="button" id="vrLibVerify">校验落盘</button>
+            <span id="vrLibVerifyMsg" class="explain"></span>
+          </div>
+        </div>
+
+        <div class="item">
+          <div>
+            <div>深校验（SHA-256）</div>
+            <div class="about-muted">迁移时对比源文件与目标文件的完整哈希，更可靠但大文件会明显变慢；关掉则只采样首尾字节</div>
+          </div>
+          <div class="switch">
+            <label class="switchLabel switchRadius">
+              <input type="checkbox" id="DeepVerify" class="switchInput" />
+              <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field field-top">
+          <div class="field-label">迁移</div>
+          <div class="field-control">
+            <div class="field-inline">
+              <button type="button" id="vrLibMigrate">迁移…</button>
+              <span class="explain">改子目录名 / 换根（A↔B） / 整理旧文件；预演后可回滚</span>
+            </div>
+
+            <div id="vrLibMigPanel" class="mig-panel" hidden>
+              <div class="field">
+                <label class="field-label" for="vrLibMigKind">迁移方式</label>
+                <div class="field-control">
+                  <select id="vrLibMigKind">
+                    <option value="rename-subdir">改子目录名（同一父目录内）</option>
+                    <option value="rebase">换根（源目录 → 目标目录，相对路径不变）</option>
+                    <option value="restructure">整理旧文件（散文件 → 平台/博主/类型）</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="field" data-kind="rename-subdir">
+                <div class="field-control field-inline">
+                  <button type="button" id="vrLibMigPickParent" class="button2">选择父目录并授权</button>
+                  <input type="text" id="vrLibMigOld" placeholder="旧子目录名" class="input-xs" />
+                  <span aria-hidden="true">→</span>
+                  <input type="text" id="vrLibMigNew" placeholder="新子目录名" class="input-xs" />
+                </div>
+              </div>
+
+              <div class="field" data-kind="rebase" style="display:none">
+                <div class="field-control field-inline">
+                  <button type="button" id="vrLibMigPickSrc" class="button2">选择源目录</button>
+                  <button type="button" id="vrLibMigPickDst" class="button2">选择目标目录</button>
+                </div>
+              </div>
+
+              <div class="field" data-kind="restructure" style="display:none">
+                <div class="field-control field-inline">
+                  <button type="button" id="vrLibMigPickSrc2" class="button2">选择要整理的目录</button>
+                  <span class="explain">散落的媒体文件会按下载历史归入「子目录/平台/待整理/类型」</span>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-control">
+                  <span id="vrLibMigDirMsg" class="explain"></span>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-control field-inline">
+                  <button type="button" id="vrLibMigPlan" class="button2">预演（dry-run）</button>
+                  <button type="button" id="vrLibMigRun" class="button2" disabled>执行迁移</button>
+                  <button type="button" id="vrLibMigRollback" class="button2" disabled>回滚上次</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-control">
+                  <span id="vrLibMigState" class="explain"></span>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-control field-inline">
+                  <progress id="vrLibMigBar" max="100" value="0" class="mig-progress"></progress>
+                  <span id="vrLibMigProgTxt" class="explain"></span>
+                </div>
+              </div>
+
+              <div class="field field-top">
+                <div class="field-control">
+                  <div id="vrLibMigPreview" class="mig-preview explain"></div>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-control">
+                  <span id="vrLibMigRollbackMsg" class="explain"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- 抓取后缀 -->
     <section id="anchorSuffix">
-      <h1 class="optionsTitle" data-i18n="suffix"></h1>
+      <h2 class="optionsTitle" data-i18n="suffix"></h2>
       <div class="optionBox">
         <span class="explain" data-i18n="suffixTip"></span>
-        <table id="extList">
+        <div class="table-scroll"><table id="extList">
           <tr>
             <th data-i18n="suffix"></th>
             <th data-i18n="filterSize"></th>
             <th data-i18n="enable"></th>
             <th data-i18n="delete"></th>
           </tr>
-        </table>
+        </table></div>
         <div class="flex-end">
           <button type="button" id="AddExt" class="button2" data-i18n="addSuffix" title="add Suffix"></button>
           <button type="button" id="ResetExt" data-reset="Ext" data-i18n="resetSettings" title="reset Suffixs"></button>
-          <button type="button" id="allDisable" data-switch="Ext" data-i18n="disableAll"
+          <button type="button" data-all="0" data-switch="Ext" data-i18n="disableAll"
             title="disable All Ext"></button>
-          <button type="button" id="allEnable" data-switch="Ext" data-i18n="enableAll" title="enable All Ext"></button>
+          <button type="button" data-all="1" data-switch="Ext" data-i18n="enableAll" title="enable All Ext"></button>
         </div>
       </div>
     </section>
 
     <!-- 抓取类型 -->
     <section id="anchorType">
-      <h1 class="optionsTitle" data-i18n="type"></h1>
+      <h2 class="optionsTitle" data-i18n="type"></h2>
       <div class="optionBox">
         <span class="explain" data-i18n="typeTip"></span>
-        <table id="typeList">
+        <div class="table-scroll"><table id="typeList">
           <tr>
             <th data-i18n="type"></th>
             <th data-i18n="filterSize"></th>
             <th data-i18n="enable"></th>
             <th data-i18n="delete"></th>
           </tr>
-        </table>
+        </table></div>
         <div class="flex-end">
           <button type="button" id="AddType" class="button2" data-i18n="addType" title="add Type"></button>
           <button type="button" id="ResetType" data-reset="Type" data-i18n="resetSettings" title="reset Types"></button>
-          <button type="button" id="allDisable" data-switch="Type" data-i18n="disableAll"
+          <button type="button" data-all="0" data-switch="Type" data-i18n="disableAll"
             title="disable All Types"></button>
-          <button type="button" id="allEnable" data-switch="Type" data-i18n="enableAll"
+          <button type="button" data-all="1" data-switch="Type" data-i18n="enableAll"
             title="enable All Types"></button>
         </div>
       </div>
@@ -89,10 +313,10 @@
 
     <!-- 正则匹配 -->
     <section id="anchorRegexMatch">
-      <h1 class="optionsTitle">
+      <h2 class="optionsTitle">
         <img src="img/regex.png" style="width: 18px" class="regex" /><span data-i18n-outer="regexMatch"></span> / <span
           data-i18n-outer="blockResource"></span>
-      </h1>
+      </h2>
       <div class="optionBox">
         <span class="explain"><b data-i18n="blockResource"></b>
           <p data-i18n-outer="blockResourceTip"></p>
@@ -104,7 +328,7 @@
           <p data-i18n-outer="regexSuffixTip"></p>
         </span><br>
         <span class="explain"><b data-i18n="regexTip"></b></span><br><br>
-        <table id="regexList">
+        <div class="table-scroll"><table id="regexList">
           <tr>
             <th data-i18n="flag"></th>
             <th data-i18n="regexExpression"></th>
@@ -113,14 +337,14 @@
             <th data-i18n="enable"></th>
             <th data-i18n="delete"></th>
           </tr>
-        </table>
+        </table></div>
         <div class="flex-end">
           <button type="button" id="AddRegex" class="button2" data-i18n="addRegex" title="add Regex"></button>
           <button type="button" id="ResetRegex" data-reset="Regex" data-i18n="resetSettings"
             title="reset Regex"></button>
-          <button type="button" id="allDisable" data-switch="Regex" data-i18n="disableAll"
+          <button type="button" data-all="0" data-switch="Regex" data-i18n="disableAll"
             title="disable All Regex"></button>
-          <button type="button" id="allEnable" data-switch="Regex" data-i18n="enableAll"
+          <button type="button" data-all="1" data-switch="Regex" data-i18n="enableAll"
             title="enable All Regex"></button>
         </div>
         <span style="font-weight: bold; font-size: 15px" data-i18n="regexTest"></span><br />
@@ -136,7 +360,7 @@
 
     <!-- 屏蔽网站 -->
     <section id="anchorBlockUrl">
-      <h1 class="optionsTitle" data-i18n="blockUrl"></h1>
+      <h2 class="optionsTitle" data-i18n="blockUrl"></h2>
       <div class="optionBox">
         <div class="item">
           <div data-i18n="setWhiteList"></div>
@@ -148,20 +372,20 @@
           </div>
         </div>
         <span class="explain" data-i18n="blockUrlTips"></span>
-        <table id="blockUrlList">
+        <div class="table-scroll"><table id="blockUrlList">
           <tr>
             <th>URL</th>
             <th data-i18n="enable"></th>
             <th data-i18n="delete"></th>
           </tr>
-        </table>
+        </table></div>
         <div class="flex-end">
           <button type="button" id="blockAddUrl" class="button2" data-i18n="addUrl" title="add Url"></button>
           <button type="button" id="ResetBlockUrl" data-reset="blockUrl" data-i18n="resetSettings"
             title="reset block Url"></button>
-          <button type="button" id="allDisable" data-switch="blockUrl" data-i18n="disableAll"
+          <button type="button" data-all="0" data-switch="blockUrl" data-i18n="disableAll"
             title="disable All block Url"></button>
-          <button type="button" id="allEnable" data-switch="blockUrl" data-i18n="enableAll"
+          <button type="button" data-all="1" data-switch="blockUrl" data-i18n="enableAll"
             title="enable All block Url"></button>
         </div>
       </div>
@@ -169,7 +393,7 @@
 
     <!-- 脚本设置 -->
     <section id="anchorScriptSettings">
-      <h1 class="optionsTitle" data-i18n="Script"></h1>
+      <h2 class="optionsTitle" data-i18n="Script"></h2>
       <div class="optionBox" id="scriptOption">
         <div class="list loose">
 
@@ -192,10 +416,10 @@
 
     <!-- 复制选项 -->
     <section id="anchorCopy">
-      <h1 class="optionsTitle">
+      <h2 class="optionsTitle">
         <img src="img/copy.png" style="width: 18px" class="copy" alt="Copy icon" />
         <p data-i18n-outer="copy"></p>
-      </h1>
+      </h2>
       <div class="optionBox">
         <span class="explain">
           <p data-i18n-outer="copyTip"></p><br />
@@ -221,10 +445,10 @@
 
     <!-- Aria2 RPC -->
     <section id="anchorAria2Rpc">
-      <h1 class="optionsTitle">
+      <h2 class="optionsTitle">
         <img src="img/aria2.png" style="width: 18px" class="aria2" />
         Aria2 RPC
-      </h1>
+      </h2>
       <div class="optionBox">
         <span class="explain">
           <p data-i18n-outer="aria2Tip"></p>
@@ -273,10 +497,10 @@
 
     <!-- 发送数据 -->
     <section id="anchorSend2local">
-      <h1 class="optionsTitle">
+      <h2 class="optionsTitle">
         <img src="img/send.svg" style="width: 18px" class="regex" alt="Send icon" />
         <p data-i18n-outer="send2local"></p>
-      </h1>
+      </h2>
       <div class="optionBox">
         <span class="explain">
           <a href="https://cat-catch.94cat.com/docs/settings#send" target="_blank" data-i18n="documentation"></a>
@@ -353,7 +577,7 @@
 
     <!-- m3u8DL -->
     <section id="anchorM3u8dl">
-      <h1 class="optionsTitle" data-i18n="sideurlprotocol">URL Protocol m3u8dl</h1>
+      <h2 class="optionsTitle" data-i18n="sideurlprotocol">URL Protocol m3u8dl</h2>
       <div class="optionBox" id="m3u8dlOption">
         <span class="explain">
           <a href="https://github.com/nilaoda/N_m3u8DL-CLI" target="_blank">N_m3u8DL-CLI</a> / <a
@@ -408,10 +632,10 @@
 
     <!-- 第三方本地程序调用 -->
     <section id="anchorInvokeApp">
-      <h1 class="optionsTitle">
+      <h2 class="optionsTitle">
         <img src="img/invoke.svg" style="width: 18px" class="invoke" />
         <p data-i18n-outer="invokeApp"></p>
-      </h1>
+      </h2>
       <div class="optionBox" id="invokeOption">
         <div class="list">
           <div class="item">
@@ -451,7 +675,7 @@
 
     <!-- 替换标签 -->
     <section id="anchorReplaceTags">
-      <h1 class="optionsTitle" data-i18n="replaceTags"></h1>
+      <h2 class="optionsTitle" data-i18n="replaceTags"></h2>
       <div class="optionBox" id="tag">
         <span class="explain"></span>
         <div style="margin-bottom: 5px;">
@@ -499,10 +723,10 @@
 
     <!-- 下载器 -->
     <section id="anchorDownloader">
-      <h1 class="optionsTitle">
+      <h2 class="optionsTitle">
         <img src="img/cat-down.png" style="width: 18px" class="cat-down" alt="Downloader icon" />
         <p data-i18n-outer="downloader"></p>
-      </h1>
+      </h2>
       <div class="optionBox" id="downOption">
         <span class="explain" data-i18n="downloaderTip"></span>
         <div class="list">
@@ -555,10 +779,10 @@
 
     <!-- m3u8解析器 -->
     <section id="anchorM3u8Parser">
-      <h1 class="optionsTitle">
+      <h2 class="optionsTitle">
         <img src="img/parsing.png" style="width: 18px" class="parsing" alt="Parser icon" />
         <p data-i18n-outer="m3u8Parser"></p>
-      </h1>
+      </h2>
       <div class="optionBox" id="m3u8Option">
         <div class="list">
 
@@ -648,8 +872,137 @@
     </section>
 
     <!-- 其他设置 -->
+    <section id="anchorImage">
+      <h2 class="optionsTitle">图片下载</h2>
+      <div class="optionBox" id="ImageOption">
+        <div class="list loose">
+          <p class="about-muted" style="margin:0 0 8px;">
+            鼠标停在图片上会出现下载按钮；右下角浮标可以打开整页清单。改动即时生效，与清单面板里的设置是同一份数据。
+          </p>
+
+          <div class="item">
+            <div>
+              <div>悬停按钮</div>
+              <div class="about-muted">停在图片上时出现「下载原图」</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgHover" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>全部按钮</div>
+              <div class="about-muted">悬停条上显示「全部 N」</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgBatch" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>右下浮标</div>
+              <div class="about-muted">本页图片清单入口</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgPanel" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>优先原图</div>
+              <div class="about-muted">按五级候选找最大的一张；关掉则用当前显示的那张</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgPreferOriginal" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>扫描 CSS 背景图</div>
+              <div class="about-muted">很多站点把封面做成背景图，只看 img 会漏掉；长页面上会略慢</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgBgScan" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>悬停门槛（显示尺寸）</div>
+              <div class="about-muted">页面上的图宽高都 ≥ 此值才出「下载原图」按钮，范围 16–4096。判的是显示尺寸，不是原图像素</div>
+            </div>
+            <input id="ImgHoverMinSize" type="number" min="16" max="4096" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>面板最小尺寸（原图像素）</div>
+              <div class="about-muted">图片清单只列原图短边 ≥ 此值的图，范围 16–4096；与上面的悬停门槛互不影响</div>
+            </div>
+            <input id="ImgMinSize" type="number" min="16" max="4096" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>悬停延迟（毫秒）</div>
+              <div class="about-muted">停多久才出按钮，范围 0–1500</div>
+            </div>
+            <input id="ImgHoverDelay" type="number" min="0" max="1500" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>批量并发</div>
+              <div class="about-muted">同时下载几张，范围 1–8；太高反而排队更慢</div>
+            </div>
+            <input id="ImgConcurrency" type="number" min="1" max="8" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>单批上限</div>
+              <div class="about-muted">一次最多下多少张，范围 1–2000</div>
+            </div>
+            <input id="ImgBatchLimit" type="number" min="1" max="2000" class="width100" style="width:110px;" />
+          </div>
+
+          <div class="item">
+            <div>
+              <div>快捷键</div>
+              <div class="about-muted">Alt+Shift+D 下载悬停图 / Alt+Shift+A 打开清单（可在 chrome://extensions/shortcuts 改键）</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgHotkeys" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="anchorOtherSettings">
-      <h1 class="optionsTitle" data-i18n="otherSettings"></h1>
+      <h2 class="optionsTitle" data-i18n="otherSettings"></h2>
       <div class="optionBox" id="OtherOption">
         <div class="list loose">
           <div class="item">
@@ -819,7 +1172,7 @@
 
     <!-- 自定义css -->
     <section id="anchorCustomCSS">
-      <h1 class="optionsTitle" data-i18n="customCSS"></h1>
+      <h2 class="optionsTitle" data-i18n="customCSS"></h2>
       <div class="optionBox">
         <div class="item">
           <textarea id="css" save="input" type="text" class="width100" rows="10"></textarea>
@@ -831,14 +1184,24 @@
 
     <!-- 操作按钮 -->
     <section id="anchorOperation">
-      <h1 class="optionsTitle" data-i18n="operation"></h1>
-      <div class="optionBox">
-        <div class="flex-end" style="justify-content: center">
+      <h2 class="optionsTitle" data-i18n="operation"></h2>
+      <p class="section-desc">配置可备份到本地；危险操作会清空抓取记录或恢复全部默认设置，执行前会二次确认。</p>
+
+      <div class="card">
+        <h3 class="card-title">备份与恢复</h3>
+        <div class="action-row">
           <input id="importOptionsFile" type="file" class="hide" />
           <button type="button" id="exportOptions" data-i18n="exportSettings"></button>
           <button type="button" id="importOptions" data-i18n="importConfiguration"></button>
-          <button type="button" id="ClearData" data-i18n="clearCapturedData"></button>
-          <button type="button" id="ResetAllOption" data-i18n="resetAllSettings"></button>
+        </div>
+      </div>
+
+      <div class="card card-danger">
+        <h3 class="card-title">危险操作</h3>
+        <p class="card-hint">会清除抓取记录或重置全部设置，操作后页面自动刷新。</p>
+        <div class="action-row">
+          <button type="button" id="ClearData" class="btn-danger" data-i18n="clearCapturedData"></button>
+          <button type="button" id="ResetAllOption" class="btn-danger" data-i18n="resetAllSettings"></button>
           <button type="button" id="extensionReload" data-i18n="restartExtension"></button>
         </div>
       </div>
@@ -846,24 +1209,74 @@
 
     <!-- 关于 -->
     <section id="anchorAbout">
-      <h1 class="optionsTitle" data-i18n="about"></h1>
-      <div class="optionBox">
-        <div class="item">
-          <div id="version"></div>
+      <h2 class="optionsTitle" data-i18n="about"></h2>
+      <p class="section-desc">内核来自猫抓；资源库、迁移、索引、桌面体验与设置页重设计，是本 fork 自己做的增量。</p>
+
+      <div class="card about-hero">
+        <div class="about-identity">
+          <span class="about-mark" aria-hidden="true">VR</span>
+          <div class="about-name">
+            <h3>苏哥的钓鱼竿</h3>
+            <p id="version"></p>
+          </div>
         </div>
-        <div class="item">
-          <span data-i18n-outer="documentation"></span>:
-          <a href="https://cat-catch.94cat.com/" target="_blank" id="docs">https://cat-catch.94cat.com/</a>
+        <p class="about-lede">把网页里的视频、图片和音频抓到本地，按「平台 / 博主 / 类型」自动归档，再用索引管理起来。私有自用，不上架、不分发。</p>
+        <div class="about-meta">
+          <span>作者 / 维护：Sunny</span>
+          <span>代号：Video Rod</span>
+          <span>形态：Chrome MV3</span>
+          <span>起点：2026-10-17</span>
+          <span>自用 · 不分发</span>
         </div>
-        <div class="item">
-          Github:
-          <a href="https://github.com/xifangczy/cat-catch" target="_blank">https://github.com/xifangczy/cat-catch</a>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">上游与许可</h3>
+        <p class="about-text">嗅探与下载内核来自 <a href="https://github.com/xifangczy/cat-catch" target="_blank">猫抓 cat-catch</a>（作者 xifangczy），整体遵循 GPL-3.0，本仓库保留上游 LICENSE 与署名。上游文档：<a href="https://cat-catch.94cat.com/" target="_blank" id="docs">cat-catch.94cat.com</a>。</p>
+        <p class="about-muted">网页媒体嗅探、m3u8 / 直链下载、图片批量扫描等基础能力属于上游；下面这些是本 fork 的增量。</p>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">本 fork 做了什么</h3>
+        <ul class="about-list">
+          <li><strong>本地资源库主线（S0–S2）</strong>：三段中文目录、下载完成自动入库、迁移三形态（预演 / 复制 / 校验 / 回滚）、索引三源（下载记录 / 快照 / 全量扫描）与缺失校对。</li>
+          <li><strong>桌面端下载链路</strong>：文件名保护（绕开 Chromium 579563）、X 推文内联下载、右键秒存与快捷键、面板浅色化。</li>
+          <li><strong>设置页重设计</strong>：18 个平铺分区收敛为 4 组导航，重做卡片层级、响应式与深色模式。</li>
+          <li><strong>资源库浏览页</strong>：概览 KPI / 平台分布 / 博主速览，全宽大图网格 + 真表格、筛选搜索与懒生成缩略图。</li>
+          <li><strong>查看器</strong>：图片缩放/拖拽、信息面板、缩略图带；视频自绘控件与键盘操作（↑↓ 切条、←→ ±5s、Shift ±30s、空格、连播）。</li>
+          <li><strong>删除与回收站</strong>：右键 / <code>⋯</code> 菜单、软删除到 <code>_回收站</code>、单条/整批恢复、彻底删除、清空与操作日志。</li>
+          <li><strong>图片悬停下载</strong>：调研、方案 v1.2 与可交互原型（实现待排期）。</li>
+          <li><strong>工程化</strong>：文档先行、每步验收；8 套 CDP 自动化回归，覆盖 246 条断言。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">开发手记</h3>
+        <ol class="about-timeline">
+          <li><time datetime="2026-10-17">2026-10-17</time><span>M1–M8 桌面端改造：浅色面板、下载管线、B站 / YouTube 适配、文件名保护、X 按钮。</span></li>
+          <li><time datetime="2026-10-24">2026-10-24</time><span>资源库 S0–S2：路径引擎 → 自动入库 → 迁移与回滚 → 索引三源与快照。</span></li>
+          <li><time datetime="2026-10-24">2026-10-24</time><span>设置页重设计：从 18 个平铺分区到 4 组导航，补上响应式与深色模式。</span></li>
+        </ol>
+        <div class="about-stats" aria-label="项目数据">
+          <div class="about-stat"><b>33</b><span>架构决策 ADR</span></div>
+          <div class="about-stat"><b>246</b><span>自动化断言</span></div>
+          <div class="about-stat"><b>8</b><span>回归套件</span></div>
+          <div class="about-stat"><b>0</b><span>控制台错误</span></div>
         </div>
       </div>
     </section>
+      </div>
+    </main>
   </div>
 
   <script src="lib/base64.js" defer></script>
+  <script src="js/library/path.js" defer></script>
+  <script src="js/library/db.js" defer></script>
+  <script src="js/library/indexer.js" defer></script>
+  <script src="js/library/migrate.js" defer></script>
+  <script src="js/lib-image-util.js" defer></script>
+  <script src="js/library/settings.js" defer></script>
+  <script src="js/library/migrate-ui.js" defer></script>
   <script src="js/vr-download-hook.js" defer></script>
   <script src="js/options.js" defer></script>
   <script src="js/i18n.js" defer></script>

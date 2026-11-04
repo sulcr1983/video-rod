@@ -1,5 +1,9 @@
 # video-rod CDP 测试公用客户端
 # 供 cdp-m1-test.py / cdp-m2-test.py 等复用
+#
+# 标签生命周期：脚本用 Target.createTarget 建的标签全部登记在 cdp.created 里，
+# 进程退出（含 sys.exit / 异常）时由 atexit 统一关闭，避免测试跑完留下一堆标签页。
+import atexit
 import json
 import os
 import urllib.request
@@ -13,10 +17,14 @@ _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 class Cdp:
     def __init__(self, url=None):
         ver = json.load(_opener.open((url or CDP_URL) + "/json/version"))
+        # timeout 拉长到 120s：截图/大批量偶发慢响应，60s 会整条连接挂死
         self.ws = create_connection(ver["webSocketDebuggerUrl"],
-                                    suppress_origin=True, timeout=60)
+                                    suppress_origin=True, timeout=120)
         self.mid = 0
         self.events = []
+        self.created = []          # 本进程自建的标签，退出时统一关闭
+        self._closed = False
+        atexit.register(self.close_created)
 
     def send(self, method, params=None, session=None):
         self.mid += 1
@@ -32,8 +40,31 @@ class Cdp:
             if r.get("id") == self.mid:
                 if "error" in r:
                     raise RuntimeError(f"{method}: {r['error']}")
-                return r.get("result", {})
+                res = r.get("result", {})
+                # 自动登记自建标签（脚本无需逐个调 close）
+                if method == "Target.createTarget" and res.get("targetId"):
+                    self.created.append(res["targetId"])
+                return res
             self.events.append(r)
+
+    def close_created(self):
+        """关闭本进程自建的全部标签。幂等；浏览器已关时静默跳过。"""
+        if self._closed:
+            return 0
+        self._closed = True
+        closed = 0
+        for tid in list(self.created):
+            try:
+                self.send("Target.closeTarget", {"targetId": tid})
+                closed += 1
+            except Exception:
+                pass          # 浏览器退出 / 标签已被脚本自己关掉
+        self.created = []
+        try:
+            self.ws.close()
+        except Exception:
+            pass
+        return closed
 
     def eval(self, expr, session, await_promise=True):
         r = self.send("Runtime.evaluate", {
@@ -48,6 +79,42 @@ class Cdp:
     def attach(self, target_id):
         return self.send("Target.attachToTarget",
                          {"targetId": target_id, "flatten": True})["sessionId"]
+
+    def wait_js(self, session, expr, timeout=8.0, interval=0.05):
+        """轮询直到表达式返回真值，返回该值；超时返回 None。
+        用来替代「等页面加载 time.sleep(2.0)」这类固定等待——
+        条件一满足就往下走，通常能省掉一半以上的空等。"""
+        import time as _t
+        deadline = _t.time() + timeout
+        last = None
+        while _t.time() < deadline:
+            last = self.eval(expr, session)
+            if last and not (isinstance(last, dict) and "__error" in last):
+                return last
+            _t.sleep(interval)
+        return None
+
+    def wait_ready(self, session, timeout=10.0):
+        """等到 document.readyState === 'complete'（比固定 sleep 快且稳）。"""
+        return bool(self.wait_js(session, "document.readyState === 'complete'", timeout))
+
+    def wait_selector(self, session, selector, timeout=8.0):
+        """等到选择器出现。"""
+        return self.wait_js(
+            session,
+            "!!document.querySelector(%s)" % json.dumps(selector),
+            timeout)
+
+    def navigate(self, session, url, timeout=12.0):
+        """导航并等加载完成，替代 sleep + 盲等。"""
+        self.send("Page.navigate", {"url": url}, session)
+        self.wait_ready(session, timeout)
+        return True
+
+    def reload(self, session, timeout=12.0):
+        self.send("Page.reload", {"ignoreCache": True}, session)
+        self.wait_ready(session, timeout)
+        return True
 
     def targets(self):
         return self.send("Target.getTargets")["targetInfos"]
