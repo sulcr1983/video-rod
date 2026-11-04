@@ -25,7 +25,7 @@
   --sh-1:0 1px 2px rgba(16,24,40,.04);
   --sh-2:0 2px 6px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
   --sh-3:0 12px 32px rgba(16,24,40,.12),0 2px 8px rgba(16,24,40,.06);
-  --sidebar:264px; --info:344px;
+  --sidebar:264px; --info:360px;
   --ease:cubic-bezier(.22,.61,.36,1);
 }
 html[data-theme="dark"]{
@@ -182,6 +182,10 @@ main{min-width:0;padding:0 28px 48px;max-width:1720px;width:100%;margin:0 auto}
 .btn.small{padding:6px 9px;font-size:11px}
 .btn.ghost{background:transparent;border-color:transparent;box-shadow:none}
 .btn.ghost:hover{background:var(--surface-2)}
+.btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 34%,var(--line))}
+.btn.danger:hover{background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 55%,var(--line));color:var(--danger)}
+.btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 34%,var(--line))}
+.btn.danger:hover{background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 55%,var(--line));color:var(--danger)}
 .btn.danger{color:var(--danger);border-color:var(--line);background:var(--surface)}
 .btn.danger:hover{background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 30%,var(--line))}
 .btn.is-on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 35%,var(--line));color:var(--accent-ink)}
@@ -845,9 +849,11 @@ a.pi-row:hover .go{opacity:1}
 .pi-item dt{flex:0 0 58px;font-size:10.5px;color:var(--muted);margin:0}
 .pi-item dd{
   flex:1;min-width:0;margin:0;font-size:11.5px;color:var(--ink);font-weight:550;
-  word-break:break-all;line-height:1.55;
+  line-height:1.55;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .pi-item dd.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;font-weight:400;color:var(--ink-2)}
+/* 副行：直链这类超长值允许折两行，但与主行分开，不挤压相邻行 */
+.pi-item .sub{flex-basis:100%;font-size:9.5px;color:var(--faint);margin-top:1px}
 .pi-item dd .go{margin-left:4px;color:var(--accent);opacity:.6;font-size:10px}
 a.pi-item{cursor:pointer;border-radius:4px;text-decoration:none}
 a.pi-item:hover{background:var(--surface-2)}
@@ -863,6 +869,94 @@ a.pi-item:hover dd .go{opacity:1}
 .pi-item .tag-warn{flex:0 0 auto;color:var(--danger);opacity:.8;display:grid;place-items:center}
 .pi-item .tag-warn .i{width:10px;height:10px}
 .pi-empty{font-size:11px;color:var(--faint);padding:2px 0}
+/* ---------- 回收站抽屉 ---------- */
+.drawer-mask{
+  position:fixed;inset:0;z-index:78;background:rgba(10,14,20,.42);
+  opacity:0;pointer-events:none;transition:opacity .18s var(--ease);
+}
+.drawer-mask.on{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;z-index:79;width:440px;max-width:92vw;
+  background:var(--surface);border-left:1px solid var(--line);
+  box-shadow:-18px 0 48px rgba(16,24,40,.14);
+  display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .22s var(--ease);
+}
+.drawer.on{transform:none}
+.dw-head{
+  display:flex;align-items:center;gap:9px;padding:14px 16px;
+  border-bottom:1px solid var(--line-2);flex:0 0 auto;
+}
+.dw-head h3{margin:0;font-size:13px;font-weight:660;letter-spacing:-.2px}
+.dw-head .cnt{
+  font-size:10px;font-weight:650;color:var(--muted);background:var(--surface-2);
+  padding:1px 7px;border-radius:var(--r-full);font-variant-numeric:tabular-nums;
+}
+.dw-head .close{margin-left:auto;width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--muted)}
+.dw-head .close:hover{background:var(--surface-2);color:var(--ink)}
+.dw-head .close .i{width:14px;height:14px}
+.dw-note{
+  padding:9px 16px;font-size:10.5px;color:var(--muted);line-height:1.62;
+  border-bottom:1px solid var(--line-2);flex:0 0 auto;
+}
+.dw-list{flex:1;overflow-y:auto;padding:6px 8px}
+.dw-item{
+  display:flex;align-items:center;gap:10px;padding:8px;border-radius:var(--r);
+  transition:background .12s;
+}
+.dw-item:hover{background:var(--surface-2)}
+.dw-thumb{
+  width:52px;height:36px;flex:0 0 52px;border-radius:6px;overflow:hidden;position:relative;
+  background:var(--surface-3);
+}
+.dw-thumb .cover{position:absolute;inset:0}
+.dw-body{flex:1;min-width:0}
+.dw-name{
+  font-size:11.5px;font-weight:550;color:var(--ink);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;
+}
+.dw-path{
+  font-family:ui-monospace,Consolas,monospace;font-size:9.5px;color:var(--faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;
+}
+.dw-acts{display:flex;gap:3px;flex:0 0 auto}
+.dw-acts button{
+  width:24px;height:24px;border-radius:5px;display:grid;place-items:center;
+  color:var(--muted);transition:all .12s;
+}
+.dw-acts button:hover{background:var(--surface-3);color:var(--ink)}
+.dw-acts button.del:hover{background:var(--danger-soft);color:var(--danger)}
+.dw-acts .i{width:13px;height:13px}
+.dw-foot{
+  flex:0 0 auto;padding:11px 16px;border-top:1px solid var(--line-2);
+  display:flex;gap:7px;align-items:center;
+}
+.dw-foot .spacer{flex:1}
+.dw-empty{padding:40px 16px;text-align:center;color:var(--faint);font-size:11.5px}
+.dw-empty .i{width:28px;height:28px;opacity:.4;margin-bottom:8px}
+
+/* ---------- 右键菜单 ---------- */
+.ctx{
+  position:fixed;z-index:90;min-width:186px;padding:5px;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh-3);opacity:0;pointer-events:none;transform:scale(.97);
+  transform-origin:top left;transition:opacity .1s,transform .1s;
+}
+.ctx.on{opacity:1;pointer-events:auto;transform:none}
+.ctx button{
+  display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;
+  border-radius:6px;font-size:11.5px;font-weight:520;color:var(--ink);text-align:left;
+}
+.ctx button:hover{background:var(--surface-2);color:var(--ink)}
+.ctx button .i{width:13px;height:13px;color:var(--ink-2);flex:0 0 13px;opacity:.75}
+.ctx button:hover .i{opacity:1}
+.ctx button .kbd{margin-left:auto;font-size:9.5px;color:var(--faint)}
+.ctx hr{margin:4px 6px;border:none;border-top:1px solid var(--line-2)}
+.ctx button.danger{color:var(--danger)}
+.ctx button.danger .i{color:var(--danger);opacity:.85}
+.ctx button.danger:hover{background:var(--danger-soft);color:var(--danger)}
+.ctx button.danger:hover .i{color:var(--danger);opacity:1}
+
 /* ---------- 快捷键面板 ---------- */
 .keysheet{
   position:fixed;inset:0;z-index:110;background:rgba(8,10,14,.62);
@@ -895,8 +989,14 @@ kbd{
 
 .pv-film{
   height:92px;flex:0 0 92px;display:flex;align-items:center;gap:8px;
-  padding:0 16px;overflow-x:auto;background:var(--surface);border-top:1px solid var(--line);
+  padding:0 16px;overflow-x:auto;overflow-y:hidden;
+  background:var(--surface);border-top:1px solid var(--line);
+  scrollbar-width:thin;scrollbar-color:var(--surface-3) transparent;
 }
+.pv-film::-webkit-scrollbar{height:6px}
+.pv-film::-webkit-scrollbar-track{background:transparent}
+.pv-film::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:99px}
+.pv-film::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 .film{
   width:96px;height:66px;flex:0 0 96px;position:relative;border-radius:8px;overflow:hidden;
   border:2px solid transparent;background:var(--surface-2);transition:border-color .15s,transform .15s;
@@ -1019,6 +1119,10 @@ kbd{
       <div class="meter"><i id="meterBar"></i></div>
       <div class="sf-row"><span>索引</span><span>_index/index.json</span></div>
       <div class="sf-actions">
+        <button class="btn small" id="trashBtn">
+          <svg class="i" style="width:12px;height:12px"><use href="#i-trash-2"/></svg>
+          回收站 <b id="trashCnt">3</b>
+        </button>
         <button class="btn small" id="resetBtn">重置目录</button>
       </div>
     </div>
@@ -1079,6 +1183,7 @@ kbd{
         <button class="chip" data-plat="xiaohongshu" style="--pc:#FF2442"><span class="dot"></span>小红书</button>
         <button class="chip" data-plat="douyin" style="--pc:#00B8B8"><span class="dot"></span>抖音</button>
         <button class="chip" data-plat="weibo" style="--pc:#FF6B35"><span class="dot"></span>微博</button>
+        <button class="chip" data-plat="youtube" style="--pc:#FF0000"><span class="dot"></span>YouTube</button>
       </div>
       <div class="tools">
         <span class="select">
@@ -1207,6 +1312,8 @@ kbd{
           <div class="pi-item"><dt id="pvThirdK">时长</dt><dd id="pvThirdV">01:24</dd></div>
           <div class="pi-item"><dt>格式</dt><dd id="pvFmt">MP4</dd></div>
           <div class="pi-item"><dt>保存时间</dt><dd id="pvSaved">—</dd></div>
+          <div class="pi-item"><dt>文件名</dt><dd class="mono" id="pvFileName">—</dd></div>
+          <div class="pi-item hidden" id="pvStateRow"><dt>状态</dt><dd id="pvState" style="color:var(--danger)">—</dd></div>
           <div class="pi-item"><dt>路径</dt><dd class="mono" id="pvPath">douyin/qqdd/videos/c2.mp4</dd>
             <button class="inline-copy" id="pvPathCopy" title="复制完整路径"><svg class="i"><use href="#i-copy"/></svg></button></div>
         </dl>
@@ -1297,7 +1404,38 @@ kbd{
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<!-- 回收站抽屉 -->
+  <div class="drawer-mask" id="dwMask"></div>
+  <aside class="drawer" id="drawer" aria-label="回收站">
+    <div class="dw-head">
+      <svg class="i" style="width:15px;height:15px;color:var(--muted)"><use href="#i-trash-2"/></svg>
+      <h3>回收站</h3>
+      <span class="cnt" id="dwCnt">3</span>
+      <button class="close" id="dwClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dw-note">删除的文件放在这里，恢复后会回到原来的相对路径。回收站只记路径，不占空间。</div>
+    <div class="dw-list" id="dwList"></div>
+    <div class="dw-foot">
+      <button class="btn small" id="dwRestoreAll">全部恢复</button>
+      <span class="spacer"></span>
+      <button class="btn small danger" id="dwEmpty">清空回收站</button>
+    </div>
+  </aside>
+
+  <!-- 右键菜单 -->
+  <div class="ctx" id="ctx" role="menu">
+    <button data-act="preview"><svg class="i"><use href="#i-maximize"/></svg>预览<span class="kbd">Enter</span></button>
+    <button data-act="open"><svg class="i"><use href="#i-folder-open"/></svg>在文件中打开</button>
+    <button data-act="copy"><svg class="i"><use href="#i-copy"/></svg>复制路径</button>
+    <button data-act="star"><svg class="i"><use href="#i-tag"/></svg>加星标</button>
+    <hr>
+    <button data-act="rename"><svg class="i"><use href="#i-pencil"/></svg>重命名<span class="kbd">F2</span></button>
+    <button data-act="reveal"><svg class="i"><use href="#i-folder-input"/></svg>移动…</button>
+    <hr>
+    <button data-act="trash" class="danger"><svg class="i"><use href="#i-trash-2"/></svg>移到回收站<span class="kbd">Del</span></button>
+  </div>
+
+  <div class="toast" id="toast"></div>
 <button class="themebtn" id="themeBtn" title="切换暗色"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
 
 <script>
@@ -1307,6 +1445,7 @@ const PLAT = {
   xiaohongshu:{name:'小红书',dot:'#FF2442',label:'小红书'},
   douyin:{name:'抖音',dot:'#00B8B8',label:'抖音'},
   weibo:{name:'微博',dot:'#FF6B35',label:'微博'},
+  youtube:{name:'YouTube',dot:'#FF0000',label:'YouTube'},
 };
 const FILES = [
   {id:'x/NASA/videos/a1',plat:'x',author:'NASA',authorId:'NASA',workId:'1847231904556712',source:'download',dlAt:'2026-11-04 15:42',title:'Artemis II 发射演练 4K 实拍：夜间推进剂加注全过程',kind:'video',size:184.6,dur:'00:42',h:212,tags:['太空','4K']},
@@ -1324,6 +1463,8 @@ const FILES = [
   {id:'douyin/qqdd/videos/c2',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412884901234567891',secUid:'MS4wLjABAAAA_x8',source:'download',dlAt:'2026-11-03 21:03',title:'实验室里最危险的 5 个瞬间（上）',kind:'video',size:57.1,dur:'01:24',h:302},
   {id:'weibo/tang/videos/d1',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',source:'inferred',title:'川西自驾 day3：翻越折多山，云海在脚下',kind:'video',size:29.4,dur:'02:06',h:178},
   {id:'weibo/tang/images/d2',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',source:'inferred',title:'折多山垭口日出，手机直出未修',kind:'image',size:4.6,h:36},
+  {id:'youtube/Kurzgesagt/videos/dQw4w9WgXcQ',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'dQw4w9WgXcQ',source:'download',dlAt:'2026-11-04 16:20',title:'The Egg — A Short Story',kind:'video',size:412.8,dur:'07:54',h:2,tags:['科普','4K'],playlist:'Philosophy'},
+  {id:'youtube/Kurzgesagt/videos/k9Yx7n2aQqE',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'k9Yx7n2aQqE',source:'download',dlAt:'2026-11-04 16:22',title:'What If You Detonated a Nuclear Bomb In The Marianas Trench',kind:'video',size:298.4,dur:'06:31',h:198,playlist:'Philosophy'},
 ];
 // 补到 27 条，并**交错插回**，避免同一条素材连续出现（看起来像 bug）
 (() => {
@@ -1413,7 +1554,7 @@ function card(f){
         <span class="size">${fmt(f.size)}</span>
       </div>
       <span class="platcell" style="--pc:${p.dot}">${p.label}</span>
-      <span class="timecell">${f.time||'10-19'}</span>
+      <span class="timecell">${esc(shortDate(f.savedAt || f.dlAt))}</span>
       <div class="pathline">${esc(f.id)}</div>
       ${tags?`<div class="tagrow">${tags}</div>`:''}
     </div>
@@ -1522,11 +1663,32 @@ function srcLinks(f){
       media: f.workId ? 'https://sns-video-bd.xhscdn.com/' + f.workId + '.mp4' : ''
     };
     case 'weibo': return { author: a ? 'https://weibo.com/n/' + a : '', page: '', media: '' };
+    case 'youtube': return {
+      /* 频道 ID 以 UC 开头用 channel/，否则当 @handle；yt-dlp 的 uploader_id 多为 @handle */
+      author: a ? (a.slice(0, 2) === 'UC'
+        ? 'https://www.youtube.com/channel/' + a
+        : 'https://www.youtube.com/@' + a.replace(/^@/, '')) : '',
+      page: f.workId ? 'https://www.youtube.com/watch?v=' + f.workId : '',
+      media: f.workId ? 'https://rr3---sn-' + f.workId.toLowerCase() + '.googlevideo.com/videoplayback' : ''
+    };
     default: return {};
   }
 }
+/* 列表「保存」列：有真实时间显示 MM-DD，没有就留空，不编日期 */
+function shortDate(v){
+  if (!v) return '—';
+  const m = String(v).match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[2] + '-' + m[3];
+  const m2 = String(v).match(/(\d{2})-(\d{2})/);
+  return m2 ? m2[0] : '—';
+}
 function shortUrl(u){
-  try { const x = new URL(u); return x.host + (x.pathname.length > 34 ? x.pathname.slice(0, 34) + '…' : x.pathname); }
+  try {
+    const x = new URL(u);
+    /* 路径短时保留 query：YouTube watch?v= / 小红书 xsec_token= 少了就打不开 */
+    const p = x.pathname + (x.search && x.pathname.length < 26 ? x.search : '');
+    return x.host + (p.length > 38 ? p.slice(0, 38) + '…' : p);
+  }
   catch (e) { return u; }
 }
 function paintSrc(f){
@@ -1547,6 +1709,7 @@ function paintSrc(f){
 
   $('#pvSrcPlat').textContent = PLAT[f.plat].label + (f.plat === 'x' ? ' / Twitter' : '');
   $('#pvWorkId').textContent = f.workId || '—';
+  $('#pvWorkId').title = f.workId || '';
 
   const aRow = $('#pvAuthorRow');
   $('#pvAuthor').innerHTML = esc(f.author || '未知') +
@@ -1559,16 +1722,36 @@ function paintSrc(f){
   else { top.style.display = 'none'; }
 
   const pRow = $('#pvPageRow');
-  if (s.page) { pRow.setAttribute('href', s.page); pRow.style.display = ''; $('#pvPageVal').textContent = shortUrl(s.page); }
+  if (s.page) {
+    pRow.setAttribute('href', s.page); pRow.style.display = '';
+    $('#pvPageVal').textContent = shortUrl(s.page);
+    $('#pvPageVal').title = s.page;
+  }
   else { pRow.style.display = 'none'; }
 
   const mRow = $('#pvMediaRow');
-  if (s.media) { mRow.style.display = ''; $('#pvMediaVal').textContent = shortUrl(s.media); }
+  if (s.media) {
+    mRow.style.display = '';
+    $('#pvMediaVal').textContent = shortUrl(s.media);
+    $('#pvMediaVal').title = s.media;
+  }
   else { mRow.style.display = 'none'; }
 
   $('#pvTimeVal').textContent = f.dlAt || '未记录';
   $('#pvSrcMiss').classList.toggle('hidden', !inf);
-  $('#pvPath').textContent = f.id.replace(/~\d+$/, '');
+  const rel = f.id.replace(/~\d+$/, '');
+  $('#pvPath').textContent = rel;
+  $('#pvPath').title = rel;
+  /* 文件名：最后一段；mock 数据无扩展名时按类型补，真实数据直接用 relPath 末段 */
+  const base = rel.split('/').pop();
+  const extMap = { video: '.mp4', image: '.jpg', anim: '.' + String(f.fmt || 'gif').toLowerCase() };
+  const fname = /\.\w{2,5}$/.test(base) ? base : base + (extMap[f.kind] || '');
+  $('#pvFileName').textContent = fname;
+  $('#pvFileName').title = fname;
+  /* 状态只在文件缺失时出现，正常不占行 */
+  const missing = f.state === 'missing';
+  $('#pvStateRow').classList.toggle('hidden', !missing);
+  if (missing) { $('#pvState').textContent = '文件缺失（路径已失效）'; }
 }
 $('#pvCopyBtn').addEventListener('click', async e => {
   e.preventDefault(); e.stopPropagation();
@@ -1833,8 +2016,109 @@ $('#pvPathCopy').addEventListener('click', async () => {
   catch (err) { toast('复制失败'); }
 });
 
+/* ============================================================
+   回收站抽屉 + 右键菜单（对应代码里的 libTrashDrawer / libCtxMenu）
+   ============================================================ */
+const TRASH = [
+  {id:'xiaohongshu/gx/images/b9',plat:'xiaohongshu',author:'小高今天找到工作了么',title:'旧版阳台改造草图（废弃）',kind:'image',size:2.1,h:96,delAt:'11-03 19:22'},
+  {id:'douyin/qqdd/videos/c7',plat:'douyin',author:'奇趣蛋蛋',title:'跳跳糖实验 失败重拍',kind:'video',size:38.6,dur:'00:47',h:250,delAt:'11-02 10:05'},
+  {id:'weibo/tang/videos/d5',plat:'weibo',author:'唐十七呀',title:'折多山堵车三小时（无内容）',kind:'video',size:12.2,dur:'00:38',h:60,delAt:'11-01 21:40'},
+];
+
+function renderTrash(){
+  $('#trashCnt').textContent = TRASH.length;
+  $('#dwCnt').textContent = TRASH.length;
+  if (!TRASH.length) {
+    $('#dwList').innerHTML = '<div class="dw-empty"><svg class="i"><use href="#i-trash-2"/></svg><div>回收站是空的</div></div>';
+    return;
+  }
+  $('#dwList').innerHTML = TRASH.map((f, i) => {
+    return `<div class="dw-item" data-ti="${i}">
+      <div class="dw-thumb"><div class="cover" style="--h:${f.h}"></div></div>
+      <div class="dw-body">
+        <div class="dw-name" title="${esc(f.title)}">${esc(f.title)}</div>
+        <div class="dw-path" title="${esc(f.id)}">${esc(f.id)} · ${f.delAt} 删除</div>
+      </div>
+      <div class="dw-acts">
+        <button data-restore="${i}" title="恢复"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+        <button data-purge="${i}" class="del" title="彻底删除"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openDrawer(){ renderTrash(); $('#drawer').classList.add('on'); $('#dwMask').classList.add('on'); }
+function closeDrawer(){ $('#drawer').classList.remove('on'); $('#dwMask').classList.remove('on'); }
+
+$('#trashBtn').addEventListener('click', openDrawer);
+$('#dwClose').addEventListener('click', closeDrawer);
+$('#dwMask').addEventListener('click', closeDrawer);
+$('#dwList').addEventListener('click', e => {
+  const r = e.target.closest('[data-restore]'), g = e.target.closest('[data-purge]');
+  if (r) {
+    const f = TRASH.splice(+r.dataset.restore, 1)[0];
+    FILES.push(f); renderTrash(); render(); toast('已恢复：' + f.title.slice(0, 12));
+  } else if (g) {
+    TRASH.splice(+g.dataset.purge, 1); renderTrash();
+    toast('已彻底删除（不可恢复）');
+  }
+});
+$('#dwRestoreAll').addEventListener('click', () => {
+  if (!TRASH.length) { toast('回收站是空的'); return; }
+  const n = TRASH.length;
+  while (TRASH.length) FILES.push(TRASH.pop());
+  renderTrash(); render(); toast('已恢复 ' + n + ' 项');
+});
+$('#dwEmpty').addEventListener('click', () => {
+  if (!TRASH.length) { toast('回收站是空的'); return; }
+  const n = TRASH.length;
+  TRASH.length = 0; renderTrash(); toast('已清空 ' + n + ' 项');
+});
+
+/* ---------- 右键菜单 ---------- */
+let ctxFile = null;
+function closeCtx(){ $('#ctx').classList.remove('on'); }
+
+document.addEventListener('contextmenu', e => {
+  const card = e.target.closest('.card');
+  if (!card) { closeCtx(); return; }
+  e.preventDefault();
+  ctxFile = FILES.find(f => f.id === card.dataset.id) || null;
+  if (!ctxFile) return;
+  const m = $('#ctx');
+  m.classList.add('on');
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.min(e.clientX, innerWidth - w - 8) + 'px';
+  m.style.top = Math.min(e.clientY, innerHeight - h - 8) + 'px';
+});
+
+$('#ctx').addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b || !ctxFile) return;
+  const act = b.dataset.act, f = ctxFile;
+  closeCtx();
+  if (act === 'preview') {
+    openPreview(f);
+  } else if (act === 'copy') {
+    navigator.clipboard.writeText(f.id).then(() => toast('路径已复制')).catch(() => toast('复制失败'));
+  } else if (act === 'star') {
+    f.starred = !f.starred; render(); toast(f.starred ? '已加星标' : '已取消星标');
+  } else if (act === 'trash') {
+    const i = FILES.findIndex(x => x.id === f.id);
+    if (i < 0) return;
+    FILES.splice(i, 1);
+    TRASH.unshift(Object.assign({}, f, {delAt: '刚刚'}));
+    renderTrash(); render(); toast('已移到回收站');
+  } else {
+    toast('「' + b.textContent.trim() + '」在原型中未启用');
+  }
+});
+
+document.addEventListener('click', e => { if (!e.target.closest('#ctx')) closeCtx(); });
+document.addEventListener('scroll', closeCtx, true);
+
 /* ---------- 启动 ---------- */
-renderTree(); render();
+renderTree(); render(); renderTrash(); renderTrash();
 </script>
 </body>
 </html>
