@@ -53,6 +53,7 @@
 | N-06 | 远程 HTTP Range 流式预览 | 不做，本地媒体库不需要 | BUILD-PLAN M11 §4.4 |
 | N-07 | srcset 列出全部尺寸 | 不做，只取 `currentSrc` | BUILD-PLAN M5 |
 | N-08 | info/librqbit/mcp 等 OmniGet 桌面端能力 | 架构不成立（MV3 无 fs、无常驻进程） | `deliverables/reviews/2026-11-04-omniget-review.md` |
+| N-09 | **对外发布扩展**（2026-11-04 拍板暂不发布，先自用） | 五道关已评估：GPL 开源、大会员/YT 功能裁剪、商店审核、脱敏（81 文件含个人称呼）、维护成本。路线图与脱敏清单已成文，触发条件满足时按文档执行 | `docs/RELEASE-FEASIBILITY.md` |
 
 ---
 
