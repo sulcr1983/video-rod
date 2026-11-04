@@ -1257,6 +1257,44 @@ a.pi-item:hover dd .go{opacity:1}
 .preview.vt-morph .pv-info,
 .preview.vt-morph .pv-film{animation:none}
 
+/* ---------- 倍速选择浮层（视频 / 动图共用） ---------- */
+.ratepop{
+  position:absolute;z-index:12;width:200px;padding:8px;
+  border-radius:11px;background:rgba(18,22,30,.96);
+  border:1px solid rgba(255,255,255,.13);
+  box-shadow:0 18px 48px rgba(0,0,0,.55);
+  backdrop-filter:blur(18px);
+  opacity:0;pointer-events:none;transform:translateY(5px);
+  transition:opacity .14s var(--ease),transform .14s var(--ease);
+}
+.ratepop.on{opacity:1;pointer-events:auto;transform:none}
+.ratepop .rp-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:1px 3px 7px;font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:rgba(255,255,255,.45);font-weight:700;
+}
+.ratepop .rp-head b{color:rgba(255,255,255,.72);letter-spacing:0;font-size:9.5px}
+.ratepop .rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.ratepop .rp-grid button{
+  display:flex;align-items:center;justify-content:space-between;gap:4px;
+  padding:7px 9px;border-radius:6px;
+  font-size:11.5px;font-weight:600;color:rgba(255,255,255,.86);
+  font-variant-numeric:tabular-nums;
+  transition:background .1s,color .1s;
+}
+.ratepop .rp-grid button:hover{background:rgba(255,255,255,.13);color:#fff}
+.ratepop .rp-grid button.cur{background:rgba(51,124,204,.3);color:#fff}
+.ratepop .rp-grid button .tick{width:11px;height:11px;opacity:0}
+.ratepop .rp-grid button.cur .tick{opacity:.95}
+.ratepop .rp-tip{
+  padding:7px 3px 1px;font-size:10px;color:rgba(255,255,255,.52);line-height:1.55;
+}
+.ratepop .rp-tip kbd{
+  font:600 9.5px/1 ui-monospace,Consolas,monospace;
+  padding:1px 3px;border-radius:3px;
+  background:rgba(255,255,255,.14);color:rgba(255,255,255,.85);
+}
+
 /* ---------- 快捷键面板 ---------- */
 .keysheet{
   position:fixed;inset:0;z-index:110;background:rgba(8,10,14,.62);
@@ -1597,6 +1635,13 @@ kbd{
         <button class="vbtn txt" id="gRate" title="倍速">1×</button>
       </div>
 
+      <!-- 倍速选择：点控件条的 1× 弹出 -->
+      <div class="ratepop" id="ratePop" role="menu" aria-label="播放速度">
+        <div class="rp-head"><span>播放速度</span><b id="rpNow">1×</b></div>
+        <div class="rp-grid" id="rpGrid"></div>
+        <div class="rp-tip">也可用 <kbd>&gt;</kbd> 快一档 <kbd>&lt;</kbd> 慢一档</div>
+      </div>
+
       <button class="pv-arrow pv-prev" id="pvPrev"><svg class="i"><use href="#i-chevron-left"/></svg></button>
       <button class="pv-arrow pv-next" id="pvNext"><svg class="i"><use href="#i-chevron-right"/></svg></button>
     </div>
@@ -1714,7 +1759,7 @@ kbd{
         <div class="ks-row"><span>逐帧（暂停时）</span><span><kbd>,</kbd><kbd>.</kbd></span></div>
         <div class="ks-row"><span>音量 ±5%</span><span><kbd>↑</kbd><kbd>↓</kbd></span></div>
         <div class="ks-row"><span>静音</span><span><kbd>M</kbd></span></div>
-        <div class="ks-row"><span>倍速 快 / 慢</span><span><kbd>&gt;</kbd><kbd>&lt;</kbd></span></div>
+        <div class="ks-row"><span>倍速 快 / 慢（或点 <b>1×</b> 选档）</span><span><kbd>&gt;</kbd><kbd>&lt;</kbd></span></div>
         <div class="ks-row"><span>跳到 10%–90%</span><span><kbd>0</kbd>–<kbd>9</kbd></span></div>
         <div class="ks-row"><span>画中画</span><span><kbd>P</kbd></span></div>
       </div>
@@ -1870,7 +1915,7 @@ const FILES = [
 })();
 
 /* ---------- 状态 ---------- */
-const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[],autoplay:true,loopEnd:false};
+const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[],autoplay:true,loopEnd:false,rate:1,vTime:0};
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = n => n>=1024? (n/1024).toFixed(1)+' GB' : n>=1? n.toFixed(1)+' MB' : Math.round(n*1024)+' KB';
@@ -2275,6 +2320,8 @@ function paintPreview(){
     $('#vDur').textContent = f.dur || '00:00';
     $('#vFill').style.width = '0%';
     $('#vBub').textContent = '00:00';
+    S.vTime = 0;                 /* 切素材时回零，倍速不影响"从哪开始" */
+    $('#vRate').textContent = rateLabel(S.rate);
   }
   if (isA) {
     $('#gFmt').textContent = f.fmt || 'GIF';
@@ -2362,10 +2409,15 @@ document.addEventListener('keydown',e=>{
   /* 在输入框打字时快捷键让位，只有 Esc 保留（VW-10） */
   if(typing && e.key !== 'Escape') return;
   if(e.key==='Escape'){
+    /* 逐层退出：先关浮层，再关快捷键表，最后才退出预览 */
+    if($('#ratePop').classList.contains('on')){ closeRatePop(); return; }
     if(!$('#keysheet').classList.contains('hidden')){ closeKeys(); return; }
     closePreview(); return;
   }
   if(e.key==='?'){ e.preventDefault(); openKeys(); return; }
+  /* 只用 > <，不用 . ,：后者留给「逐帧」，否则两个功能抢同一组键 */
+  if(e.key==='>'){ e.preventDefault(); stepRate(1); return; }
+  if(e.key==='<'){ e.preventDefault(); stepRate(-1); return; }
   if(e.key===' '||e.code==='Space'){ e.preventDefault(); togglePlay(); return; }
   if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault();$('#pvNext').click()}
   if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault();$('#pvPrev').click()}
@@ -2472,7 +2524,10 @@ $('#autoBtn').addEventListener('click', () => {
 });
 
 /* ---------- 视图控件：视频 / 图片 / GIF ---------- */
-const RATES = [1, 1.25, 1.5, 2, 0.5];
+/* 播放速度档位：慢速档（0.1~0.75）用来细看动作/听清台词，
+   常速 1，加速档（1.25~2）用来快速过一遍 */
+const RATES = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+const rateLabel = r => (Number.isInteger(r) ? r : r.toFixed(2).replace(/0$/, '')) + '×';
 let vTimer = null, gTimer = null;
 function curFile(){ return S.list[S.idx] || null; }
 function setPlayIcon(playing){
@@ -2502,16 +2557,20 @@ function togglePlay(){
   clearInterval(vTimer);
   if (!S.playing) return;
   const total = parseDur($('#vDur').textContent) || 100;
+  /* 200ms 一跳 × 速率：0.1× 时 10 秒才走 1 秒，2× 时半秒走 1 秒，
+     这样倍速在原型里是"看得见"的，不是只换个数字 */
   vTimer = setInterval(() => {
-    let t = parseDur($('#vCur').textContent) + 1;
-    if (t >= total) {
-      t = total; S.playing = false; setPlayIcon(false); clearInterval(vTimer);
+    const step = 0.2 * S.rate;
+    S.vTime = Math.min(total, (S.vTime || 0) + step);
+    const shown = Math.floor(S.vTime);
+    if (S.vTime >= total) {
+      S.playing = false; setPlayIcon(false); clearInterval(vTimer);
       /* 连播：这一条播完自动跳下一个（最后一条则停下） */
       if (S.autoplay) { setTimeout(() => goNext(), 320); }
     }
-    $('#vCur').textContent = fmtT(t);
-    $('#vFill').style.width = (t/total*100) + '%';
-  }, 1000);
+    $('#vCur').textContent = fmtT(shown);
+    $('#vFill').style.width = (S.vTime / total * 100) + '%';
+  }, 200);
 }
 function toggleGif(){
   S.gifPlaying = !S.gifPlaying;
@@ -2526,22 +2585,91 @@ function toggleGif(){
     if (n === total && $('#gLoop').textContent.indexOf('无限') < 0) {
       S.gifPlaying = false; setGifIcon(false); clearInterval(gTimer);
     }
-  }, 120);
+  }, Math.max(40, 120 / S.rate));   /* 倍速同样作用于动图帧率 */
 }
+/* ============================================================
+   播放速度选择
+   —— 8 档：0.1 / 0.25 / 0.5 / 0.75 / 1 / 1.25 / 1.5 / 2
+   —— 慢速档在左、常速居中加粗、加速档在右，顺序即语义
+   —— 视频与动图共用同一个浮层，只是作用对象不同
+   ============================================================ */
+function renderRateList(){
+  $('#rpNow').textContent = rateLabel(S.rate);
+  $('#rpGrid').innerHTML = RATES.map(r => {
+    const cur = Math.abs(r - S.rate) < 1e-6;
+    return `<button data-rate="${r}" class="${cur ? 'cur' : ''}" role="menuitemradio" aria-checked="${cur}">`
+      + `<span>${r === 1 ? '正常 1×' : rateLabel(r)}</span>`
+      + `<svg class="i tick"><use href="#i-check"/></svg></button>`;
+  }).join('');
+}
+
+function openRatePop(btn){
+  const pop = $('#ratePop');
+  renderRateList();
+  pop.classList.add('on');
+  $('#pvStageEl').classList.remove('idle');
+  /* 贴在「控件条上沿」弹出，而不是贴按钮 ——
+     贴按钮会让浮层底边探进控件条内部，被控件条盖住半截 */
+  const st = $('#pvStageEl').getBoundingClientRect();
+  const r = btn.getBoundingClientRect();
+  const ctl = $('#vCtl').getBoundingClientRect();
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  /* 水平对齐按钮中心，并夹在舞台内 */
+  let left = r.left - st.left + r.width / 2 - w / 2;
+  left = Math.max(10, Math.min(left, st.width - w - 10));
+  pop.style.left = left + 'px';
+  /* 控件条在视频/动图时显示，图片时隐藏，用可见的那个当基准 */
+  const baseTop = (ctl.height > 0 ? ctl.top : r.top);
+  let bottom = st.bottom - baseTop + 8;
+  /* 舞台太矮时别顶出画面：留 10px 余量，超出就贴顶 */
+  pop.style.maxHeight = Math.max(120, st.height - bottom - 10) + 'px';
+  pop.style.overflowY = 'auto';
+  pop.style.bottom = bottom + 'px';
+  pop.dataset.anchor = btn.id;
+}
+function closeRatePop(){ $('#ratePop').classList.remove('on'); }
+function toggleRatePop(btn){
+  if ($('#ratePop').classList.contains('on') && $('#ratePop').dataset.anchor === btn.id) closeRatePop();
+  else openRatePop(btn);
+}
+
+function setRate(r){
+  S.rate = r;
+  $('#vRate').textContent = rateLabel(r);
+  $('#gRate').textContent = rateLabel(r);
+  renderRateList();
+  /* 改速率不重启计时器：播放循环每 tick 读一次 S.rate，切换即时生效 */
+  if (r !== 1) toast('播放速度 ' + rateLabel(r));
+  else toast('恢复正常速度');
+}
+
+/* 点档位 */
+$('#rpGrid').addEventListener('click', e => {
+  const b = e.target.closest('button[data-rate]');
+  if (!b) return;
+  setRate(parseFloat(b.dataset.rate));
+  closeRatePop();
+});
+/* 点别处 / Esc 关闭 */
+document.addEventListener('click', e => {
+  if (!e.target.closest('#ratePop') && !e.target.closest('#vRate') && !e.target.closest('#gRate')) closeRatePop();
+});
+/* 点档位加速/减速：> 快一档、< 慢一档；Shift 直接跳到 2× / 0.1× */
+function stepRate(dir){
+  const i = RATES.indexOf(S.rate);
+  const j = Math.max(0, Math.min(RATES.length - 1, (i < 0 ? RATES.indexOf(1) : i) + dir));
+  if (j === i) { toast(dir > 0 ? '已经是最快' : '已经是最慢'); return; }
+  setRate(RATES[j]);
+}
+
 function openKeys(){ $('#keysheet').classList.remove('hidden'); }
 function closeKeys(){ $('#keysheet').classList.add('hidden'); }
 
 $('#vPlay').addEventListener('click', togglePlay);
 $('#pvBigPlay').addEventListener('click', e => { e.stopPropagation(); togglePlay(); });
 $('#gPause').addEventListener('click', toggleGif);
-$('#vRate').addEventListener('click', e => {
-  const i = RATES.indexOf(parseFloat(e.currentTarget.textContent));
-  e.currentTarget.textContent = RATES[(i+1) % RATES.length] + '×';
-});
-$('#gRate').addEventListener('click', e => {
-  const i = RATES.indexOf(parseFloat(e.currentTarget.textContent));
-  e.currentTarget.textContent = RATES[(i+1) % RATES.length] + '×';
-});
+$('#vRate').addEventListener('click', e => { e.stopPropagation(); toggleRatePop(e.currentTarget); });
+$('#gRate').addEventListener('click', e => { e.stopPropagation(); toggleRatePop(e.currentTarget); });
 $('#gLoop').addEventListener('click', e => {
   e.currentTarget.textContent = e.currentTarget.textContent.indexOf('无限') >= 0 ? '⟳ 一次' : '⟳ 无限';
 });
