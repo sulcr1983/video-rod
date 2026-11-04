@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-stage="blueprint">
+<head>
+<meta charset="UTF-8">
+<title>钓鱼竿 · 风格探索 v1</title>
+<style>
+/* =========================================================================
+   风格探索：同一批素材，四种视觉语言
+   A 图纸 · B 纸感 · C 画廊 · D 影院
+   ========================================================================= */
+*{box-sizing:border-box;margin:0;padding:0}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:root{
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Consolas,"Cascadia Code",monospace;
+  --font-serif:Georgia,"Songti SC","Noto Serif SC",serif;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+html,body{height:100%}
+body{font-family:var(--font-ui);overflow:hidden;-webkit-font-smoothing:antialiased}
+
+/* ---------- 顶部切换条（中性，不抢风格） ---------- */
+.switchbar{
+  height:54px;display:flex;align-items:center;gap:18px;padding:0 20px;
+  background:#0E1014;color:#E8EAEE;position:relative;z-index:50;
+}
+.sw-brand{font-size:12.5px;font-weight:650;letter-spacing:-.1px;white-space:nowrap}
+.sw-brand em{font-style:normal;color:#7C8593;font-weight:400;margin-left:7px;font-size:11px}
+.sw-tabs{display:flex;gap:3px;background:#1A1D23;padding:3px;border-radius:9px}
+.sw-tabs button{
+  padding:6px 14px;border-radius:7px;font-size:12px;color:#8B93A1;
+  transition:background .14s,color .14s;white-space:nowrap;
+}
+.sw-tabs button:hover{color:#D5DAE1}
+.sw-tabs button.on{background:#2C313A;color:#fff;font-weight:600}
+.sw-note{margin-left:auto;font-size:11px;color:#6E7683;text-align:right;line-height:1.5;max-width:520px}
+.sw-note b{color:#A9B1BD;font-weight:600}
+
+/* ---------- 舞台容器 ---------- */
+.stage{
+  display:none;height:calc(100vh - 54px);overflow:hidden;
+}
+.stage.on{display:grid}
+
+/* 通用骨架 */
+.side{overflow:auto;display:flex;flex-direction:column}
+.main{overflow:auto;min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.searchbox{display:flex;align-items:center;gap:7px;flex:1;min-width:0}
+.searchbox input{border:none;background:none;outline:none;font:inherit;width:100%;color:inherit}
+.grid{display:grid;gap:14px}
+.card{position:relative;overflow:hidden;cursor:pointer;text-align:left;width:100%}
+.c-cover{position:relative;overflow:hidden;background:#222}
+.c-cover::after{
+  content:"";position:absolute;inset:0;
+  background:
+    /* 高光斑：让平面渐变看起来有"光"，像真照片 */
+    radial-gradient(34% 26% at 68% 16%,rgba(255,255,255,.26),transparent 72%),
+    radial-gradient(120% 90% at 22% 14%,hsl(var(--h) 58% 56%) 0%,transparent 58%),
+    radial-gradient(100% 82% at 82% 26%,hsl(calc(var(--h) + 44) 52% 46%) 0%,transparent 52%),
+    radial-gradient(90% 100% at 48% 110%,hsl(calc(var(--h) - 30) 44% 28%) 0%,transparent 64%),
+    linear-gradient(155deg,hsl(var(--h) 30% 24%),hsl(calc(var(--h) + 16) 36% 14%));
+}
+/* 颗粒：消除"矢量色块"的塑料感 */
+.c-cover::before{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  opacity:.30;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+.c-dur{
+  position:absolute;right:7px;bottom:7px;z-index:2;
+  font:600 9.5px/1 var(--font-mono);padding:3px 5px;border-radius:3px;
+  background:rgba(0,0,0,.62);color:#fff;letter-spacing:.02em;
+}
+.c-kind{
+  position:absolute;left:0;top:0;z-index:2;font:700 8.5px/1 var(--font-ui);
+  letter-spacing:.08em;padding:4px 6px;text-transform:uppercase;
+}
+.c-title{font-weight:600;color:var(--ink);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical}
+.c-meta{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--muted);min-width:0}
+.c-meta .au{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c-meta .sz{margin-left:auto;flex:0 0 auto;font-family:var(--font-mono);font-size:10px}
+.ic{width:14px;height:14px;flex:0 0 14px;fill:none;stroke:currentColor;stroke-linecap:round;stroke-linejoin:round}
+
+/* 侧栏通用行 */
+.row{
+  display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  border-radius:5px;transition:background .12s,color .12s;
+}
+.row .lb{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .n{font-family:var(--font-mono);font-size:9.5px;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.sec-h{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+}
+
+/* =========================================================================
+   A · 图纸（暗色精密工具）
+   —— 细线、直角、等宽数字、单色蓝，像 CAD / Resolve
+   ========================================================================= */
+.s-blueprint{grid-template-columns:238px 1fr;background:#15171B}
+.s-blueprint .side{
+  background:#15171B;border-right:1px solid #262A31;padding:14px 10px 10px;gap:16px;
+}
+.s-blueprint .brand{display:flex;align-items:center;gap:9px;padding:2px 6px 8px}
+.s-blueprint .brand i{
+  width:26px;height:26px;display:grid;place-items:center;border-radius:3px;
+  background:#21252B;border:1px solid #313742;color:#9FB4D8;
+}
+.s-blueprint .brand b{font-size:12.5px;font-weight:650;color:#E3E7EE;letter-spacing:.01em}
+.s-blueprint .brand span{display:block;font:400 8.5px/1.5 var(--font-mono);color:#5C646F;letter-spacing:.09em;text-transform:uppercase}
+.s-blueprint .root{
+  display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid #262A31;
+  border-radius:3px;background:#1A1D22;
+}
+.s-blueprint .root .p{font:500 10.5px/1.4 var(--font-mono);color:#B9C1CC;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-blueprint .root .h{font-size:9px;color:#5F6772}
+.s-blueprint .sec-h{color:#5C646F;padding:0 8px 5px}
+.s-blueprint .sec-h b{color:#8A939F;font-family:var(--font-mono);font-weight:500}
+.s-blueprint .row{padding:5px 8px;font-size:11.5px;color:#A7AEB9;border-radius:3px}
+.s-blueprint .row:hover{background:#1D2127;color:#E3E7EE}
+.s-blueprint .row.on{background:#232830;color:#E9EDF4;box-shadow:inset 2px 0 0 #4C8DFF}
+.s-blueprint .row .n{color:#5F6772}
+.s-blueprint .row.on .n{color:#8A939F}
+.s-blueprint .row .dot{width:6px;height:6px;border-radius:1px;flex:0 0 6px;opacity:.95}
+.s-blueprint .cta{
+  margin-top:auto;padding:8px;border:1px solid #262A31;border-radius:3px;
+  display:flex;align-items:center;justify-content:space-between;
+  font:500 10px/1 var(--font-mono);color:#6E7681;
+}
+.s-blueprint .cta b{color:#9FB4D8}
+
+.s-blueprint .main{background:#15171B}
+.s-blueprint .topbar{
+  padding:10px 16px;border-bottom:1px solid #262A31;background:#171A1F;gap:8px;
+}
+.s-blueprint .searchbox{
+  background:#1A1D22;border:1px solid #262A31;border-radius:3px;padding:0 9px;height:30px;
+  color:#6E7681;font-size:11.5px;
+}
+.s-blueprint .tbtn{
+  height:30px;padding:0 10px;border:1px solid #262A31;border-radius:3px;
+  display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#A7AEB9;
+  background:#1A1D22;
+}
+.s-blueprint .tbtn:hover{border-color:#39404A;color:#E3E7EE}
+.s-blueprint .tbtn.pri{background:#4C8DFF;border-color:#4C8DFF;color:#0B1220;font-weight:600}
+.s-blueprint .hd{padding:16px 16px 10px;display:flex;align-items:flex-end;gap:12px;border-bottom:1px solid #21252B}
+.s-blueprint .hd h1{font-size:17px;font-weight:650;color:#EDF0F4;letter-spacing:.01em}
+.s-blueprint .hd h1 b{font-family:var(--font-mono);font-weight:500;color:#8A939F;font-size:12px;margin-left:6px}
+.s-blueprint .hd .sub{font:400 10px/1 var(--font-mono);color:#5F6772;margin-left:auto}
+.s-blueprint .filters{
+  display:flex;align-items:center;gap:1px;padding:0 16px;border-bottom:1px solid #21252B;
+  background:#171A1F;
+}
+.s-blueprint .tab{
+  padding:8px 11px;font-size:11px;color:#7A828E;border-bottom:1px solid transparent;
+  margin-bottom:-1px;
+}
+.s-blueprint .tab b{font-family:var(--font-mono);font-size:9.5px;color:#5F6772;margin-left:4px;font-weight:400}
+.s-blueprint .tab:hover{color:#C6CDD7}
+.s-blueprint .tab.on{color:#E9EDF4;border-bottom-color:#4C8DFF}
+.s-blueprint .tab.on b{color:#4C8DFF}
+.s-blueprint .grid{padding:14px 16px 20px;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:10px}
+.s-blueprint .card{background:#1A1D22;border:1px solid #262A31;border-radius:3px;transition:border-color .12s}
+.s-blueprint .card:hover{border-color:#3C4552}
+.s-blueprint .c-cover{aspect-ratio:16/9;border-bottom:1px solid #22262D}
+.s-blueprint .c-kind{background:rgba(10,13,18,.72);color:#9FB4D8;border-right:1px solid #2A303A;border-bottom:1px solid #2A303A}
+.s-blueprint .c-body{padding:8px 9px 9px}
+.s-blueprint .c-title{font-size:11.5px;line-height:1.45;height:2.9em;-webkit-line-clamp:2;letter-spacing:.005em}
+.s-blueprint .c-meta{margin-top:6px;padding-top:6px;border-top:1px solid #22262D;font-size:10px;color:#6E7681}
+
+/* =========================================================================
+   B · 纸感（暖白编辑部）
+   —— 衬线标题、暖纸底、无边框靠底色差、柔阴影、宽松
+   ========================================================================= */
+.s-paper{grid-template-columns:270px 1fr;background:#F7F4EE}
+.s-paper .side{background:#F2EEE6;padding:20px 16px 16px;gap:20px}
+.s-paper .brand{display:flex;align-items:center;gap:10px;padding:0 4px 10px}
+.s-paper .brand i{
+  width:30px;height:30px;display:grid;place-items:center;border-radius:50%;
+  background:#1F1D1A;color:#F7F4EE;
+}
+.s-paper .brand b{font:600 15px/1.2 var(--font-serif);color:#1F1D1A;letter-spacing:.01em}
+.s-paper .brand span{display:block;font-size:9px;color:#8B8272;letter-spacing:.14em;text-transform:uppercase;margin-top:2px}
+.s-paper .root{
+  padding:11px 12px;border-radius:8px;background:#FFFDF8;
+  border:1px solid #E7E0D3;
+}
+.s-paper .root .p{font-size:12px;color:#3B372F;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-paper .root .h{font-size:10.5px;color:#948A78;margin-top:2px}
+.s-paper .sec-h{color:#948A78;padding:0 6px 7px;font-size:9px;letter-spacing:.16em}
+.s-paper .sec-h b{color:#6B6355;font-family:var(--font-ui);font-weight:600;letter-spacing:0}
+.s-paper .row{padding:7px 8px;font-size:13px;color:#4A443A;border-radius:7px}
+.s-paper .row:hover{background:#EBE5DA;color:#1F1D1A}
+.s-paper .row.on{background:#FFFDF8;color:#1F1D1A;font-weight:600;box-shadow:0 1px 2px rgba(80,64,40,.06)}
+.s-paper .row .n{color:#A79C89}
+.s-paper .row.on .n{color:#8A6A4A}
+.s-paper .row .dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
+.s-paper .note{
+  margin-top:auto;font-size:11px;line-height:1.75;color:#8B8272;
+  padding:12px 10px;border-top:1px solid #E4DDD0;
+}
+.s-paper .note b{color:#6B5B44;font-weight:600}
+
+.s-paper .main{background:#F7F4EE}
+.s-paper .topbar{
+  padding:18px 28px 14px;border-bottom:1px solid #E7E0D3;background:#F7F4EE;gap:8px;
+}
+.s-paper .searchbox{
+  background:#FFFDF8;border:1px solid #E7E0D3;border-radius:999px;padding:0 14px;height:36px;
+  color:#948A78;font-size:13px;
+}
+.s-paper .tbtn{
+  height:36px;padding:0 14px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;
+  font-size:12.5px;color:#5C5446;border:1px solid #E0D8CA;background:#FFFDF8;
+}
+.s-paper .tbtn:hover{background:#FFF;border-color:#CDBFA8}
+.s-paper .tbtn.pri{background:#1F1D1A;border-color:#1F1D1A;color:#FBF8F2}
+.s-paper .hd{padding:26px 28px 0;display:block}
+.s-paper .hd h1{
+  font:600 30px/1.25 var(--font-serif);color:#1F1D1A;letter-spacing:-.4px;
+}
+.s-paper .hd h1 b{
+  font:400 13px/1 var(--font-ui);color:#948A78;margin-left:10px;letter-spacing:0;
+  vertical-align:2px;
+}
+.s-paper .hd .sub{
+  margin-top:8px;font-size:12.5px;color:#8B8272;line-height:1.7;
+  padding-bottom:20px;border-bottom:1px solid #E7E0D3;
+}
+.s-paper .filters{display:flex;align-items:center;gap:22px;padding:0 28px;border-bottom:1px solid #E7E0D3}
+.s-paper .tab{
+  padding:14px 0;font:500 13px/1 var(--font-ui);color:#948A78;border-bottom:2px solid transparent;
+  margin-bottom:-1px;
+}
+.s-paper .tab b{font-family:var(--font-ui);font-size:10px;color:#B0A691;margin-left:5px;font-weight:600}
+.s-paper .tab:hover{color:#4A443A}
+.s-paper .tab.on{color:#1F1D1A;border-bottom-color:#A8502E;font-weight:600}
+.s-paper .tab.on b{color:#A8502E}
+.s-paper .grid{padding:24px 28px 32px;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:18px 16px}
+.s-paper .card{background:#FFFDF8;border-radius:10px;border:1px solid #EDE6D9;box-shadow:0 1px 2px rgba(80,64,40,.04)}
+.s-paper .card:hover{box-shadow:0 6px 18px rgba(80,64,40,.09);border-color:#DCD1BE}
+.s-paper .c-cover{aspect-ratio:16/10}
+.s-paper .c-cover::after{filter:saturate(.82) contrast(1.02)}
+.s-paper .c-kind{display:none}
+.s-paper .c-dur{font:600 10px/1 var(--font-ui);right:8px;bottom:8px;border-radius:99px;padding:3px 7px;background:rgba(20,16,10,.66)}
+.s-paper .c-body{padding:12px 13px 14px}
+.s-paper .c-title{
+  font:600 13.5px/1.5 var(--font-serif);height:3em;-webkit-line-clamp:2;letter-spacing:.01em;
+}
+.s-paper .c-meta{margin-top:9px;font-size:11.5px;color:#8B8272}
+.s-paper .c-meta .sz{font-family:var(--font-ui);font-size:11px;color:#A79C89}
+
+/* =========================================================================
+   C · 画廊（内容优先，UI 退到最轻）
+   —— 悬浮侧栏、透明顶栏、大圆角、文字浮在图上、几乎无彩色
+   ========================================================================= */
+.s-gallery{grid-template-columns:224px 1fr;background:#FAFAFA;padding:0 0 0 0}
+.s-gallery .side{
+  background:#FFF;margin:14px 0 14px 14px;border-radius:16px;padding:16px 12px 12px;gap:18px;
+  box-shadow:0 1px 3px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.04);
+  border:1px solid rgba(0,0,0,.03);
+}
+.s-gallery .brand{display:flex;align-items:center;gap:9px;padding:0 6px 6px}
+.s-gallery .brand i{width:26px;height:26px;display:grid;place-items:center;border-radius:8px;background:#111;color:#fff}
+.s-gallery .brand b{font-size:13px;font-weight:600;color:#111;letter-spacing:-.2px}
+.s-gallery .brand span{display:block;font-size:9px;color:#B4B4B4;letter-spacing:.1em;text-transform:uppercase}
+.s-gallery .root{padding:8px 10px;border-radius:10px;background:#F6F6F6}
+.s-gallery .root .p{font-size:11.5px;color:#333;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-gallery .root .h{font-size:9.5px;color:#AAA;margin-top:1px}
+.s-gallery .sec-h{color:#C0C0C0;padding:0 8px 6px;font-size:9px;letter-spacing:.12em}
+.s-gallery .sec-h b{color:#8E8E8E;font-weight:600;font-family:var(--font-ui);letter-spacing:0}
+.s-gallery .row{padding:6px 8px;font-size:12px;color:#555;border-radius:8px;gap:9px}
+.s-gallery .row:hover{background:#F4F4F4;color:#111}
+.s-gallery .row.on{background:#111;color:#fff}
+.s-gallery .row.on .n{color:rgba(255,255,255,.6)}
+.s-gallery .row .n{color:#B8B8B8}
+.s-gallery .row .dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
+.s-gallery .foot{margin-top:auto;font-size:10px;color:#C0C0C0;padding:8px 8px 2px;line-height:1.7}
+
+.s-gallery .main{background:#FAFAFA}
+.s-gallery .topbar{padding:14px 22px 6px;gap:8px}
+.s-gallery .searchbox{
+  background:#fff;border-radius:999px;padding:0 16px;height:38px;
+  box-shadow:0 1px 3px rgba(0,0,0,.06);color:#B0B0B0;font-size:13px;
+}
+.s-gallery .tbtn{
+  height:38px;width:38px;border-radius:999px;display:grid;place-items:center;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06);color:#666;
+}
+.s-gallery .tbtn:hover{color:#111;box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.s-gallery .tbtn.pri{width:auto;padding:0 16px;display:inline-flex;gap:7px;background:#111;color:#fff;font-size:12.5px;font-weight:500}
+.s-gallery .hd{padding:14px 22px 0}
+.s-gallery .hd h1{font-size:24px;font-weight:600;color:#111;letter-spacing:-.6px}
+.s-gallery .hd h1 b{font-size:13px;font-weight:400;color:#B0B0B0;margin-left:8px;letter-spacing:0}
+.s-gallery .hd .sub{margin-top:6px;font-size:12px;color:#9A9A9A;padding-bottom:16px}
+.s-gallery .filters{display:flex;align-items:center;gap:7px;padding:0 22px 14px;flex-wrap:wrap}
+.s-gallery .tab{
+  padding:6px 13px;border-radius:999px;font-size:12px;color:#666;background:#FFF;
+  border:1px solid rgba(0,0,0,.05);
+}
+.s-gallery .tab b{font-size:10px;color:#BBB;margin-left:4px}
+.s-gallery .tab:hover{color:#111;border-color:rgba(0,0,0,.14)}
+.s-gallery .tab.on{background:#111;color:#fff;border-color:#111}
+.s-gallery .tab.on b{color:rgba(255,255,255,.55)}
+.s-gallery .grid{padding:0 22px 26px;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:16px}
+.s-gallery .card{border-radius:16px;background:#fff}
+.s-gallery .card:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,0,0,.12)}
+.s-gallery .card{transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
+.s-gallery .c-cover{aspect-ratio:4/5}
+.s-gallery .c-cover::after{filter:saturate(.9)}
+.s-gallery .c-kind{display:none}
+.s-gallery .c-body{
+  position:absolute;left:0;right:0;bottom:0;z-index:3;padding:44px 13px 13px;
+  background:linear-gradient(180deg,transparent 0%,rgba(0,0,0,.34) 38%,rgba(0,0,0,.82) 100%);
+}
+.s-gallery .c-dur{top:9px;right:9px;bottom:auto;border-radius:99px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);font-size:9px}
+.s-gallery .c-title{font-size:13px;color:#fff;font-weight:550;height:2.9em;-webkit-line-clamp:2;text-shadow:0 1px 8px rgba(0,0,0,.3)}
+.s-gallery .c-meta{margin-top:5px;font-size:10.5px;color:rgba(255,255,255,.72)}
+.s-gallery .c-meta .sz{color:rgba(255,255,255,.55);font-family:var(--font-ui);font-size:10px}
+
+/* =========================================================================
+   D · 影院（深黑、视频向、暖橙点缀）
+   —— 大标题紧字距、卡片无边框靠亮度、激活项左侧发光条
+   ========================================================================= */
+.s-cinema{grid-template-columns:246px 1fr;background:#0A0B0E}
+.s-cinema .side{
+  background:#0A0B0E;border-right:1px solid #1B1E24;padding:18px 12px 12px;gap:18px;
+}
+.s-cinema .brand{display:flex;align-items:center;gap:10px;padding:0 6px 12px}
+.s-cinema .brand i{
+  width:28px;height:28px;display:grid;place-items:center;border-radius:7px;
+  background:linear-gradient(145deg,#FF8A5B,#E85A2A);color:#1A0C05;
+}
+.s-cinema .brand b{font-size:14px;font-weight:700;color:#F4F6F9;letter-spacing:-.2px}
+.s-cinema .brand span{display:block;font-size:8.5px;color:#5E6673;letter-spacing:.15em;text-transform:uppercase;margin-top:1px}
+.s-cinema .root{
+  padding:9px 11px;border-radius:8px;background:#12141A;border:1px solid #1F232B;
+}
+.s-cinema .root .p{font-size:11.5px;color:#B6BEC9;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-cinema .root .h{font-size:9.5px;color:#5E6673;margin-top:1px}
+.s-cinema .sec-h{color:#5E6673;padding:0 8px 6px;font-size:9px;letter-spacing:.14em}
+.s-cinema .sec-h b{color:#8B94A2;font-family:var(--font-mono);font-weight:500;letter-spacing:0}
+.s-cinema .row{padding:7px 8px;font-size:12.5px;color:#98A1AE;border-radius:6px;position:relative}
+.s-cinema .row:hover{background:#14171D;color:#E6EAF0}
+.s-cinema .row.on{background:#181C23;color:#F4F6F9;font-weight:600}
+.s-cinema .row.on::before{
+  content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:2px;border-radius:2px;
+  background:#FF7A45;box-shadow:0 0 10px rgba(255,122,69,.7);
+}
+.s-cinema .row .n{color:#5E6673}
+.s-cinema .row.on .n{color:#98A1AE}
+.s-cinema .row .dot{width:5px;height:5px;border-radius:50%;flex:0 0 5px}
+.s-cinema .cta{
+  margin-top:auto;display:flex;align-items:center;justify-content:space-between;
+  padding:10px 11px;border-radius:8px;border:1px solid #1F232B;
+  font-size:10px;color:#5E6673;
+}
+.s-cinema .cta b{color:#FF7A45;font-family:var(--font-mono);font-weight:600}
+
+.s-cinema .main{background:#0A0B0E}
+.s-cinema .topbar{
+  padding:12px 20px;border-bottom:1px solid #17191F;gap:8px;background:#0C0E12;
+}
+.s-cinema .searchbox{
+  background:#14161C;border-radius:8px;padding:0 12px;height:34px;color:#5E6673;font-size:12.5px;
+}
+.s-cinema .tbtn{
+  height:34px;padding:0 12px;border-radius:8px;display:inline-flex;align-items:center;gap:6px;
+  font-size:12px;color:#98A1AE;background:#14161C;
+}
+.s-cinema .tbtn:hover{background:#1B1F27;color:#F4F6F9}
+.s-cinema .tbtn.pri{
+  background:linear-gradient(145deg,#FF8A5B,#E85A2A);color:#1A0C05;font-weight:700;
+  box-shadow:0 4px 16px rgba(232,90,42,.28);
+}
+.s-cinema .hd{padding:22px 20px 12px;display:flex;align-items:flex-end;gap:14px}
+.s-cinema .hd h1{font-size:26px;font-weight:700;color:#F4F6F9;letter-spacing:-.8px}
+.s-cinema .hd h1 b{
+  font-size:12px;font-weight:500;color:#8B94A2;margin-left:9px;letter-spacing:0;
+  font-family:var(--font-mono);
+}
+.s-cinema .hd .sub{margin-left:auto;font-size:11px;color:#5E6673}
+.s-cinema .filters{display:flex;align-items:center;gap:6px;padding:0 20px 14px}
+.s-cinema .tab{
+  padding:6px 12px;border-radius:99px;font-size:11.5px;color:#8B94A2;background:#14161C;
+}
+.s-cinema .tab b{font-size:9.5px;color:#5E6673;margin-left:4px;font-family:var(--font-mono)}
+.s-cinema .tab:hover{background:#1B1F27;color:#E6EAF0}
+.s-cinema .tab.on{background:#FF7A45;color:#1A0C05;font-weight:700}
+.s-cinema .tab.on b{color:rgba(26,12,5,.62)}
+.s-cinema .grid{padding:0 20px 24px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.s-cinema .card{background:#12141A;border-radius:9px}
+.s-cinema .card:hover{background:#171A21;box-shadow:0 10px 32px rgba(0,0,0,.55)}
+.s-cinema .card{transition:background .15s,box-shadow .15s}
+.s-cinema .c-cover{aspect-ratio:16/9}
+.s-cinema .c-cover::after{filter:saturate(.95) contrast(1.04) brightness(.9)}
+.s-cinema .c-kind{
+  background:rgba(8,9,12,.6);color:#FF9A6B;border-radius:4px;left:7px;top:7px;padding:3px 5px;
+  font-size:8px;
+}
+.s-cinema .c-dur{font:600 9.5px/1 var(--font-mono);border-radius:4px;background:rgba(8,9,12,.78)}
+.s-cinema .c-body{padding:10px 11px 12px}
+.s-cinema .c-title{font-size:12.5px;line-height:1.5;height:3em;-webkit-line-clamp:2;color:#E6EAF0}
+.s-cinema .c-meta{margin-top:7px;font-size:10.5px;color:#6E7683}
+.s-cinema .c-meta .sz{color:#5E6673;font-family:var(--font-mono);font-size:9.5px}
+
+/* =========================================================================
+   E · 控件对照（同一批控件，四套风格）
+   ========================================================================= */
+.specs{display:none;height:calc(100vh - 54px);overflow:auto;background:#0D0F13;padding:0 24px 40px}
+.specs.on{display:block}
+.spec-head{
+  position:sticky;top:0;z-index:5;background:#0D0F13;padding:18px 0 14px;
+  display:flex;align-items:baseline;gap:12px;border-bottom:1px solid #1C2027;
+}
+.spec-head h2{font-size:14px;font-weight:650;color:#E4E8EE}
+.spec-head p{font-size:11.5px;color:#6E7683}
+.spec-row{
+  display:grid;grid-template-columns:118px 1fr;gap:20px;
+  padding:20px 0;border-bottom:1px solid #191D23;
+}
+.spec-name{font-size:12px;font-weight:650;color:#D6DCE4;line-height:1.5}
+.spec-name em{
+  display:block;font-style:normal;font-size:10px;color:#6A7280;
+  margin-top:5px;line-height:1.55;font-weight:400;
+}
+.spec-set{display:flex;flex-wrap:wrap;gap:18px 24px;align-items:flex-start;padding:20px 22px;border-radius:10px;border:1px solid #1E222A}
+.cell{display:flex;flex-direction:column;gap:7px}
+.cell > .cap{font-size:8.5px;color:#5A6270;letter-spacing:.09em;text-transform:uppercase;font-weight:600}
+.ln{display:flex;align-items:center;gap:7px}
+
+/* ---- A 图纸 ---- */
+.t-blueprint{--ink:#E3E7EE;--muted:#7A828E;--dim:#5F6772;--line:#2A303A;--bg:#1A1D22;--acc:#4C8DFF;font-family:var(--font-ui);background:#15171B;color:#A7AEB9}
+.t-blueprint .b{height:30px;padding:0 11px;border-radius:3px;border:1px solid #2A303A;background:#1A1D22;color:#A7AEB9;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.t-blueprint .b.pri{background:#4C8DFF;border-color:#4C8DFF;color:#0B1220;font-weight:650}
+.t-blueprint .b.ghost{background:none;border-color:transparent;color:#6E7681}
+.t-blueprint .ib{width:30px;height:30px;border-radius:3px;border:1px solid #2A303A;background:#1A1D22;color:#A7AEB9;display:grid;place-items:center}
+.t-blueprint .ib.on{border-color:#4C8DFF;color:#4C8DFF;background:#152238}
+.t-blueprint .inp{height:30px;min-width:170px;border:1px solid #2A303A;border-radius:3px;background:#1A1D22;display:flex;align-items:center;gap:7px;padding:0 9px;color:#6E7681;font-size:11px}
+.t-blueprint .sel{height:30px;min-width:110px;border:1px solid #2A303A;border-radius:3px;background:#1A1D22;display:flex;align-items:center;gap:8px;padding:0 9px;color:#A7AEB9;font-size:11px;justify-content:space-between}
+.t-blueprint .sw{width:34px;height:18px;border-radius:2px;background:#2A303A;position:relative}
+.t-blueprint .sw.on{background:#4C8DFF}
+.t-blueprint .sw i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:1px;background:#0F1216}
+.t-blueprint .sw.on i{left:18px}
+.t-blueprint .tg{height:20px;padding:0 7px;border-radius:2px;background:#21262E;color:#A7AEB9;font-size:10px;display:inline-flex;align-items:center;border:1px solid #2A303A}
+.t-blueprint .tg.on{background:#152238;border-color:#2E4C7A;color:#7FA9F0}
+.t-blueprint .tg.danger{background:#2A1618;border-color:#4A2528;color:#E08587}
+.t-blueprint .menu{min-width:172px;background:#1A1D22;border:1px solid #2A303A;border-radius:3px;padding:4px;box-shadow:0 12px 32px rgba(0,0,0,.5)}
+.t-blueprint .menu b{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:2px;font-size:11px;color:#C6CDD7;font-weight:400}
+.t-blueprint .menu b.hl{background:#232830;color:#fff}
+.t-blueprint .menu hr{border:none;border-top:1px solid #262A31;margin:4px 6px}
+.t-blueprint .ic{stroke-width:1.5}
+
+/* ---- B 纸感 ---- */
+.t-paper{--ink:#1F1D1A;--muted:#8B8272;--line:#E0D8CA;--bg:#FFFDF8;--acc:#A8502E;font-family:var(--font-ui);background:#F7F4EE;color:#4A443A}
+.t-paper .b{height:34px;padding:0 15px;border-radius:999px;border:1px solid #E0D8CA;background:#FFFDF8;color:#5C5446;font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
+.t-paper .b.pri{background:#1F1D1A;border-color:#1F1D1A;color:#FBF8F2;font-weight:600}
+.t-paper .b.ghost{background:none;border-color:transparent;color:#948A78}
+.t-paper .ib{width:34px;height:34px;border-radius:50%;border:1px solid #E0D8CA;background:#FFFDF8;color:#6B6355;display:grid;place-items:center}
+.t-paper .ib.on{background:#F3EDE2;border-color:#CDBFA8;color:#A8502E}
+.t-paper .inp{height:34px;min-width:180px;border:1px solid #E0D8CA;border-radius:999px;background:#FFFDF8;display:flex;align-items:center;gap:7px;padding:0 14px;color:#948A78;font-size:12.5px}
+.t-paper .sel{height:34px;min-width:118px;border:1px solid #E0D8CA;border-radius:8px;background:#FFFDF8;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 11px;color:#4A443A;font-size:12.5px}
+.t-paper .sw{width:38px;height:21px;border-radius:999px;background:#DCD3C3;position:relative}
+.t-paper .sw.on{background:#A8502E}
+.t-paper .sw i{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#FFFDF8;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.t-paper .sw.on i{left:19px}
+.t-paper .tg{height:22px;padding:0 9px;border-radius:999px;background:#F0EADE;color:#6B6355;font-size:11px;display:inline-flex;align-items:center}
+.t-paper .tg.on{background:#EFE2D8;color:#A8502E}
+.t-paper .tg.danger{background:#F7E7E4;color:#A23B2E}
+.t-paper .menu{min-width:178px;background:#FFFDF8;border:1px solid #E7E0D3;border-radius:10px;padding:5px;box-shadow:0 10px 28px rgba(80,64,40,.13)}
+.t-paper .menu b{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:7px;font-size:12px;color:#4A443A;font-weight:400}
+.t-paper .menu b.hl{background:#F3EDE2;color:#1F1D1A}
+.t-paper .menu hr{border:none;border-top:1px solid #EDE6D9;margin:4px 7px}
+.t-paper .ic{stroke-width:1.75}
+
+/* ---- C 画廊 ---- */
+.t-gallery{--ink:#111;--muted:#9A9A9A;--line:rgba(0,0,0,.06);--bg:#fff;font-family:var(--font-ui);background:#FAFAFA;color:#666}
+.t-gallery .b{height:36px;padding:0 16px;border-radius:999px;border:1px solid rgba(0,0,0,.06);background:#fff;color:#666;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.t-gallery .b.pri{background:#111;border-color:#111;color:#fff;font-weight:500}
+.t-gallery .b.ghost{background:none;box-shadow:none;border-color:transparent;color:#B0B0B0}
+.t-gallery .ib{width:36px;height:36px;border-radius:50%;background:#fff;color:#666;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.t-gallery .ib.on{background:#111;color:#fff}
+.t-gallery .inp{height:38px;min-width:180px;border-radius:999px;background:#fff;display:flex;align-items:center;gap:8px;padding:0 16px;color:#B0B0B0;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.t-gallery .sel{height:38px;min-width:118px;border-radius:999px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 15px;color:#333;font-size:12.5px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.t-gallery .sw{width:38px;height:22px;border-radius:999px;background:#E4E4E4;position:relative}
+.t-gallery .sw.on{background:#111}
+.t-gallery .sw i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.t-gallery .sw.on i{left:18px}
+.t-gallery .tg{height:24px;padding:0 11px;border-radius:999px;background:#F4F4F4;color:#666;font-size:11px;display:inline-flex;align-items:center}
+.t-gallery .tg.on{background:#111;color:#fff}
+.t-gallery .tg.danger{background:#FEF0EF;color:#D93A32}
+.t-gallery .menu{min-width:180px;background:#fff;border-radius:14px;padding:6px;box-shadow:0 12px 36px rgba(0,0,0,.14)}
+.t-gallery .menu b{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font-size:12.5px;color:#444;font-weight:400}
+.t-gallery .menu b.hl{background:#F4F4F4;color:#111}
+.t-gallery .menu hr{border:none;border-top:1px solid #F0F0F0;margin:4px 8px}
+.t-gallery .ic{stroke-width:2}
+
+/* ---- D 影院 ---- */
+.t-cinema{--ink:#F4F6F9;--muted:#98A1AE;--line:#1F232B;--bg:#14161C;--acc:#FF7A45;font-family:var(--font-ui);background:#0A0B0E;color:#98A1AE}
+.t-cinema .b{height:34px;padding:0 13px;border-radius:8px;background:#14161C;color:#98A1AE;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+.t-cinema .b.pri{background:linear-gradient(145deg,#FF8A5B,#E85A2A);color:#1A0C05;font-weight:700;box-shadow:0 4px 16px rgba(232,90,42,.3)}
+.t-cinema .b.ghost{background:none;color:#5E6673}
+.t-cinema .ib{width:34px;height:34px;border-radius:8px;background:#14161C;color:#98A1AE;display:grid;place-items:center}
+.t-cinema .ib.on{background:#241A14;color:#FF9A6B}
+.t-cinema .inp{height:34px;min-width:180px;border-radius:8px;background:#14161C;display:flex;align-items:center;gap:8px;padding:0 12px;color:#5E6673;font-size:12.5px}
+.t-cinema .sel{height:34px;min-width:118px;border-radius:8px;background:#14161C;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 11px;color:#C3CAD4;font-size:12px}
+.t-cinema .sw{width:38px;height:21px;border-radius:999px;background:#242832;position:relative}
+.t-cinema .sw.on{background:#FF7A45}
+.t-cinema .sw i{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#0A0B0E}
+.t-cinema .sw.on i{left:19px}
+.t-cinema .tg{height:22px;padding:0 9px;border-radius:99px;background:#1B1F27;color:#98A1AE;font-size:10.5px;display:inline-flex;align-items:center}
+.t-cinema .tg.on{background:#FF7A45;color:#1A0C05;font-weight:700}
+.t-cinema .tg.danger{background:#2A1618;color:#E08587}
+.t-cinema .menu{min-width:180px;background:#12141A;border-radius:10px;padding:5px;box-shadow:0 14px 40px rgba(0,0,0,.7);border:1px solid #1F232B}
+.t-cinema .menu b{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:7px;font-size:12px;color:#C3CAD4;font-weight:400}
+.t-cinema .menu b.hl{background:#1C2028;color:#fff}
+.t-cinema .menu hr{border:none;border-top:1px solid #1F232B;margin:4px 7px}
+.t-cinema .ic{stroke-width:1.5}
+</style>
+</head>
+<body>
+
+<!-- 图标 sprite -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-anchor" viewBox="0 0 24 24"><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.5 2.3a.53.53 0 0 1 .95 0l2.31 4.68a2.12 2.12 0 0 0 1.6 1.16l5.16.76a.53.53 0 0 1 .3.9l-3.74 3.64a2.12 2.12 0 0 0-.61 1.88l.88 5.14a.53.53 0 0 1-.77.56l-4.62-2.43a2.12 2.12 0 0 0-1.97 0L6.4 21.01a.53.53 0 0 1-.77-.56l.88-5.14a2.12 2.12 0 0 0-.61-1.88L2.16 9.8a.53.53 0 0 1 .29-.9l5.17-.76a2.12 2.12 0 0 0 1.6-1.16z"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3l14 9-14 9V3z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+</svg>
+
+<div class="switchbar">
+  <div class="sw-brand">钓鱼竿<em>风格探索 v1 · 同一批素材，四种视觉语言</em></div>
+  <div class="sw-tabs">
+    <button data-s="blueprint" class="on">A 图纸</button>
+    <button data-s="paper">B 纸感</button>
+    <button data-s="gallery">C 画廊</button>
+    <button data-s="cinema">D 影院</button>
+    <button data-s="specs">E 控件对照</button>
+  </div>
+  <div class="sw-note" id="swNote"><b>细线、直角、等宽数字</b> —— 像专业仪器。信息密度最高，长时间看最不累眼，但偏冷、不够亲切。</div>
+</div>
+
+<!-- ================= A 图纸 ================= -->
+<section class="stage s-blueprint on" id="stage-blueprint">
+  <aside class="side">
+    <div class="brand">
+      <i><svg class="ic" style="width:15px;height:15px"><use href="#i-anchor"/></svg></i>
+      <div><b>钓鱼竿</b><span>Media Index</span></div>
+    </div>
+    <div class="root">
+      <svg class="ic" style="width:13px;height:13px;color:#5F6772"><use href="#i-folder"/></svg>
+      <div style="flex:1;min-width:0">
+        <div class="p">F:\download\video-rod</div>
+        <div class="h">36 files · 2.0 GB</div>
+      </div>
+    </div>
+    <div>
+      <div class="sec-h"><span>收藏夹</span><b>+</b></div>
+      <div id="fav-bp"></div>
+    </div>
+    <div>
+      <div class="sec-h"><span>资源树</span><b>36</b></div>
+      <div id="tree-bp"></div>
+    </div>
+    <div class="cta"><span>回收站</span><b>3</b></div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="searchbox">
+        <svg class="ic" style="width:13px;height:13px"><use href="#i-search"/></svg>
+        <input placeholder="搜索 标题 / 博主 / 平台 / 路径">
+      </div>
+      <button class="tbtn"><svg class="ic" style="width:13px;height:13px"><use href="#i-scan"/></svg>扫描</button>
+      <button class="tbtn"><svg class="ic" style="width:13px;height:13px"><use href="#i-list"/></svg></button>
+      <button class="tbtn"><svg class="ic" style="width:13px;height:13px"><use href="#i-grid"/></svg></button>
+      <button class="tbtn pri"><svg class="ic" style="width:13px;height:13px"><use href="#i-folder"/></svg>选择目录</button>
+    </div>
+    <div class="hd">
+      <h1>全部素材<b>36 ITEMS</b></h1>
+      <div class="sub">7 PLATFORMS · 6 AUTHORS · 2.0 GB</div>
+    </div>
+    <div class="filters">
+      <button class="tab on">全部<b>36</b></button>
+      <button class="tab">图片<b>13</b></button>
+      <button class="tab">动图<b>5</b></button>
+      <button class="tab">视频<b>18</b></button>
+      <span style="width:1px;height:14px;background:#262A31;margin:0 8px"></span>
+      <button class="tab">全部平台</button>
+      <button class="tab">X</button>
+      <button class="tab">小红书</button>
+      <button class="tab">抖音</button>
+      <button class="tab">微博</button>
+    </div>
+    <div class="grid" id="grid-bp"></div>
+  </div>
+</section>
+
+<!-- ================= B 纸感 ================= -->
+<section class="stage s-paper" id="stage-paper">
+  <aside class="side">
+    <div class="brand">
+      <i><svg class="ic" style="width:15px;height:15px"><use href="#i-anchor"/></svg></i>
+      <div><b>钓鱼竿</b><span>Media Index</span></div>
+    </div>
+    <div class="root">
+      <div class="p">F:\download\video-rod</div>
+      <div class="h">36 个素材 · 共 2.0 GB</div>
+    </div>
+    <div>
+      <div class="sec-h"><span>收藏夹</span><b>+ 新建</b></div>
+      <div id="fav-pp"></div>
+    </div>
+    <div>
+      <div class="sec-h"><span>资源树</span><b>36</b></div>
+      <div id="tree-pp"></div>
+    </div>
+    <div class="note">读的是本地文件夹，删了索引也不会动文件。<b>素材永远在你自己硬盘上。</b></div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="searchbox">
+        <svg class="ic" style="width:14px;height:14px"><use href="#i-search"/></svg>
+        <input placeholder="搜标题、博主、平台，或直接粘贴链接">
+      </div>
+      <button class="tbtn"><svg class="ic" style="width:14px;height:14px"><use href="#i-grid"/></svg></button>
+      <button class="tbtn"><svg class="ic" style="width:14px;height:14px"><use href="#i-list"/></svg></button>
+      <button class="tbtn pri"><svg class="ic" style="width:14px;height:14px"><use href="#i-scan"/></svg>重新扫描</button>
+    </div>
+    <div class="hd">
+      <h1>全部素材<b>36 项</b></h1>
+      <div class="sub">来自 7 个平台、6 位博主，共 2.0 GB。<br>上次扫描：2 分钟前。</div>
+    </div>
+    <div class="filters">
+      <button class="tab on">全部<b>36</b></button>
+      <button class="tab">图片<b>13</b></button>
+      <button class="tab">动图<b>5</b></button>
+      <button class="tab">视频<b>18</b></button>
+      <button class="tab">X</button>
+      <button class="tab">小红书</button>
+      <button class="tab">抖音</button>
+      <button class="tab">微博</button>
+    </div>
+    <div class="grid" id="grid-pp"></div>
+  </div>
+</section>
+
+<!-- ================= C 画廊 ================= -->
+<section class="stage s-gallery" id="stage-gallery">
+  <aside class="side">
+    <div class="brand">
+      <i><svg class="ic" style="width:14px;height:14px"><use href="#i-anchor"/></svg></i>
+      <div><b>钓鱼竿</b><span>Library</span></div>
+    </div>
+    <div class="root">
+      <div class="p">video-rod</div>
+      <div class="h">36 项 · 2.0 GB</div>
+    </div>
+    <div>
+      <div class="sec-h"><span>收藏夹</span><b>+</b></div>
+      <div id="fav-ga"></div>
+    </div>
+    <div>
+      <div class="sec-h"><span>资源</span><b>36</b></div>
+      <div id="tree-ga"></div>
+    </div>
+    <div class="foot">删除只进回收站<br>文件不受影响</div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="searchbox">
+        <svg class="ic" style="width:14px;height:14px"><use href="#i-search"/></svg>
+        <input placeholder="搜索">
+      </div>
+      <button class="tbtn"><svg class="ic"><use href="#i-list"/></svg></button>
+      <button class="tbtn"><svg class="ic"><use href="#i-grid"/></svg></button>
+      <button class="tbtn pri"><svg class="ic" style="width:13px;height:13px"><use href="#i-plus"/></svg>目录</button>
+    </div>
+    <div class="hd">
+      <h1>全部素材<b>36</b></h1>
+      <div class="sub">7 个平台 · 6 位博主 · 2.0 GB</div>
+    </div>
+    <div class="filters">
+      <button class="tab on">全部 36</button>
+      <button class="tab">图片 13</button>
+      <button class="tab">动图 5</button>
+      <button class="tab">视频 18</button>
+      <button class="tab">X</button>
+      <button class="tab">小红书</button>
+      <button class="tab">抖音</button>
+      <button class="tab">微博</button>
+    </div>
+    <div class="grid" id="grid-ga"></div>
+  </div>
+</section>
+
+<!-- ================= D 影院 ================= -->
+<section class="stage s-cinema" id="stage-cinema">
+  <aside class="side">
+    <div class="brand">
+      <i><svg class="ic" style="width:15px;height:15px"><use href="#i-anchor"/></svg></i>
+      <div><b>钓鱼竿</b><span>Screening Room</span></div>
+    </div>
+    <div class="root">
+      <div class="p">F:\download\video-rod</div>
+      <div class="h">36 项 · 2.0 GB</div>
+    </div>
+    <div>
+      <div class="sec-h"><span>收藏夹</span><b>+</b></div>
+      <div id="fav-ci"></div>
+    </div>
+    <div>
+      <div class="sec-h"><span>资源树</span><b>36</b></div>
+      <div id="tree-ci"></div>
+    </div>
+    <div class="cta"><span>回收站</span><b>03</b></div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="searchbox">
+        <svg class="ic" style="width:14px;height:14px"><use href="#i-search"/></svg>
+        <input placeholder="搜索素材">
+      </div>
+      <button class="tbtn"><svg class="ic" style="width:13px;height:13px"><use href="#i-list"/></svg></button>
+      <button class="tbtn"><svg class="ic" style="width:13px;height:13px"><use href="#i-grid"/></svg></button>
+      <button class="tbtn pri">选择目录</button>
+    </div>
+    <div class="hd">
+      <h1>全部素材<b>36</b></h1>
+      <div class="sub">7 平台 · 6 博主 · 2.0 GB</div>
+    </div>
+    <div class="filters">
+      <button class="tab on">全部<b>36</b></button>
+      <button class="tab">图片<b>13</b></button>
+      <button class="tab">动图<b>5</b></button>
+      <button class="tab">视频<b>18</b></button>
+      <button class="tab">X</button>
+      <button class="tab">小红书</button>
+      <button class="tab">抖音</button>
+      <button class="tab">微博</button>
+    </div>
+    <div class="grid" id="grid-ci"></div>
+  </div>
+</section>
+
+<!-- ================= E 控件对照 ================= -->
+<section class="specs" id="stage-specs">
+  <div class="spec-head">
+    <h2>控件对照</h2>
+    <p>同一批按钮、输入框、下拉、开关、标签、右键菜单、图标 —— 四套风格横向比</p>
+  </div>
+  <div id="specBody"></div>
+</section>
+
+<!-- ================= E 控件对照 ================= -->
+<section class="specs" id="stage-specs">
+  <div class="spec-head">
+    <h2>控件对照</h2>
+    <p>同一批按钮、输入框、下拉、开关、标签、右键菜单、图标 —— 四套风格横向比</p>
+  </div>
+  <div id="specBody"></div>
+</section>
+
+<script>
+/* ---------------- 数据：同一批素材 ---------------- */
+const FILES = [
+  {t:'Artemis II 发射演练 4K 实拍：夜间推进剂加注全过程',a:'NASA',p:'X',c:'#111',k:'VIDEO',d:'00:42',s:'184.6 MB',h:212},
+  {t:'ISS 舱外活动：机械臂视角下的地球边缘',a:'NASA',p:'X',c:'#111',k:'IMAGE',d:'',s:'3.8 MB',h:196},
+  {t:'SpaceX Crew-9 返回舱溅落，回收船近距离视角',a:'NASA',p:'X',c:'#111',k:'VIDEO',d:'01:18',s:'96.2 MB',h:168},
+  {t:'折多山云海延时（动图 WebP，含 24 帧）',a:'唐十七呀',p:'微博',c:'#FF6B35',k:'WEBP',d:'',s:'4.7 MB',h:44},
+  {t:'韦伯望远镜新发布的蟹状星云红外合成图',a:'NASA',p:'X',c:'#111',k:'IMAGE',d:'',s:'8.4 MB',h:268},
+  {t:'川西自驾 day3：翻越折多山，云海在脚下',a:'唐十七呀',p:'微博',c:'#FF6B35',k:'VIDEO',d:'02:06',s:'22.3 MB',h:178},
+  {t:'租房改造第 3 期｜把 8㎡ 阳台变成小书房',a:'小高今天找到工作了么',p:'小红书',c:'#FF2442',k:'IMAGE',d:'',s:'3.2 MB',h:342},
+  {t:'把 100 颗跳跳糖倒进可乐，会发生什么',a:'奇趣蛋蛋',p:'抖音',c:'#161823',k:'VIDEO',d:'00:58',s:'42.7 MB',h:286},
+  {t:'实验室里最危险的 5 个瞬间（上）',a:'奇趣蛋蛋',p:'抖音',c:'#161823',k:'VIDEO',d:'01:24',s:'57.1 MB',h:302},
+  {t:'30 秒看完阳台改造全过程',a:'小高今天找到工作了么',p:'小红书',c:'#FF2442',k:'GIF',d:'',s:'31.3 MB',h:12},
+  {t:'The Egg — A Short Story',a:'Kurzgesagt',p:'YouTube',c:'#FF0000',k:'VIDEO',d:'07:54',s:'412.8 MB',h:2},
+  {t:'东京深夜的便利店灯牌，随手拍的一卷',a:'yuki.photo',p:'Instagram',c:'#C13584',k:'IMAGE',d:'',s:'5.2 MB',h:210},
+  {t:'Crew-9 出舱准备：舱门打开前最后的检查',a:'NASA',p:'X',c:'#111',k:'VIDEO',d:'03:12',s:'148.3 MB',h:232},
+  {t:'折多山垭口日出，手机直出未修',a:'唐十七呀',p:'微博',c:'#FF6B35',k:'IMAGE',d:'',s:'4.6 MB',h:36},
+  {t:'阳台改造前后对比：收纳全上墙，省出 2 平米',a:'小高今天找到工作了么',p:'小红书',c:'#FF2442',k:'IMAGE',d:'',s:'2.8 MB',h:20},
+  {t:'跳跳糖第 3 集：这次真的炸了',a:'奇趣蛋蛋',p:'抖音',c:'#161823',k:'VIDEO',d:'00:52',s:'44.1 MB',h:24},
+  {t:'What If You Detonated a Nuclear Bomb In The Marianas Trench',a:'Kurzgesagt',p:'YouTube',c:'#FF0000',k:'VIDEO',d:'06:31',s:'298.4 MB',h:198},
+  {t:'把 8 平米阳台变成一个能坐下读书的角落',a:'小高今天找到工作了么',p:'小红书',c:'#FF2442',k:'GIF',d:'',s:'12.4 MB',h:150},
+];
+
+const FAVS = [
+  {n:'已加星标',c:6,star:true},
+  {n:'旅行素材',c:5},
+  {n:'教程待看',c:5},
+  {n:'给客户的',c:7},
+];
+const TREE = [
+  {n:'全部素材',c:36,root:true},
+  {n:'X',c:14,dot:'#111'},
+  {n:'NASA',c:14,lv:2,dot:'#111'},
+  {n:'小红书',c:8,dot:'#FF2442'},
+  {n:'小高今天找到工作了么',c:8,lv:2,dot:'#FF2442'},
+  {n:'抖音',c:9,dot:'#161823'},
+  {n:'奇趣蛋蛋',c:9,lv:2,dot:'#161823'},
+  {n:'微博',c:3,dot:'#FF6B35'},
+];
+
+/* ---------------- 渲染 ---------------- */
+const ico = (id, sz) => `<svg class="ic" style="width:${sz||14}px;height:${sz||14}px"><use href="#i-${id}"/></svg>`;
+
+function favHTML(prefix){
+  return FAVS.map((f,i)=>{
+    const icon = f.star ? ico('star',13) : ico('bookmark',13);
+    const style = f.star ? 'style="color:#E0A02E"' : '';
+    return `<button class="row${i===0&&prefix==='bp'?' on':''}">
+      <span ${style} style="display:grid;place-items:center">${icon}</span>
+      <span class="lb">${f.n}</span><span class="n">${f.c}</span></button>`;
+  }).join('');
+}
+
+function treeHTML(prefix){
+  return TREE.map((t,i)=>{
+    if(t.root) return `<button class="row on"><span style="display:grid;place-items:center;color:inherit">${ico('folder',13)}</span><span class="lb">${t.n}</span><span class="n">${t.c}</span></button>`;
+    const dot = `<span class="dot" style="background:${t.dot}"></span>`;
+    const pad = t.lv===2 ? 'padding-left:22px' : '';
+    return `<button class="row" style="${pad}">${dot}<span class="lb">${t.n}</span><span class="n">${t.c}</span></button>`;
+  }).join('');
+}
+
+function cardHTML(f,i){
+  return `<article class="card">
+    <div class="c-cover" style="--h:${f.h}">
+      <span class="c-kind">${f.k}</span>
+      ${f.d ? `<span class="c-dur">${f.d}</span>` : ''}
+    </div>
+    <div class="c-body">
+      <div class="c-title">${f.t}</div>
+      <div class="c-meta"><span class="au">${f.a}</span><span class="sz">${f.s}</span></div>
+    </div>
+  </article>`;
+}
+
+['bp','pp','ga','ci'].forEach(k=>{
+  const f = document.getElementById('fav-'+k);
+  const t = document.getElementById('tree-'+k);
+  const g = document.getElementById('grid-'+k);
+  if(f) f.innerHTML = favHTML(k);
+  if(t) t.innerHTML = treeHTML(k);
+  if(g) g.innerHTML = FILES.map(cardHTML).join('');
+});
+
+/* ---------------- 控件对照 ---------------- */
+const SMENU = () => `<div class="menu">
+  <b class="hl">${ico('play',12)}预览</b>
+  <b>${ico('folder',12)}在文件中打开</b>
+  <b>${ico('star',12)}加星标</b>
+  <b>${ico('bookmark',12)}加入收藏夹…</b>
+  <hr>
+  <b>${ico('trash',12)}移到回收站</b>
+</div>`;
+const SICONS = ['star','bookmark','folder','search','grid','list','play','trash']
+  .map(n => ico(n,15)).join('');
+const cell = (cap, html) => `<div class="cell"><span class="cap">${cap}</span>${html}</div>`;
+
+function specRow(t, name, desc){
+  return `<div class="spec-row">
+    <div class="spec-name">${name}<em>${desc}</em></div>
+    <div class="spec-set ${t}">
+      ${cell('按钮', `<div class="ln">
+        <button class="b pri">选择目录</button>
+        <button class="b">重新扫描</button>
+        <button class="b ghost">取消</button></div>`)}
+      ${cell('图标按钮', `<div class="ln">
+        <button class="ib">${ico('grid')}</button>
+        <button class="ib on">${ico('list')}</button>
+        <button class="ib">${ico('trash')}</button></div>`)}
+      ${cell('输入框', `<div class="inp">${ico('search')}<span>搜索标题 / 博主</span></div>`)}
+      ${cell('下拉', `<div class="sel"><span>最新保存</span>${ico('chevron-down',13)}</div>`)}
+      ${cell('开关', `<div class="ln">
+        <div class="sw on"><i></i></div>
+        <div class="sw"><i></i></div></div>`)}
+      ${cell('标签', `<div class="ln">
+        <span class="tg">4K</span><span class="tg on">太空</span><span class="tg danger">重复</span></div>`)}
+      ${cell('右键菜单', SMENU())}
+      ${cell('图标', `<div class="ln" style="gap:9px;opacity:.92">${SICONS}</div>`)}
+    </div>
+  </div>`;
+}
+
+document.getElementById('specBody').innerHTML =
+  specRow('t-blueprint','A 图纸','细线 / 直角 / 3px 圆角<br>等宽数字，冷蓝单色') +
+  specRow('t-paper','B 纸感','暖白 / 衬线 / 胶囊圆角<br>赭石点缀，柔阴影') +
+  specRow('t-gallery','C 画廊','近白 / 大圆角 / 无边框<br>靠阴影和留白分层') +
+  specRow('t-cinema','D 影院','近黑 / 8px 圆角 / 无边框<br>暖橙渐变，发光点缀');
+
+/* ---------------- 切换 ---------------- */
+const NOTES = {
+  blueprint:'<b>细线、直角、等宽数字</b> —— 像专业仪器。信息密度最高，长时间看最不累眼，但偏冷、不够亲切。',
+  paper:'<b>暖白纸底、衬线标题、柔阴影</b> —— 像一本杂志。舒服、耐看、有品质感，代价是同样面积能放的素材更少。',
+  gallery:'<b>悬浮侧栏、大圆角、文字浮在图上</b> —— 像 Pinterest。图最突出、界面几乎消失，但一屏看的信息最少，找具体文件要滑。',
+  cinema:'<b>近黑背景、大标题、暖橙点缀</b> —— 像家庭影院。看视频最有氛围，长时间浏览图片会偏沉。',
+  specs:'<b>同一批控件的四套实现</b> —— 按钮高度/圆角、菜单密度、图标描边、开关形状都不一样。看完这页再定风格，落地才不会走样。',
+};
+document.querySelectorAll('.sw-tabs button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.sw-tabs button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    const s = b.dataset.s;
+    document.querySelectorAll('.stage, .specs').forEach(x=>x.classList.remove('on'));
+    document.getElementById('stage-'+s).classList.add('on');
+    document.documentElement.setAttribute('data-stage',s);
+    document.getElementById('swNote').innerHTML = NOTES[s];
+  });
+});
+</script>
+</body>
+</html>
