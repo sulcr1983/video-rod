@@ -83,14 +83,22 @@ check("全选生效", sel == "12", sel)
 shot("pageui-2-panel.png")
 ev("document.querySelector('#pClose').click()")
 
-# 7. X 场景
+# 7. X 场景（v2：统一深色玻璃胶囊 + 平台色点 + 抽屉已存标记）
 ev("document.querySelector('[data-scene=\"s-x\"]').click()"); time.sleep(0.3)
 ev("document.querySelector('#xbtn').click()"); time.sleep(1.1)
-xb = ev("document.querySelector('#xbtn span').textContent")
-check("X 按钮下载态", xb == "已保存", xb)
+xb = ev("""(()=>{const b=document.querySelector('#xbtn');
+  return {txt:b.querySelector('.lbl').textContent, dot:!!b.querySelector('.pdot'),
+          glassy:getComputedStyle(b).backdropFilter !== 'none'};})()""")
+check("X 按钮：深色玻璃胶囊+平台色点", xb["dot"] is True and xb["glassy"] is True, xb)
+check("X 按钮下载态=已保存", xb["txt"] == "已保存", xb["txt"])
 ev("document.querySelector('#openXDrawer').click()"); time.sleep(0.3)
-xd = ev("document.querySelector('#bulkDrawer').classList.contains('on')")
-check("X 批量抽屉打开", xd is True)
+xd = ev("""(()=>{const d=document.querySelector('#bulkDrawer');
+  const tag=document.querySelector('#bulkList .saved-tag');
+  return {on:d.classList.contains('on'), bg:getComputedStyle(d).backgroundColor,
+          saved:document.querySelectorAll('#bulkList .d-row.saved').length,
+          tag:tag?tag.textContent:''};})()""")
+check("批量抽屉=深色玻璃（三平台一套）", xd["on"] is True and xd["bg"] == "rgb(19, 26, 38)", xd["bg"])
+check("抽屉内已存标记出现", xd["saved"] == 2 and "已存" in xd["tag"], xd)
 shot("pageui-3-x-drawer.png")
 ev("document.querySelector('#bulkClose').click()")
 
@@ -110,8 +118,11 @@ check("小红书抽屉打开", xh is True)
 shot("pageui-5-xhs.png")
 ev("document.querySelector('#xhsClose').click()")
 
-# 10. Instagram
+# 10. Instagram（v2：SVG 图标 + 色点，去 emoji 与品牌渐变）
 ev("document.querySelector('[data-scene=\"s-ig\"]').click()"); time.sleep(0.3)
+igc = ev("""(()=>{const b=document.querySelector('#igBtn');
+  return {svg:!!b.querySelector('svg'), emoji:b.innerHTML.indexOf('\\u2b07')>=0, dot:!!b.querySelector('.pdot')};})()""")
+check("IG 按钮：SVG+色点（去 emoji/品牌渐变）", igc["svg"] is True and igc["emoji"] is False and igc["dot"] is True, igc)
 shot("pageui-6-instagram.png")
 ig = ev("""(()=>{document.querySelector('#igBtn').click(); return true;})()""")
 check("IG 按钮可点", ig is True)

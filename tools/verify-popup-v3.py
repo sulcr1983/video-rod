@@ -74,12 +74,23 @@ sv = ev("""(()=>{document.querySelector('#ovSave').click();document.querySelecto
   return document.querySelectorAll('.toast').length>=2;})()""")
 check("存到哪 / 默认画质 均可点", sv is True)
 
-# 5. 快捷设置抽屉
-d = ev("""(()=>{document.querySelector('#btnSettings').click();return document.querySelector('#vrSettings').classList.contains('on');})()""")
-check("齿轮打开快捷设置抽屉", d is True)
-tp = ev("document.querySelector('#tplPrev').innerText")
-check("模板实时预览有落盘名", ('深海纪录片' in tp and 'mp4' in tp), tp[:40])
-shot("popup-v3-4-settings.png")
+# 5. 设置一步直达（v3.2：齿轮直达，无抽屉层）
+st = ev("""(()=>{document.querySelector('#btnSettings').click();
+  const drawer=document.querySelector('#vrSettings');
+  const toast=[...document.querySelectorAll('.toast')].map(t=>t.innerText).join('|');
+  return {noDrawer:!drawer, toast:toast.includes('options.html')||toast.includes('完整设置页')};})()""")
+check("齿轮一步直达完整设置页（无抽屉层）", st["noDrawer"] is True and st["toast"] is True, st)
+
+rd = ev("""(()=>{const r=document.querySelector('.row');
+  const btn=r.querySelector('.rowdl'); if(!btn) return {has:false};
+  btn.click(); return {has:true};})()""")
+check("每行有独立下载键", rd["has"] is True, rd)
+time.sleep(0.8)
+sv = ev("""(()=>{const c=document.querySelector('#ignoreDone');const was=c.checked;
+  c.checked=false;c.dispatchEvent(new Event('change'));
+  return {saved:document.querySelectorAll('.row.saved').length, total:document.querySelectorAll('.row').length};})()""")
+check("行内下载后该条转为已存（置灰区出现）", sv["saved"] == 3 and sv["total"] == 12, sv)
+shot("popup-v3-5-rowdl.png")
 ev("document.querySelector('#setBack').click()")
 
 # 6. 展开详情

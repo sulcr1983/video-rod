@@ -205,8 +205,9 @@ svg{display:block}
 .tweet .t-media{aspect-ratio:16/10;border-radius:12px;background:radial-gradient(120% 120% at 30% 20%,#2a3342 0%,#141a24 60%,#0b0f16 100%);position:relative;overflow:hidden;margin-bottom:8px}
 .tweet .t-acts{display:flex;gap:14px;align-items:center;color:var(--dim);font-size:12px;margin-top:8px}
 /* X 内联按钮（.vr-xbtn） */
-.xbtn{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 14px;border-radius:999px;color:#fff;font-size:12.5px;font-weight:600;background:linear-gradient(135deg,#1d9bf0,#0a7bd1);box-shadow:0 3px 10px rgba(29,155,240,.3);margin-left:6px;transition:.14s}
-.xbtn:hover{filter:brightness(1.06)}
+.xbtn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:999px;color:#fff;font-size:12.5px;font-weight:600;background:var(--glass);backdrop-filter:blur(8px);box-shadow:0 3px 10px rgba(0,0,0,.35);margin-left:6px;transition:.14s}
+.xbtn .pdot{width:7px;height:7px;border-radius:50%;background:#1d9bf0;flex:0 0 7px}
+.xbtn:hover{background:rgba(37,99,235,.94)}
 .xbtn:active{transform:translateY(1px)}
 .xbtn.busy{opacity:.6}
 .xbtn.done{background:linear-gradient(135deg,#16a34a,#128a3f);box-shadow:0 3px 10px rgba(22,163,74,.3)}
@@ -216,58 +217,62 @@ svg{display:block}
 .vside{position:fixed;right:0;top:38%;z-index:2100;display:flex;flex-direction:column;gap:8px}
 .vside .tag-btn{writing-mode:vertical-rl;text-orientation:mixed;display:flex;align-items:center;gap:7px;padding:14px 7px;border-radius:9px 0 0 9px;color:#fff;font-size:12px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:.14s}
 .vside .tag-btn:hover{padding-left:11px}
-.vside .tag-btn.weibo{background:linear-gradient(180deg,#1677ff,#0f5fd1)}
-.vside .tag-btn.xhs{background:linear-gradient(180deg,#ff2442,#c8102e)}
+.vside .tag-btn{background:var(--glass);backdrop-filter:blur(8px)}
+.vside .tag-btn .pdot{width:8px;height:8px;border-radius:50%;margin:0 auto 7px}
 .vside .tag-btn .cnt{background:rgba(255,255,255,.25);border-radius:8px;padding:2px 6px;writing-mode:horizontal-tb;font-size:10px}
 
 /* 白底抽屉（微博/小红书 .vr-bulk-panel / .vr-xhs-panel） */
 .drawer{
-  position:fixed;top:0;right:0;height:100vh;width:360px;max-width:92vw;z-index:2150;background:#fff;
-  box-shadow:-12px 0 40px rgba(0,0,0,.22);transform:translateX(105%);transition:.22s ease;display:flex;flex-direction:column;
+  position:fixed;top:0;right:0;height:100vh;width:360px;max-width:92vw;z-index:2150;background:#131a26;color:#e5e7eb;
+  border-left:1px solid #232b38;box-shadow:-12px 0 40px rgba(0,0,0,.35);transform:translateX(105%);transition:.22s ease;display:flex;flex-direction:column;
 }
 .drawer.on{transform:translateX(0)}
-.drawer .d-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #eef1f5;font-size:13.5px;font-weight:700}
-.drawer .d-head .x{margin-left:auto;width:26px;height:26px;border-radius:6px;color:#8b93a3}
-.drawer .d-head .x:hover{background:#f2f4f7}
-.drawer .d-sub{font-size:11px;color:#8b93a3;font-weight:400}
+.drawer .d-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #232b38;font-size:13.5px;font-weight:700;color:#fff}
+.drawer .d-head .x{margin-left:auto;width:26px;height:26px;border-radius:6px;color:#8b97a3}
+.drawer .d-head .x:hover{background:rgba(255,255,255,.08);color:#fff}
+.drawer .d-sub{font-size:11px;color:#8b97a3;font-weight:400}
 .drawer .d-list{flex:1;overflow-y:auto;padding:8px 12px}
 .d-row{display:flex;gap:10px;align-items:center;padding:9px 8px;border-radius:9px;cursor:pointer}
-.d-row:hover{background:#f5f7fa}
-.d-row .ck{width:17px;height:17px;border-radius:4px;border:1.5px solid #c9cfd8;display:grid;place-items:center;color:transparent;flex:0 0 17px}
+.d-row:hover{background:rgba(255,255,255,.05)}
+.d-row .ck{width:17px;height:17px;border-radius:4px;border:1.5px solid #3a4456;display:grid;place-items:center;color:transparent;flex:0 0 17px}
 .d-row.on .ck{background:var(--blue);border-color:var(--blue);color:#fff}
-.d-row.xhs.on .ck{background:#ff2442;border-color:#ff2442;color:#fff}
-.d-row .thumb{width:42px;height:42px;border-radius:7px;overflow:hidden;background:#eef1f5;flex:0 0 42px;position:relative}
+.d-row.xhs.on .ck{background:var(--blue);border-color:var(--blue);color:#fff}
+.d-row.saved{opacity:.45;cursor:default}
+.d-row.saved .saved-tag{font-size:9.5px;color:#34d399;background:rgba(52,211,153,.14);padding:1px 6px;border-radius:8px}
+.d-row .thumb{width:42px;height:42px;border-radius:7px;overflow:hidden;background:#1a2130;flex:0 0 42px;position:relative}
 .d-row .thumb .emoji{position:absolute;inset:0;display:grid;place-items:center;font-size:17px}
 .d-row .info{min-width:0}
-.d-row .info .a{font-size:12px;color:#5c6673}
-.d-row .info .b{font-size:12.5px;color:#11161d;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.d-row .kind{font-size:10px;padding:1px 7px;border-radius:8px;background:#eef1f5;color:#5c6673;flex:0 0 auto}
-.d-row .kind.vid{background:#fff1f0;color:#e5484d}
-.d-row .kind.img{background:#eef4ff;color:#1d4ed8}
+.d-row .info{min-width:0;flex:1}
+.d-row .info .a{font-size:12px;color:#8b97a3}
+.d-row .info .b{font-size:12.5px;color:#e5e7eb;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.d-row .kind{font-size:10px;padding:1px 7px;border-radius:8px;background:#1f2937;color:#9aa7b8;flex:0 0 auto}
+.d-row .kind.vid{background:rgba(229,72,77,.14);color:#f87171}
+.d-row .kind.img{background:rgba(96,165,250,.14);color:#93c5fd}
 /* 圆点（小红书） */
 .d-row.xhs .dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
 .d-row.xhs .dot.img{background:#1677ff}
 .d-row.xhs .dot.vid{background:#ff2442}
-.drawer .d-foot{border-top:1px solid #eef1f5;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
-.d-foot .opts{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;color:#5c6673}
+.drawer .d-foot{border-top:1px solid #232b38;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.d-foot .opts{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;color:#8b97a3}
 .d-foot .opts label{display:flex;align-items:center;gap:4px;cursor:pointer}
 .d-foot .btns{display:flex;gap:6px}
-.d-foot button{flex:1;height:34px;border-radius:8px;background:#f2f4f7;font-size:12px;color:#11161d}
-.d-foot button:hover{background:#e9edf2}
+.d-foot button{flex:1;height:34px;border-radius:8px;background:#1f2937;font-size:12px;color:#e5e7eb}
+.d-foot button:hover{background:#263246}
 .d-foot button.primary{background:var(--blue);color:#fff;font-weight:600}
 .d-foot button.primary:hover{background:var(--blue-h)}
-.d-foot.xhs button.primary{background:#ff2442}
-.d-foot.xhs button.primary:hover{background:#e01f3a}
+.d-foot.xhs button.primary{background:var(--blue)}
+.d-foot.xhs button.primary:hover{background:var(--blue-h)}
 
 /* Instagram */
 .ig-scene .ig-post{max-width:470px;margin:0 auto}
 .ig-post .ig-media{aspect-ratio:1/1.05;border-radius:12px;background:radial-gradient(120% 120% at 30% 20%,#3a2a3e 0%,#1a1420 60%,#0d0a10 100%);position:relative;overflow:hidden}
 .ig-btn{
   position:fixed;right:20px;bottom:24px;z-index:2200;display:flex;align-items:center;gap:7px;height:42px;
-  padding:0 16px;border-radius:999px;color:#fff;font-size:13px;font-weight:600;
-  background:linear-gradient(135deg,#405de6,#c13584);box-shadow:0 8px 22px rgba(193,53,132,.4);transition:.14s;
+  padding:0 15px;border-radius:999px;color:#fff;font-size:13px;font-weight:600;
+  background:var(--glass);backdrop-filter:blur(8px);box-shadow:0 8px 22px rgba(0,0,0,.4);transition:.14s;
 }
-.ig-btn:hover{filter:brightness(1.07)}
+.ig-btn .pdot{width:8px;height:8px;border-radius:50%;background:linear-gradient(45deg,#f58529,#dd2a7b);flex:0 0 8px}
+.ig-btn:hover{background:rgba(37,99,235,.94)}
 .ig-btn.busy{opacity:.65}
 
 /* YouTube */
@@ -278,9 +283,11 @@ svg{display:block}
 .yt-meta .row{display:flex;gap:10px;align-items:center;color:var(--dim);font-size:12.5px}
 .yt-btn{
   display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 16px;border-radius:18px;background:var(--blue);
-  color:#fff;font-size:13px;font-weight:600;box-shadow:0 3px 10px rgba(37,99,235,.3);transition:.14s;
+  color:#fff;font-size:13px;font-weight:600;background:var(--glass);backdrop-filter:blur(8px);
+  box-shadow:0 3px 10px rgba(0,0,0,.35);transition:.14s;
 }
-.yt-btn:hover{background:var(--blue-h)}
+.yt-btn .pdot{width:7px;height:7px;border-radius:50%;background:#ff0000;flex:0 0 7px}
+.yt-btn:hover{background:rgba(37,99,235,.94)}
 .yt-tip{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:11.5px;color:#8b93a3}
 
 /* toast */
@@ -426,8 +433,9 @@ svg{display:block}
       <div class="t-acts">
         <span>💬 1.2 万</span><span>🔁 3.4 万</span><span>❤️ 8.9 万</span>
         <button class="xbtn" id="xbtn">
+          <span class="pdot"></span>
           <svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span>下载</span>
+          <span class="lbl">下载</span>
         </button>
       </div>
     </div>
@@ -438,13 +446,14 @@ svg{display:block}
       <div class="t-acts">
         <span>💬 856</span><span>🔁 1.1 万</span><span>❤️ 3.2 万</span>
         <button class="xbtn" onclick="toast('已保存到资源库', 'X/@archery_team/视频/')">
+          <span class="pdot"></span>
           <svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span>下载</span>
+          <span class="lbl">下载</span>
         </button>
       </div>
     </div>
   </div>
-  <div class="vside"><button class="tag-btn weibo" id="openXDrawer" style="background:linear-gradient(180deg,#1677ff,#0f5fd1)"><span class="cnt" id="xDrawerCnt">12</span>批量下载</button></div>
+  <div class="vside"><button class="tag-btn" id="openXDrawer"><span class="pdot" style="background:#1d9bf0"></span><span class="cnt" id="xDrawerCnt">12</span>批量下载</button></div>
 </section>
 
 <!-- ============ 场景 4：微博主页 ============ -->
@@ -463,7 +472,7 @@ svg{display:block}
       <div class="t-media" style="background:radial-gradient(120% 120% at 30% 20%,#2c3a2c 0%,#142016 60%,#0a100a 100%)"></div>
     </div>
   </div>
-  <div class="vside"><button class="tag-btn weibo" id="openWeiboDrawer"><span class="cnt" id="wbCnt">8</span>批量下载</button></div>
+  <div class="vside"><button class="tag-btn" id="openWeiboDrawer"><span class="pdot" style="background:#e6162d"></span><span class="cnt" id="wbCnt">8</span>批量下载</button></div>
 </section>
 
 <!-- ============ 场景 5：小红书主页 ============ -->
@@ -480,7 +489,7 @@ svg{display:block}
       <div class="t-media" style="background:radial-gradient(120% 120% at 30% 20%,#2a3a4a 0%,#141e2a 60%,#0a1016 100%)"></div>
     </div>
   </div>
-  <div class="vside"><button class="tag-btn xhs" id="openXhsDrawer"><span class="cnt" id="xhsCnt">14</span>收集</button></div>
+  <div class="vside"><button class="tag-btn" id="openXhsDrawer"><span class="pdot" style="background:#ff2442"></span><span class="cnt" id="xhsCnt">14</span>收集</button></div>
 </section>
 
 <!-- ============ 场景 6：Instagram ============ -->
@@ -495,7 +504,7 @@ svg{display:block}
       </div>
     </div>
   </div>
-  <button class="ig-btn" id="igBtn"><span>⬇</span><span id="igTxt">下载当前帖</span></button>
+  <button class="ig-btn" id="igBtn"><span class="pdot"></span><svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span id="igTxt">下载当前帖</span></button>
 </section>
 
 <!-- ============ 场景 7：YouTube ============ -->
@@ -509,6 +518,7 @@ svg{display:block}
           <h2>4K 自然纪录片：雨林深处</h2>
           <div class="row"><span>4.2 万次观看</span><span>·</span><span>2 天前</span>
             <button class="yt-btn" id="ytBtn" style="margin-left:auto">
+              <span class="pdot"></span>
               <svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               下载
             </button>
@@ -545,7 +555,7 @@ svg{display:block}
   <div class="d-head">收集 <span class="d-sub">· 主页笔记</span><button class="x" id="xhsClose">✕</button></div>
   <div class="d-list" id="xhsList"></div>
   <div class="d-foot xhs">
-    <div class="opts"><label><input type="checkbox" id="xhsAuto" checked> 自动补全详情</label></div>
+    <div class="opts"><label><input type="checkbox" id="xhsAuto" checked> 自动补全详情</label><label><input type="checkbox" id="xhsIgnoreDone" checked> 忽略已下载</label></div>
     <div class="btns"><button id="xhsCollect">收集当前页</button><button id="xhsClear">清空</button></div>
     <div class="btns"><button class="primary" id="xhsGo">收集并下载</button><button id="xhsQueue">下载队列</button></div>
   </div>
@@ -640,7 +650,7 @@ svg{display:block}
     bar.style.left = Math.min(r.right - 8 - 172, window.innerWidth - 190) + 'px';
     bar.style.top = (r.bottom - 8 - 40) + 'px';
     bar.classList.add('on');
-    $('hbOneTxt').textContent = m.state==='done' ? '已存过' : '下载原图';
+    $('hbOneTxt').textContent = m.state==='done' ? '已存 ✓' : '下载原图 '+m.w+'×'+m.h;
     $('hbOne').className = m.state==='done' ? 'ok' : '';
     $('hbAllTxt').textContent = '全部 ' + MEDIA.filter(x=>x.state!=='done').length;
   }
@@ -735,16 +745,16 @@ svg{display:block}
   /* ============ 场景 3：X 按钮 ============ */
   $('xbtn').onclick = function(){
     const b=this; b.classList.remove('done','warn'); b.classList.add('busy');
-    b.querySelector('span').textContent='下载中…';
-    setTimeout(()=>{ b.classList.remove('busy'); b.classList.add('done'); b.querySelector('span').textContent='已保存'; toast('已保存到资源库','X/@NASA/视频/'); },900);
+    b.querySelector('.lbl').textContent='下载中…';
+    setTimeout(()=>{ b.classList.remove('busy'); b.classList.add('done'); b.querySelector('.lbl').textContent='已保存'; toast('已保存到资源库','X/@NASA/视频/'); },900);
   };
   $('openXDrawer').onclick = openBulkDrawer.bind(null,'X');
 
   /* ============ 微博 / X 批量抽屉 ============ */
   const BULK = [
-    {a:'@环球纪实', b:'北极圈极夜', kind:'vid', emoji:'🎬'},
+    {a:'@环球纪实', b:'北极圈极夜', kind:'vid', emoji:'🎬', saved:true},
     {a:'@老番茄', b:'荒野生存 48 小时', kind:'vid', emoji:'🎬'},
-    {a:'@环球纪实', b:'极光之下的村落', kind:'img', c1:'#2a3a5c', c2:'#101c30'},
+    {a:'@环球纪实', b:'极光之下的村落', kind:'img', c1:'#2a3a5c', c2:'#101c30', saved:true},
     {a:'@老番茄', b:'装备开箱 9 图', kind:'img', c1:'#5c3a2a', c2:'#301c10'},
     {a:'@环球纪实', b:'冰原徒步路线', kind:'img', c1:'#3a5c4a', c2:'#1a3024'},
     {a:'@旅行者笔记', b:'峡湾日落', kind:'img', c1:'#5c4a2a', c2:'#30241a'},
@@ -762,10 +772,11 @@ svg{display:block}
   function renderBulkList(){
     const l=$('bulkList'); l.innerHTML='';
     BULK.forEach((r,i)=>{
-      const row=document.createElement('div'); row.className='d-row'+(selectedBulk.has(i)?' on':'');
+      const sv = !!r.saved && $('bulkIgnoreDone').checked;
+      const row=document.createElement('div'); row.className='d-row'+(selectedBulk.has(i)&&!sv?' on':'')+(r.saved?' saved':'');
       const thumb = r.kind==='vid' ? `<div class="thumb"><span class="emoji">${r.emoji}</span></div>` : `<div class="thumb"><img src="${svgThumb(r.c1,r.c2)}" style="width:100%;height:100%;object-fit:cover"></div>`;
-      row.innerHTML = `<span class="ck">✓</span>${thumb}<div class="info"><div class="a">${esc(r.a)}</div><div class="b">${esc(r.b)}</div></div><span class="kind ${r.kind==='vid'?'vid':'img'}">${r.kind==='vid'?'视频':'图片'}</span>`;
-      row.onclick=()=>{ selectedBulk.has(i)?selectedBulk.delete(i):selectedBulk.add(i); renderBulkList(); };
+      row.innerHTML = `<span class="ck">✓</span>${thumb}<div class="info"><div class="a">${esc(r.a)}</div><div class="b">${esc(r.b)}</div></div>${r.saved?'<span class="saved-tag">✓ 已存</span>':''}<span class="kind ${r.kind==='vid'?'vid':'img'}">${r.kind==='vid'?'视频':'图片'}</span>`;
+      if(!sv) row.onclick=()=>{ selectedBulk.has(i)?selectedBulk.delete(i):selectedBulk.add(i); renderBulkList(); };
       l.appendChild(row);
     });
   }
@@ -782,7 +793,7 @@ svg{display:block}
 
   /* ============ 小红书抽屉 ============ */
   const XHS = [
-    {a:'小鱼 · 穿搭', b:'秋日奶油色套装', kind:'img', c1:'#4a3b3b', c2:'#241b1b'},
+    {a:'小鱼 · 穿搭', b:'秋日奶油色套装', kind:'img', c1:'#4a3b3b', c2:'#241b1b', saved:true},
     {a:'Ken 的镜头', b:'海边三天两夜', kind:'vid'},
     {a:'小鱼 · 穿搭', b:'奶白针织开衫', kind:'img', c1:'#5c4a3a', c2:'#30241a'},
     {a:'旅行背包', b:'旅行背包清单', kind:'img', c1:'#3a4a5c', c2:'#1a2430'},
@@ -794,14 +805,17 @@ svg{display:block}
   function renderXhs(){
     const l=$('xhsList'); l.innerHTML='';
     XHS.forEach((r,i)=>{
-      const row=document.createElement('div'); row.className='d-row xhs'+(selXhs.has(i)?' on':'');
+      const sv = !!r.saved && $('xhsIgnoreDone').checked;
+      const row=document.createElement('div'); row.className='d-row xhs'+(selXhs.has(i)&&!sv?' on':'')+(r.saved?' saved':'');
       const thumb = r.kind==='vid' ? `<div class="thumb"><span class="emoji">🎬</span></div>` : `<div class="thumb"><img src="${svgThumb(r.c1,r.c2)}" style="width:100%;height:100%;object-fit:cover"></div>`;
-      row.innerHTML = `<span class="dot ${r.kind}"></span>${thumb}<div class="info"><div class="a">${esc(r.a)}</div><div class="b">${esc(r.b)}</div></div>`;
-      row.onclick=()=>{ selXhs.has(i)?selXhs.delete(i):selXhs.add(i); renderXhs(); };
+      row.innerHTML = `<span class="dot ${r.kind}"></span>${thumb}<div class="info"><div class="a">${esc(r.a)}</div><div class="b">${esc(r.b)}</div></div>${r.saved?'<span class="saved-tag">✓ 已存</span>':''}`;
+      if(!sv) row.onclick=()=>{ selXhs.has(i)?selXhs.delete(i):selXhs.add(i); renderXhs(); };
       l.appendChild(row);
     });
   }
   $('xhsClose').onclick = ()=>{ $('xhsDrawer').classList.remove('on'); $('pageMask').classList.remove('on'); };
+  $('xhsIgnoreDone').onchange = renderXhs;
+  $('bulkIgnoreDone').onchange = renderBulkList;
   $('xhsCollect').onclick = ()=>toast('已收集当前页', '小红书/<博主>/');
   $('xhsClear').onclick = ()=>{ selXhs.clear(); renderXhs(); toast('已清空'); };
   $('xhsGo').onclick = ()=>{ $('xhsDrawer').classList.remove('on'); $('pageMask').classList.remove('on'); runBatchImg(XHS.length,'小红书'); };
