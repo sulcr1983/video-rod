@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<title>设置 — 苏哥的钓鱼竿</title>
+<style>
+:root{
+  --bg:#F7F8FA; --surface:#FFFFFF; --surface-2:#F4F5F7; --surface-3:#EBEDF0;
+  --ink:#0E1116; --ink-2:#3C444F; --muted:#6B7480; --faint:#98A0AC;
+  --line:#E4E7EB; --line-2:#EFF1F4;
+  --primary:#16181D; --primary-hover:#000000;
+  --accent:#337CCC; --accent-soft:#EAF2FB; --accent-ink:#205A9B;
+  --danger:#C6383A; --danger-soft:#FDF0F0;
+  --ok:#1E8E5A; --ok-soft:#E9F7F0; --warn:#9A6A00; --warn-soft:#FFF6E5;
+  --r-sm:7px; --r:10px; --r-lg:14px; --r-full:999px;
+  --sh-1:0 1px 2px rgba(16,24,40,.04);
+  --sh-2:0 2px 6px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --sh-3:0 12px 32px rgba(16,24,40,.12),0 2px 8px rgba(16,24,40,.06);
+  --side:216px; --ease:cubic-bezier(.22,.61,.36,1);
+}
+html[data-theme="dark"]{
+  --bg:#0E1014; --surface:#161A20; --surface-2:#1C2128; --surface-3:#242A33;
+  --ink:#E9ECF1; --ink-2:#C6CDD7; --muted:#8C95A2; --faint:#5D6673;
+  --line:#262C35; --line-2:#1F242B;
+  --primary:#EDF1F7; --primary-hover:#FFFFFF;
+  --accent:#6BA6EA; --accent-soft:#172638; --accent-ink:#8FBBF0;
+  --danger:#E86466; --danger-soft:#2A1A1B;
+  --ok:#4FBF8B; --ok-soft:#132A21; --warn:#D8A33A; --warn-soft:#2A2314;
+  --sh-1:0 1px 2px rgba(0,0,0,.4); --sh-2:0 2px 8px rgba(0,0,0,.45);
+  --sh-3:0 16px 40px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:400 13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+kbd{
+  font:500 10px/1 ui-monospace,Consolas,monospace;padding:2px 5px;border-radius:4px;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);
+}
+
+/* ---------- 顶栏 ---------- */
+.top{
+  position:sticky;top:0;z-index:20;height:54px;display:flex;align-items:center;gap:12px;
+  padding:0 18px;background:var(--surface);border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;color:inherit}
+.brand-mark{
+  width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
+  background:var(--primary);color:var(--surface);font:700 11px/1 -apple-system,sans-serif;
+  letter-spacing:.02em;
+}
+.brand-txt strong{display:block;font-size:12.5px;font-weight:660;letter-spacing:-.2px}
+.brand-txt small{display:block;font-size:10px;color:var(--muted);margin-top:-1px}
+.top .spacer{flex:1}
+.btn{
+  display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:7px;
+  background:var(--surface);border:1px solid var(--line);font-size:11.5px;font-weight:550;
+  color:var(--ink-2);transition:all .12s var(--ease);
+}
+.btn:hover{background:var(--surface-2);color:var(--ink);border-color:var(--surface-3)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:var(--surface);box-shadow:var(--sh-1)}
+.btn.primary:hover{background:var(--primary-hover);border-color:var(--primary-hover)}
+.btn.small{height:28px;padding:0 9px;font-size:11px}
+.btn .i{width:13px;height:13px}
+
+/* ---------- 布局 ---------- */
+.wrap{display:flex;min-height:calc(100vh - 54px)}
+.side{
+  width:var(--side);flex:0 0 var(--side);padding:14px 10px;border-right:1px solid var(--line);
+  background:var(--surface);position:sticky;top:54px;align-self:flex-start;height:calc(100vh - 54px);
+  overflow:auto;
+}
+.side-group{margin-bottom:14px}
+.side-label{
+  font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+  color:var(--faint);padding:0 8px;margin-bottom:4px;
+}
+.side button{
+  display:flex;align-items:center;gap:7px;width:100%;padding:6px 8px;border-radius:6px;
+  font-size:11.5px;color:var(--ink-2);text-align:left;transition:all .12s;
+}
+.side button:hover{background:var(--surface-2);color:var(--ink)}
+.side button.on{background:var(--surface-2);color:var(--ink);font-weight:600}
+.side button.on .i{color:var(--accent)}
+.side button .i{width:13px;height:13px;color:var(--muted)}
+.side button .n{margin-left:auto;font-size:10px;color:var(--faint)}
+
+.main{flex:1;min-width:0;padding:22px 30px 80px;max-width:820px}
+h1{margin:0 0 4px;font-size:19px;font-weight:680;letter-spacing:-.4px}
+.sub{margin:0 0 22px;font-size:12px;color:var(--muted);line-height:1.7}
+
+/* ---------- 设置项 ---------- */
+.sec{margin-bottom:26px}
+.sec-h{
+  display:flex;align-items:center;gap:8px;margin:0 0 4px;
+  font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:700;
+}
+.sec-h::after{content:"";flex:1;height:1px;background:var(--line-2)}
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--sh-1);overflow:hidden;
+}
+.row{display:flex;align-items:flex-start;gap:16px;padding:14px 16px}
+.row + .row{border-top:1px solid var(--line-2)}
+.row-body{flex:1;min-width:0}
+.row-title{font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:3px;display:flex;align-items:center;gap:6px}
+.row-desc{font-size:11px;color:var(--muted);line-height:1.65}
+.row-ctl{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding-top:1px}
+.row.stack{flex-direction:column;gap:10px}
+.row.stack .row-ctl{width:100%}
+
+/* 开关 */
+.switch{position:relative;width:36px;height:20px;flex:0 0 36px;border-radius:99px;background:var(--surface-3);transition:background .16s var(--ease)}
+.switch::after{
+  content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .16s var(--ease);
+}
+.switch.on{background:var(--ok)}
+.switch.on::after{transform:translateX(16px)}
+.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 输入 */
+.field{
+  height:32px;padding:0 10px;border-radius:7px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);font-size:12px;outline:none;min-width:0;
+  transition:border-color .12s,box-shadow .12s;
+}
+.field:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.field.mono{font-family:ui-monospace,Consolas,monospace;font-size:11px}
+select.field{min-width:132px;cursor:pointer}
+
+/* 模板编辑区 */
+.tpl-box{
+  border:1px solid var(--line);border-radius:9px;background:var(--surface-2);
+  padding:10px 11px;transition:border-color .12s;
+}
+.tpl-box:focus-within{border-color:var(--accent);background:var(--surface)}
+.tpl-input{
+  width:100%;border:none;background:transparent;outline:none;
+  font:500 12.5px/1.5 ui-monospace,Consolas,monospace;color:var(--ink);
+  padding:0;resize:none;
+}
+.tpl-vars{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+.tpl-var{
+  display:inline-flex;align-items:center;height:21px;padding:0 7px;border-radius:5px;
+  font:500 10.5px/1 ui-monospace,Consolas,monospace;color:var(--accent-ink);
+  background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 18%,transparent);
+  transition:all .12s;
+}
+.tpl-var:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.tpl-out{
+  margin-top:10px;padding:9px 11px;border-radius:7px;background:var(--surface);
+  border:1px dashed var(--line);font:400 11px/1.6 ui-monospace,Consolas,monospace;
+  color:var(--ink-2);word-break:break-all;
+}
+.tpl-out .lbl{color:var(--faint);font-family:inherit}
+.tpl-out b{color:var(--ok);font-weight:650}
+.tpl-out .slash{color:var(--faint)}
+.tpl-err{color:var(--danger);font-weight:600}
+
+/* 变量表：三列紧凑，别做成"设置项"的样子 */
+.varhead,.vrow{
+  display:grid;grid-template-columns:112px 1fr 150px;gap:12px;align-items:center;
+  padding:7px 16px;
+}
+.varhead{
+  font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;
+  color:var(--faint);border-bottom:1px solid var(--line-2);
+}
+.vrow + .vrow{border-top:1px solid var(--line-2)}
+.vrow .vk{font:500 11.5px/1 ui-monospace,Consolas,monospace;color:var(--accent-ink)}
+.vrow .vd{font-size:11.5px;color:var(--ink-2)}
+.vrow .ve{font:400 11px/1.4 ui-monospace,Consolas,monospace;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 变量表：三列紧凑，别做成"设置项"的样子 */
+.varhead,.vrow{
+  display:grid;grid-template-columns:112px 1fr 150px;gap:12px;align-items:center;
+  padding:7px 16px;
+}
+.varhead{
+  font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;
+  color:var(--faint);border-bottom:1px solid var(--line-2);
+}
+.vrow + .vrow{border-top:1px solid var(--line-2)}
+.vrow .vk{font:500 11.5px/1 ui-monospace,Consolas,monospace;color:var(--accent-ink)}
+.vrow .vd{font-size:11.5px;color:var(--ink-2)}
+.vrow .ve{font:400 11px/1.4 ui-monospace,Consolas,monospace;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 目录选择 */
+.pick{
+  display:flex;align-items:center;gap:8px;width:100%;height:34px;padding:0 11px;
+  border:1px solid var(--line);border-radius:7px;background:var(--surface);
+  font:400 11.5px/1 ui-monospace,Consolas,monospace;color:var(--ink-2);
+}
+.pick:hover{background:var(--surface-2);border-color:var(--surface-3)}
+.pick .path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.pick .i{color:var(--muted)}
+
+/* 徽标 */
+.tagpill{
+  display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:99px;
+  font-size:9.5px;font-weight:650;letter-spacing:.02em;
+}
+.tagpill.ok{background:var(--ok-soft);color:var(--ok)}
+.tagpill.warn{background:var(--warn-soft);color:var(--warn)}
+.tagpill.mute{background:var(--surface-3);color:var(--muted)}
+.tagpill.acc{background:var(--accent-soft);color:var(--accent-ink)}
+
+/* 高级工具 */
+.tool{
+  display:flex;align-items:center;gap:10px;padding:11px 16px;
+  border-top:1px solid var(--line-2);
+}
+.tool-body{flex:1;min-width:0}
+.tool-title{font-size:12px;font-weight:550}
+.tool-desc{font-size:10.5px;color:var(--muted);margin-top:2px}
+
+/* 底部保存条 */
+.savebar{
+  position:fixed;left:var(--side);right:0;bottom:0;z-index:30;
+  display:flex;align-items:center;gap:10px;padding:11px 30px;
+  background:color-mix(in srgb,var(--surface) 92%,transparent);
+  backdrop-filter:blur(10px);border-top:1px solid var(--line);
+  transform:translateY(100%);transition:transform .2s var(--ease);
+}
+.savebar.on{transform:none}
+.savebar .msg{font-size:11.5px;color:var(--muted)}
+.savebar .msg b{color:var(--ink)}
+.savebar .spacer{flex:1}
+
+.toast{
+  position:fixed;left:50%;bottom:70px;transform:translate(-50%,10px);z-index:120;
+  padding:9px 14px;border-radius:var(--r-sm);font-size:11.5px;font-weight:550;
+  background:var(--ink);color:var(--surface);box-shadow:var(--sh-3);
+  opacity:0;pointer-events:none;transition:all .2s var(--ease);
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+.themebtn{
+  position:fixed;right:16px;bottom:16px;z-index:60;width:36px;height:36px;border-radius:50%;
+  display:grid;place-items:center;background:var(--surface);color:var(--ink-2);
+  border:1px solid var(--line);box-shadow:var(--sh-2);
+}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-folder-open" viewBox="0 0 24 24"><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-refresh-cw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+  <symbol id="i-external-link" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 15.842a1 1 0 0 0-.25.45l-1.5 5.5a1 1 0 0 0 1.25 1.25l5.5-1.5a1 1 0 0 0 .45-.25z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+</svg>
+
+<header class="top">
+  <a class="brand" href="#">
+    <span class="brand-mark">VR</span>
+    <span class="brand-txt"><strong>苏哥的钓鱼竿</strong><small>设置</small></span>
+  </a>
+  <span class="spacer"></span>
+  <button class="btn small" id="backLib"><svg class="i"><use href="#i-library"/></svg>打开资源库</button>
+</header>
+
+<div class="wrap">
+  <nav class="side">
+    <div class="side-group">
+      <div class="side-label">下载</div>
+      <button data-go="dl" class="on"><svg class="i"><use href="#i-download"/></svg>保存位置<span class="n">3</span></button>
+      <button data-go="name"><svg class="i"><use href="#i-file-text"/></svg>文件命名<span class="n">3</span></button>
+      <button data-go="quality"><svg class="i"><use href="#i-settings"/></svg>画质与合并<span class="n">3</span></button>
+    </div>
+    <div class="side-group">
+      <div class="side-label">资源库</div>
+      <button data-go="lib"><svg class="i"><use href="#i-library"/></svg>索引与扫描<span class="n">2</span></button>
+      <button data-go="theme"><svg class="i"><use href="#i-palette"/></svg>外观<span class="n">1</span></button>
+    </div>
+    <div class="side-group">
+      <div class="side-label">其他</div>
+      <button data-go="keys"><svg class="i"><use href="#i-keyboard"/></svg>快捷键<span class="n">1</span></button>
+      <button data-go="adv"><svg class="i"><use href="#i-wrench"/></svg>高级工具<span class="n">4</span></button>
+    </div>
+  </nav>
+
+  <main class="main">
+    <h1 id="pageTitle">保存位置</h1>
+    <p class="sub" id="pageSub">决定文件存在哪、怎么分文件夹。改完点右下角保存。</p>
+
+    <!-- ============ 保存位置 ============ -->
+    <section id="sec-dl">
+      <div class="sec"><div class="sec-h">保存位置</div>
+        <div class="card">
+          <div class="row stack">
+            <div class="row-body">
+              <div class="row-title">默认下载文件夹</div>
+              <div class="row-desc">所有素材的根目录。下面两个开关决定它里面怎么分层。</div>
+            </div>
+            <button class="pick" id="pickRoot">
+              <svg class="i"><use href="#i-folder"/></svg>
+              <span class="path" id="rootPath">F:\download\video-rod</span>
+              <span class="tagpill ok">已授权</span>
+            </button>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">按平台分文件夹</div>
+              <div class="row-desc">开：<code>bilibili/…</code>　关：全部平铺在根目录</div>
+            </div>
+            <div class="row-ctl"><button class="switch on" data-sw="byPlatform" role="switch" aria-checked="true"></button></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">按作者分文件夹</div>
+              <div class="row-desc">开：<code>bilibili/某UP主/…</code>　关：<code>bilibili/…</code></div>
+            </div>
+            <div class="row-ctl"><button class="switch on" data-sw="byAuthor" role="switch" aria-checked="true"></button></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">按类型分（视频 / 图片）</div>
+              <div class="row-desc">开：<code>…/videos/</code> 与 <code>…/images/</code> 分开</div>
+            </div>
+            <div class="row-ctl"><button class="switch on" data-sw="byType" role="switch" aria-checked="true"></button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 文件命名 ============ -->
+    <section id="sec-name" class="hidden">
+      <div class="sec"><div class="sec-h">文件名规则</div>
+        <div class="card">
+          <div class="row stack">
+            <div class="row-body">
+              <div class="row-title">模板
+                <span class="tagpill acc">核心能力</span>
+              </div>
+              <div class="row-desc">点下面的变量插进去。<b>不认识的变量会原样保留</b>，不会悄悄变成空。</div>
+            </div>
+            <div class="tpl-box">
+              <textarea class="tpl-input" id="tpl" rows="2" spellcheck="false">${title}</textarea>
+              <div class="tpl-vars" id="tplVars"></div>
+            </div>
+            <div class="tpl-out" id="tplOut"></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">自动清理文件名</div>
+              <div class="row-desc">去掉 <code>\ / : * ? " &lt; &gt; |</code> 这些系统不允许的字符，连续空格压成一个</div>
+            </div>
+            <div class="row-ctl"><button class="switch on" data-sw="sanitize" role="switch" aria-checked="true"></button></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">重名时自动加序号</div>
+              <div class="row-desc">不覆盖已有文件，追加 <code>-1</code>、<code>-2</code></div>
+            </div>
+            <div class="row-ctl">
+              <select class="field" id="dupMode">
+                <option value="num" selected>加序号</option>
+                <option value="skip">跳过不下载</option>
+                <option value="over">直接覆盖</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sec"><div class="sec-h">可用变量</div>
+        <div class="card" id="varTable"></div>
+      </div>
+    </section>
+
+    <!-- ============ 画质与合并 ============ -->
+    <section id="sec-quality" class="hidden">
+      <div class="sec"><div class="sec-h">画质</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">默认清晰度</div>
+              <div class="row-desc">B站 / YouTube 这类多档位的站点按这个选</div>
+            </div>
+            <div class="row-ctl">
+              <select class="field" id="qsel">
+                <option>最高（1080P 及以上）</option>
+                <option selected>1080P</option>
+                <option>720P</option>
+                <option>最低（省流量）</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">只下音频</div>
+              <div class="row-desc">用于播客、音乐类内容</div>
+            </div>
+            <div class="row-ctl"><button class="switch" data-sw="audioOnly" role="switch" aria-checked="false"></button></div>
+          </div>
+        </div>
+      </div>
+      <div class="sec"><div class="sec-h">流媒体合并</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">m3u8 自动合并成 MP4</div>
+              <div class="row-desc">不合并的话会得到一堆 .ts 片段</div>
+            </div>
+            <div class="row-ctl"><button class="switch on" data-sw="mergeM3u8" role="switch" aria-checked="true"></button></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">合并后保留分段</div>
+              <div class="row-desc">占双倍空间，只用于排查合并失败</div>
+            </div>
+            <div class="row-ctl"><button class="switch" data-sw="keepSeg" role="switch" aria-checked="false"></button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 索引与扫描 ============ -->
+    <section id="sec-lib" class="hidden">
+      <div class="sec"><div class="sec-h">图片嗅探</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">抓取页面里的图片</div>
+              <div class="row-desc">关闭后只抓视频，图片浮标也不再出现</div>
+            </div>
+            <div class="row-ctl"><button class="switch on" data-sw="imgSniff" role="switch" aria-checked="true"></button></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">图片最小尺寸</div>
+              <div class="row-desc">小于这个尺寸的当图标忽略，避免抓到一堆 logo</div>
+            </div>
+            <div class="row-ctl">
+              <input class="field" id="minPx" value="200" style="width:80px;text-align:right">
+              <span style="font-size:11px;color:var(--muted)">px</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sec"><div class="sec-h">缩略图与索引</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">打开资源库时自动补缩略图</div>
+              <div class="row-desc">只补缺的，不重做已有的</div>
+            </div>
+            <div class="row-ctl"><button class="switch on" data-sw="autoThumb" role="switch" aria-checked="true"></button></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">缩略图质量</div>
+              <div class="row-desc" id="thumbHint">480 px · 每张约 25 KB，5 万张约 1.2 GB</div>
+            </div>
+            <div class="row-ctl">
+              <select class="field" id="thumbQ">
+                <option value="720">大（720 px，更清晰）</option>
+                <option value="480" selected>标准（480 px）</option>
+                <option value="360">省空间（360 px）</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 外观 ============ -->
+    <section id="sec-theme" class="hidden">
+      <div class="sec"><div class="sec-h">外观</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">主题</div>
+              <div class="row-desc">跟随系统，或强制亮 / 暗</div>
+            </div>
+            <div class="row-ctl">
+              <select class="field" id="themeSel">
+                <option value="auto" selected>跟随系统</option>
+                <option value="light">始终浅色</option>
+                <option value="dark">始终深色</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">卡片密度</div>
+              <div class="row-desc">密一点一屏能看更多，但封面会小</div>
+            </div>
+            <div class="row-ctl">
+              <select class="field" id="densitySel">
+                <option value="s">紧凑</option>
+                <option value="m" selected>标准</option>
+                <option value="l">宽松</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 快捷键 ============ -->
+    <section id="sec-keys" class="hidden">
+      <div class="sec"><div class="sec-h">全局快捷键</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-body"><div class="row-title">打开 / 关闭下载面板</div></div>
+            <div class="row-ctl"><kbd>Alt</kbd><kbd>V</kbd></div>
+          </div>
+          <div class="row">
+            <div class="row-body"><div class="row-title">打开资源库</div></div>
+            <div class="row-ctl"><kbd>Alt</kbd><kbd>L</kbd></div>
+          </div>
+          <div class="row">
+            <div class="row-body">
+              <div class="row-title">下载当前页面最大的视频</div>
+              <div class="row-desc">不用打开面板，一键下</div>
+            </div>
+            <div class="row-ctl"><kbd>Alt</kbd><kbd>D</kbd></div>
+          </div>
+        </div>
+      </div>
+      <div class="sec"><div class="sec-h">预览内快捷键</div>
+        <div class="card">
+          <div class="row">
+            <div class="row-body"><div class="row-title">完整键位表</div>
+              <div class="row-desc">视频逐帧、图片旋转、动图循环都在里面</div></div>
+            <div class="row-ctl"><button class="btn small">查看全部</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 高级工具 ============ -->
+    <section id="sec-adv" class="hidden">
+      <div class="sec"><div class="sec-h">数据与维护</div>
+        <div class="card">
+          <div class="tool">
+            <div class="tool-body">
+              <div class="tool-title">重建资源库索引</div>
+              <div class="tool-desc">目录被外部改动过、或素材显示不全时用。5 万条约 16 秒</div>
+            </div>
+            <button class="btn small"><svg class="i"><use href="#i-refresh-cw"/></svg>重建</button>
+          </div>
+          <div class="tool">
+            <div class="tool-body">
+              <div class="tool-title">导出索引（JSON）</div>
+              <div class="tool-desc">备份一份元数据，含标签、星标、溯源信息</div>
+            </div>
+            <button class="btn small"><svg class="i"><use href="#i-download"/></svg>导出</button>
+          </div>
+          <div class="tool">
+            <div class="tool-body">
+              <div class="tool-title">清空回收站</div>
+              <div class="tool-desc">释放空间。<b>不可恢复</b></div>
+            </div>
+            <button class="btn small" style="color:var(--danger);border-color:color-mix(in srgb,var(--danger) 30%,var(--line))">
+              <svg class="i"><use href="#i-trash-2"/></svg>清空
+            </button>
+          </div>
+          <div class="tool">
+            <div class="tool-body">
+              <div class="tool-title">查看运行日志</div>
+              <div class="tool-desc">下载失败、合并出错时看这里</div>
+            </div>
+            <button class="btn small"><svg class="i"><use href="#i-external-link"/></svg>打开</button>
+          </div>
+        </div>
+      </div>
+      <div class="sec"><div class="sec-h">版本</div>
+        <div class="card">
+          <div class="tool" style="border-top:none">
+            <div class="tool-body">
+              <div class="tool-title">当前版本 v1.0.0</div>
+              <div class="tool-desc">基于猫抓（cat-catch）衍生 · GPL-3.0</div>
+            </div>
+            <span class="tagpill ok">已是最新</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="savebar" id="savebar">
+  <span class="msg" id="saveMsg"><b>1</b> 项改动未保存</span>
+  <span class="spacer"></span>
+  <button class="btn small" id="resetAll">放弃改动</button>
+  <button class="btn small primary" id="saveAll"><svg class="i"><use href="#i-check"/></svg>保存</button>
+</div>
+
+<div class="toast" id="toast"></div>
+<button class="themebtn" id="themeBtn" title="切换主题"><svg class="i"><use href="#i-moon"/></svg></button>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------------- 导航 ---------------- */
+const PAGES = {
+  dl:      ['保存位置', '决定文件存在哪、怎么分文件夹。改完点右下角保存。'],
+  name:    ['文件命名', '用变量拼文件名。改完右边会实时显示落盘后的样子。'],
+  quality: ['画质与合并', '多档位站点选哪一档，以及流媒体怎么合并。'],
+  lib:     ['索引与扫描', '图片嗅探、缩略图与索引维护。'],
+  theme:   ['外观', '主题与卡片密度。'],
+  keys:    ['快捷键', '全局快捷键和预览内键位。'],
+  adv:     ['高级工具', '重建索引、导出、清空回收站、看日志。'],
+};
+function go(key){
+  $$('.side button').forEach(b => b.classList.toggle('on', b.dataset.go === key));
+  Object.keys(PAGES).forEach(k => $('#sec-' + k).classList.toggle('hidden', k !== key));
+  $('#pageTitle').textContent = PAGES[key][0];
+  $('#pageSub').textContent = PAGES[key][1];
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+$$('.side button').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+
+/* ---------------- 开关 ---------------- */
+let dirty = new Set();
+function markDirty(k){
+  dirty.add(k);
+  $('#savebar').classList.add('on');
+  $('#saveMsg').innerHTML = '<b>' + dirty.size + '</b> 项改动未保存';
+}
+$$('.switch').forEach(sw => {
+  sw.addEventListener('click', () => {
+    const on = sw.classList.toggle('on');
+    sw.setAttribute('aria-checked', String(on));
+    markDirty(sw.dataset.sw);
+  });
+});
+
+/* ---------------- 文件名模板 ---------------- */
+const VARS = [
+  ['title',  '标题',       '夜航西飞 第1集'],
+  ['post',   '帖子/作品名', '我拍的纪录片'],
+  ['author', '作者名',     '某UP主'],
+  ['site',   '站点',       'bilibili'],
+  ['index',  '序号',       '03'],
+  ['date',   '日期',       '2026-11-04'],
+  ['ext',    '扩展名',     'mp4'],
+  ['quality','清晰度',     '1080p'],
+];
+
+$('#tplVars').innerHTML = VARS.map(([k, label]) =>
+  `<button class="tpl-var" data-v="${k}" title="插入 \${${k}}">\${${k}}</button>`).join('');
+
+$('#tplVars').addEventListener('click', e => {
+  const b = e.target.closest('.tpl-var'); if (!b) return;
+  const ta = $('#tpl');
+  const ins = '${' + b.dataset.v + '}';
+  const s = ta.selectionStart, en = ta.selectionEnd;
+  ta.value = ta.value.slice(0, s) + ins + ta.value.slice(en);
+  ta.focus();
+  ta.setSelectionRange(s + ins.length, s + ins.length);
+  renderTpl();
+});
+
+/* 变量表 */
+$('#varTable').innerHTML =
+  '<div class="varhead"><span>变量</span><span>含义</span><span>示例</span></div>' +
+  VARS.map(([k, label, ex]) =>
+    `<div class="vrow"><span class="vk">\${${k}}</span><span class="vd">${esc(label)}</span>` +
+    `<span class="ve" title="${esc(ex)}">${esc(ex)}</span></div>`).join('');
+
+function renderTpl(){
+  const tpl = $('#tpl').value;
+  const sample = { title:'夜航西飞 第1集', post:'我拍的纪录片', author:'某UP主', site:'bilibili',
+                   index:'03', date:'2026-11-04', ext:'mp4', quality:'1080p' };
+  const used = [];
+  const out = tpl.replace(/\$\{(\w+)\}/g, (m, k) => {
+    if (sample[k] !== undefined) { used.push(k); return sample[k]; }
+    return m;   // 不认识的变量原样保留，不悄悄吞掉
+  });
+  const clean = out.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+  const bad = /\$\{\w+\}/.test(out);
+  const dir = ['bilibili', '某UP主', 'videos'].join('/');
+  $('#tplOut').innerHTML =
+    '<span class="lbl">落盘：</span>' + dir.split('/').map(x => x).join('<span class="slash">/</span>') +
+    '<span class="slash">/</span><b>' + esc(clean) + '.mp4</b>' +
+    (bad ? '<br><span class="tpl-err">⚠ 有变量不认识，会原样保留在文件名里</span>' : '') +
+    (tpl.trim() ? '' : '<br><span class="tpl-err">⚠ 模板是空的，会用默认名</span>');
+  markDirty('tpl');
+}
+$('#tpl').addEventListener('input', renderTpl);
+
+/* 缩略图质量提示联动 */
+const THUMB = { '720': '720 px · 每张约 50 KB，5 万张约 2.5 GB',
+                '480': '480 px · 每张约 25 KB，5 万张约 1.2 GB',
+                '360': '360 px · 每张约 14 KB，5 万张约 700 MB' };
+$('#thumbQ').addEventListener('change', e => {
+  $('#thumbHint').textContent = THUMB[e.target.value];
+  markDirty('thumbQ');
+});
+
+/* 主题 */
+$('#themeSel').addEventListener('change', e => {
+  const v = e.target.value;
+  document.documentElement.setAttribute('data-theme',
+    v === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : v);
+  markDirty('theme');
+});
+$('#themeBtn').addEventListener('click', () => {
+  const now = document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', now === 'dark' ? 'light' : 'dark');
+});
+
+/* 保存 */
+function toast(m){
+  const t = $('#toast'); t.textContent = m; t.classList.add('on');
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('on'), 2200);
+}
+$('#saveAll').addEventListener('click', () => {
+  const n = dirty.size; dirty.clear();
+  $('#savebar').classList.remove('on');
+  toast('已保存 ' + n + ' 项设置');
+});
+$('#resetAll').addEventListener('click', () => {
+  dirty.clear(); $('#savebar').classList.remove('on'); toast('已放弃改动');
+});
+$('#pickRoot').addEventListener('click', () => toast('选择文件夹（原型未启用）'));
+$('#backLib').addEventListener('click', () => toast('返回资源库（原型未启用）'));
+
+/* 启动 */
+$('#tpl').value = '${site}/${author}/${title}';
+renderTpl();
+dirty.clear();
+$('#savebar').classList.remove('on');
+$('#saveMsg').innerHTML = '<b>0</b> 项改动未保存';
+</script>
+</body>
+</html>

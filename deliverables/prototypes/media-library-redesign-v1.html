@@ -987,6 +987,96 @@ a.pi-item:hover dd .go{opacity:1}
 .ctx button.danger:hover{background:var(--danger-soft);color:var(--danger)}
 .ctx button.danger:hover .i{color:var(--danger);opacity:1}
 
+/* ============================================================
+   模态：重命名 / 确认（对应代码 libRenameMask / libConfirmMask）
+   ============================================================ */
+.modal-mask{
+  position:fixed;inset:0;z-index:95;background:rgba(10,14,20,.48);
+  display:grid;place-items:center;padding:24px;
+  opacity:0;pointer-events:none;transition:opacity .16s var(--ease);
+}
+.modal-mask.on{opacity:1;pointer-events:auto}
+.modal{
+  width:min(420px,100%);background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--sh-3);overflow:hidden;
+  transform:translateY(6px) scale(.985);transition:transform .18s var(--ease);
+}
+.modal-mask.on .modal{transform:none}
+.md-head{
+  display:flex;align-items:center;gap:9px;padding:14px 16px 12px;
+  border-bottom:1px solid var(--line-2);
+}
+.md-head h3{margin:0;font-size:13px;font-weight:660;letter-spacing:-.2px}
+.md-head .ico{
+  width:26px;height:26px;flex:0 0 26px;border-radius:7px;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);
+}
+.md-head .ico .i{width:14px;height:14px}
+.md-head .ico.warn{background:var(--danger-soft);color:var(--danger)}
+.md-body{padding:14px 16px 16px}
+.md-label{
+  display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--faint);font-weight:700;margin-bottom:6px;
+}
+.md-input-row{display:flex;align-items:center;gap:0;margin-bottom:12px}
+.md-input{
+  flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid var(--line);
+  border-radius:7px 0 0 7px;background:var(--surface);color:var(--ink);
+  font-size:12.5px;outline:none;font-family:inherit;
+}
+.md-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);z-index:1}
+.md-ext{
+  height:34px;display:flex;align-items:center;padding:0 10px;
+  border:1px solid var(--line);border-left:none;border-radius:0 7px 7px 0;
+  background:var(--surface-2);color:var(--muted);font-size:12px;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.md-hint{font-size:11px;color:var(--muted);line-height:1.65;margin:-2px 0 12px}
+.md-err{
+  display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--danger);
+  background:var(--danger-soft);border-radius:5px;padding:5px 8px;margin-bottom:12px;
+}
+.md-err .i{width:11px;height:11px;flex:0 0 11px}
+.md-msg{font-size:12px;color:var(--ink-2);line-height:1.7;margin:0 0 4px}
+.md-msg b{color:var(--ink)}
+.md-foot{display:flex;gap:7px;justify-content:flex-end;padding-top:4px}
+.md-foot .btn{min-width:72px;justify-content:center}
+
+/* ============================================================
+   空状态：三种场景（空库 / 无结果 / 未授权）
+   ============================================================ */
+.empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:56px 24px 72px;gap:0;
+}
+.empty.hidden{display:none}
+.e-ico{
+  width:52px;height:52px;border-radius:14px;display:grid;place-items:center;
+  background:var(--surface-2);color:var(--muted);margin-bottom:14px;
+  border:1px solid var(--line-2);
+}
+.e-ico .i{width:24px;height:24px;stroke-width:1.5}
+.empty b{font-size:13.5px;font-weight:660;color:var(--ink);margin-bottom:6px}
+.empty p{
+  margin:0 0 16px;font-size:11.5px;color:var(--muted);line-height:1.7;
+  max-width:340px;
+}
+.empty .e-acts{display:flex;gap:7px}
+
+/* 索引进度 */
+.scan{
+  display:flex;flex-direction:column;gap:8px;align-items:center;padding:56px 24px;
+}
+.scan-bar{
+  width:min(320px,80%);height:4px;border-radius:99px;background:var(--surface-3);
+  overflow:hidden;
+}
+.scan-bar i{display:block;height:100%;width:38%;border-radius:99px;background:var(--accent);
+  animation:scanmove 1.4s var(--ease) infinite}
+@keyframes scanmove{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
+.scan-txt{font-size:11.5px;color:var(--muted)}
+.scan-sub{font-size:10.5px;color:var(--faint)}
+
 /* ---------- 快捷键面板 ---------- */
 .keysheet{
   position:fixed;inset:0;z-index:110;background:rgba(8,10,14,.62);
@@ -1241,17 +1331,29 @@ kbd{
       <button class="btn small" id="batchClear">清除</button>
       <span class="spacer"></span>
       <button class="btn small"><svg class="i i-sm"><use href="#i-folder-input"/></svg>移动到…</button>
-      <button class="btn small danger"><svg class="i i-sm"><use href="#i-trash-2"/></svg>删除到回收站</button>
+      <button class="btn small danger" id="batchTrash"><svg class="i i-sm"><use href="#i-trash-2"/></svg>删除到回收站</button>
+      <button class="btn small ghost" id="batchExit" title="退出批量选择">退出</button>
     </div>
 
     <div class="listhead" id="listhead">
       <span class="c-name">名称</span><span class="c-plat">平台</span><span class="c-auth">作者</span><span class="c-size">大小</span><span class="c-time">保存</span>
     </div>
     <div class="grid" id="grid"></div>
+    <!-- 空状态：三种场景共用，文案与按钮由 JS 切换 -->
     <div class="empty hidden" id="empty">
-      <div class="e-ico"><svg class="i"><use href="#i-image"/></svg></div>
-      <b>没有匹配的素材</b>
-      <p>换个关键词，或清除筛选条件再试。也可能是这个目录还没扫描。</p>
+      <div class="e-ico" id="emptyIco"><svg class="i"><use href="#i-image"/></svg></div>
+      <b id="emptyTitle">没有匹配的素材</b>
+      <p id="emptyText">换个关键词，或清除筛选条件再试。</p>
+      <div class="e-acts" id="emptyActs">
+        <button class="btn small" id="emptyAction">清除筛选</button>
+      </div>
+    </div>
+
+    <!-- 索引进度（首次扫描 / 重建索引时） -->
+    <div class="scan hidden" id="scanState">
+      <div class="scan-bar"><i></i></div>
+      <div class="scan-txt" id="scanText">正在扫描目录…</div>
+      <div class="scan-sub" id="scanSub">已发现 0 个文件</div>
     </div>
   </main>
 </div>
@@ -1468,6 +1570,48 @@ kbd{
     <button data-act="trash" class="danger"><svg class="i"><use href="#i-trash-2"/></svg>移到回收站<span class="kbd">Del</span></button>
   </div>
 
+  <!-- 重命名 -->
+  <div class="modal-mask" id="renameMask">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+      <div class="md-head">
+        <span class="ico"><svg class="i"><use href="#i-pencil"/></svg></span>
+        <h3 id="renameTitle">重命名</h3>
+      </div>
+      <div class="md-body">
+        <label class="md-label" for="renameInput">文件名</label>
+        <div class="md-input-row">
+          <input class="md-input" id="renameInput" autocomplete="off" spellcheck="false" />
+          <span class="md-ext" id="renameExt">.mp4</span>
+        </div>
+        <p class="md-hint">扩展名单独锁定，避免误改后文件打不开。<kbd>Enter</kbd> 确认，<kbd>Esc</kbd> 取消。</p>
+        <div class="md-err hidden" id="renameErr"><svg class="i"><use href="#i-triangle-alert"/></svg><span id="renameErrText"></span></div>
+        <label class="md-label" for="renameDir">所在目录（可选）</label>
+        <input class="md-input" id="renameDir" style="width:100%;border-radius:7px;margin-bottom:12px" autocomplete="off" spellcheck="false" />
+        <div class="md-foot">
+          <button class="btn small" id="renameCancel">取消</button>
+          <button class="btn small primary" id="renameOk">重命名</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 确认 -->
+  <div class="modal-mask" id="confirmMask">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="md-head">
+        <span class="ico warn" id="confirmIco"><svg class="i"><use href="#i-trash-2"/></svg></span>
+        <h3 id="confirmTitle">确认操作</h3>
+      </div>
+      <div class="md-body">
+        <p class="md-msg" id="confirmMsg">确定要执行这个操作吗？</p>
+        <div class="md-foot" style="padding-top:14px">
+          <button class="btn small" id="confirmCancel">取消</button>
+          <button class="btn small danger" id="confirmOk">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 <button class="themebtn" id="themeBtn" title="切换暗色"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
 
@@ -1483,33 +1627,33 @@ const PLAT = {
   web:{name:'网页',dot:'#8B93A1',label:'网页'},
 };
 const FILES = [
-  {id:'x/NASA/videos/a1',plat:'x',author:'NASA',authorId:'NASA',workId:'1847231904556712',source:'download',dlAt:'2026-11-04 15:42',title:'Artemis II 发射演练 4K 实拍：夜间推进剂加注全过程',kind:'video',size:184.6,dur:'00:42',h:212,tags:['太空','4K']},
-  {id:'x/NASA/videos/a2',plat:'x',author:'NASA',authorId:'NASA',workId:'1847018221930044',source:'download',dlAt:'2026-11-04 15:38',title:'SpaceX Crew-9 返回舱溅落，回收船近距离视角',kind:'video',size:96.2,dur:'01:18',h:196},
-  {id:'x/NASA/images/a3',plat:'x',author:'NASA',authorId:'NASA',workId:'1846903110021887',source:'download',dlAt:'2026-11-04 15:30',title:'韦伯望远镜新发布的蟹状星云红外合成图',kind:'image',size:8.4,h:268,tags:['天文']},
-  {id:'x/NASA/images/a4',plat:'x',author:'NASA',authorId:'NASA',workId:'1846822100773155',source:'download',dlAt:'2026-11-04 15:29',title:'ISS 舱外活动：机械臂视角下的地球边缘',kind:'image',size:6.1,h:184},
-  {id:'xiaohongshu/gx/images/b1',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d4',source:'download',dlAt:'2026-11-04 14:51',title:'租房改造第 3 期｜把 8㎡ 阳台变成小书房',kind:'image',size:3.2,h:342,tags:['家居']},
-  {id:'xiaohongshu/gx/images/b2',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d4',source:'download',dlAt:'2026-11-04 14:51',title:'阳台改造前后对比：收纳全上墙，省出 2 平米',kind:'image',size:2.8,h:20},
-  {id:'xiaohongshu/gx/images/b3',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',source:'inferred',title:'同款书桌清单（含链接）',kind:'image',size:1.9,h:48},
-  {id:'xiaohongshu/gx/images/b5',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d5',source:'download',dlAt:'2026-11-04 14:53',title:'收纳柜开合演示（动图，原速）',kind:'anim',fmt:'GIF',size:12.4,h:150,frames:86},
-  {id:'weibo/tang/images/d3',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',workId:'5123',source:'download',dlAt:'2026-11-03 20:41',title:'折多山云海延时（动图 WebP，含 24 帧）',kind:'anim',fmt:'WebP',size:6.8,h:198,frames:24},
-  {id:'douyin/qqdd/images/c3',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412',source:'download',dlAt:'2026-11-03 21:01',title:'跳跳糖爆开的瞬间（APNG 逐帧）',kind:'anim',fmt:'APNG',size:9.1,h:320,frames:18},
-  {id:'xiaohongshu/gx/videos/b4',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',source:'inferred',title:'30 秒看完阳台改造全过程',kind:'video',size:31.3,dur:'00:31',h:12,tags:['改造']},
-  {id:'douyin/qqdd/videos/c1',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412884901234567890',secUid:'MS4wLjABAAAA_x8',source:'download',dlAt:'2026-11-03 21:04',title:'把 100 颗跳跳糖倒进可乐，会发生什么',kind:'video',size:42.7,dur:'00:58',h:286},
-  {id:'douyin/qqdd/videos/c2',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412884901234567891',secUid:'MS4wLjABAAAA_x8',source:'download',dlAt:'2026-11-03 21:03',title:'实验室里最危险的 5 个瞬间（上）',kind:'video',size:57.1,dur:'01:24',h:302},
-  {id:'weibo/tang/videos/d1',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',source:'inferred',title:'川西自驾 day3：翻越折多山，云海在脚下',kind:'video',size:29.4,dur:'02:06',h:178},
-  {id:'weibo/tang/images/d2',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',source:'inferred',title:'折多山垭口日出，手机直出未修',kind:'image',size:4.6,h:36},
-  {id:'youtube/Kurzgesagt/videos/dQw4w9WgXcQ',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'dQw4w9WgXcQ',source:'download',dlAt:'2026-11-04 16:20',title:'The Egg — A Short Story',kind:'video',size:412.8,dur:'07:54',h:2,tags:['科普','4K'],playlist:'Philosophy'},
-  {id:'youtube/Kurzgesagt/videos/k9Yx7n2aQqE',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'k9Yx7n2aQqE',source:'download',dlAt:'2026-11-04 16:22',title:'What If You Detonated a Nuclear Bomb In The Marianas Trench',kind:'video',size:298.4,dur:'06:31',h:198,playlist:'Philosophy'},
+  {id:'x/NASA/videos/a1.mp4',plat:'x',author:'NASA',authorId:'NASA',workId:'1847231904556712',source:'download',dlAt:'2026-11-04 15:42',title:'Artemis II 发射演练 4K 实拍：夜间推进剂加注全过程',kind:'video',size:184.6,dur:'00:42',h:212,tags:['太空','4K']},
+  {id:'x/NASA/videos/a2.mp4',plat:'x',author:'NASA',authorId:'NASA',workId:'1847018221930044',source:'download',dlAt:'2026-11-04 15:38',title:'SpaceX Crew-9 返回舱溅落，回收船近距离视角',kind:'video',size:96.2,dur:'01:18',h:196},
+  {id:'x/NASA/images/a3.jpg',plat:'x',author:'NASA',authorId:'NASA',workId:'1846903110021887',source:'download',dlAt:'2026-11-04 15:30',title:'韦伯望远镜新发布的蟹状星云红外合成图',kind:'image',size:8.4,h:268,tags:['天文']},
+  {id:'x/NASA/images/a4.jpg',plat:'x',author:'NASA',authorId:'NASA',workId:'1846822100773155',source:'download',dlAt:'2026-11-04 15:29',title:'ISS 舱外活动：机械臂视角下的地球边缘',kind:'image',size:6.1,h:184},
+  {id:'xiaohongshu/gx/images/b1.jpg',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d4',source:'download',dlAt:'2026-11-04 14:51',title:'租房改造第 3 期｜把 8㎡ 阳台变成小书房',kind:'image',size:3.2,h:342,tags:['家居']},
+  {id:'xiaohongshu/gx/images/b2.jpg',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d4',source:'download',dlAt:'2026-11-04 14:51',title:'阳台改造前后对比：收纳全上墙，省出 2 平米',kind:'image',size:2.8,h:20},
+  {id:'xiaohongshu/gx/images/b3.jpg',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',source:'inferred',title:'同款书桌清单（含链接）',kind:'image',size:1.9,h:48},
+  {id:'xiaohongshu/gx/images/b5.gif',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',workId:'66f0a1b2000000001e02c3d5',source:'download',dlAt:'2026-11-04 14:53',title:'收纳柜开合演示（动图，原速）',kind:'anim',fmt:'GIF',size:12.4,h:150,frames:86},
+  {id:'weibo/tang/images/d3.webp',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',workId:'5123',source:'download',dlAt:'2026-11-03 20:41',title:'折多山云海延时（动图 WebP，含 24 帧）',kind:'anim',fmt:'WebP',size:6.8,h:198,frames:24},
+  {id:'douyin/qqdd/images/c3.apng.apng',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412',source:'download',dlAt:'2026-11-03 21:01',title:'跳跳糖爆开的瞬间（APNG 逐帧）',kind:'anim',fmt:'APNG',size:9.1,h:320,frames:18},
+  {id:'xiaohongshu/gx/videos/b4.mp4',plat:'xiaohongshu',author:'小高今天找到工作了么',authorId:'5f2a91c1',source:'inferred',title:'30 秒看完阳台改造全过程',kind:'video',size:31.3,dur:'00:31',h:12,tags:['改造']},
+  {id:'douyin/qqdd/videos/c1.mp4',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412884901234567890',secUid:'MS4wLjABAAAA_x8',source:'download',dlAt:'2026-11-03 21:04',title:'把 100 颗跳跳糖倒进可乐，会发生什么',kind:'video',size:42.7,dur:'00:58',h:286},
+  {id:'douyin/qqdd/videos/c2.mp4',plat:'douyin',author:'奇趣蛋蛋',authorId:'qqdd',workId:'7412884901234567891',secUid:'MS4wLjABAAAA_x8',source:'download',dlAt:'2026-11-03 21:03',title:'实验室里最危险的 5 个瞬间（上）',kind:'video',size:57.1,dur:'01:24',h:302},
+  {id:'weibo/tang/videos/d1.mp4',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',source:'inferred',title:'川西自驾 day3：翻越折多山，云海在脚下',kind:'video',size:29.4,dur:'02:06',h:178},
+  {id:'weibo/tang/images/d2.jpg',plat:'weibo',author:'唐十七呀',authorId:'m0ve0f',source:'inferred',title:'折多山垭口日出，手机直出未修',kind:'image',size:4.6,h:36},
+  {id:'youtube/Kurzgesagt/videos/dQw4w9WgXcQ.mp4',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'dQw4w9WgXcQ',source:'download',dlAt:'2026-11-04 16:20',title:'The Egg — A Short Story',kind:'video',size:412.8,dur:'07:54',h:2,tags:['科普','4K'],playlist:'Philosophy'},
+  {id:'youtube/Kurzgesagt/videos/k9Yx7n2aQqE.mp4',plat:'youtube',author:'Kurzgesagt – In a Nutshell',authorId:'UCsXVk37bltHxD1rDPwtNM8Q',workId:'k9Yx7n2aQqE',source:'download',dlAt:'2026-11-04 16:22',title:'What If You Detonated a Nuclear Bomb In The Marianas Trench',kind:'video',size:298.4,dur:'06:31',h:198,playlist:'Philosophy'},
   /* 情况一：名字与可读账号完全相同（IG / X 常见）——只显示一次，不重复 */
-  {id:'instagram/yuki.photo/images/g1',plat:'instagram',author:'yuki.photo',authorHandle:'yuki.photo',authorSub:'Yuki ｜ 东京街头',authorUid:'4821937745',workId:'C8xQz1aPb',source:'download',dlAt:'2026-11-04 16:40',title:'东京深夜的便利店灯牌，随手拍的一卷',kind:'image',size:5.2,h:210,tags:['摄影']},
+  {id:'instagram/yuki.photo/images/g1.jpg',plat:'instagram',author:'yuki.photo',authorHandle:'yuki.photo',authorSub:'Yuki ｜ 东京街头',authorUid:'4821937745',workId:'C8xQz1aPb',source:'download',dlAt:'2026-11-04 16:40',title:'东京深夜的便利店灯牌，随手拍的一卷',kind:'image',size:5.2,h:210,tags:['摄影']},
   /* 情况二：平台有账号概念，但这次没抓到（接口没返回 / DOM 改版）——显示「未获取」+ 可重试 */
-  {id:'douyin/奇趣蛋蛋/videos/g2',plat:'douyin',author:'奇趣蛋蛋',authorState:'missing',workId:'7412884901234567892',source:'download',dlAt:'2026-11-04 16:44',title:'跳跳糖第 3 集：这次真的炸了',kind:'video',size:44.1,dur:'00:52',h:24},
+  {id:'douyin/奇趣蛋蛋/videos/g2.mp4',plat:'douyin',author:'奇趣蛋蛋',authorState:'missing',workId:'7412884901234567892',source:'download',dlAt:'2026-11-04 16:44',title:'跳跳糖第 3 集：这次真的炸了',kind:'video',size:44.1,dur:'00:52',h:24},
   /* 情况三：平台本身没有作者概念（通用网页图片）——名字显示「未知」，账号相关全部隐藏 */
-  {id:'web/未分类/images/g3',plat:'web',author:'',authorState:'unsupported',source:'download',dlAt:'2026-11-04 16:51',title:'网页里右键存下的一张长图（来源页已关）',kind:'image',size:3.7,h:132},
+  {id:'web/未分类/images/g3.jpg',plat:'web',author:'',authorState:'unsupported',source:'download',dlAt:'2026-11-04 16:51',title:'网页里右键存下的一张长图（来源页已关）',kind:'image',size:3.7,h:132},
   /* 情况四：名字也没抓到（接口失败 / 页面结构变了）—— 这是真缺陷，必须让人看见并能重试 */
-  {id:'xiaohongshu/未分类/videos/g4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
+  {id:'xiaohongshu/未分类/videos/g4.mp4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
   /* 情况四：名字也没抓到（接口失败 / 页面结构变了）—— 这是真缺陷，必须让人看见并能重试 */
-  {id:'xiaohongshu/未分类/videos/g4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
+  {id:'xiaohongshu/未分类/videos/g4.mp4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
 ];
 // 补到 27 条，并**交错插回**，避免同一条素材连续出现（看起来像 bug）
 (() => {
@@ -1612,7 +1756,7 @@ function render(){
   $('#grid').className = 'grid'+(S.view==='list'?' list':'')+(S.select?' selecting':'');
   $('#grid').innerHTML = rows.map(card).join('');
   $('#listhead').classList.toggle('on', S.view==='list');
-  $('#empty').classList.toggle('hidden', rows.length>0);
+  renderEmpty(rows.length);
   $('#grid').classList.toggle('hidden', rows.length===0);
   const T = {all:'全部素材', image:'图片', anim:'动图', video:'视频'}[S.type] || '全部素材';
   $('#pageTitle').innerHTML = `${T} <span class="pill">${rows.length} 项</span>`;
@@ -2134,9 +2278,9 @@ $('#pvPathCopy').addEventListener('click', async () => {
    回收站抽屉 + 右键菜单（对应代码里的 libTrashDrawer / libCtxMenu）
    ============================================================ */
 const TRASH = [
-  {id:'xiaohongshu/gx/images/b9',plat:'xiaohongshu',author:'小高今天找到工作了么',title:'旧版阳台改造草图（废弃）',kind:'image',size:2.1,h:96,delAt:'11-03 19:22'},
-  {id:'douyin/qqdd/videos/c7',plat:'douyin',author:'奇趣蛋蛋',title:'跳跳糖实验 失败重拍',kind:'video',size:38.6,dur:'00:47',h:250,delAt:'11-02 10:05'},
-  {id:'weibo/tang/videos/d5',plat:'weibo',author:'唐十七呀',title:'折多山堵车三小时（无内容）',kind:'video',size:12.2,dur:'00:38',h:60,delAt:'11-01 21:40'},
+  {id:'xiaohongshu/gx/images/b9.jpg',plat:'xiaohongshu',author:'小高今天找到工作了么',title:'旧版阳台改造草图（废弃）',kind:'image',size:2.1,h:96,delAt:'11-03 19:22'},
+  {id:'douyin/qqdd/videos/c7.mp4',plat:'douyin',author:'奇趣蛋蛋',title:'跳跳糖实验 失败重拍',kind:'video',size:38.6,dur:'00:47',h:250,delAt:'11-02 10:05'},
+  {id:'weibo/tang/videos/d5.mp4',plat:'weibo',author:'唐十七呀',title:'折多山堵车三小时（无内容）',kind:'video',size:12.2,dur:'00:38',h:60,delAt:'11-01 21:40'},
 ];
 
 function renderTrash(){
@@ -2231,7 +2375,220 @@ $('#ctx').addEventListener('click', e => {
 document.addEventListener('click', e => { if (!e.target.closest('#ctx')) closeCtx(); });
 document.addEventListener('scroll', closeCtx, true);
 
-/* ---------- 启动 ---------- */
+/* ============================================================
+   空状态（三场景）：空库 / 筛选无结果 / 目录未授权
+   ============================================================ */
+function renderEmpty(n){
+  const el = $('#empty');
+  if (n > 0) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const filtering = !!(S.q || S.type !== 'all' || S.plat !== 'all');
+  const noData = FILES.length === 0;
+  const ico = h => $('#emptyIco').innerHTML = '<svg class="i"><use href="#' + h + '"/></svg>';
+
+  if (noData) {
+    ico('i-folder');
+    $('#emptyTitle').textContent = '这个目录里还没有素材';
+    $('#emptyText').innerHTML = '在网页上抓到的东西会自动存进来。<br>也可以先扫一遍目录里已有的文件。';
+    $('#emptyAction').textContent = '扫描目录';
+    $('#emptyAction').dataset.act = 'scan';
+  } else if (filtering) {
+    ico('i-search');
+    $('#emptyTitle').textContent = '没有匹配的素材';
+    const bits = [];
+    if (S.q) { bits.push('关键词「' + S.q + '」'); }
+    if (S.type !== 'all') { bits.push('类型筛选'); }
+    if (S.plat !== 'all') { bits.push('平台筛选'); }
+    $('#emptyText').textContent = '当前有 ' + bits.join(' + ') + '，库里共 ' + FILES.length + ' 项。换个条件或清掉筛选再试。';
+    $('#emptyAction').textContent = '清除筛选';
+    $('#emptyAction').dataset.act = 'clear';
+  } else {
+    ico('i-image');
+    $('#emptyTitle').textContent = '这里还没有可显示的素材';
+    $('#emptyText').textContent = '索引可能是空的，或者上次扫描中断了。重新扫一遍通常能解决。';
+    $('#emptyAction').textContent = '重新扫描';
+    $('#emptyAction').dataset.act = 'scan';
+  }
+}
+$('#emptyAction').addEventListener('click', e => {
+  const act = e.currentTarget.dataset.act;
+  if (act === 'clear') {
+    S.q = ''; S.type = 'all'; S.plat = 'all';
+    const si = $('#search'); if (si) si.value = '';
+    $$('#typeTabs button').forEach(b => b.classList.toggle('active', b.dataset.type === 'all'));
+    $$('#chips .chip').forEach(c => c.classList.toggle('active', c.dataset.plat === 'all'));
+    render();
+  } else {
+    toast('扫描目录（原型未启用）');
+  }
+});
+
+/* ============================================================
+   索引进度（原型演示用：按需开启）
+   ============================================================ */
+function showScan(on, found){
+  $('#scanState').classList.toggle('hidden', !on);
+  $('#grid').classList.toggle('hidden', on);
+  $('#listhead').classList.toggle('hidden', on);
+  $('#empty').classList.toggle('hidden', on || S.list.length > 0);
+  if (on && typeof found === 'number') {
+    $('#scanSub').textContent = '已发现 ' + found.toLocaleString() + ' 个文件';
+  }
+}
+
+/* ============================================================
+   通用确认框
+   ============================================================ */
+let confirmCb = null;
+function openConfirm(opt){
+  $('#confirmTitle').textContent = opt.title || '确认操作';
+  $('#confirmMsg').innerHTML = opt.msg || '';
+  $('#confirmOk').textContent = opt.okText || '确定';
+  $('#confirmOk').className = 'btn small ' + (opt.danger === false ? 'primary' : 'danger');
+  $('#confirmIco').className = 'ico' + (opt.danger === false ? '' : ' warn');
+  $('#confirmIco').innerHTML = '<svg class="i"><use href="#' + (opt.icon || 'i-trash-2') + '"/></svg>';
+  confirmCb = opt.onOk || null;
+  $('#confirmMask').classList.add('on');
+}
+function closeConfirm(){ $('#confirmMask').classList.remove('on'); confirmCb = null; }
+$('#confirmCancel').addEventListener('click', closeConfirm);
+$('#confirmMask').addEventListener('click', e => { if (e.target === $('#confirmMask')) closeConfirm(); });
+$('#confirmOk').addEventListener('click', () => {
+  const cb = confirmCb; closeConfirm();
+  if (cb) cb();
+});
+
+/* ============================================================
+   重命名
+   ============================================================ */
+let renameTarget = null;
+/* 文件名里 / \ : * ? " < > | 全禁；目录是路径，/ 是分隔符必须放行 */
+const BAD_NAME = /[\\/:*?"<>|]/;
+const BAD_SEG = /[\\:*?"<>|]/;
+function validateRename(base, dir){
+  if (!base) { return '文件名不能为空'; }
+  if (BAD_NAME.test(base)) { return '文件名不能包含 \\ / : * ? " < > |'; }
+  if (/^\s|\s$/.test(base)) { return '文件名首尾不能有空格'; }
+  if (dir) {
+    const segs = dir.split('/');
+    if (segs.some(x => !x.trim())) { return '目录路径里不能出现空的一段'; }
+    if (segs.some(x => BAD_SEG.test(x))) { return '目录名不能包含 \\ : * ? " < > |'; }
+  }
+  return '';
+}
+
+function splitPath(rel){
+  const seg = String(rel).split('/');
+  const file = seg.pop();
+  const dot = file.lastIndexOf('.');
+  const hasExt = dot > 0;
+  return {
+    dir: seg.join('/'),
+    base: hasExt ? file.slice(0, dot) : file,
+    ext: hasExt ? file.slice(dot) : ''
+  };
+}
+
+function openRename(f){
+  if (!f) return;
+  renameTarget = f;
+  const sp = splitPath(f.id);
+  $('#renameInput').value = sp.base;
+  $('#renameExt').textContent = sp.ext || '（无扩展名）';
+  $('#renameDir').value = sp.dir;
+  $('#renameErr').classList.add('hidden');
+  $('#renameMask').classList.add('on');
+  const inp = $('#renameInput');
+  inp.focus();
+  inp.setSelectionRange(0, sp.base.length);
+}
+function closeRename(){ $('#renameMask').classList.remove('on'); renameTarget = null; }
+function showRenameErr(msg){
+  $('#renameErrText').textContent = msg;
+  $('#renameErr').classList.remove('hidden');
+}
+function commitRename(){
+  if (!renameTarget) return;
+  const base = $('#renameInput').value.trim();
+  const dir = $('#renameDir').value.trim().replace(/^\/+|\/+$/g, '');
+  const err = validateRename(base, dir);
+  if (err) { showRenameErr(err); return; }
+  const sp = splitPath(renameTarget.id);
+  const next = (dir ? dir + '/' : '') + base + sp.ext;
+  if (next === renameTarget.id) { closeRename(); return; }
+  if (FILES.some(x => x.id === next && x !== renameTarget)) {
+    showRenameErr('这个目录下已经有同名文件了');
+    return;
+  }
+  /* 先留住引用：closeRename() 会把 renameTarget 置空，之后再拿它找位置永远找不到 */
+  const f = renameTarget;
+  f.id = next;
+  closeRename();
+  render();
+  const i = S.list.findIndex(x => x === f);
+  if (i >= 0) {
+    S.idx = i;
+    if (!$('#preview').classList.contains('hidden')) { paintPreview(); }
+  }
+  toast('已重命名为 ' + base + sp.ext);
+}
+$('#renameOk').addEventListener('click', commitRename);
+$('#renameCancel').addEventListener('click', closeRename);
+$('#renameMask').addEventListener('click', e => { if (e.target === $('#renameMask')) closeRename(); });
+$('#renameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeRename(); }
+});
+$('#renameDir').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeRename(); }
+});
+
+/* ============================================================
+   删除（统一走确认）
+   ============================================================ */
+function trashFiles(list, after){
+  if (!list.length) return;
+  openConfirm({
+    title: list.length > 1 ? '删除 ' + list.length + ' 项' : '删除这一项',
+    msg: '会移到回收站，随时可以恢复。<br><b>' +
+         esc(list[0].title.slice(0, 28)) + (list.length > 1 ? ' 等 ' + list.length + ' 项' : '') + '</b>',
+    okText: '移到回收站',
+    onOk: () => {
+      list.forEach(f => {
+        const i = FILES.indexOf(f);
+        if (i >= 0) { FILES.splice(i, 1); TRASH.unshift(Object.assign({}, f, {delAt: '刚刚'})); }
+        S.sel.delete(f.id);
+      });
+      renderTrash(); render();
+      if (!S.sel.size && S.select) { S.select = false; $('#batchbar').classList.add('hidden'); }
+      if (after) after();
+      toast('已移到回收站' + (list.length > 1 ? '（' + list.length + ' 项）' : ''));
+    }
+  });
+}
+
+/* 预览页四个按钮接上真逻辑 */
+$('#pvRename').addEventListener('click', () => openRename(curFile()));
+$('#pvDelete').addEventListener('click', () => {
+  const f = curFile(); if (!f) return;
+  trashFiles([f], () => closePreview());
+});
+$('#pvReveal').addEventListener('click', () => toast('在文件管理器中定位（原型未启用）'));
+$('#pvMove').addEventListener('click', () => toast('移动到其他目录（原型未启用）'));
+
+/* 批量条 */
+$('#batchExit').addEventListener('click', () => {
+  S.select = false; S.sel.clear(); render();
+  $('#batchbar').classList.add('hidden');
+});
+$('#batchTrash').addEventListener('click', () => {
+  const list = S.list.filter(f => S.sel.has(f.id));
+  if (!list.length) { toast('还没有选中任何素材'); return; }
+  trashFiles(list);
+});
+
+/* 启动 */
 renderTree(); render(); renderTrash(); renderTrash();
 </script>
 </body>
