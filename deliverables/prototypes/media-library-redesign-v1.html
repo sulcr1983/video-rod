@@ -167,7 +167,7 @@ main{min-width:0;padding:0 28px 48px;max-width:1720px;width:100%;margin:0 auto}
   font-family:inherit;font-size:10px;color:var(--muted);background:var(--surface-2);
   border:1px solid var(--line);border-radius:5px;padding:1px 5px;line-height:1.6;
 }
-.actions{display:flex;gap:7px;align-items:center}
+.actions{position:relative;display:flex;gap:7px;align-items:center}
 
 /* 按钮 */
 .btn{
@@ -236,6 +236,19 @@ html[data-theme="light"] .stat-ico.c-anim{color:#6D28D9}
 html[data-theme="light"] .stat-ico.c-vid{color:#047857}
 .stat b{display:block;font-size:17px;font-weight:670;letter-spacing:-.3px;line-height:1.1}
 .stat span{display:block;font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap}
+
+/* 收藏夹下拉菜单（苏哥 2026-11-04：侧栏常驻没必要，一个菜单入口即可） */
+.fav-menu-wrap{position:relative}
+.fav-menu{
+  display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:600;width:264px;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  box-shadow:var(--sh-3);padding:4px;
+}
+.fav-menu.on{display:block}
+.fav-menu .side-fav{border:0;padding:2px}
+.fav-menu .fav-head{padding:6px 8px 4px}
+.fav-menu #favList{max-height:264px;overflow-y:auto}
+.fav-menu .fav-new{margin:4px 6px}
 
 /* 工具栏 */
 .toolbar{
@@ -316,7 +329,7 @@ html[data-theme="light"] .stat-ico.c-vid{color:#047857}
   mix-blend-mode:overlay;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.42'/%3E%3C/svg%3E");
 }
-html[data-theme="dark"] .cover{filter:saturate(.72) contrast(1.02) brightness(.82)}
+html[data-theme="dark"] .cover{filter:saturate(.6) contrast(1.02) brightness(.8)}
 .cover .fig{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   color:rgba(255,255,255,.42);mix-blend-mode:soft-light;
@@ -1793,10 +1806,10 @@ h1 .pill{
   filter:saturate(.92) contrast(1.02);
   background:
     radial-gradient(38% 28% at 66% 12%, rgba(255,255,255,.24) 0%, transparent 72%),
-    radial-gradient(140% 105% at 20% 6%, hsl(var(--h) 52% 66% / .95) 0%, transparent 58%),
-    radial-gradient(95% 75% at 84% 28%, hsl(calc(var(--h) + 30) 48% 56% / .88) 0%, transparent 54%),
-    radial-gradient(130% 110% at 52% 114%, hsl(calc(var(--h) - 18) 38% 30%) 0%, transparent 68%),
-    linear-gradient(156deg, hsl(var(--h) 28% 42%), hsl(calc(var(--h) + 16) 32% 26%));
+    radial-gradient(140% 105% at 20% 6%, hsl(var(--h) 26% 56% / .9) 0%, transparent 58%),
+    radial-gradient(95% 75% at 84% 28%, hsl(calc(var(--h) + 30) 24% 48% / .82) 0%, transparent 54%),
+    radial-gradient(130% 110% at 52% 114%, hsl(calc(var(--h) - 18) 20% 28%) 0%, transparent 68%),
+    linear-gradient(156deg, hsl(var(--h) 15% 34%), hsl(calc(var(--h) + 16) 17% 22%));
 }
 
 /* ---- 侧栏分区：收藏夹与资源树之间要能一眼分开 ---- */
@@ -1813,10 +1826,10 @@ h1 .pill{
   filter:saturate(.92) contrast(1.02);
   background:
     radial-gradient(38% 28% at 66% 12%, rgba(255,255,255,.24) 0%, transparent 72%),
-    radial-gradient(140% 105% at 20% 6%, hsl(var(--h) 52% 66% / .95) 0%, transparent 58%),
-    radial-gradient(95% 75% at 84% 28%, hsl(calc(var(--h) + 30) 48% 56% / .88) 0%, transparent 54%),
-    radial-gradient(130% 110% at 52% 114%, hsl(calc(var(--h) - 18) 38% 30%) 0%, transparent 68%),
-    linear-gradient(156deg, hsl(var(--h) 28% 42%), hsl(calc(var(--h) + 16) 32% 26%));
+    radial-gradient(140% 105% at 20% 6%, hsl(var(--h) 26% 56% / .9) 0%, transparent 58%),
+    radial-gradient(95% 75% at 84% 28%, hsl(calc(var(--h) + 30) 24% 48% / .82) 0%, transparent 54%),
+    radial-gradient(130% 110% at 52% 114%, hsl(calc(var(--h) - 18) 20% 28%) 0%, transparent 68%),
+    linear-gradient(156deg, hsl(var(--h) 15% 34%), hsl(calc(var(--h) + 16) 17% 22%));
 }
 
 /* ---- 侧栏分区：收藏夹与资源树之间要能一眼分开 ---- */
@@ -2066,7 +2079,41 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
       <svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
     </button>
 
-    <!-- 一级栏目：收藏夹 -->
+
+    <div>
+      <div class="side-label"><span>资源树</span><span id="treeTotal">27</span></div>
+    </div>
+    <div class="tree-search">
+      <svg class="i i-sm"><use href="#i-image"/></svg>
+      <input id="treeSearch" placeholder="搜索平台 / 博主…">
+    </div>
+    <nav class="tree" id="tree"></nav>
+
+    <div class="side-foot">
+      <div class="sf-row"><span><b id="fCount">27</b> 个文件</span><span><b id="fSize">418 MB</b></span></div>
+      <div class="meter"><i id="meterBar"></i></div>
+      <div class="sf-actions">
+        <button class="btn small" id="trashBtn" title="回收站">
+          <svg class="i" style="width:12px;height:12px"><use href="#i-trash-2"/></svg>
+          回收站 <b id="trashCnt">3</b>
+        </button>
+        <button class="btn small" id="resetBtn" title="重新选择根目录">换目录</button>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar" id="topbar">
+      <div class="searchbox">
+        <svg class="i i-sm"><use href="#i-folder"/></svg>
+        <input id="search" placeholder="搜索… 空格=交集 -词=排除">
+        <kbd>⌘K</kbd>
+      </div>
+      <div class="actions">
+        <button class="btn" id="dedupBtn"><svg class="i i-sm"><use href="#i-copy"/></svg>查重</button>
+        <button class="btn" id="favMenuBtn" title="收藏夹"><svg class="i i-sm"><use href="#i-bookmark"/></svg>收藏夹<svg class="i i-sm" style="margin-left:2px"><use href="#i-chevron-down"/></svg></button>
+        <div class="fav-menu" id="favMenu">
+          <div class="fav-menu-inner">
     <div class="side-fav">
       <div class="fav-head">
         <span>收藏夹</span>
@@ -2081,48 +2128,18 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
       <button class="fav-more hidden" id="favMore">全部收藏夹（<span id="favMoreN">0</span>）</button>
     </div>
 
-    <div>
-      <div class="side-label"><span>资源树</span><span id="treeTotal">27</span></div>
-    </div>
-    <div class="tree-search">
-      <svg class="i i-sm"><use href="#i-image"/></svg>
-      <input id="treeSearch" placeholder="搜索平台 / 博主…">
-    </div>
-    <nav class="tree" id="tree"></nav>
-
-    <div class="side-foot">
-      <div class="sf-row"><span><b id="fCount">27</b> 个文件</span><span><b id="fSize">418 MB</b></span></div>
-      <div class="meter"><i id="meterBar"></i></div>
-      <div class="sf-row"><span>索引</span><span>_index/index.json</span></div>
-      <div class="sf-actions">
-        <button class="btn small" id="trashBtn">
-          <svg class="i" style="width:12px;height:12px"><use href="#i-trash-2"/></svg>
-          回收站 <b id="trashCnt">3</b>
-        </button>
-        <button class="btn small" id="resetBtn">重置目录</button>
-      </div>
-    </div>
-  </aside>
-
-  <main>
-    <div class="topbar" id="topbar">
-      <div class="searchbox">
-        <svg class="i i-sm"><use href="#i-folder"/></svg>
-        <input id="search" placeholder="搜索… 空格=交集 -词=排除">
-        <kbd>⌘K</kbd>
-      </div>
-      <div class="actions">
-        <button class="btn" id="dedupBtn"><svg class="i i-sm"><use href="#i-copy"/></svg>查重</button>
+          </div>
+        </div>
         <button class="btn" id="selectBtn"><svg class="i i-sm"><use href="#i-square-check"/></svg>选择</button>
         <button class="btn" id="rescanBtn"><svg class="i i-sm"><use href="#i-refresh-cw"/></svg>重新扫描</button>
-        <button class="btn primary" id="pickBtn"><svg class="i i-sm"><use href="#i-folder"/></svg>选择目录</button>
+        <button class="btn" id="pickBtn"><svg class="i i-sm"><use href="#i-folder"/></svg>选择目录</button>
       </div>
     </div>
 
     <section class="pagehead">
       <div class="ph-left">
         <div class="crumb" id="crumb"><b>媒体库</b><span class="sep">/</span><span>全部平台</span></div>
-        <h1 id="pageTitle">全部素材 <span class="pill">27 项</span></h1>
+        <h1 id="pageTitle">全部素材</h1>
         <div class="ph-fav-acts hidden" id="favActs">
           <button class="btn small" id="favRename"><svg class="i i-sm"><use href="#i-pencil"/></svg>重命名</button>
           <button class="btn small" id="favExport"><svg class="i i-sm"><use href="#i-copy"/></svg>复制清单</button>
@@ -3853,6 +3870,17 @@ function favIcon(fav, cls){
   return '<svg class="' + c + '"><use href="#i-' + (fav.sys === 'star' ? 'star' : 'bookmark') + '"/></svg>';
 }
 
+/* 收藏夹下拉：点击开合，点外关闭 */
+$('#favMenuBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  $('#favMenu').classList.toggle('on');
+});
+document.addEventListener('click', e => {
+  if (e.target.closest('#favMenu .fav-row')) { $('#favMenu').classList.remove('on'); return; }
+  if (!e.target.closest('#favMenu') && !e.target.closest('#favMenuBtn'))
+    $('#favMenu').classList.remove('on');
+});
+
 /* 把当前筛选（类型+平台+关键词）存为智能收藏夹 */
 $('#favSaveFilter').addEventListener('click', () => {
   const parts = [];
@@ -3889,7 +3917,7 @@ function applyFavView(rows){
   if (fav) {
     $('#crumb').innerHTML = '<b id="crumbBack" style="cursor:pointer">收藏夹</b>'
       + '<span class="sep">/</span><span>' + esc(fav.name) + '</span>';
-    $('#pageTitle').innerHTML = esc(fav.name) + ' <span class="pill">' + rows.length + ' 项</span>';
+    $('#pageTitle').textContent = fav.name;
     const size = rows.reduce((a, b) => a + b.size, 0);
     $('#pageSub').textContent = (fav.desc ? fav.desc + ' · ' : '')
       + rows.length + ' 个素材 · ' + Math.round(size) + ' MB'
@@ -3902,7 +3930,7 @@ function applyFavView(rows){
   } else {
     const T = { all: '全部素材', image: '图片', anim: '动图', video: '视频' }[S.type] || '全部素材';
     $('#crumb').innerHTML = '<b>媒体库</b><span class="sep">/</span><span>全部平台</span>';
-    $('#pageTitle').innerHTML = T + ' <span class="pill">' + rows.length + ' 项</span>';
+    $('#pageTitle').textContent = T;
     const plats = new Set(rows.map(f => f.plat)).size;
     const authors = new Set(rows.map(f => f.author).filter(Boolean)).size;
     $('#pageSub').textContent = '来自 ' + plats + ' 个平台 · ' + authors + ' 位博主';
