@@ -1,6 +1,7 @@
-# 设计系统 B+D（2026-11-04 定稿）
+# 设计系统 B+D（2026-11-04 定稿；同日修订：**默认 D**）
 
 > 苏哥拍板：**B 纸感做界面 + D 影院做预览层**，配色照此执行。
+> **2026-11-04 晚修订（H-12）**：苏哥看实图后拍板**首页也用 D 深色**（与素材管理工具行业惯例一致：Lightroom/Eagle/PS 全深色）。现行口径：**默认 D 深色贯穿界面+预览层；B 纸感降级为可切换浅色主题**（右下角按钮），两套 token 都保留。另按苏哥要求加「规划感」细节：统计卡彩色徽章、信息栏分组微卡片+组色系图标。
 > 可交互原型：`deliverables/prototypes/media-library-redesign-v1.html`（点卡片进预览、右下角圆钮切暗色）
 > 设置页：`deliverables/prototypes/settings-redesign-v1.html`
 
@@ -20,7 +21,7 @@ Eagle、Lightroom、Photoshop 全是这个组合。
 
 ## 2. 颜色令牌
 
-### B 纸感（界面，`html[data-theme="light"]` / 默认）
+### B 纸感（浅色主题，`html[data-theme="light"]`，可切换）
 
 | 用途 | 变量 | 值 |
 |---|---|---|
@@ -40,7 +41,7 @@ Eagle、Lightroom、Photoshop 全是这个组合。
 | 危险 | `--danger` | `#A23B2E` |
 | 成功 | `--ok` | `#3F7A52` |
 
-### D 影院（夜间，`html[data-theme="dark"]`）
+### D 影院（**默认主题**，界面+预览层，`html[data-theme="dark"]`）
 
 | 用途 | 值 |
 |---|---|

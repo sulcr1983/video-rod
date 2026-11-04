@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="light">
+<html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -225,6 +225,15 @@ h1 .pill{
   background:var(--surface-2);color:var(--ink-2);
 }
 .stat-ico .i{width:15px;height:15px}
+/* 彩色徽章：素材=暖橙 图片=天蓝 动图=紫 视频=绿（苏哥 2026-11-04：图标要有规划感） */
+.stat-ico.c-all{background:rgba(255,122,69,.16);color:#FF8A5B}
+.stat-ico.c-img{background:rgba(96,165,250,.16);color:#7AB2F7}
+.stat-ico.c-anim{background:rgba(167,139,250,.16);color:#B4A5F5}
+.stat-ico.c-vid{background:rgba(52,211,153,.16);color:#4ADE9F}
+html[data-theme="light"] .stat-ico.c-all{color:#C2410C}
+html[data-theme="light"] .stat-ico.c-img{color:#1D4ED8}
+html[data-theme="light"] .stat-ico.c-anim{color:#6D28D9}
+html[data-theme="light"] .stat-ico.c-vid{color:#047857}
 .stat b{display:block;font-size:17px;font-weight:670;letter-spacing:-.3px;line-height:1.1}
 .stat span{display:block;font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap}
 
@@ -951,7 +960,17 @@ a.pi-row:hover .go{opacity:1}
 }
 
 /* ---- 信息栏 v3：分组 + 标签/值对齐，信息一个不删 ---- */
-.pi-group{border-top:1px solid var(--line-2);padding:12px 0 2px}
+.pi-group{
+  border:1px solid var(--line);border-radius:12px;background:var(--surface);
+  padding:12px 14px 6px;margin-bottom:10px;
+}
+/* 组色点：文件=青 来源=橙 标签=紫（同组同色系，规划感） */
+.pi-group .pi-label::before{
+  content:"";display:inline-block;width:7px;height:7px;border-radius:2px;
+  background:var(--grp,var(--muted));margin-right:7px;vertical-align:1px;
+}
+.pi-item dt{display:flex;align-items:center;gap:5px}
+.pi-item dt .k-ico{width:12px;height:12px;flex:0 0 12px;color:var(--grp,var(--muted));opacity:.85}
 .pi-label{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
   margin:0 0 7px;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
@@ -1643,7 +1662,7 @@ h1 .pill{
   border-radius:12px;padding:11px 13px;border:1px solid var(--line);
   background:var(--surface);box-shadow:0 1px 2px rgba(80,64,40,.04);
 }
-.stat-ico{width:30px;height:30px;flex:0 0 30px;border-radius:50%;background:var(--surface-2);color:var(--ink-2)}
+.stat-ico{width:32px;height:32px;flex:0 0 32px;border-radius:10px}
 .stat b{font-size:18px;font-weight:650;letter-spacing:-.2px}
 .stat span{font-size:10.5px;color:var(--muted)}
 
@@ -1961,7 +1980,6 @@ html[data-theme="dark"] .tree-node.active::before{background:#FF7A45;box-shadow:
 html[data-theme="dark"] .side-fav{border-bottom-color:#1B1F26}
 html[data-theme="dark"] .tree-search{background:#12141A;border-color:#1F232B}
 html[data-theme="dark"] .brand .logo{background:linear-gradient(145deg,#FF8A5B,#E85A2A);color:#1A0C05}
-html[data-theme="dark"] .stat-ico{background:#181B22}
 html[data-theme="dark"] .searchbox kbd{background:#1B1F27}
 html[data-theme="dark"] .toast{background:#EDF1F6;color:#0A0B0E}
 html[data-theme="dark"] .card:hover{background:#14171D;border-color:#262B34}
@@ -1995,6 +2013,10 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
 <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></symbol>
   <symbol id="i-bookmark-plus" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/><line x1="12" x2="12" y1="7" y2="13"/><line x1="15" x2="9" y1="10" y2="10"/></symbol>
   <symbol id="i-funnel" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></symbol>
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></symbol>
   <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
@@ -2111,19 +2133,19 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
       </div>
       <div class="stats">
         <div class="stat">
-          <span class="stat-ico"><svg class="i"><use href="#i-package"/></svg></span>
+          <span class="stat-ico c-all"><svg class="i"><use href="#i-package"/></svg></span>
           <div><b id="sCount">27</b><span>素材</span></div>
         </div>
         <div class="stat">
-          <span class="stat-ico"><svg class="i"><use href="#i-image"/></svg></span>
+          <span class="stat-ico c-img"><svg class="i"><use href="#i-image"/></svg></span>
           <div><b id="sImg">18</b><span>图片</span></div>
         </div>
         <div class="stat">
-          <span class="stat-ico"><svg class="i"><use href="#i-repeat-1"/></svg></span>
+          <span class="stat-ico c-anim"><svg class="i"><use href="#i-repeat-1"/></svg></span>
           <div><b id="sAnim">0</b><span>动图</span></div>
         </div>
         <div class="stat">
-          <span class="stat-ico"><svg class="i"><use href="#i-film"/></svg></span>
+          <span class="stat-ico c-vid"><svg class="i"><use href="#i-film"/></svg></span>
           <div><b id="sVid">9</b><span>视频</span></div>
         </div>
       </div>
@@ -2287,7 +2309,7 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
         <button class="pi-act danger" id="pvDelete" title="删除到回收站"><svg class="i"><use href="#i-trash-2"/></svg></button>
       </div>
 
-      <section class="pi-group">
+      <section class="pi-group" style="--grp:#3FC9BE">
         <h3 class="pi-label">文件</h3>
         <!-- 一眼要看的三个值：做大，横排 -->
         <div class="pi-stats">
@@ -2295,47 +2317,47 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
           <div class="stat"><b id="st2v">—</b><span id="st2k">大小</span></div>
           <div class="stat"><b id="st3v">—</b><span id="st3k">保存</span></div>
         </div>
-        <div class="pi-item hidden" id="pvStateRow"><dt>状态</dt><dd id="pvState" style="color:var(--danger)">—</dd></div>
+        <div class="pi-item hidden" id="pvStateRow"><dt><svg class="k-ico"><use href="#i-info"/></svg>状态</dt><dd id="pvState" style="color:var(--danger)">—</dd></div>
         <!-- 其余收起来：信息一个不少，但不占版面 -->
         <details class="pi-fold">
           <summary>更多文件信息<i>›</i></summary>
           <dl class="pi-list">
-            <div class="pi-item"><dt>大小</dt><dd id="pvSize">51.4 MB</dd></div>
-            <div class="pi-item"><dt>分辨率</dt><dd id="pvRes">3840 × 2160</dd></div>
-            <div class="pi-item"><dt id="pvThirdK">时长</dt><dd id="pvThirdV">01:24</dd></div>
-            <div class="pi-item"><dt>格式</dt><dd id="pvFmt">MP4</dd></div>
-            <div class="pi-item"><dt>保存时间</dt><dd id="pvSaved">—</dd></div>
-            <div class="pi-item"><dt>文件名</dt><dd class="mono" id="pvFileName">—</dd></div>
-            <div class="pi-item"><dt>路径</dt><dd class="mono" id="pvPath">douyin/qqdd/videos/c2.mp4</dd>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-hard-drive"/></svg>大小</dt><dd id="pvSize">51.4 MB</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-maximize"/></svg>分辨率</dt><dd id="pvRes">3840 × 2160</dd></div>
+            <div class="pi-item"><dt id="pvThirdK"><svg class="k-ico"><use href="#i-clock"/></svg>时长</dt><dd id="pvThirdV">01:24</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-film"/></svg>格式</dt><dd id="pvFmt">MP4</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-calendar"/></svg>保存时间</dt><dd id="pvSaved">—</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-file-text"/></svg>文件名</dt><dd class="mono" id="pvFileName">—</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-folder"/></svg>路径</dt><dd class="mono" id="pvPath">douyin/qqdd/videos/c2.mp4</dd>
               <button class="inline-copy" id="pvPathCopy" title="复制完整路径"><svg class="i"><use href="#i-copy"/></svg></button></div>
           </dl>
         </details>
       </section>
 
-      <section class="pi-group">
+      <section class="pi-group" style="--grp:#FF9A6B">
         <h3 class="pi-label">来源 <span class="pi-badge" id="pvSrcBadge"><svg class="i"><use href="#i-circle-check"/></svg>已记录</span></h3>
         <dl class="pi-list">
-          <div class="pi-item"><dt>平台</dt><dd id="pvSrcPlat">X / Twitter</dd></div>
+          <div class="pi-item"><dt><svg class="k-ico"><use href="#i-globe"/></svg>平台</dt><dd id="pvSrcPlat">X / Twitter</dd></div>
           <a class="pi-item" id="pvPageRow" href="#" target="_blank" rel="noopener">
-            <dt>原帖</dt><dd class="mono" id="pvPageVal">—</dd><span class="go">↗</span>
+            <dt><svg class="k-ico"><use href="#i-external-link"/></svg>原帖</dt><dd class="mono" id="pvPageVal">—</dd><span class="go">↗</span>
           </a>
-          <div class="pi-item" id="pvMediaRow"><dt>直链</dt><dd class="mono" id="pvMediaVal">—</dd>
+          <div class="pi-item" id="pvMediaRow"><dt><svg class="k-ico"><use href="#i-link"/></svg>直链</dt><dd class="mono" id="pvMediaVal">—</dd>
             <span class="tag-warn" id="pvExpireWarn" title="CDN 直链带签名，会过期；回溯请用「原帖」"><svg class="i"><use href="#i-triangle-alert"/></svg></span>
             <button class="inline-copy" id="pvCopyBtn"><svg class="i"><use href="#i-copy"/></svg>复制</button></div>
-          <div class="pi-item hidden" id="pvSrcMiss"><dt>提示</dt><dd class="pi-empty">历史素材：原帖与直链未记录</dd></div>
+          <div class="pi-item hidden" id="pvSrcMiss"><dt><svg class="k-ico"><use href="#i-triangle-alert"/></svg>提示</dt><dd class="pi-empty">历史素材：原帖与直链未记录</dd></div>
         </dl>
         <!-- 长串 ID 很少看，收起来 -->
         <details class="pi-fold">
           <summary>溯源详情<i>›</i></summary>
           <dl class="pi-list">
-            <div class="pi-item hidden" id="pvUidRow"><dt>作者 ID</dt><dd class="mono" id="pvUid">—</dd></div>
-            <div class="pi-item"><dt>作品 ID</dt><dd class="mono" id="pvWorkId">—</dd></div>
-            <div class="pi-item"><dt>下载时间</dt><dd id="pvTimeVal">—</dd></div>
+            <div class="pi-item hidden" id="pvUidRow"><dt><svg class="k-ico"><use href="#i-user"/></svg>作者 ID</dt><dd class="mono" id="pvUid">—</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-hash"/></svg>作品 ID</dt><dd class="mono" id="pvWorkId">—</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-calendar"/></svg>下载时间</dt><dd id="pvTimeVal">—</dd></div>
           </dl>
         </details>
       </section>
 
-      <section class="pi-group">
+      <section class="pi-group" style="--grp:#B4A5F5">
         <h3 class="pi-label">标签</h3>
         <div class="pi-tags">
           <div class="pv-tags" id="pvTags"><span class="pv-tag empty">还没有标签</span></div>
@@ -2508,7 +2530,7 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
   </aside>
 
   <div class="toast" id="toast"></div>
-<button class="themebtn" id="themeBtn" title="切换暗色"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
+<button class="themebtn" id="themeBtn" title="切换浅色（B 纸感）"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
 
 <script>
 /* ---------- 模拟数据（形态与真实 index.json 一致） ---------- */

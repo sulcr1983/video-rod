@@ -128,12 +128,13 @@ shot("proto-final-list.png")
 
 # ---------- 4. 暗色 ----------
 dk = ev("""(()=>{
-  const b=[...document.querySelectorAll('button')].find(x=>/dark|暗|theme/i.test((x.dataset.theme||'')+(x.title||'')+(x.id||'')));
+  const init = document.documentElement.getAttribute('data-theme');
+  const b=[...document.querySelectorAll('button')].find(x=>/dark|暗|theme|浅色/i.test((x.dataset.theme||'')+(x.title||'')+(x.id||'')));
   if(b) b.click();
-  return {theme: document.documentElement.getAttribute('data-theme'),
+  return {init, theme: document.documentElement.getAttribute('data-theme'),
           bg: getComputedStyle(document.body).backgroundColor};
 })()""")
-check("暗色切换生效", dk["theme"] == "dark", dk)
+check("默认即 D 深色，按钮可切浅色", dk["init"] == "dark" and dk["theme"] == "light", dk)
 shot("proto-final-grid-dark.png")
 
 errs = cdp.errors()
