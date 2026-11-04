@@ -1,6 +1,6 @@
 # 钓鱼竿 Video Rod — 产出物管理规范
 
-> 版本：v1.37 ｜ 日期：2026-10-19 ｜ 状态：✅ 已生效
+> 版本：v1.38 ｜ 日期：2026-11-04 ｜ 状态：✅ 已生效
 > 一句话：**产出物有家、有版本、有状态、找得到。** 本文件是 deliverables/ 目录的宪法，新增任何产出物前先读这份。
 > v1.2 变更：M7 popup 浅色重设计整合产出物登记（浅色覆盖层/重画外壳/五态回归截图/三个新测试脚本），popup 重设计原型 v2 与方案说明转「已定稿」（苏哥拍板方案 A），v1 原型按 §5.1 归档。
 > v1.3 变更：M9 下载历史面板 / M10 侧边栏模式 / M11 多段自动合并（离屏直连管线，ADR-028）产出物登记；补充 3 个里程碑验收脚本 + 3 张回归截图。
@@ -38,6 +38,7 @@
 > v1.35 变更：YouTube 入口彻底移除（ADR-043：页面悬浮按钮 + popup 限制横幅）；小红书图片「去 CDN 后缀取更大图」尝试（ADR-044，失败回退原地址，未真机验证）；F 库整理（`小红书/` 并入 `xiaohongshu/`、测试残留清空）；媒体库视频首帧缩略图端到端真机通过、去重 DED1/2/3 真机验证通过。
 > v1.36 变更：媒体库缩略图**自动补缺**（`scan()` 收尾 `fillMissingThumbs()` 自动生成缺失缩略图写 `_index/thumbs`，视频串行/图片并发，无需手动）；抽帧超时 8s→20s、多视频不再同时解码、失败不缓存可重试；预览视频**默认带声**（被策略拦才静音，下次点击自动恢复）。
 > v1.37 变更：媒体库**全屏按钮复验通过**（此前失败因标签页在后台未聚焦）；LIBRARY-FULL-TEST §4.1 补记、HANDOFF §4.8/§5 同步。
+> v1.38 变更（2026-11-04）：**建立待办唯一真源 `docs/BACKLOG.md`**，其余文档待办条目冻结为历史；修正 4 处硬伤（HANDOFF 仓库路径 E→D、决策记录版本 038→044、TESTING §8 M9/M10 待办回填、BUILD-PLAN 合并路线 A/B/C 关闭）；BUILD-PLAN 追加「M12 及之后」补录（M12–M23）与各里程碑「后续状态」追加行；登记 OmniGet 参考价值评审。
 
 ---
 
@@ -111,7 +112,8 @@ video-rod/
 | 需求规格 | `docs/REQUIREMENTS.md` | v1.1 | 已定稿 | P0 11 项（F9 嗅探增强改版） |
 | 技术设计 | `docs/DESIGN.md` | v1.1 | 已定稿 | 含 §6.5 增量盘点、§8 合并三路线 |
 | 测试策略 | `docs/TESTING.md` | v1.1 | 已定稿 | 用例表+回归清单 |
-| 决策记录 | `docs/DECISIONS.md` | v1.17 | 进行中 | ADR-001~038；ADR-035 媒体库（方案+原型，待实施）；ADR-036 小红书详情单篇；ADR-037 下载去重；ADR-038 小红书主页/收藏/点赞收集 + 可选自动补全 |
+| 决策记录 | `docs/DECISIONS.md` | v1.23 | 进行中 | ADR-001~044；ADR-035~041 媒体库（方案/根目录 F/目录坑/重命名）；ADR-037 下载去重；ADR-042 Instagram P1；ADR-043 YouTube 入口移除；ADR-044 小红书去后缀（未真机验证） |
+| 待办真源 | `docs/BACKLOG.md` | v1.0 | 已定稿 | **全项目唯一待办真源**：P0 两项待验（AES-128 加密 HLS、小红书去后缀）、P1 三项挂起、P2 八项明确不做、P3 四项工程债；其它文档的待办条目一律视为历史 |
 | 下载去重（ADR-037） | `js/background.js`(vrMediaIdentity / vrDedupLoad / vrDedupSave / vrBulkDownload) + `js/bulk-profile.js` | v1.0 | 已实施 | 稳定标识 `site|workId|mediaId|kind|origin+pathname`（去签名参数）；持久账本 `vrMediaSeen` 上限 8000；同批 Set + 跨批账本；成功才写入；跳过数量回传 UI；内容 SHA-256 入库兜底待 P2 |
 | 媒体库方案 | `docs/MEDIA-LIBRARY-PLAN.md` | v1 | 评审中 | 固定目录（平台/博主@ID/图片|视频）+ index.json + 扩展托管 library.html；File System Access + IndexedDB；搜索/筛选/播放/CRUD/回收站；四期实施计划；参考 Eagle/PhotoPrism/Immich/Stash/XBD；§10 开源组件选型；§11 大量博主/内容管理 |
 | 媒体库 P1/P2（真实页面） | `library.html` + `css/library.css` + `js/library.js` + `popup.html`/`js/popup-videorod.js` 入口 | v1.0 | 评审中 | 选目录/句柄持久化/递归扫描/平台-博主-类型解析/`_index/index.json`；资源树/搜索/排序/类型标签/网格；图片视频预览与 ↑↓←→ 键盘；重命名、删除到 `_trash`；实施规格见 `docs/LIBRARY-IMPLEMENTATION.md` |
@@ -215,3 +217,4 @@ video-rod/
 | YouTube 入口移除（ADR-043） | `js/video-overlay.js` + `js/popup-videorod.js` + `css/videorod.css` | v1.0 | 已定稿 | 移除 YouTube 页面悬浮下载按钮与 popup 限制横幅；站点排除加 youtube.com/youtu.be（含子域）；`cdp-m4-test.py`/`yt-fake.html` 作废 |
 | 小红书图片去后缀取更大图（ADR-044） | `js/background.js`(vrXhsScanInPage/vrBulkDownload) | v1.0 | 评审中 | 图片优先去 CDN 处理后缀（`!nd_`/`!nc_`/`?imageView2`），失败回退带后缀原地址；**未真机验证**（需真实图文笔记） |
 | 媒体库预览进入视频自动播放 | `js/library.js`(renderPreview 视频分支) | v1.0 | 已定稿 | `preload='auto'` + `video.play()`，**默认带声**；被策略拦才静音、下次点击/按键自动恢复声音；切图/关闭仍 `pause()`；2026-10-19 苏哥实测通过 |
+| OmniGet 参考价值评审 + 未完成任务盘点 | `deliverables/reviews/2026-11-04-omniget-review.md` | 2026-11-04 | 评审中 | 结论：无可抄代码（其 JS 重叠部分源自 cat-catch，即我上游）；推翻「Cookie 泄露」「按码率猜体积」两条误判（我们已有白名单 + 10 段 HEAD 采样）；同时盘点 P0 待验 2 项（AES-128 真机、小红书去后缀）、P3 文档不一致 3 项 |

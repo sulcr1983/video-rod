@@ -1,6 +1,7 @@
 # 钓鱼竿 Video Rod — 测试策略与用例
 
-> 版本：v1.3 ｜ 日期：2026-10-17 ｜ 状态：已确认
+> 版本：v1.4 ｜ 日期：2026-11-04 ｜ 状态：已确认
+> v1.4 变更（2026-11-04）：§8 中 M9/M10 的「待办：真实站点实测」按实际结果回填关闭；待办状态统一迁至 `docs/BACKLOG.md`（唯一真源），本文档只留历史快照与用例。
 > v1.3 变更：M7 浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧）。
 > 原则：小项目不搞重型测试框架，**冒烟 + 关键路径 + 回归清单**三件套，每个用例都是大白话可执行的。
 
@@ -203,7 +204,7 @@
 1. 浏览器：Playwright 内置 Chromium 149（`chromium-1228`），Chrome 155 官方版不支持 `--load-extension`
 2. 启动参数：`--remote-debugging-port=9226 --remote-debugging-address=127.0.0.1 --load-extension=<仓库> --no-proxy-server`；域名映射类再加 `--host-resolver-rules`
 3. `tools/cdp_client.py` 的 `open_popup()` 已内建：清理旧标签页 → 新建前台标签页 → `Network.setCacheDisabled(true)` → 导航 → 开面板
-4. 测试站在 `E:/test/download/test-site/`，`python -m http.server 18080`（M0 起就在跑，重启需重新起）
+4. 测试站在 `D:/test/download/test-site/`，`python -m http.server 18080`（M0 起就在跑，重启需重新起）
 5. 改代码后**必须重启浏览器**（`runtime.reload()` 会丢扩展）
 6. 跑下载类测试会写真实 `Downloads/video-rod/`，脚本测完自动清理本次新增文件
 
@@ -246,11 +247,13 @@
 - 下载完成后 `chrome.storage.local` 历史表写入（标题/来源/大小/时间/缩略图/状态）
 - popup 设置抽屉历史入口可进；列表按时间分组渲染；缩略图显示；点重下复用既有下载管线；一键清空
 - 待办：真实站点实测（装机后苏哥验）
+  - **后续状态（2026-11-04 追加）**：已关闭。星愿真机 6 项全过（记录写入/列表渲染/缩略图/重下/清空/设置入口），见 `docs/HANDOFF-20261019.md` §M9 与 BUILD-PLAN M9 检查站。
 
 ### M10 侧边栏模式（tools/test-m10-sidepanel.py，7 项全过）
 - `manifest.json` 加 `side_panel`；工具条按钮/右键菜单开侧边栏；窄宽 320px 适配
 - 侧栏里下载走 `vrDownloadWithName` → 文件名保护不丢名（不复苏哥星愿 13 扩展冲突坑，ADR-027）
 - 待办：真实站点实测
+  - **后续状态（2026-11-04 追加）**：已关闭。星愿真机 7 项全过，见 BUILD-PLAN M10 检查站。
 
 ### M11 多段自动合并（tools/test-m11-automerge.py，5 项全过，ADR-028）
 - 对抗：hls.html 双清晰度（master+变体）不误归组 → 徽标 0（PASS）
@@ -258,6 +261,7 @@
 - ffprobe 验：h264 640×360、duration 8.000s，有效（两段各 2 个 2 秒分片全拼对）
 - 重构要点：删「驱动猫抓 m3u8 页」约 150 行；offscreen 文档内解析+下载+解密+转码；SW 仅编排+落盘（离屏无 `chrome.downloads`）
 - 待办：**AES-128 解密仅在裸 TS 测试站验过，真实加密 HLS 未验**（真实站点多为 AES-128，漏了真机上拼乱码）；仅 HLS 不支持 DASH
+  - **后续状态（2026-11-04 追加）**：**仍未关闭**，已升为全项目 P0（`docs/BACKLOG.md` B-01）；DASH 保持不做（N-02）。
 
 ## 9. B站真实站点验收（2026-10-18，苏哥给的 BV1DVaZ6hEK6）
 
