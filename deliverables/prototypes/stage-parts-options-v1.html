@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>舞台皮肤 · 局部款式对比（统计卡 + 资源树）</title>
+<style>
+:root{
+  --fT:"Noto Serif SC","Source Han Serif SC","SimSun",serif;
+  --fB:"Noto Sans SC","Source Han Sans SC","Microsoft YaHei",sans-serif;
+  --fM:"Cascadia Mono",Consolas,"Courier New",monospace;
+  --bg:#100F0E;--sf:#191715;--sf2:#1F1C18;--sf3:#2B2620;
+  --ln:#2B2620;--ln2:#3B342B;
+  --tx:#EFEAE0;--tx2:#B0A89A;--mut:#8C8478;--fnt:#5F5950;
+  --gold:#E8B04B;--gold2:#F0C878;--gold-dim:rgba(232,176,75,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0B0A09;color:var(--tx);font:13px/1.5 var(--fB);padding:34px 30px 80px;-webkit-font-smoothing:antialiased}
+svg{stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+h2.sec{font:600 20px var(--fT);letter-spacing:.06em;margin:44px 0 6px}
+h2.sec em{font-style:normal;color:var(--gold);font-family:var(--fM);font-size:14px;margin-right:10px}
+.secsub{font:400 12px var(--fB);color:var(--mut);margin-bottom:22px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:22px}
+.row.wide{grid-template-columns:repeat(auto-fit,minmax(520px,1fr))}
+.opt{background:var(--bg);border:1px solid var(--ln);border-radius:12px;overflow:hidden}
+.opt-h{display:flex;align-items:baseline;gap:10px;padding:13px 18px;border-bottom:1px solid var(--ln);background:#141210}
+.opt-h b{font:600 14px var(--fT);letter-spacing:.05em}
+.opt-h b i{font-style:normal;color:var(--gold);font-family:var(--fM);font-size:12px;margin-right:7px}
+.opt-h span{font:400 11px var(--fB);color:var(--mut)}
+.opt-b{padding:22px 18px}
+.verdict{font:400 11px var(--fM);color:var(--fnt);padding:9px 18px;border-top:1px dashed var(--ln);letter-spacing:.02em}
+.top-note{max-width:900px;margin:0 auto 8px;font:400 12px var(--fB);color:var(--tx2);line-height:1.8}
+.top-note b{color:var(--gold)}
+/* ================= 统计卡 · 款 A 金线条 ================= */
+.sa{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.sa .k{border:1px solid var(--ln);border-radius:8px;padding:12px 14px 13px;background:transparent;transition:border-color .2s}
+.sa .k:hover{border-color:var(--gold-dim)}
+.sa .kh{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.sa .kh svg{width:15px;height:15px;color:var(--gold);opacity:.85}
+.sa .kh small{font:400 10px var(--fM);color:var(--fnt);letter-spacing:.12em}
+.sa .kn{font:600 20px var(--fM);letter-spacing:-.5px;color:var(--tx)}
+.sa .kn u{text-decoration:none;font-size:11px;color:var(--mut);margin-left:5px;letter-spacing:.06em}
+.sa .kb{height:2px;background:var(--sf3);border-radius:2px;margin-top:9px;overflow:hidden}
+.sa .kb i{display:block;height:100%;background:var(--gold);opacity:.75;border-radius:2px}
+/* ================= 统计卡 · 款 B 一行内联 ================= */
+.sb{display:flex;align-items:baseline;gap:0;flex-wrap:wrap;padding:4px 2px}
+.sb .it{display:flex;align-items:baseline;gap:6px;padding:0 14px;border-right:1px solid var(--ln)}
+.sb .it:first-child{padding-left:2px}
+.sb .it:last-child{border-right:0}
+.sb .it svg{width:13px;height:13px;color:var(--gold);opacity:.8;align-self:center}
+.sb .it b{font:600 17px var(--fM);letter-spacing:-.4px}
+.sb .it span{font:400 11px var(--fB);color:var(--mut);letter-spacing:.1em}
+.sb .tip{width:100%;margin-top:12px;font:400 10.5px var(--fM);color:var(--fnt);letter-spacing:.05em;padding-left:2px}
+/* ================= 统计卡 · 款 C 四格连排 ================= */
+.sc{border:1px solid var(--ln);border-radius:8px;background:linear-gradient(180deg,#161412,#12100E);position:relative;overflow:hidden}
+.sc::after{content:"";position:absolute;left:8%;right:8%;bottom:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold-dim),transparent)}
+.sc .g{display:grid;grid-template-columns:repeat(4,1fr)}
+.sc .k{padding:16px 10px 15px;text-align:center;border-right:1px solid var(--ln);transition:background .2s}
+.sc .k:last-child{border-right:0}
+.sc .k:hover{background:rgba(232,176,75,.05)}
+.sc .kn{font:600 22px var(--fM);letter-spacing:-.5px;display:block}
+.sc .kl{font:400 10.5px var(--fB);color:var(--mut);letter-spacing:.28em;display:block;margin-top:4px;text-indent:.28em}
+.sc .kd{width:4px;height:4px;border-radius:50%;background:var(--gold);opacity:.55;margin:0 auto 9px}
+/* ================= 统计卡 · 款 D 环形小图 ================= */
+.sd{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sd .k{display:flex;align-items:center;gap:10px;border:1px solid var(--ln);border-radius:8px;padding:10px 11px;transition:border-color .2s;min-width:0}
+.sd .k:hover{border-color:var(--gold-dim)}
+.sd svg.ring{width:38px;height:38px;flex:none;transform:rotate(-90deg)}
+.sd .ring .bgc{stroke:var(--sf3);stroke-width:3.5}
+.sd .ring .fg{stroke:var(--gold);stroke-width:3.5;stroke-linecap:round}
+.sd .meta{min-width:0}
+.sd .meta b{font:600 16px var(--fM);display:block;letter-spacing:-.4px}
+.sd .meta span{font:400 10.5px var(--fB);color:var(--mut);letter-spacing:.1em;white-space:nowrap}
+/* ================= 树 · 款 A 纯文字金线 ================= */
+.ta{font-size:13px}
+.ta .n{display:flex;align-items:center;gap:9px;padding:7px 10px 7px 12px;border-radius:6px;color:var(--tx2);cursor:pointer;position:relative;transition:background .15s,color .15s}
+.ta .n:hover{background:var(--sf);color:var(--tx)}
+.ta .n.on{color:var(--tx);font-weight:600;background:var(--sf)}
+.ta .n.on::before{content:"";position:absolute;left:3px;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--gold)}
+.ta .n .c{margin-left:auto;font:400 11px var(--fM);color:var(--fnt)}
+.ta .n.on .c{color:var(--gold)}
+.ta .n .ar{font-size:9px;color:var(--fnt);width:10px;flex:none}
+.ta .sub{margin:2px 0 6px;padding-left:31px;border-left:1px solid var(--ln2)}
+.ta .sub .n{padding:5px 10px 5px 10px;font-size:12px;color:var(--mut)}
+.ta .sub .n:hover{color:var(--tx)}
+/* ================= 树 · 款 B 金环彩点 ================= */
+.tb{font-size:13px}
+.tb .n{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;color:var(--tx2);cursor:pointer;transition:background .15s}
+.tb .n:hover{background:var(--sf);color:var(--tx)}
+.tb .n.on{background:var(--sf);color:var(--tx);font-weight:600}
+.tb .rg{width:13px;height:13px;border-radius:50%;border:1px solid var(--gold-dim);display:grid;place-items:center;flex:none}
+.tb .rg i{width:5px;height:5px;border-radius:50%;background:var(--pc)}
+.tb .n .c{margin-left:auto;font:400 11px var(--fM);color:var(--fnt)}
+.tb .n .ar{font-size:9px;color:var(--fnt);width:10px}
+.tb .sub{margin:2px 0 8px 20px;padding-left:14px;border-left:1px dashed var(--ln2)}
+.tb .sub .n{font-size:12px;padding:5px 10px;color:var(--mut)}
+.tb .sub .ini{width:18px;height:18px;border-radius:50%;font:600 9.5px var(--fT);color:var(--pc);border:1px solid var(--pc);display:grid;place-items:center;flex:none;opacity:.8}
+/* ================= 树 · 款 C 编号索引 ================= */
+.tc{font-size:13px}
+.tc .n{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;color:var(--tx2);cursor:pointer;transition:background .15s}
+.tc .n:hover{background:var(--sf);color:var(--tx)}
+.tc .n.on{background:var(--sf);color:var(--tx)}
+.tc .ix{font:400 10px var(--fM);color:var(--gold);opacity:.8;width:18px;flex:none;letter-spacing:.05em}
+.tc .n .c{margin-left:auto;font:400 11px var(--fM);color:var(--fnt)}
+.tc .sub{margin:2px 0 8px 10px}
+.tc .sub .n{font-size:12px;padding:5px 10px;color:var(--mut)}
+.tc .sub .ix{color:var(--fnt);opacity:1;font-size:9.5px}
+/* ================= 树 · 款 D 标签纸条 ================= */
+.td{font-size:13px}
+.td .n{display:flex;align-items:center;gap:9px;padding:6px 10px;color:var(--tx2);cursor:pointer;border-radius:2px;transition:all .15s}
+.td .n:hover{color:var(--tx)}
+.td .tag{background:linear-gradient(180deg,#E8E1D2,#DAD2BE);color:#2A241C;font:600 12px var(--fT);padding:4px 12px;border-radius:2px;display:flex;align-items:center;gap:9px;width:100%;box-shadow:0 1px 0 rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.5);letter-spacing:.04em}
+.td .tag .c{margin-left:auto;font:400 10.5px var(--fM);color:#6a6152}
+.td .tag .ar{font-size:9px;color:#6a6152}
+.td .n.on .tag{background:linear-gradient(180deg,#F2D9A0,#E3BC6E)}
+.td .sub{margin:4px 0 10px 16px;padding-left:12px;border-left:1px solid var(--ln2)}
+.td .sub .n{padding:4px 10px;font-size:12px;color:var(--mut)}
+.td .sub .n .c{margin-left:auto;font:400 10.5px var(--fM);color:var(--fnt)}
+</style>
+</head>
+<body>
+
+<div class="top-note">
+  苏哥，两块各出 4 款，全部放在<b>舞台暖黑+金</b>的语境里。回编号就行（例如「统计C + 树A」），也可以混搭或说「都要再改改」。选中的款式我会原样落回 <b>media-library-stage-v1.html</b>，其他部分不动。
+</div>
+
+<h2 class="sec"><em>壹</em>顶部统计卡 · 36 素材 / 13 图片 / 5 动图 / 18 视频</h2>
+<div class="secsub">现状问题：彩色圆角图标块（棕/蓝/紫/绿）像办公后台，和舞台金完全不搭；四张独立卡片框也显得碎。</div>
+<div class="row wide">
+
+  <div class="opt">
+    <div class="opt-h"><b><i>A</i>金线条</b><span>去彩块 · 金色细线图标 + 占比细条</span></div>
+    <div class="opt-b">
+      <div class="sa">
+        <div class="k"><div class="kh"><svg viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><small>ALL</small></div><div class="kn">36<u>素材</u></div><div class="kb"><i style="width:100%"></i></div></div>
+        <div class="k"><div class="kh"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></svg><small>IMG</small></div><div class="kn">13<u>图片</u></div><div class="kb"><i style="width:36%"></i></div></div>
+        <div class="k"><div class="kh"><svg viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg><small>ANIM</small></div><div class="kn">5<u>动图</u></div><div class="kb"><i style="width:14%"></i></div></div>
+        <div class="k"><div class="kh"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg><small>VID</small></div><div class="kn">18<u>视频</u></div><div class="kb"><i style="width:50%"></i></div></div>
+      </div>
+    </div>
+    <div class="verdict">保留图标但统一金色细线；底部细条=占总量比例，多一层信息不抢戏</div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-h"><b><i>B</i>一行内联</b><span>最克制 · 干掉卡片，压成一行字</span></div>
+    <div class="opt-b">
+      <div class="sb">
+        <div class="it"><svg viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><b>36</b><span>素材</span></div>
+        <div class="it"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></svg><b>13</b><span>图片</span></div>
+        <div class="it"><svg viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg><b>5</b><span>动图</span></div>
+        <div class="it"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg><b>18</b><span>视频</span></div>
+        <div class="tip">这一行挪到「全部素材」大标题下方，整块卡片区域消失，页面立刻干净一屏</div>
+      </div>
+    </div>
+    <div class="verdict">信息密度不变、占地最小、最不像后台；适合"界面退后素材向前"</div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-h"><b><i>C</i>四格连排</b><span>一块面板切四格 · 幕布金线压底</span></div>
+    <div class="opt-b">
+      <div class="sc"><div class="g">
+        <div class="k"><span class="kd"></span><span class="kn">36</span><span class="kl">素材</span></div>
+        <div class="k"><span class="kd"></span><span class="kn">13</span><span class="kl">图片</span></div>
+        <div class="k"><span class="kd"></span><span class="kn">5</span><span class="kl">动图</span></div>
+        <div class="k"><span class="kd"></span><span class="kn">18</span><span class="kl">视频</span></div>
+      </div></div>
+    </div>
+    <div class="verdict">数字居中大字，竖细线分格，底部一道淡金"幕布线"；整体感最强</div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-h"><b><i>D</i>环形小图</b><span>每格带占比环 · 数据感</span></div>
+    <div class="opt-b">
+      <div class="sd">
+        <div class="k"><svg class="ring" viewBox="0 0 44 44"><circle class="bgc" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="113 113"/></svg><div class="meta"><b>36</b><span>素材</span></div></div>
+        <div class="k"><svg class="ring" viewBox="0 0 44 44"><circle class="bgc" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="41 113"/></svg><div class="meta"><b>13</b><span>图片</span></div></div>
+        <div class="k"><svg class="ring" viewBox="0 0 44 44"><circle class="bgc" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="16 113"/></svg><div class="meta"><b>5</b><span>动图</span></div></div>
+        <div class="k"><svg class="ring" viewBox="0 0 44 44"><circle class="bgc" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="57 113"/></svg><div class="meta"><b>18</b><span>视频</span></div></div>
+      </div>
+    </div>
+    <div class="verdict">金色圆弧=该类占总量比例，一眼看出结构；比 A 更有图表感，也最"仪表盘"</div>
+  </div>
+
+</div>
+
+<h2 class="sec"><em>贰</em>侧栏资源树 · 平台 → 博主</h2>
+<div class="secsub">现状问题：彩色圆点 + 博主彩色方块头像五颜六色，跟舞台金打架；选中行的棕底发闷，层级箭头没对齐。</div>
+<div class="row">
+
+  <div class="opt">
+    <div class="opt-h"><b><i>A</i>纯文字金线</b><span>零色块 · 全靠字重与金竖线</span></div>
+    <div class="opt-b">
+      <div class="ta">
+        <div class="n on"><span>全部素材</span><span class="c">36</span></div>
+        <div class="n"><span class="ar">›</span><span>X</span><span class="c">14</span></div>
+        <div class="n"><span class="ar">⌄</span><span>小红书</span><span class="c">8</span></div>
+        <div class="sub"><div class="n">小高今天找到工作了么</div></div>
+        <div class="n"><span class="ar">⌄</span><span>抖音</span><span class="c">3</span></div>
+        <div class="sub"><div class="n">奇趣蛋蛋</div></div>
+        <div class="n"><span class="ar">›</span><span>微博</span><span class="c">2</span></div>
+      </div>
+    </div>
+    <div class="verdict">最舞台、最克制；平台名即识别，不再靠颜色认平台；博主用缩进+左细线归位</div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-h"><b><i>B</i>金环彩点</b><span>保留平台色 · 缩成金环里一点</span></div>
+    <div class="opt-b">
+      <div class="tb">
+        <div class="n on"><span class="rg" style="--pc:var(--gold)"><i></i></span><span>全部素材</span><span class="c">36</span></div>
+        <div class="n"><span class="ar">›</span><span class="rg" style="--pc:#8FA0B8"><i></i></span><span>X</span><span class="c">14</span></div>
+        <div class="n"><span class="ar">⌄</span><span class="rg" style="--pc:#FF2442"><i></i></span><span>小红书</span><span class="c">8</span></div>
+        <div class="sub"><div class="n"><span class="ini" style="--pc:#FF2442">小</span>小高今天找到工作了么<span class="c">8</span></div></div>
+        <div class="n"><span class="ar">⌄</span><span class="rg" style="--pc:#25C8D4"><i></i></span><span>抖音</span><span class="c">3</span></div>
+        <div class="sub"><div class="n"><span class="ini" style="--pc:#25C8D4">奇</span>奇趣蛋蛋<span class="c">3</span></div></div>
+        <div class="n"><span class="ar">›</span><span class="rg" style="--pc:#E8B04B"><i></i></span><span>微博</span><span class="c">2</span></div>
+      </div>
+    </div>
+    <div class="verdict">折中款：还认得平台色，但全部被金环"收编"；博主头像从色块改成同色描圈首字</div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-h"><b><i>C</i>编号索引</b><span>金色序号 01/02 · 档案感</span></div>
+    <div class="opt-b">
+      <div class="tc">
+        <div class="n on"><span class="ix">00</span><span>全部素材</span><span class="c">36</span></div>
+        <div class="n"><span class="ix">01</span><span>X</span><span class="c">14</span></div>
+        <div class="n"><span class="ix">02</span><span>小红书</span><span class="c">8</span></div>
+        <div class="sub"><div class="n"><span class="ix">02·1</span>小高今天找到工作了么<span class="c">8</span></div></div>
+        <div class="n"><span class="ix">03</span><span>抖音</span><span class="c">3</span></div>
+        <div class="sub"><div class="n"><span class="ix">03·1</span>奇趣蛋蛋<span class="c">3</span></div></div>
+        <div class="n"><span class="ix">04</span><span>微博</span><span class="c">2</span></div>
+      </div>
+    </div>
+    <div class="verdict">零颜色零图标，纯编号秩序；和卡片左上角的 L-01 灯位号呼应成一套语言</div>
+  </div>
+
+  <div class="opt">
+    <div class="opt-h"><b><i>D</i>标签纸条</b><span>泛黄纸质标签 · 唱片墙端签味</span></div>
+    <div class="opt-b">
+      <div class="td">
+        <div class="n on"><span class="tag"><span>全部素材</span><span class="c">36</span></span></div>
+        <div class="n"><span class="tag"><span class="ar">›</span><span>X</span><span class="c">14</span></span></div>
+        <div class="n"><span class="tag"><span class="ar">⌄</span><span>小红书</span><span class="c">8</span></span></div>
+        <div class="sub"><div class="n">小高今天找到工作了么<span class="c">8</span></div></div>
+        <div class="n"><span class="tag"><span class="ar">⌄</span><span>抖音</span><span class="c">3</span></span></div>
+        <div class="sub"><div class="n">奇趣蛋蛋<span class="c">3</span></div></div>
+        <div class="n"><span class="tag"><span class="ar">›</span><span>微博</span><span class="c">2</span></span></div>
+      </div>
+    </div>
+    <div class="verdict">平台行做成实体标签纸（选中变金色签），博主回归素文字；最有"收藏柜"手感，也最大胆</div>
+  </div>
+
+</div>
+
+</body>
+</html>
