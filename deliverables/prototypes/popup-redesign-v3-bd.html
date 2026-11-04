@@ -125,6 +125,11 @@ svg{display:block}
 .row .exp:hover{background:var(--surface-3);color:var(--ink-2)}
 .row .exp svg{transition:transform .18s}
 .row.open .exp svg{transform:rotate(90deg)}
+/* 每行独立下载键（竞品共性2：一键即下，不强制先勾选） */
+.row .rowdl{width:26px;height:26px;flex:0 0 26px;border-radius:8px;display:none;place-items:center;background:var(--primary);color:#FBF8F2}
+.row:hover .rowdl{display:grid}
+.row .rowdl:hover{background:#000}
+.row .rowdl.busy{display:grid;opacity:.6}
 .row .detail{display:none;flex:0 0 auto;flex-direction:column;gap:2px;font-size:10.5px;color:var(--faint);font-family:ui-monospace,Consolas,monospace;max-width:150px}
 .row.open .main{display:flex;flex-direction:column}
 .row.open .detail{display:flex}
@@ -142,36 +147,6 @@ svg{display:block}
 .foot .dl:active{transform:translateY(1px)}
 .foot .dl:disabled{opacity:.4;cursor:not-allowed}
 .foot .dl.ok{background:var(--ok)}
-
-/* ---------- 快捷设置抽屉（覆盖 popup） ---------- */
-.drawer{position:absolute;inset:0;background:var(--bg);transform:translateX(100%);transition:.24s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;z-index:20}
-.drawer.on{transform:translateX(0)}
-.sethead{display:flex;align-items:center;gap:9px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
-.sethead .back{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--ink-2)}
-.sethead .back:hover{background:var(--surface-3)}
-.sethead h3{font-family:var(--serif);font-size:15px;margin:0;font-weight:600}
-.setbody{flex:1;overflow-y:auto;padding:6px 0}
-.sgroup{padding:12px 14px;border-bottom:1px solid var(--line-2)}
-.sgroup .lbl{font-size:10.5px;font-weight:650;color:var(--accent);letter-spacing:.04em;text-transform:uppercase;margin-bottom:9px}
-.sline{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;font-size:12.5px}
-.sline .t{color:var(--ink)}
-.sline .s{font-size:11px;color:var(--muted)}
-.toggle{width:38px;height:22px;border-radius:999px;background:var(--surface-3);position:relative;transition:.16s;flex:0 0 38px}
-.toggle::after{content:"";position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:var(--sh-1);transition:.16s}
-.toggle.on{background:var(--accent)}
-.toggle.on::after{left:18px}
-.seg{display:flex;gap:0;background:var(--surface-2);border-radius:8px;padding:2px}
-.seg button{flex:1;height:26px;padding:0 10px;border-radius:6px;font-size:11.5px;color:var(--muted)}
-.seg button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--sh-1)}
-.sline.col{flex-direction:column;align-items:stretch;gap:8px}
-.sline.col .top{display:flex;justify-content:space-between;align-items:center}
-.tplinput{width:100%;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r-form);background:var(--surface);font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--ink)}
-.previewline{font-size:10.5px;color:var(--faint);font-family:ui-monospace,Consolas,monospace;margin-top:4px;word-break:break-all}
-.previewline b{color:var(--accent)}
-.setfoot{padding:12px 14px;background:var(--surface);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
-.fullset{display:flex;align-items:center;justify-content:center;gap:8px;height:40px;border-radius:999px;background:var(--primary);color:#FBF8F2;font-size:13px;font-weight:600}
-.fullset:hover{background:#000}
-.setfoot .hint{text-align:center;font-size:10.5px;color:var(--faint)}
 
 /* ---------- toast ---------- */
 #toasts{position:absolute;left:14px;right:14px;bottom:66px;z-index:40;display:flex;flex-direction:column;gap:7px;align-items:stretch}
@@ -196,7 +171,7 @@ svg{display:block}
 
 <div class="stage-note">
   <b>点图标弹出来的面板</b>（380×560）· 方案 A「收网」+ B+D 统一配色<br>
-  顶部三个图标：<span class="k">齿轮</span> 快捷设置 · <span class="k">库</span> 媒体库 · <span class="k">栏</span> 侧边栏
+  顶部三个图标：<span class="k">齿轮</span> 直达完整设置页 · <span class="k">库</span> 媒体库 · <span class="k">栏</span> 侧边栏<br>鼠标悬停任意一行 → 行尾出现单条下载键（不用先勾选）
 </div>
 
 <!-- ============ popup 外壳 ============ -->
@@ -212,7 +187,7 @@ svg{display:block}
     <div class="pop-title">苏哥的钓鱼竿</div>
     <span class="ver" id="vrVer">v1.0</span>
     <span class="sp"></span>
-    <button class="iconbtn" id="btnSettings" title="设置">
+    <button class="iconbtn" id="btnSettings" title="设置（新标签打开完整设置页）">
       <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
     <button class="iconbtn" id="vrOpenLibrary" title="媒体库">
@@ -275,51 +250,6 @@ svg{display:block}
     </button>
   </div>
 
-  <!-- ============ 快捷设置抽屉 ============ -->
-  <div class="drawer" id="vrSettings">
-    <div class="sethead">
-      <button class="back" id="setBack" aria-label="返回"><svg class="ic" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
-      <h3>快捷设置</h3>
-    </div>
-    <div class="setbody">
-      <div class="sgroup">
-        <div class="lbl">保存</div>
-        <div class="sline"><span class="t">默认最高画质</span><span class="toggle on" data-tg="quality"></span></div>
-        <div class="sline"><span class="t">m3u8 自动合并 MP4</span><span class="toggle on" data-tg="merge"></span></div>
-        <div class="sline"><span class="t">按站点 / 作者分文件夹</span><span class="toggle on" data-tg="folder"></span></div>
-      </div>
-      <div class="sgroup">
-        <div class="lbl">文件名规则</div>
-        <div class="sline col">
-          <div class="top"><span class="t">命名模板</span><span class="s">点变量插入</span></div>
-          <input class="tplinput" id="tpl" value="${author}/${date}_${title}.${ext}">
-          <div class="previewline" id="tplPrev"></div>
-        </div>
-      </div>
-      <div class="sgroup">
-        <div class="lbl">嗅探</div>
-        <div class="sline"><span class="t">图片自动嗅探</span><span class="toggle on" data-tg="sniff"></span></div>
-        <div class="sline col">
-          <div class="top"><span class="t">数字角标</span></div>
-          <div class="seg" data-seg="badge"><button class="on">开</button><button>关</button></div>
-        </div>
-      </div>
-      <div class="sgroup">
-        <div class="lbl">外观</div>
-        <div class="sline col">
-          <div class="top"><span class="t">主题</span></div>
-          <div class="seg" data-seg="theme"><button class="on">纸感（浅色）</button><button>影院（深色）</button></div>
-        </div>
-      </div>
-    </div>
-    <div class="setfoot">
-      <button class="fullset" id="openFullSet">
-        <svg class="ic sm" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        完整设置页（新标签打开）
-      </button>
-      <span class="hint">这里只放最常用的开关，全部设置点上面</span>
-    </div>
-  </div>
 
   <div id="toasts"></div>
 </div>
@@ -384,10 +314,17 @@ svg{display:block}
           <div class="meta"><span class="pdot" style="background:${m.plat}"></span>${m.res||m.fmt||''}<span class="dot"></span><span class="sz">${m.sz} MB</span></div>
         </div>
         <div class="detail"><span class="u">${esc(m.url)}</span><span>→ ${esc(pathOf(m))}</span></div>
+        <button class="rowdl" title="只下载这一条"><svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
         <button class="exp" title="展开"><svg class="ic sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>`;
       el.querySelector('.cb').onclick=e=>{e.stopPropagation();toggle(idx);};
       el.querySelector('.exp').onclick=e=>{e.stopPropagation();el.classList.toggle('open');};
       el.querySelector('.name').onclick=e=>{e.stopPropagation();rename(m,el.querySelector('.name'));};
+      el.querySelector('.rowdl').onclick=e=>{
+        e.stopPropagation();
+        const btn=e.currentTarget; btn.classList.add('busy');
+        setTimeout(()=>{ m.saved=true; sel.delete(idx); render();
+          toast('已存入资源库', pathOf(m)+m.t); }, 600);
+      };
       el.onclick=()=>toggle(idx);
       list.appendChild(el);
     });
@@ -484,18 +421,8 @@ svg{display:block}
     },260);
   };
 
-  /* ---------- 快捷设置抽屉 ---------- */
-  $('btnSettings').onclick=()=>{$('vrSettings').classList.add('on');$('btnSettings').classList.add('on');paintTpl();};
-  $('setBack').onclick=()=>{$('vrSettings').classList.remove('on');$('btnSettings').classList.remove('on');};
-  document.querySelectorAll('.toggle').forEach(t=>t.onclick=()=>t.classList.toggle('on'));
-  document.querySelectorAll('.seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{s.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');if(s.dataset.seg==='theme')toast(b.textContent==='纸感（浅色）'?'已切纸感浅色':'已切影院深色（预览层固定深色）');}));
-  $('openFullSet').onclick=()=>toast('正在新标签打开完整设置页…','options.html');
-  function paintTpl(){
-    const v=$('tpl').value;
-    const out=v.replace(/\$\{author\}/g,'<b>深海纪录片</b>').replace(/\$\{date\}/g,'<b>20261104</b>').replace(/\$\{title\}/g,'<b>第3话·午夜带的巨乌贼</b>').replace(/\$\{ext\}/g,'<b>mp4</b>').replace(/\$\{site\}/g,'<b>bilibili</b>').replace(/\$\{index\}/g,'<b>03</b>');
-    $('tplPrev').innerHTML='落盘预览：'+out;
-  }
-  $('tpl').addEventListener('input',paintTpl);
+  /* ---------- 设置：一步直达完整设置页（竞品共性9：popup 不放配置层） ---------- */
+  $('btnSettings').onclick=()=>toast('正在新标签打开完整设置页…','options.html');
 
   /* ---------- 媒体库 / 侧边栏 ---------- */
   $('vrOpenLibrary').onclick=()=>toast('正在新标签打开媒体库…','library.html');
