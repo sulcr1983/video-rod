@@ -1077,6 +1077,64 @@ a.pi-item:hover dd .go{opacity:1}
 .scan-txt{font-size:11.5px;color:var(--muted)}
 .scan-sub{font-size:10.5px;color:var(--faint)}
 
+/* ============================================================
+   预览进入动效（借鉴 beUI 的分层进入，纯 CSS，不引库）
+   整体不再"啪一下全屏"，而是舞台→信息栏→胶片条依次落位
+   ============================================================ */
+@keyframes pvStageIn{
+  from{opacity:0;transform:scale(.965)}
+  to{opacity:1;transform:none}
+}
+@keyframes pvPanelIn{
+  from{opacity:0;transform:translateX(12px)}
+  to{opacity:1;transform:none}
+}
+@keyframes pvFilmIn{
+  from{opacity:0;transform:translateY(14px)}
+  to{opacity:1;transform:none}
+}
+.preview:not(.hidden) .pv-stage{animation:pvStageIn .26s var(--ease) both}
+.preview:not(.hidden) .pv-info{animation:pvPanelIn .3s var(--ease) .05s both}
+.preview:not(.hidden) .pv-film{animation:pvFilmIn .3s var(--ease) .08s both}
+/* 尊重系统"减少动态效果"：只淡入，不位移不缩放 */
+@media (prefers-reduced-motion: reduce){
+  .preview:not(.hidden) .pv-stage,
+  .preview:not(.hidden) .pv-info,
+  .preview:not(.hidden) .pv-film{animation:pvFadeIn .18s linear both}
+  @keyframes pvFadeIn{from{opacity:0}to{opacity:1}}
+}
+/* 卡片点击时的按压反馈，让"点开了"有手感 */
+.card:active{transform:scale(.985)}
+
+/* ============================================================
+   预览进入动效（借鉴 beUI 的分层进入，纯 CSS，不引库）
+   整体不再"啪一下全屏"，而是舞台→信息栏→胶片条依次落位
+   ============================================================ */
+@keyframes pvStageIn{
+  from{opacity:0;transform:scale(.965)}
+  to{opacity:1;transform:none}
+}
+@keyframes pvPanelIn{
+  from{opacity:0;transform:translateX(12px)}
+  to{opacity:1;transform:none}
+}
+@keyframes pvFilmIn{
+  from{opacity:0;transform:translateY(14px)}
+  to{opacity:1;transform:none}
+}
+.preview:not(.hidden) .pv-stage{animation:pvStageIn .26s var(--ease) both}
+.preview:not(.hidden) .pv-info{animation:pvPanelIn .3s var(--ease) .05s both}
+.preview:not(.hidden) .pv-film{animation:pvFilmIn .3s var(--ease) .08s both}
+/* 尊重系统"减少动态效果"：只淡入，不位移不缩放 */
+@media (prefers-reduced-motion: reduce){
+  .preview:not(.hidden) .pv-stage,
+  .preview:not(.hidden) .pv-info,
+  .preview:not(.hidden) .pv-film{animation:pvFadeIn .18s linear both}
+  @keyframes pvFadeIn{from{opacity:0}to{opacity:1}}
+}
+/* 卡片点击时的按压反馈，让"点开了"有手感 */
+.card:active{transform:scale(.985)}
+
 /* ---------- 快捷键面板 ---------- */
 .keysheet{
   position:fixed;inset:0;z-index:110;background:rgba(8,10,14,.62);
