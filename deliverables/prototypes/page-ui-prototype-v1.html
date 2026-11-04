@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>苏哥的钓鱼竿 video-rod — 页面侧 UI 原型 v1</title>
+<style>
+/* ============================================================
+   页面侧 UI 原型 · 7 平台场景
+   配色忠于现有代码（深色玻璃 + 蓝 #2563eb 系；微博/小红书白底抽屉；X/IG/小红书品牌色）
+   ============================================================ */
+:root{
+  --blue:#2563eb; --blue-h:#1d4ed8; --blue-d:#1e40af;
+  --glass:rgba(17,24,39,.88); --glass2:rgba(18,20,24,.86);
+  --panel:#111827; --panel-line:#1f2937;
+  --ok:#34d399; --ok-deep:#16a34a; --bad:#f87171; --bad-deep:#dc2626;
+  --warn:#fbbf24;
+  --ink:#11161d; --dim:#5c6673; --mute:#8b93a3; --line:#e6e9ef;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font:13px/1.6 var(--font);color:var(--ink);background:#eef1f5;-webkit-font-smoothing:antialiased}
+button{font:inherit;border:0;background:none;cursor:pointer;color:inherit}
+input,select{font:inherit;color:inherit}
+svg{display:block}
+
+/* ---------- 顶部总导航 ---------- */
+.topbar{
+  position:sticky;top:0;z-index:2000;background:#0f141b;color:#e5e7eb;
+  box-shadow:0 2px 12px rgba(0,0,0,.18);
+}
+.topbar .inner{max-width:1280px;margin:0 auto;padding:0 18px}
+.topbar .row1{display:flex;align-items:center;gap:10px;height:50px}
+.topbar .brand{font-weight:700;font-size:14px;letter-spacing:.2px;white-space:nowrap}
+.topbar .brand b{color:#7aa2ff}
+.topbar .badge{font-size:10.5px;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,.12);color:#c7ced9}
+.topbar .note{margin-left:auto;font-size:11.5px;color:#8b97a8;text-align:right}
+.topbar .row2{display:flex;gap:4px;overflow-x:auto;padding-bottom:8px}
+.topbar .tab{
+  flex:0 0 auto;display:flex;align-items:center;gap:6px;height:34px;padding:0 14px;
+  border-radius:8px;color:#aab4c2;font-size:12.5px;white-space:nowrap;transition:.14s;
+}
+.topbar .tab:hover{color:#fff;background:rgba(255,255,255,.07)}
+.topbar .tab.on{color:#fff;background:rgba(122,162,255,.2);font-weight:600}
+.topbar .tab .dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
+.topbar .tab .tag{margin-left:2px;font-size:10px;padding:0 6px;border-radius:9px;background:rgba(255,255,255,.14)}
+
+/* ---------- 场景容器 ---------- */
+.scene{display:none;padding:26px 18px 120px}
+.scene.on{display:block}
+.scene-head{max-width:1280px;margin:0 auto 16px;display:flex;align-items:baseline;gap:12px}
+.scene-head h1{font-size:17px;margin:0}
+.scene-head p{margin:0;color:var(--mute);font-size:12px}
+
+/* ---------- 仿真宿主网页壳 ---------- */
+.host{max-width:1280px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 10px 32px rgba(17,22,29,.10)}
+.host-nav{display:flex;align-items:center;gap:14px;height:54px;padding:0 20px;border-bottom:1px solid #eef1f5;font-size:12.5px;color:var(--dim)}
+.host-nav .logo{font-weight:700;font-size:14px;color:var(--ink)}
+.host-nav .sp{flex:1}
+.host-nav .avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#ffb4a2,#e5989b)}
+
+/* ============================================================
+   1. 视频悬浮下载按钮（.vr-vob）
+   ============================================================ */
+.player-scene{position:relative}
+.video-stage{
+  position:relative;max-width:860px;margin:22px auto;aspect-ratio:16/9;border-radius:12px;
+  background:radial-gradient(120% 120% at 30% 20%,#2a3342 0%,#141a24 55%,#0b0f16 100%);overflow:hidden;
+  box-shadow:inset 0 0 120px rgba(0,0,0,.5);
+}
+.video-stage::before{content:"";position:absolute;inset:0;background:
+  linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px) 0 0/100% 33.33%,
+  linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px) 0 0/33.33% 100%;}
+.video-stage .frame-num{position:absolute;left:14px;bottom:12px;font:11px/1 ui-monospace,Consolas,monospace;color:#7a8698}
+.video-stage .play-badge{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.14);backdrop-filter:blur(4px);display:grid;place-items:center}
+/* 视频悬浮按钮（模拟 .vr-vob，hover 才显示） */
+.vob{
+  position:absolute;right:12px;top:34px;display:none;align-items:stretch;z-index:50;
+  border-radius:10px;overflow:hidden;background:var(--glass2);backdrop-filter:blur(10px);
+  box-shadow:0 8px 24px rgba(0,0,0,.42);
+}
+.vob.on{display:flex}
+.vob .main{display:flex;align-items:center;gap:7px;height:42px;padding:0 13px;color:#fff;font-size:12.5px;font-weight:600;transition:.14s}
+.vob .main:hover{background:rgba(255,255,255,.1)}
+.vob .main .pct{margin-left:2px;font-size:11px;color:#9fb0c7;font-weight:500}
+.vob .more{width:34px;display:grid;place-items:center;color:#cbd5e1;border-left:1px solid rgba(255,255,255,.14)}
+.vob .more:hover{background:rgba(255,255,255,.1);color:#fff}
+.vob .main.ok{color:var(--ok)}
+.vob .main.bad{color:var(--bad)}
+/* 清晰度菜单 */
+.vob-menu{
+  position:absolute;right:12px;top:80px;min-width:190px;background:#151a24;border:1px solid #232b38;
+  border-radius:10px;padding:5px;box-shadow:0 14px 40px rgba(0,0,0,.5);display:none;z-index:60;
+}
+.vob-menu.on{display:block}
+.vob-menu .item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:9px 10px;border-radius:7px;color:#e5e7eb;font-size:12.5px;text-align:left}
+.vob-menu .item:hover{background:rgba(255,255,255,.08)}
+.vob-menu .item .q{color:#9aa7b8;font-size:11px}
+.vob-menu .item.sel{color:#7aa2ff}
+.vob-menu .item.sel::after{content:"✓";color:#7aa2ff;font-weight:700}
+
+/* ============================================================
+   2. 图片悬停条 / 确认条 / 进度条 / 浮标 / 清单面板
+   ============================================================ */
+.pics-scene{position:relative;min-height:640px}
+.feed{columns:4;column-gap:14px;padding:18px}
+@media (max-width:1000px){.feed{columns:3}}
+@media (max-width:720px){.feed{columns:2}}
+.ph{break-inside:avoid;margin:0 0 14px;border-radius:11px;overflow:hidden;background:#fff;border:1px solid #eef1f5;position:relative}
+.ph .wrap{position:relative;overflow:hidden;aspect-ratio:var(--ar,3/4);background:#eef1f5}
+.ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ph .cap{padding:8px 10px 10px;font-size:11.5px;color:var(--dim);display:flex;gap:6px;align-items:center}
+.ph .cap b{color:var(--ink);font-weight:600}
+.ph .cap .dot{width:2px;height:2px;border-radius:50%;background:var(--mute)}
+.ph .dim-badge{position:absolute;left:8px;top:8px;font-size:10px;padding:2px 7px;border-radius:20px;background:rgba(17,24,39,.7);color:#fff}
+.ph .dim-badge.done{background:rgba(22,163,74,.9)}
+
+/* 悬停条（单例，模拟 Shadow DOM .vr-wrap） */
+#hoverBar{
+  position:absolute;z-index:4000;display:none;gap:6px;align-items:center;padding:5px;
+  border-radius:10px;background:var(--glass);backdrop-filter:blur(8px);
+  box-shadow:0 8px 22px rgba(0,0,0,.34);
+}
+#hoverBar.on{display:flex}
+#hoverBar button{display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:7px;background:rgba(255,255,255,.13);color:#fff;font-size:11.5px;white-space:nowrap}
+#hoverBar button:hover{background:rgba(255,255,255,.25)}
+#hoverBar button.primary{background:var(--blue);font-weight:600}
+#hoverBar button.primary:hover{background:var(--blue-h)}
+#hoverBar button.ok{background:var(--ok-deep)}
+#hoverBar .spin{width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:sp .7s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* 确认条 / 进度条（模拟 .vr-cf / .vr-pg，深色玻璃） */
+.fixedbar{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:5000;display:none;transition:.16s}
+.fixedbar.on{display:flex}
+#confirm{display:none;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;background:#131a26;border:1px solid #232b38;box-shadow:0 18px 50px rgba(0,0,0,.45);color:#e5e7eb}
+#confirm.on{display:flex}
+#confirm .txt{font-size:12px;color:#cbd5e1}
+#confirm .txt b{color:#fff}
+#confirm .mini{font-size:10.5px;color:#8b97a8;margin-top:2px}
+#confirm button{height:30px;padding:0 12px;border-radius:7px;font-size:11.5px;background:rgba(255,255,255,.1);color:#e5e7eb}
+#confirm button:hover{background:rgba(255,255,255,.18)}
+#confirm button.primary{background:var(--blue);color:#fff;font-weight:600}
+#confirm button.primary:hover{background:var(--blue-h)}
+#progress{display:none;width:400px;max-width:92vw;padding:11px 13px;border-radius:12px;background:#131a26;border:1px solid #232b38;box-shadow:0 18px 50px rgba(0,0,0,.45);color:#e5e7eb}
+#progress.on{display:block}
+#progress .row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#cbd5e1}
+#progress .bar{height:5px;border-radius:3px;background:#1f2937;margin-top:9px;overflow:hidden}
+#progress .bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .18s}
+#progress .cancel{margin-left:auto;font-size:11px;color:#8b97a8;text-decoration:underline}
+
+/* 浮标（模拟 .vr-float，默认关；这里为了演示默认显示） */
+#floatBtn{
+  position:fixed;right:18px;bottom:18px;z-index:3000;width:44px;height:44px;border-radius:50%;
+  background:#151a24;color:#fff;box-shadow:0 8px 22px rgba(0,0,0,.35);display:grid;place-items:center;transition:.16s;
+}
+#floatBtn:hover{transform:translateY(-2px)}
+#floatBtn .n{position:absolute;right:-3px;top:-3px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;background:var(--blue);color:#fff;font-size:10.5px;line-height:19px;text-align:center;font-weight:600}
+
+/* 清单面板（模拟 .vr-panel，深色 #111827） */
+#panelMask{position:fixed;inset:0;background:rgba(4,6,9,.5);z-index:6000;display:none;align-items:center;justify-content:center;padding:24px}
+#panelMask.on{display:flex}
+#panel{width:min(880px,96vw);max-height:86vh;background:var(--panel);color:#e5e7eb;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.55);display:flex;flex-direction:column;overflow:hidden}
+.p-head{padding:14px 16px 10px;border-bottom:1px solid var(--panel-line)}
+.p-head .t{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:650;color:#fff}
+.p-head .cnt{font-size:11px;font-weight:500;color:#9aa7b8}
+.p-head .x{margin-left:auto;width:26px;height:26px;border-radius:6px;color:#9aa7b8}
+.p-head .x:hover{background:rgba(255,255,255,.08);color:#fff}
+.p-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:9px;font-size:11.5px;color:#9aa7b8}
+.p-filters .sizes{display:flex;gap:4px}
+.p-filters .sizes button{height:24px;padding:0 9px;border-radius:6px;background:#1f2937;font-size:11px;color:#cbd5e1}
+.p-filters .sizes button.on{background:var(--blue);color:#fff;font-weight:600}
+.p-filters .sizes button i{font-style:normal;opacity:.75;margin-left:3px;font-size:10px}
+.p-filters input[type=text]{width:150px;height:24px;padding:0 7px;border:1px solid #2b3442;border-radius:6px;background:#0f1520;color:#e5e7eb}
+.p-actions{display:flex;gap:6px;margin-top:9px}
+.p-actions button{height:26px;padding:0 10px;border-radius:6px;background:#1f2937;font-size:11.5px;color:#e5e7eb}
+.p-actions button:hover{background:#263246}
+.p-actions button.primary{background:var(--blue);color:#fff;font-weight:600}
+.p-actions button.primary:hover{background:var(--blue-h)}
+.p-actions .sel{margin-left:auto;color:#9aa7b8;font-size:11px;align-self:center}
+.p-body{flex:1;overflow-y:auto;padding:12px 14px}
+.pgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+@media (max-width:700px){.pgrid{grid-template-columns:repeat(3,1fr)}}
+.cell{position:relative;border-radius:8px;overflow:hidden;border:2px solid transparent;background:#1a2130;cursor:pointer;aspect-ratio:1/1}
+.cell img{width:100%;height:100%;object-fit:cover}
+.cell .meta{position:absolute;left:0;right:0;bottom:0;padding:3px 6px;font-size:9.5px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.7));display:flex;justify-content:space-between}
+.cell .tick{position:absolute;right:5px;top:5px;width:16px;height:16px;border-radius:4px;background:rgba(255,255,255,.9);display:grid;place-items:center;font-size:10px;color:transparent}
+.cell.sel{border-color:var(--blue)}
+.cell.sel .tick{background:var(--blue);color:#fff}
+.cell.done::after{content:"✓";position:absolute;left:5px;top:5px;background:rgba(22,163,74,.94);color:#fff;width:16px;height:16px;border-radius:4px;font-size:10px;display:grid;place-items:center}
+.p-foot{padding:10px 14px;border-top:1px solid var(--panel-line);display:flex;align-items:center;gap:8px;font-size:11px;color:#8b97a8}
+.p-foot .kbd{border:1px solid #2b3442;border-radius:4px;padding:0 5px;font-family:Consolas,monospace;font-size:10px;color:#cbd5e1;background:#0f1520}
+
+/* ============================================================
+   3. 平台按钮 / 抽屉（X / 微博 / 小红书 / IG / YT）
+   ============================================================ */
+/* X 推文 */
+.tweet{max-width:640px;margin:0 auto;padding:16px 18px;border-bottom:1px solid #eef1f5}
+.tweet .t-head{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.tweet .t-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#9fb8c9,#5f7d92);flex:0 0 38px}
+.tweet .t-name{font-weight:700;font-size:13.5px}
+.tweet .t-id{color:var(--mute);font-size:12px}
+.tweet .t-text{font-size:13.5px;line-height:1.55;margin:6px 0 10px}
+.tweet .t-media{aspect-ratio:16/10;border-radius:12px;background:radial-gradient(120% 120% at 30% 20%,#2a3342 0%,#141a24 60%,#0b0f16 100%);position:relative;overflow:hidden;margin-bottom:8px}
+.tweet .t-acts{display:flex;gap:14px;align-items:center;color:var(--dim);font-size:12px;margin-top:8px}
+/* X 内联按钮（.vr-xbtn） */
+.xbtn{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 14px;border-radius:999px;color:#fff;font-size:12.5px;font-weight:600;background:linear-gradient(135deg,#1d9bf0,#0a7bd1);box-shadow:0 3px 10px rgba(29,155,240,.3);margin-left:6px;transition:.14s}
+.xbtn:hover{filter:brightness(1.06)}
+.xbtn:active{transform:translateY(1px)}
+.xbtn.busy{opacity:.6}
+.xbtn.done{background:linear-gradient(135deg,#16a34a,#128a3f);box-shadow:0 3px 10px rgba(22,163,74,.3)}
+.xbtn.warn{background:linear-gradient(135deg,#f4212e,#c40f1c);box-shadow:0 3px 10px rgba(244,33,46,.3)}
+
+/* 竖排标签（微博 .vr-bulk-btn / 小红书 .vr-xhs-btn） */
+.vside{position:fixed;right:0;top:38%;z-index:2100;display:flex;flex-direction:column;gap:8px}
+.vside .tag-btn{writing-mode:vertical-rl;text-orientation:mixed;display:flex;align-items:center;gap:7px;padding:14px 7px;border-radius:9px 0 0 9px;color:#fff;font-size:12px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:.14s}
+.vside .tag-btn:hover{padding-left:11px}
+.vside .tag-btn.weibo{background:linear-gradient(180deg,#1677ff,#0f5fd1)}
+.vside .tag-btn.xhs{background:linear-gradient(180deg,#ff2442,#c8102e)}
+.vside .tag-btn .cnt{background:rgba(255,255,255,.25);border-radius:8px;padding:2px 6px;writing-mode:horizontal-tb;font-size:10px}
+
+/* 白底抽屉（微博/小红书 .vr-bulk-panel / .vr-xhs-panel） */
+.drawer{
+  position:fixed;top:0;right:0;height:100vh;width:360px;max-width:92vw;z-index:2150;background:#fff;
+  box-shadow:-12px 0 40px rgba(0,0,0,.22);transform:translateX(105%);transition:.22s ease;display:flex;flex-direction:column;
+}
+.drawer.on{transform:translateX(0)}
+.drawer .d-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #eef1f5;font-size:13.5px;font-weight:700}
+.drawer .d-head .x{margin-left:auto;width:26px;height:26px;border-radius:6px;color:#8b93a3}
+.drawer .d-head .x:hover{background:#f2f4f7}
+.drawer .d-sub{font-size:11px;color:#8b93a3;font-weight:400}
+.drawer .d-list{flex:1;overflow-y:auto;padding:8px 12px}
+.d-row{display:flex;gap:10px;align-items:center;padding:9px 8px;border-radius:9px;cursor:pointer}
+.d-row:hover{background:#f5f7fa}
+.d-row .ck{width:17px;height:17px;border-radius:4px;border:1.5px solid #c9cfd8;display:grid;place-items:center;color:transparent;flex:0 0 17px}
+.d-row.on .ck{background:var(--blue);border-color:var(--blue);color:#fff}
+.d-row.xhs.on .ck{background:#ff2442;border-color:#ff2442;color:#fff}
+.d-row .thumb{width:42px;height:42px;border-radius:7px;overflow:hidden;background:#eef1f5;flex:0 0 42px;position:relative}
+.d-row .thumb .emoji{position:absolute;inset:0;display:grid;place-items:center;font-size:17px}
+.d-row .info{min-width:0}
+.d-row .info .a{font-size:12px;color:#5c6673}
+.d-row .info .b{font-size:12.5px;color:#11161d;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.d-row .kind{font-size:10px;padding:1px 7px;border-radius:8px;background:#eef1f5;color:#5c6673;flex:0 0 auto}
+.d-row .kind.vid{background:#fff1f0;color:#e5484d}
+.d-row .kind.img{background:#eef4ff;color:#1d4ed8}
+/* 圆点（小红书） */
+.d-row.xhs .dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px}
+.d-row.xhs .dot.img{background:#1677ff}
+.d-row.xhs .dot.vid{background:#ff2442}
+.drawer .d-foot{border-top:1px solid #eef1f5;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.d-foot .opts{display:flex;flex-wrap:wrap;gap:10px;font-size:11.5px;color:#5c6673}
+.d-foot .opts label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.d-foot .btns{display:flex;gap:6px}
+.d-foot button{flex:1;height:34px;border-radius:8px;background:#f2f4f7;font-size:12px;color:#11161d}
+.d-foot button:hover{background:#e9edf2}
+.d-foot button.primary{background:var(--blue);color:#fff;font-weight:600}
+.d-foot button.primary:hover{background:var(--blue-h)}
+.d-foot.xhs button.primary{background:#ff2442}
+.d-foot.xhs button.primary:hover{background:#e01f3a}
+
+/* Instagram */
+.ig-scene .ig-post{max-width:470px;margin:0 auto}
+.ig-post .ig-media{aspect-ratio:1/1.05;border-radius:12px;background:radial-gradient(120% 120% at 30% 20%,#3a2a3e 0%,#1a1420 60%,#0d0a10 100%);position:relative;overflow:hidden}
+.ig-btn{
+  position:fixed;right:20px;bottom:24px;z-index:2200;display:flex;align-items:center;gap:7px;height:42px;
+  padding:0 16px;border-radius:999px;color:#fff;font-size:13px;font-weight:600;
+  background:linear-gradient(135deg,#405de6,#c13584);box-shadow:0 8px 22px rgba(193,53,132,.4);transition:.14s;
+}
+.ig-btn:hover{filter:brightness(1.07)}
+.ig-btn.busy{opacity:.65}
+
+/* YouTube */
+.yt-scene .yt-player{max-width:860px;margin:0 auto;aspect-ratio:16/9;border-radius:12px;background:#000;position:relative;overflow:hidden}
+.yt-scene .yt-player::after{content:"▶";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-size:44px;opacity:.85}
+.yt-meta{max-width:860px;margin:16px auto;padding:0 4px}
+.yt-meta h2{font-size:17px;margin:0 0 6px}
+.yt-meta .row{display:flex;gap:10px;align-items:center;color:var(--dim);font-size:12.5px}
+.yt-btn{
+  display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 16px;border-radius:18px;background:var(--blue);
+  color:#fff;font-size:13px;font-weight:600;box-shadow:0 3px 10px rgba(37,99,235,.3);transition:.14s;
+}
+.yt-btn:hover{background:var(--blue-h)}
+.yt-tip{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:11.5px;color:#8b93a3}
+
+/* toast */
+#toasts{position:fixed;right:18px;bottom:76px;z-index:9000;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.toast{max-width:360px;padding:10px 12px;border-radius:10px;background:#0f141b;color:#fff;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;transform:translateY(6px);transition:.18s}
+.toast.on{opacity:1;transform:translateY(0)}
+.toast b{color:#8fe3d6}
+.toast .p{font-size:10.5px;color:#9fb0c7;margin-top:3px;word-break:break-all}
+
+/* 全局遮罩（抽屉/面板打开时点击关闭） */
+#pageMask{position:fixed;inset:0;background:rgba(0,0,0,.28);z-index:2050;display:none}
+#pageMask.on{display:block}
+
+/* 图标 */
+.ic{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ic.sm{width:13px;height:13px}
+</style>
+</head>
+<body>
+
+<!-- ============ 顶部总导航 ============ -->
+<div class="topbar">
+  <div class="inner">
+    <div class="row1">
+      <div class="brand">苏哥的钓鱼竿 <b>video-rod</b></div>
+      <span class="badge">页面侧 UI 原型 v1</span>
+      <span class="note">这些是注入到「别人网页」上的按钮/浮标/面板 · 点顶部切换平台场景</span>
+    </div>
+    <div class="row2" id="tabbar">
+      <button class="tab on" data-scene="s-video"><span class="dot" style="background:#7aa2ff"></span>通用视频页<span class="tag">浮层按钮</span></button>
+      <button class="tab" data-scene="s-pics"><span class="dot" style="background:#7aa2ff"></span>通用图片页<span class="tag">悬停/面板</span></button>
+      <button class="tab" data-scene="s-x"><span class="dot" style="background:#1d9bf0"></span>X / 推特</button>
+      <button class="tab" data-scene="s-weibo"><span class="dot" style="background:#1677ff"></span>微博主页</button>
+      <button class="tab" data-scene="s-xhs"><span class="dot" style="background:#ff2442"></span>小红书主页</button>
+      <button class="tab" data-scene="s-ig"><span class="dot" style="background:#c13584"></span>Instagram</button>
+      <button class="tab" data-scene="s-yt"><span class="dot" style="background:#2563eb"></span>YouTube</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 场景 1：通用视频页（视频悬浮按钮） ============ -->
+<section class="scene on" id="s-video">
+  <div class="scene-head">
+    <h1>视频悬浮下载按钮</h1>
+    <p>把鼠标移进播放器 → 右上角浮现「下载 + 清晰度箭头」；点箭头弹清晰度菜单；点主钮直接下最高清</p>
+  </div>
+  <div class="host">
+    <div class="host-nav"><div class="logo">抖音</div><span>推荐</span><span>关注</span><span>热榜</span><div class="sp"></div><div class="avatar"></div></div>
+    <div class="player-scene">
+      <div class="video-stage">
+        <span class="frame-num">00:12 / 01:24</span>
+        <span class="play-badge"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19" fill="#fff"/></svg></span>
+        <div class="vob" id="vob">
+          <button class="main" id="vobMain">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span id="vobTxt">下载</span><span class="pct" id="vobPct"></span>
+          </button>
+          <button class="more" id="vobMore" title="选择清晰度"><svg class="ic sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+        </div>
+      </div>
+      <div class="vob-menu" id="vobMenu">
+        <button class="item sel"><span>最高画质</span><span class="q">1080P</span></button>
+        <button class="item"><span>高清</span><span class="q">720P</span></button>
+        <button class="item"><span>标清</span><span class="q">480P</span></button>
+      </div>
+      <div style="text-align:center;color:#8b93a3;font-size:11.5px;padding:0 0 20px">↑ 真实逻辑：鼠标移动到视频矩形内才浮现，全屏时自动隐藏</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 场景 2：通用图片页（悬停/确认/进度/浮标/面板） ============ -->
+<section class="scene" id="s-pics">
+  <div class="scene-head">
+    <h1>图片悬停条 · 批量 · 清单面板</h1>
+    <p>悬停图片 300ms 出按钮；点「全部 N」弹确认条；右下角圆形浮标点开清单面板（档位/过滤/勾选）</p>
+  </div>
+  <div class="host pics-scene">
+    <div class="host-nav"><div class="logo">图虫 · 灵感</div><span>推荐</span><span>风光</span><span>人像</span><div class="sp"></div><div class="avatar"></div></div>
+    <div class="feed" id="feed"></div>
+  </div>
+
+  <div id="hoverBar">
+    <button id="hbOne"><svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span id="hbOneTxt">下载原图</span></button>
+    <button id="hbAll" class="primary"><svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span id="hbAllTxt">全部 23</span></button>
+  </div>
+
+  <div id="confirm">
+    <div>
+      <div class="txt">本页找到 <b id="cfTotal">23</b> 张图（已过滤 <b id="cfSkip">8</b> 张小图）</div>
+      <div class="mini">浏览器可能询问「是否允许下载多个文件」</div>
+    </div>
+    <button class="primary" id="cfGo">下载 23 张</button>
+    <button id="cfList">先看清单</button>
+    <button id="cfCancel">取消</button>
+  </div>
+
+  <div id="progress">
+    <div class="row"><span id="pgTxt">正在下载 0/23</span><a class="cancel" id="pgCancel">取消</a></div>
+    <div class="bar"><i id="pgBar"></i></div>
+  </div>
+
+  <button id="floatBtn" title="本页图片">
+    <svg class="ic" style="width:19px;height:19px" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    <span class="n" id="floatN">23</span>
+  </button>
+
+  <div id="panelMask">
+    <div id="panel">
+      <div class="p-head">
+        <div class="t">本页图片 <span class="cnt" id="pCount"></span><button class="x" id="pClose">✕</button></div>
+        <div class="p-filters">
+          <span>尺寸</span>
+          <div class="sizes" id="sizeBtns">
+            <button data-edge="100" class="on">小<i>0</i></button>
+            <button data-edge="500">中<i>0</i></button>
+            <button data-edge="1200">大<i>0</i></button>
+            <button data-edge="2000">超大<i>0</i></button>
+          </div>
+          <span>URL 含</span><input type="text" id="fUrl" placeholder="例如 jpg / png">
+        </div>
+        <div class="p-actions">
+          <button id="pAll">全选</button>
+          <button id="pInvert">反选</button>
+          <button class="primary" id="pDlSel">下载选中 <span id="pSelN">0</span></button>
+          <span class="sel" id="pTip"></span>
+        </div>
+      </div>
+      <div class="p-body"><div class="pgrid" id="pgrid"></div></div>
+      <div class="p-foot"><span class="kbd">J</span><span class="kbd">K</span> 移动 · <span class="kbd">X</span> 勾选 · <span class="kbd">Enter</span> 下载 · <span class="kbd">Esc</span> 关闭 <span style="margin-left:auto">图片只在本地处理，不上传</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 场景 3：X / 推特 ============ -->
+<section class="scene" id="s-x">
+  <div class="scene-head"><h1>X · 推文内联下载按钮 + 主页批量抽屉</h1><p>带视频的推文操作栏多一个蓝色「下载」胶囊；主页右侧竖标签「批量下载」拉开白底抽屉</p></div>
+  <div class="host" style="position:relative">
+    <div class="host-nav"><div class="logo">𝕏</div><span>首页</span><span>探索</span><span>通知</span><div class="sp"></div><div class="avatar"></div></div>
+    <div class="tweet">
+      <div class="t-head"><div class="t-avatar"></div><div><div class="t-name">NASA <span style="color:#1d9bf0">✓</span></div><div class="t-id">@NASA · 2 小时</div></div></div>
+      <div class="t-text">在轨飞行 25 年，国际空间站仍在扩展人类探索的边界。这段舱外活动的影像，是从机械臂视角记录下的地球边缘。</div>
+      <div class="t-media"></div>
+      <div class="t-acts">
+        <span>💬 1.2 万</span><span>🔁 3.4 万</span><span>❤️ 8.9 万</span>
+        <button class="xbtn" id="xbtn">
+          <svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>下载</span>
+        </button>
+      </div>
+    </div>
+    <div class="tweet">
+      <div class="t-head"><div class="t-avatar" style="background:linear-gradient(135deg,#d9a9a0,#a86a60)"></div><div><div class="t-name">射箭小分队</div><div class="t-id">@archery_team · 昨天</div></div></div>
+      <div class="t-text">慢动作回放：弓弦离手的一瞬间。这段拍得不容易。</div>
+      <div class="t-media" style="background:radial-gradient(120% 120% at 30% 20%,#3a2e24 0%,#18120c 60%,#0b0805 100%)"></div>
+      <div class="t-acts">
+        <span>💬 856</span><span>🔁 1.1 万</span><span>❤️ 3.2 万</span>
+        <button class="xbtn" onclick="toast('已保存到资源库', 'X/@archery_team/视频/')">
+          <svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>下载</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="vside"><button class="tag-btn weibo" id="openXDrawer" style="background:linear-gradient(180deg,#1677ff,#0f5fd1)"><span class="cnt" id="xDrawerCnt">12</span>批量下载</button></div>
+</section>
+
+<!-- ============ 场景 4：微博主页 ============ -->
+<section class="scene" id="s-weibo">
+  <div class="scene-head"><h1>微博 · 主页批量下载抽屉</h1><p>右侧竖标签「批量下载」→ 白底抽屉，勾选图文/视频，一键保存本页</p></div>
+  <div class="host" style="position:relative">
+    <div class="host-nav"><div class="logo" style="color:#e6162d">微博</div><span>首页</span><span>视频</span><span>发现</span><div class="sp"></div><div class="avatar"></div></div>
+    <div style="max-width:640px;margin:0 auto;padding:18px">
+      <div class="t-head" style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><div class="t-avatar" style="background:linear-gradient(135deg,#e0b48a,#b07b4f)"></div><div><div class="t-name">@环球纪实</div><div class="t-id">今天 09:41 来自微博</div></div></div>
+      <div class="t-text">北极圈内的极夜，24 小时不见太阳。跟着镜头去看守候极光的人。</div>
+      <div class="t-media"></div>
+    </div>
+    <div style="max-width:640px;margin:0 auto;padding:0 18px 24px">
+      <div class="t-head" style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><div class="t-avatar" style="background:linear-gradient(135deg,#9dc6a4,#5e8f6b)"></div><div><div class="t-name">@老番茄</div><div class="t-id">今天 08:02 来自微博</div></div></div>
+      <div class="t-text">这期做了 48 小时的荒野生存挑战，完整版在主页。</div>
+      <div class="t-media" style="background:radial-gradient(120% 120% at 30% 20%,#2c3a2c 0%,#142016 60%,#0a100a 100%)"></div>
+    </div>
+  </div>
+  <div class="vside"><button class="tag-btn weibo" id="openWeiboDrawer"><span class="cnt" id="wbCnt">8</span>批量下载</button></div>
+</section>
+
+<!-- ============ 场景 5：小红书主页 ============ -->
+<section class="scene" id="s-xhs">
+  <div class="scene-head"><h1>小红书 · 主页收集器</h1><p>红色竖标签「收集」→ 白底抽屉；圆点蓝=图片、红=视频；可「收集并下载」</p></div>
+  <div class="host" style="position:relative">
+    <div class="host-nav"><div class="logo" style="color:#ff2442">小红书</div><span>推荐</span><span>穿搭</span><span>旅行</span><div class="sp"></div><div class="avatar"></div></div>
+    <div style="max-width:640px;margin:0 auto;padding:18px">
+      <div class="t-head" style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><div class="t-avatar" style="background:linear-gradient(135deg,#c9a7c4,#8e6388)"></div><div><div class="t-name">小鱼 · 穿搭</div><div class="t-id">笔记 · 秋日奶油色套装</div></div></div>
+      <div class="t-media" style="background:radial-gradient(120% 120% at 30% 20%,#4a3b3b 0%,#241b1b 60%,#120d0d 100%)"></div>
+    </div>
+    <div style="max-width:640px;margin:0 auto;padding:0 18px 24px">
+      <div class="t-head" style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><div class="t-avatar" style="background:linear-gradient(135deg,#a9b6d9,#6b7aa8)"></div><div><div class="t-name">Ken 的镜头</div><div class="t-id">视频 · 海边三天两夜</div></div></div>
+      <div class="t-media" style="background:radial-gradient(120% 120% at 30% 20%,#2a3a4a 0%,#141e2a 60%,#0a1016 100%)"></div>
+    </div>
+  </div>
+  <div class="vside"><button class="tag-btn xhs" id="openXhsDrawer"><span class="cnt" id="xhsCnt">14</span>收集</button></div>
+</section>
+
+<!-- ============ 场景 6：Instagram ============ -->
+<section class="scene" id="s-ig">
+  <div class="scene-head"><h1>Instagram · 下载当前帖</h1><p>帖子页右下角固定一个 IG 品牌渐变按钮「⬇ 下载当前帖」，点击后完成/报错弹 toast</p></div>
+  <div class="host">
+    <div class="host-nav"><div class="logo">Instagram</div><span>首页</span><span>搜索</span><span>消息</span><div class="sp"></div><div class="avatar"></div></div>
+    <div class="ig-scene" style="padding:20px">
+      <div class="ig-post">
+        <div class="t-head" style="display:flex;gap:10px;align-items:center;margin-bottom:10px"><div class="t-avatar" style="background:linear-gradient(135deg,#e6c98a,#b3934a)"></div><div><div class="t-name">natgeo</div><div class="t-id">西藏 · 高原湖</div></div></div>
+        <div class="ig-media"></div>
+      </div>
+    </div>
+  </div>
+  <button class="ig-btn" id="igBtn"><span>⬇</span><span id="igTxt">下载当前帖</span></button>
+</section>
+
+<!-- ============ 场景 7：YouTube ============ -->
+<section class="scene" id="s-yt">
+  <div class="scene-head"><h1>YouTube · 播放器下方下载按钮</h1><p>视频下方出现「下载」蓝按钮 + 提示；点击后由后台打开一个下载小窗（不是直接下载）</p></div>
+  <div class="host">
+    <div class="host-nav"><div class="logo" style="color:#ff0000">▶ YouTube</div><span>首页</span><span>热门</span><span>订阅</span><div class="sp"></div><div class="avatar"></div></div>
+    <div style="padding:20px">
+      <div class="yt-scene"><div class="yt-player"></div>
+        <div class="yt-meta">
+          <h2>4K 自然纪录片：雨林深处</h2>
+          <div class="row"><span>4.2 万次观看</span><span>·</span><span>2 天前</span>
+            <button class="yt-btn" id="ytBtn" style="margin-left:auto">
+              <svg class="ic sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              下载
+            </button>
+            <span class="yt-tip">苏哥的钓鱼竿 · 支持 1080p / 4K</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 白底抽屉（微博 / X 共用） -->
+<div id="pageMask"></div>
+<div class="drawer" id="bulkDrawer">
+  <div class="d-head">批量下载 <span class="d-sub" id="bulkTitle">· 本页素材</span><button class="x" id="bulkClose">✕</button></div>
+  <div class="d-list" id="bulkList"></div>
+  <div class="d-foot" id="bulkFoot">
+    <div class="opts">
+      <label><input type="checkbox" id="bulkIgnoreRepost"> 忽略转载</label>
+      <label><input type="checkbox" id="bulkIgnoreDone"> 忽略已下载</label>
+      <label>类型 <select id="bulkType"><option>全部</option><option>图片</option><option>视频</option></select></label>
+    </div>
+    <div class="btns">
+      <button id="bulkAll">全选</button><button id="bulkNone">全不选</button><button id="bulkInvert">反选</button>
+    </div>
+    <div class="btns">
+      <button class="primary" id="bulkGo">一键保存本页</button><button id="bulkSelGo">保存选中</button>
+    </div>
+  </div>
+</div>
+
+<!-- 小红书抽屉 -->
+<div class="drawer" id="xhsDrawer">
+  <div class="d-head">收集 <span class="d-sub">· 主页笔记</span><button class="x" id="xhsClose">✕</button></div>
+  <div class="d-list" id="xhsList"></div>
+  <div class="d-foot xhs">
+    <div class="opts"><label><input type="checkbox" id="xhsAuto" checked> 自动补全详情</label></div>
+    <div class="btns"><button id="xhsCollect">收集当前页</button><button id="xhsClear">清空</button></div>
+    <div class="btns"><button class="primary" id="xhsGo">收集并下载</button><button id="xhsQueue">下载队列</button></div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function toast(title, path){
+    const t = document.createElement('div'); t.className = 'toast';
+    t.innerHTML = `<div>${esc(title)}</div>` + (path ? `<div class="p">video-rod\\${esc(path).replace(/\//g,'\\')}</div>` : '');
+    $('toasts').appendChild(t);
+    requestAnimationFrame(()=>t.classList.add('on'));
+    setTimeout(()=>{ t.classList.remove('on'); setTimeout(()=>t.remove(),240); }, 2600);
+  }
+  window.toast = toast;
+
+  /* ---------- 场景切换 ---------- */
+  const tabs = document.querySelectorAll('#tabbar .tab');
+  tabs.forEach(t => t.onclick = () => {
+    tabs.forEach(x => x.classList.remove('on')); t.classList.add('on');
+    document.querySelectorAll('.scene').forEach(s => s.classList.remove('on'));
+    $('s-' + t.dataset.scene.split('-')[1]).classList.add('on');
+    window.scrollTo({top:0});
+  });
+
+  /* ============ 场景 1：视频浮层 ============ */
+  const vobMenu = $('vobMenu'), vobEl = $('vob');
+  const vobStage = document.querySelector('.video-stage');
+  vobStage.addEventListener('mouseenter', () => { clearTimeout(vobStage._t); vobEl.classList.add('on'); });
+  vobStage.addEventListener('mouseleave', () => { vobStage._t = setTimeout(() => vobEl.classList.remove('on'), 200); });
+  $('vobMore').onclick = e => { e.stopPropagation(); vobMenu.classList.toggle('on'); };
+  document.addEventListener('click', e => { if (!vobMenu.contains(e.target)) vobMenu.classList.remove('on'); });
+  vobMenu.querySelectorAll('.item').forEach(it => it.onclick = () => {
+    vobMenu.querySelectorAll('.item').forEach(x => x.classList.remove('sel')); it.classList.add('sel');
+    vobMenu.classList.remove('on');
+  });
+  $('vobMain').onclick = () => {
+    const btn = $('vobMain'), txt = $('vobTxt'), pct = $('vobPct');
+    btn.classList.remove('ok','bad'); pct.textContent = '';
+    txt.textContent = '下载中';
+    let p = 0;
+    const t = setInterval(() => {
+      p += 18; pct.textContent = Math.min(p,100) + '%';
+      if (p >= 100) {
+        clearInterval(t); txt.textContent = '已保存'; btn.classList.add('ok'); pct.textContent = '';
+        toast('已存入资源库', '抖音/@环球纪实/视频/');
+      }
+    }, 120);
+  };
+
+  /* ============ 场景 2：图片 ============ */
+  const SIZES = [[1200,1600],[1600,1200],[1080,1440],[900,1200],[1440,1080],[800,1066]];
+  const CREATORS = ['小鱼','Ken','秋日穿搭','老番茄'];
+  const TITLES = ['秋日奶油色套装','海边三天两夜','梧桐叶落','咖色通勤','周末咖啡店','白衬衫的穿法','旅行背包清单','落日橘毛衣','房间改造','手冲咖啡','城市漫步','奶白针织开衫'];
+  const PAL = [['#8fb9d9','#4f7fa8'],['#e0b48a','#b07b4f'],['#9dc6a4','#5e8f6b'],['#c9a7c4','#8e6388'],['#e6c98a','#b3934a'],['#9fb8c9','#5f7d92'],['#d9a9a0','#a86a60'],['#a9b6d9','#6b7aa8'],['#bfd0a9','#7f9464'],['#d9c2a9','#a8865f'],['#a9d3d0','#649a97'],['#d3a9b8','#a06078']];
+  const MEDIA = TITLES.map((t,i)=>({id:i+1,title:t,creator:CREATORS[i%4],w:SIZES[i%6][0],h:SIZES[i%6][1],state:'idle'}));
+  MEDIA.forEach((m,i)=>{ const [c1,c2]=PAL[i%12]; m.src = svg(m,c1,c2); });
+  function svg(m,c1,c2){
+    const H = Math.round(500*m.h/m.w);
+    const s = `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="${H}" viewBox="0 0 500 ${H}"><defs><linearGradient id="g${m.id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="500" height="${H}" fill="url(#g${m.id})"/><circle cx="${110+(m.id%4)*90}" cy="${Math.round(H*.35)}" r="56" fill="rgba(255,255,255,.18)"/><rect x="46" y="${Math.round(H*.6)}" width="230" height="9" rx="4" fill="rgba(255,255,255,.3)"/><text x="250" y="${Math.round(H*.78)}" fill="rgba(255,255,255,.95)" font-size="24" font-family="sans-serif" text-anchor="middle">${m.title}</text></svg>`;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
+  }
+  function renderFeed(){
+    const f = $('feed'); f.innerHTML = '';
+    MEDIA.forEach(m => {
+      const el = document.createElement('div'); el.className='ph'; el.dataset.id=m.id;
+      el.innerHTML = `<div class="wrap" style="--ar:${m.w}/${m.h}"><img src="${m.src}" data-id="${m.id}"><span class="dim-badge${m.state==='done'?' done':''}">${m.state==='done'?'✓ 已存':m.w+'×'+m.h}</span></div><div class="cap"><b>${esc(m.title)}</b><span class="dot"></span>${esc(m.creator)}<span class="dot"></span>图片</div>`;
+      f.appendChild(el);
+    });
+  }
+  renderFeed();
+
+  /* 悬停条 */
+  let curImg=null, curMedia=null, hoverTimer=0, hideTimer=0;
+  document.addEventListener('mouseover', e => {
+    const img = e.target.closest && e.target.closest('.ph img'); if(!img || img===curImg) return;
+    clearTimeout(hideTimer); hoverTimer = setTimeout(()=>showBar(img),300);
+  });
+  document.addEventListener('mouseout', e => {
+    const img = e.target.closest && e.target.closest('.ph img'); if(!img) return;
+    clearTimeout(hoverTimer); hideTimer = setTimeout(()=>{ if(!$('hoverBar').matches(':hover')) hideBar(); },300);
+  });
+  function showBar(img){
+    const m = MEDIA.find(x=>x.id===+img.dataset.id); if(!m) return;
+    curImg=img; curMedia=m;
+    const r = img.getBoundingClientRect();
+    const bar = $('hoverBar');
+    bar.style.left = Math.min(r.right - 8 - 172, window.innerWidth - 190) + 'px';
+    bar.style.top = (r.bottom - 8 - 40) + 'px';
+    bar.classList.add('on');
+    $('hbOneTxt').textContent = m.state==='done' ? '已存过' : '下载原图';
+    $('hbOne').className = m.state==='done' ? 'ok' : '';
+    $('hbAllTxt').textContent = '全部 ' + MEDIA.filter(x=>x.state!=='done').length;
+  }
+  function hideBar(){ $('hoverBar').classList.remove('on'); curImg=null; curMedia=null; }
+  $('hoverBar').addEventListener('mouseenter',()=>clearTimeout(hideTimer));
+  $('hoverBar').addEventListener('mouseleave',()=>{ hideTimer=setTimeout(hideBar,300); });
+
+  $('hbOne').onclick = () => {
+    if(!curMedia) return;
+    if(curMedia.state==='done'){ toast('这张已经存过了', fakePath(curMedia)); return; }
+    $('hbOne').innerHTML = '<span class="spin"></span><span>解析中</span>';
+    setTimeout(()=>{
+      curMedia.state='done'; mark(curMedia);
+      $('hbOne').className='ok'; $('hbOne').innerHTML = '<svg class="ic sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg><span>已保存</span>';
+      $('floatN').textContent = MEDIA.filter(x=>x.state!=='done').length;
+      toast('已存入资源库', fakePath(curMedia)); hideBar();
+    },600);
+  };
+  function fakePath(m){ return `图虫/${m.creator}/图片/${m.title}.jpg`; }
+  function mark(m){ const el=document.querySelector(`.ph[data-id="${m.id}"]`); if(el){ const b=el.querySelector('.dim-badge'); b.className='dim-badge done'; b.textContent='✓ 已存'; } }
+
+  /* 确认条 / 进度 */
+  $('hbAll').onclick = () => { hideBar(); const n=MEDIA.filter(x=>x.state!=='done').length; $('cfTotal').textContent=n; $('cfSkip').textContent=8; $('cfGo').textContent='下载 '+n+' 张'; $('confirm').classList.add('on'); };
+  $('cfCancel').onclick = ()=>$('confirm').classList.remove('on');
+  $('cfList').onclick = ()=>{ $('confirm').classList.remove('on'); openPanel(); };
+  $('cfGo').onclick = ()=>{ $('confirm').classList.remove('on'); runBatch(MEDIA.filter(x=>x.state!=='done')); };
+
+  let batch=null;
+  function runBatch(list){
+    if(!list.length){ toast('没有需要下载的图片'); return; }
+    const total=list.length; let done=0, failed=0, i=0, cancelled=false;
+    batch={cancel(){cancelled=true;}};
+    $('progress').classList.add('on'); $('pgBar').style.width='0%'; $('pgTxt').textContent=`正在下载 0/${total}`;
+    const next=()=>{
+      if(cancelled||i>=total){ finish(); return; }
+      const m=list[i++];
+      setTimeout(()=>{
+        if(i%5===0){ failed++; } else { m.state='done'; mark(m); }
+        done++; $('pgTxt').textContent=`正在下载 ${done}/${total}`+(failed?` · 失败 ${failed}`:'');
+        $('pgBar').style.width=Math.round(done/total*100)+'%';
+        $('floatN').textContent=MEDIA.filter(x=>x.state!=='done').length;
+        if(i<total) next(); else finish();
+      },200);
+    };
+    function finish(){
+      $('pgTxt').textContent = cancelled?`已取消 · 完成 ${done}/${total}`:`完成 ${done}/${total}`+(failed?` · 失败 ${failed}`:'');
+      setTimeout(()=>$('progress').classList.remove('on'),1400);
+      if(!cancelled&&!failed) toast(`已下载 ${done} 张`,`图虫/<博主>/图片/`);
+      batch=null;
+    }
+    next();
+  }
+  $('pgCancel').onclick=()=>{ if(batch) batch.cancel(); };
+
+  /* 浮标 + 面板 */
+  $('floatBtn').onclick = openPanel;
+  let preset='100', selected=new Set(), filtered=[];
+  function openPanel(){ $('panelMask').classList.add('on'); applyFilter(); }
+  function closePanel(){ $('panelMask').classList.remove('on'); }
+  $('pClose').onclick=closePanel;
+  $('panelMask').addEventListener('click',e=>{ if(e.target===$('panelMask')) closePanel(); });
+
+  function applyFilter(){
+    const kw=($('fUrl').value||'').trim().toLowerCase();
+    filtered = MEDIA.filter(m=>{
+      const ok = Math.min(m.w,m.h) >= +preset;
+      return ok && (!kw || m.src.toLowerCase().includes(kw));
+    });
+    renderGrid(); paintCounts(); paintSizes();
+  }
+  function paintSizes(){ MEDIA.forEach(()=>{}); document.querySelectorAll('#sizeBtns button').forEach(b=>{ const edge=+b.dataset.edge; const n=MEDIA.filter(m=>Math.min(m.w,m.h)>=edge).length; const i=b.querySelector('i'); if(i) i.textContent=n; }); }
+  document.querySelectorAll('#sizeBtns button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#sizeBtns button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); preset=b.dataset.edge; applyFilter(); });
+  function renderGrid(){
+    const g=$('pgrid'); g.innerHTML='';
+    filtered.forEach(m=>{
+      const c=document.createElement('div');
+      c.className='cell'+(selected.has(m.id)?' sel':'')+(m.state==='done'?' done':'');
+      c.innerHTML=`<img src="${m.src}"><span class="tick">✓</span><span class="meta"><span>${m.w}×${m.h}</span><span>图虫</span></span>`;
+      c.onclick=()=>{ selected.has(m.id)?selected.delete(m.id):selected.add(m.id); renderGrid(); paintCounts(); };
+      g.appendChild(c);
+    });
+    if(!filtered.length) g.innerHTML='<div style="grid-column:1/-1;padding:34px 0;text-align:center;color:#8b97a8">没有符合条件的图片</div>';
+  }
+  function paintCounts(){ $('pCount').textContent=filtered.length+' 张'; $('pSelN').textContent=selected.size; $('pTip').textContent=selected.size?'':'点格子勾选'; }
+  $('fUrl').addEventListener('input',applyFilter);
+  $('pAll').onclick=()=>{ filtered.forEach(m=>selected.add(m.id)); renderGrid(); paintCounts(); };
+  $('pInvert').onclick=()=>{ filtered.forEach(m=>{ selected.has(m.id)?selected.delete(m.id):selected.add(m.id); }); renderGrid(); paintCounts(); };
+  $('pDlSel').onclick=()=>{ const list=MEDIA.filter(m=>selected.has(m.id)&&m.state!=='done'); if(!list.length){ toast('先勾选要下载的图片'); return; } selected.clear(); closePanel(); runBatch(list); };
+
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if($('panelMask').classList.contains('on')) closePanel(); $('confirm').classList.remove('on'); hideBar(); } });
+
+  /* ============ 场景 3：X 按钮 ============ */
+  $('xbtn').onclick = function(){
+    const b=this; b.classList.remove('done','warn'); b.classList.add('busy');
+    b.querySelector('span').textContent='下载中…';
+    setTimeout(()=>{ b.classList.remove('busy'); b.classList.add('done'); b.querySelector('span').textContent='已保存'; toast('已保存到资源库','X/@NASA/视频/'); },900);
+  };
+  $('openXDrawer').onclick = openBulkDrawer.bind(null,'X');
+
+  /* ============ 微博 / X 批量抽屉 ============ */
+  const BULK = [
+    {a:'@环球纪实', b:'北极圈极夜', kind:'vid', emoji:'🎬'},
+    {a:'@老番茄', b:'荒野生存 48 小时', kind:'vid', emoji:'🎬'},
+    {a:'@环球纪实', b:'极光之下的村落', kind:'img', c1:'#2a3a5c', c2:'#101c30'},
+    {a:'@老番茄', b:'装备开箱 9 图', kind:'img', c1:'#5c3a2a', c2:'#301c10'},
+    {a:'@环球纪实', b:'冰原徒步路线', kind:'img', c1:'#3a5c4a', c2:'#1a3024'},
+    {a:'@旅行者笔记', b:'峡湾日落', kind:'img', c1:'#5c4a2a', c2:'#30241a'},
+    {a:'@老番茄', b:'生存挑战花絮', kind:'vid', emoji:'🎬'},
+    {a:'@环球纪实', b:'守夜人', kind:'img', c1:'#4a3a5c', c2:'#241a30'},
+  ];
+  const selectedBulk = new Set();
+  let bulkCtx = '';
+  function openBulkDrawer(ctx){
+    bulkCtx = ctx; selectedBulk.clear();
+    $('bulkTitle').textContent = ctx==='X' ? '· X 主页素材' : '· 微博主页素材';
+    renderBulkList();
+    $('pageMask').classList.add('on'); $('bulkDrawer').classList.add('on');
+  }
+  function renderBulkList(){
+    const l=$('bulkList'); l.innerHTML='';
+    BULK.forEach((r,i)=>{
+      const row=document.createElement('div'); row.className='d-row'+(selectedBulk.has(i)?' on':'');
+      const thumb = r.kind==='vid' ? `<div class="thumb"><span class="emoji">${r.emoji}</span></div>` : `<div class="thumb"><img src="${svgThumb(r.c1,r.c2)}" style="width:100%;height:100%;object-fit:cover"></div>`;
+      row.innerHTML = `<span class="ck">✓</span>${thumb}<div class="info"><div class="a">${esc(r.a)}</div><div class="b">${esc(r.b)}</div></div><span class="kind ${r.kind==='vid'?'vid':'img'}">${r.kind==='vid'?'视频':'图片'}</span>`;
+      row.onclick=()=>{ selectedBulk.has(i)?selectedBulk.delete(i):selectedBulk.add(i); renderBulkList(); };
+      l.appendChild(row);
+    });
+  }
+  function svgThumb(c1,c2){ const s=`<svg xmlns="http://www.w3.org/2000/svg" width="84" height="84"><defs><linearGradient id="t${c1.replace('#','')}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="84" height="84" fill="url(#t${c1.replace('#','')})"/><circle cx="42" cy="36" r="16" fill="rgba(255,255,255,.2)"/></svg>`; return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s); }
+  $('bulkClose').onclick = closeBulk; $('pageMask').onclick = closeBulk;
+  function closeBulk(){ $('bulkDrawer').classList.remove('on'); $('pageMask').classList.remove('on'); }
+  $('bulkAll').onclick=()=>{ BULK.forEach((_,i)=>selectedBulk.add(i)); renderBulkList(); };
+  $('bulkNone').onclick=()=>{ selectedBulk.clear(); renderBulkList(); };
+  $('bulkInvert').onclick=()=>{ BULK.forEach((_,i)=>{ selectedBulk.has(i)?selectedBulk.delete(i):selectedBulk.add(i); }); renderBulkList(); };
+  $('bulkGo').onclick=()=>{ closeBulk(); runBatchImg(BULK.length, '微博'); };
+  $('bulkSelGo').onclick=()=>{ if(!selectedBulk.size){ toast('先勾选要下载的素材'); return; } closeBulk(); runBatchImg(selectedBulk.size, '微博'); };
+  function runBatchImg(n, plat){ $('progress').classList.add('on'); $('pgBar').style.width='0%'; let d=0; const t=setInterval(()=>{ d++; $('pgTxt').textContent=`正在下载 ${Math.min(d,n)}/${n}`; $('pgBar').style.width=Math.round(d/n*100)+'%'; if(d>=n){ clearInterval(t); $('pgTxt').textContent=`完成 ${n}/${n}`; setTimeout(()=>$('progress').classList.remove('on'),1200); toast(`已下载 ${n} 项`, plat+'/<博主>/'); } },160); }
+  $('openWeiboDrawer').onclick = openBulkDrawer.bind(null,'微博');
+
+  /* ============ 小红书抽屉 ============ */
+  const XHS = [
+    {a:'小鱼 · 穿搭', b:'秋日奶油色套装', kind:'img', c1:'#4a3b3b', c2:'#241b1b'},
+    {a:'Ken 的镜头', b:'海边三天两夜', kind:'vid'},
+    {a:'小鱼 · 穿搭', b:'奶白针织开衫', kind:'img', c1:'#5c4a3a', c2:'#30241a'},
+    {a:'旅行背包', b:'旅行背包清单', kind:'img', c1:'#3a4a5c', c2:'#1a2430'},
+    {a:'Ken 的镜头', b:'城市漫步路线', kind:'vid'},
+    {a:'房间改造', b:'房间改造第3期', kind:'img', c1:'#5c3a4a', c2:'#301a24'},
+  ];
+  const selXhs = new Set();
+  $('openXhsDrawer').onclick = () => { selXhs.clear(); renderXhs(); $('pageMask').classList.add('on'); $('xhsDrawer').classList.add('on'); };
+  function renderXhs(){
+    const l=$('xhsList'); l.innerHTML='';
+    XHS.forEach((r,i)=>{
+      const row=document.createElement('div'); row.className='d-row xhs'+(selXhs.has(i)?' on':'');
+      const thumb = r.kind==='vid' ? `<div class="thumb"><span class="emoji">🎬</span></div>` : `<div class="thumb"><img src="${svgThumb(r.c1,r.c2)}" style="width:100%;height:100%;object-fit:cover"></div>`;
+      row.innerHTML = `<span class="dot ${r.kind}"></span>${thumb}<div class="info"><div class="a">${esc(r.a)}</div><div class="b">${esc(r.b)}</div></div>`;
+      row.onclick=()=>{ selXhs.has(i)?selXhs.delete(i):selXhs.add(i); renderXhs(); };
+      l.appendChild(row);
+    });
+  }
+  $('xhsClose').onclick = ()=>{ $('xhsDrawer').classList.remove('on'); $('pageMask').classList.remove('on'); };
+  $('xhsCollect').onclick = ()=>toast('已收集当前页', '小红书/<博主>/');
+  $('xhsClear').onclick = ()=>{ selXhs.clear(); renderXhs(); toast('已清空'); };
+  $('xhsGo').onclick = ()=>{ $('xhsDrawer').classList.remove('on'); $('pageMask').classList.remove('on'); runBatchImg(XHS.length,'小红书'); };
+
+  /* ============ Instagram ============ */
+  $('igBtn').onclick = function(){
+    const b=this, t=$('igTxt'); b.classList.add('busy'); t.textContent='下载中…';
+    setTimeout(()=>{ b.classList.remove('busy'); t.textContent='已保存'; toast('已保存到资源库','Instagram/natgeo/图片/'); setTimeout(()=>t.textContent='下载当前帖',1600); },900);
+  };
+
+  /* ============ YouTube ============ */
+  $('ytBtn').onclick = ()=>{ toast('正在打开下载窗口…','YouTube/雨林深处/'); setTimeout(()=>toast('下载窗口已打开（模拟）','选择清晰度后开始下载'),1200); };
+
+  /* 初始化浮标角标 */
+  $('floatN').textContent = MEDIA.length;
+  paintSizes(); paintCounts();
+})();
+</script>
+</body>
+</html>
