@@ -1,40 +1,95 @@
 # 🎣 苏哥的钓鱼竿
 
-> 浏览器媒体嗅探下载扩展：**猫抓（cat-catch）的全站嗅探内核 × Plucker 式文件管理体验 × B站/YouTube 主动抓取**。
+> **网页抓取 → 智能下载 → 本地素材库 → 自动溯源**，一条龙做完的浏览器扩展。
+> 猫抓（cat-catch）的全站嗅探内核 × Plucker 式文件管理 × B站/YouTube 主动抓取 × Eagle 式本地素材库。
 >
 > **私有仓库、本机自用**，不上架、不分发。开发者模式 Load unpacked 安装。
 >
-> **作者：Sunny** ｜ 代号 Video Rod ｜ 基于猫抓的衍生作品（GPL-3.0）；内核之外的增量见「本 fork 做了什么」。
+> 作者：Sunny ｜ 代号 Video Rod ｜ 基于猫抓的衍生作品（GPL-3.0）
 
 ---
 
 ## 这是什么
 
-苏哥的钓鱼竿是一个 Chrome 扩展（MV3），把「网页里的视频和图片，按我想要的名字和文件夹，整整齐齐下到我电脑上」这件事做到极致：
+一个 Chrome 扩展（MV3），把「网页里的视频和图片，按我想要的名字和文件夹，整整齐齐下到电脑上，还能像专业素材库一样翻」做到极致：
 
-- 视频自动嗅探（m3u8/直链/`<video>` 标签），多档清晰度**默认自动选最高**
-- **智能起名**：文章页取文章标题、推特页取推文正文、B站/小红书带作者 `昵称(@账号)_标题`
-- **下载到文件夹**：按 `平台/作者/` 自动分目录，每条也能手动改
-- **批量下载**、m3u8 碎片**自动合并**成完整 MP4
-- **网页图片批量下载**：扫 img/srcset/背景图/懒加载，滤掉小图标
-- **右键秒存**：视频/图片上右键直接下，不用开面板
-- **B站/YouTube 抓取**：B站分P/合集/大会员（零签名对抗嗅探增强）；**YouTube 播放器下方独立下载按钮**——1080p/4K 直选，音视频轨本地无损合并成 MP4（见 docs/YT-IMPLEMENTATION.md）
+- 视频自动嗅探（m3u8 / DASH / 直链 / `<video>`），多档清晰度**默认自动选最高**
+- **智能起名**：文章页取文章标题、推特取推文正文、B站/小红书带 `昵称(@账号)_标题`
+- **下载到文件夹**：按 `平台/作者/类型` 自动分目录
+- **下载即入库**：本地素材库自动收录，网格/列表浏览、收藏夹、标签、回收站、空格预览、连播播放器
+- **B站完整视频 / YouTube 1080p~4K**：音视频轨本地无损合成 MP4
+- 右键秒存、图片悬停抓取、主页批量、m3u8 碎片自动合并（含 AES-128 解密）
 - 快捷键 `Alt+Shift+V` 唤起面板
+
+---
+
+## 凭什么是它（和常见方案比）
+
+市面上的工具各管一段：下载器不懂素材管理，素材库不会抓网页。**「网页抓取 → 本地库 → 自动溯源」这条完整链路，目前没有现成开源方案做全**，这就是本项目存在的理由。
+
+| 能力 | 猫抓（上游） | IDM / FDM 类下载器 | Eagle / Billfish 素材库 | Fatkun 类抓图 | **钓鱼竿** |
+|---|---|---|---|---|---|
+| 全站媒体嗅探（m3u8/DASH/直链） | ✅ | ❌ | ❌ | 仅图片 | ✅ |
+| B站完整视频 / YouTube 高清合成 | 部分 | 部分 | ❌ | ❌ | ✅ 真机验证 |
+| 下载自动进素材库 + 自动分类目录 | ❌ | ❌ | ❌ | ❌ | ✅ |
+| 收藏夹（手动 + 规则智能夹） | ❌ | ❌ | ✅ | ❌ | ✅ 对标 Lightroom |
+| 空格快速预览 / 连播 / 8 档倍速 | ❌ | ❌ | 部分 | ❌ | ✅ |
+| 内容去重（同内容只存一份） | ❌ | ❌ | ✅（手动清理） | ❌ | 🔧 设计定稿待施工 |
+| 下载溯源（原帖/作者/作品ID） | ❌ | ❌ | 手动标注 | ❌ | 🔧 方案定稿待施工 |
+
+（🔧 = 设计与验收用例已定稿，列入施工排期；本项目不做的事也明确列了——见 `docs/LIBRARY-BENCHMARK.md`「明确不做」清单。）
+
+---
+
+## 技术亮点
+
+**下载管线**
+- **m3u8 离线直连管线**：多线程拉流 + AES-128 解密 + mux.js 本地合成 MP4——**不经在线 FFmpeg，视频不离开本机**（隐私）
+- **B站完整视频**：DASH 音视频轨真机验证合成 1080P 高码率；**YouTube** 沙盒页 nsig 解密，播放器下方按钮直下
+- **文件名保护**：绕开 Chromium 下载文件名截断 bug（579563）
+- **三层防重**（设计中）：URL 账本拦截重下 → 下载完成 SHA-256 内容寻址，同内容只存一份、后续只记引用（网盘秒传原理）→ 引用计数删除/恢复，方案与 7 条验收用例已定稿
+
+**本地素材库（IndexedDB）**
+- **下载即入库**：`chrome.downloads.onChanged` 钩子自动收录，零手动
+- **承载力实测**：5 万条元数据仅 20.6MB、索引查询 153ms——数据库不设上限（`unlimitedStorage`），性能瓶颈用虚拟滚动解（已立项）
+- **收藏夹双体系**：手动夹 + 规则智能夹（把当前筛选一键存为夹），对标 Lightroom 智能收藏集；星标自动进「已加星标」动态系统夹
+- **booru 式搜索**：`词1 词2` 交集、`-词` 排除，一个输入框精准命中
+- **回收站**：软删除、单条/整批恢复、彻底删除、操作日志
+- **预览器**：连播（图片 3s / 动图 6s / 视频播完自动下一条）、8 档倍速 0.1~2×、GIF/WebP/APNG 帧控、画中画、快捷键面板
+
+**工程与体验**
+- **零构建原生 JS**：无框架、无打包、无运行时 CDN 依赖，装上即用
+- **27 个 CDP 自动化验证脚本、600+ 条断言**：每次改动有头浏览器实测，截图 + 断言双验
+- **页面侧注入组件统一**：深色玻璃拟态 + 平台色点胶囊，Shadow DOM 样式隔离（不被宿主网页污染），Floating UI 智能定位
+- **决策留痕**：60+ 条 ADR（`docs/DECISIONS.md`），每个"为什么这么做"都有出处；对照 Eagle/digiKam/booru 等八家产品的借鉴与"明确不做"清单见 `docs/LIBRARY-BENCHMARK.md`
+- **界面**：D 影院深色贯穿（Lightroom/Eagle 同款人设）+ 思源黑体/宋体（OFL 免费商用，正式版子集化自托管）
+
+---
 
 ## 本 fork 做了什么（相对上游）
 
-嗅探、m3u8/直链下载、图片批量扫描等**基础能力来自猫抓**；下面这些是本仓库自己做的增量：
+嗅探、m3u8/直链下载、图片批量扫描等**基础能力来自猫抓**；下面是本仓库的增量：
 
-- **本地资源库（S0–S2）**：`平台/博主/类型` 三段中文目录、下载完成自动入库、三种迁移（预演 / 复制 / 校验 / 回滚）、索引三源（下载记录 / 快照 / FSA 全量扫描）与缺失校对。
-- **桌面端下载链路**：文件名保护（绕开 Chromium 579563）、X 推文内联下载、右键秒存与快捷键、面板浅色化。
-- **设置页重设计**：18 个平铺分区收敛为 4 组导航，重做卡片层级、响应式与深色模式。
-- **资源库浏览页**：概览 KPI / 平台分布 / 博主速览，全宽大图网格 + 真表格、筛选搜索、懒生成缩略图。
-- **查看器**：图片滚轮缩放/拖拽、信息面板、缩略图带；视频自绘控件、↑↓ 切条、←→ ±5s、Shift ±30s、空格、连播。
-- **删除与回收站**：右键/`⋯` 菜单、软删除到 `_回收站`、单条/整批恢复、彻底删除、清空、操作日志。
-- **图片悬停下载**：调研、方案 v1.2、可交互原型（实现待排期）。
-- **工程化**：文档先行 + 每步验收；8 套 CDP 自动化回归，**246 条断言**（57 / 17 / 14 / 39 / 35 / 30 / 27 / 27）。
+- **本地资源库**：IndexedDB 五库结构、下载自动入库、三种迁移（预演/复制/校验/回滚）、索引三源与缺失校对、回收站
+- **媒体库界面重设计**（已定稿原型 v2.1）：网格/列表双视图、收藏夹+智能夹、搜索交集/排除语法、空格快速预览、连播+8 档倍速、动图三格式帧控、信息栏 13 字段分组（文件/来源/标签三色系）、状态徽标四态、折叠式资源树
+- **桌面端下载链路**：文件名保护、X 推文内联按钮、右键秒存与快捷键、图片悬停抓取（悬停按钮/批量确认条/清单面板/图集扫描全链路）
+- **B站/YouTube 主动抓取**：B站分P/合集、YouTube 播放器下方按钮 + 下载小窗
+- **设置页重设计**：平铺分区收敛为分组导航，文件名模板实时预览
+- **页面侧 UI 统一**：七平台注入组件（视频浮层/悬停条/批量抽屉）深色玻璃一套规格
+- **工程化**：文档先行 + 每步验收；27 套 CDP 自动化回归、600+ 条断言；BACKLOG 唯一真源管理
 
-> 验收记录见 `docs/TESTING.md`；每个选择为什么这么做见 `docs/DECISIONS.md`（33 条 ADR）。
+> 验收记录见 `docs/TESTING.md`；每个选择为什么这么做见 `docs/DECISIONS.md`（60+ 条 ADR）。
+
+## 施工路线图（设计已定稿，待排期）
+
+| 项 | 状态 | 文档 |
+|---|---|---|
+| 下载溯源（原帖/作者/作品ID 自动记录） | 预研完成，半天工作量 | `docs/PREWORK-PROVENANCE.md` |
+| 内容去重：本地一份 + 引用（网盘原理） | 方案定稿（含 7 条验收用例） | `docs/DEDUP-REF-DESIGN.md` |
+| 虚拟滚动 + 缩略图分级加载 | 立项（5 万条首屏 <100ms 为验收） | `docs/READINESS-20261104.md` |
+| 标签 UI + 计数徽标 + 别名预留 | 数据层已通，缺界面 | `docs/BACKLOG.md` B-10 |
+
+---
 
 ## 安装（开发者模式）
 
@@ -193,9 +248,16 @@
 | [docs/MEDIA-LIBRARY-PLAN.md](docs/MEDIA-LIBRARY-PLAN.md) | 媒体库方案：固定目录 + index.json + HTML 管理页（搜索/播放/CRUD）；含开源组件选型与大量数据管理 |
 | [docs/LIBRARY-IMPLEMENTATION.md](docs/LIBRARY-IMPLEMENTATION.md) | 媒体库 P1/P2 实施规格：目录契约、句柄、扫描、索引、预览、CRUD、验收 |
 | [library.html](library.html) | 真实媒体库页面：选目录/扫描/搜索/预览/重命名/回收站 |
-| [deliverables/prototypes/media-library-v2.html](deliverables/prototypes/media-library-v2.html) | 媒体库原型 v2：图片/视频独立预览页、鼠标/键盘快捷方式、资源树搜索 |
-| [deliverables/prototypes/media-library-v3.html](deliverables/prototypes/media-library-v3.html) | 媒体库原型 v3：大厂后台浅色风格，图片/视频预览页与快捷键完整保留 |
-| [deliverables/prototypes/media-library-v4.html](deliverables/prototypes/media-library-v4.html) | 媒体库原型 v4（最新）：标准企业中后台 + 平台品牌色 + 彩色统计 + 标题可视化；↑/↓ 切媒体，←/→ 视频进度或同专辑图片切换 |
+| [docs/DESIGN-SYSTEM-BD.md](docs/DESIGN-SYSTEM-BD.md) | **设计系统（现行）**：D 影院深色默认 + B 纸感可切换、token 表、思源字体决策 |
+| [docs/BACKLOG.md](docs/BACKLOG.md) | **待办唯一真源**：P0-P3 与已关闭记录，状态只在这里改 |
+| [docs/INTERFACE-CONTRACT.md](docs/INTERFACE-CONTRACT.md) | 前后交互契约：IndexedDB 结构、file 条目字段权威表、消息通道、写入方清单 |
+| [docs/DEDUP-REF-DESIGN.md](docs/DEDUP-REF-DESIGN.md) | 去重引用方案：本地一份+引用（网盘原理），SHA-256+引用计数，DD-1~7 验收 |
+| [docs/PREWORK-PROVENANCE.md](docs/PREWORK-PROVENANCE.md) | 下载溯源预研：埋点收口在 vrDownloadWithName 漏斗，半天工作量 |
+| [docs/LIBRARY-BENCHMARK.md](docs/LIBRARY-BENCHMARK.md) | 素材库同行调研：Eagle/digiKam/Lightroom/booru 八家对照，三档归类（含"明确不做"） |
+| [docs/FUNCTION-AUDIT-ENTRY.md](docs/FUNCTION-AUDIT-ENTRY.md) | 入口层功能审视：第一性原理 + 8 个下载扩展竞品印证 |
+| [deliverables/prototypes/media-library-redesign-v1.html](deliverables/prototypes/media-library-redesign-v1.html) | **媒体库原型 v2.1（定稿）**：收藏夹/智能夹、空格预览、连播+倍速、折叠资源树 |
+| [deliverables/prototypes/popup-redesign-v3-bd.html](deliverables/prototypes/popup-redesign-v3-bd.html) | popup 入口层原型 v3.2（定稿）：概览条/已存标记/行内下载键 |
+| [deliverables/prototypes/page-ui-prototype-v1.html](deliverables/prototypes/page-ui-prototype-v1.html) | 页面侧注入 UI 原型 v2（七平台）：统一深色玻璃胶囊组件 |
 | [docs/YT-FEASIBILITY.md](docs/YT-FEASIBILITY.md) | YouTube 高清可行性实测：SABR 封堵真相、客户端矩阵、n 参数归因、三条路线技术账 |
 | [docs/YT-IMPLEMENTATION.md](docs/YT-IMPLEMENTATION.md) | YouTube 下载实现记录：文件地图、数据流、三个关键设计、验证状态与已知限制 |
 | [deliverables/DELIVERABLES.md](deliverables/DELIVERABLES.md) | **产出物管理规范**：目录结构、命名、版本状态、登记表 |
