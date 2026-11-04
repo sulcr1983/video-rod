@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>资源库 IndexedDB 压测</title>
+<style>
+  body{font:13px/1.7 ui-monospace,Consolas,monospace;background:#111;color:#ddd;padding:20px}
+  h2{font-size:14px;color:#7fd}
+  .row{display:flex;gap:16px;border-bottom:1px solid #333;padding:4px 0}
+  .k{width:230px;color:#888}
+  .v{color:#fff}
+  .warn{color:#f88}
+  .ok{color:#8f8}
+  #out{white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h2>资源库 IndexedDB 压测（结构照 js/library/db.js：file store / relPath 主键 / 5 个索引）</h2>
+<div id="out">准备中…</div>
+<script>
+const DB = 'vr-bench';
+const PLATS = ['x','xiaohongshu','douyin','weibo','youtube','instagram','bilibili'];
+const TYPES = ['video','image'];
+const AUTHORS = Array.from({length: 800}, (_, i) => 'author_' + i);
+
+function openDb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains('file')) {
+        const f = db.createObjectStore('file', { keyPath: 'relPath' });
+        f.createIndex('platform', 'platform');
+        f.createIndex('creatorId', 'creatorId');
+        f.createIndex('type', 'type');
+        f.createIndex('mtime', 'mtime');
+        f.createIndex('starred', 'starred');
+      }
+      if (!db.objectStoreNames.contains('thumb')) db.createObjectStore('thumb', { keyPath: 'thumbKey' });
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+
+/* 造一条真实形态的条目（字段照 indexer.js 的 entryFromRel） */
+function makeEntry(i) {
+  const plat = PLATS[i % PLATS.length];
+  const type = TYPES[i % TYPES.length];
+  const author = AUTHORS[i % AUTHORS.length];
+  const ext = type === 'video' ? 'mp4' : 'jpg';
+  return {
+    relPath: plat + '/' + author + '/' + (type === 'video' ? 'videos' : 'images') + '/' + plat + '-' + i + '.' + ext,
+    platform: plat,
+    platformName: plat,
+    creatorId: author,
+    creatorName: author,
+    type: type,
+    fileName: plat + '-' + i + '.' + ext,
+    title: '素材标题 ' + i + ' 这是一个长度接近真实情况的标题内容用于测试',
+    size: 1000000 + (i % 500) * 20000,
+    mtime: 1762000000000 + i * 60000,
+    mime: type === 'video' ? 'video/mp4' : 'image/jpeg',
+    sourceUrl: 'https://cdn.example.com/media/' + i + '.' + ext + '?token=abcdefghijklmnop',
+    downloadId: i,
+    starred: i % 20 === 0 ? 1 : 0,
+    tags: i % 7 === 0 ? ['tag1', 'tag2'] : [],
+    state: 'ok'
+  };
+}
+
+const mem = () => (performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : -1);
+const out = [];
+window.__LOG__ = [];
+function line(k, v, cls) {
+  out.push('<div class="row"><span class="k">' + k + '</span><span class="v ' + (cls || '') + '">' + v + '</span></div>');
+  document.getElementById('out').innerHTML = out.join('');
+  window.__LOG__.push((cls === 'warn' ? '!! ' : '   ') + k + ': ' + v);
+}
+function hr(ms) { return ms < 1000 ? Math.round(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s'; }
+
+function putBatch(db, list) {
+  return new Promise((res, rej) => {
+    const t = db.transaction(['file'], 'readwrite');
+    const s = t.objectStore('file');
+    list.forEach(e => s.put(e));
+    t.oncomplete = res; t.onerror = () => rej(t.error);
+  });
+}
+
+async function insert(n, batch) {
+  const db = await openDb();
+  const t0 = performance.now();
+  for (let i = 0; i < n; i += batch) {
+    const list = [];
+    for (let j = i; j < Math.min(i + batch, n); j++) list.push(makeEntry(j));
+    await putBatch(db, list);
+  }
+  const dt = performance.now() - t0;
+  const cnt = await new Promise(res => { const r = db.transaction('file').objectStore('file').count(); r.onsuccess = () => res(r.result); });
+  return { dt, cnt };
+}
+
+function getAll(db) {
+  return new Promise((res, rej) => {
+    const t0 = performance.now();
+    const r = db.transaction('file').objectStore('file').getAll();
+    r.onsuccess = () => res({ list: r.result, dt: performance.now() - t0 });
+    r.onerror = () => rej(r.error);
+  });
+}
+
+/* 按索引查一个平台（真实场景：点侧栏某个平台） */
+function queryIndex(db, idx, val) {
+  return new Promise(res => {
+    const t0 = performance.now();
+    const r = db.transaction('file').objectStore('file').index(idx).getAll(val);
+    r.onsuccess = () => res({ n: r.result.length, dt: performance.now() - t0 });
+  });
+}
+
+/* 内存 filter：现有 matches() 的做法（关键词、类型、平台、收藏） */
+function memFilter(list, kw) {
+  const t0 = performance.now();
+  const r = list.filter(e =>
+    (!kw || (e.title + e.creatorName + e.relPath).toLowerCase().indexOf(kw) >= 0) &&
+    (e.type === 'video' || e.type === 'image') &&
+    e.starred >= 0);
+  return { n: r.length, dt: performance.now() - t0 };
+}
+
+/* DOM 渲染：照 cardHtml 的结构，量级一致 */
+function renderCards(list) {
+  const box = document.createElement('div');
+  const t0 = performance.now();
+  const parts = [];
+  for (let i = 0; i < list.length; i++) {
+    const e = list[i];
+    parts.push('<article class="card" data-id="' + e.relPath + '">' +
+      '<div class="thumb"><div class="cover"></div><span class="badge">' + e.platform + '</span>' +
+      '<span class="duration">00:42</span></div>' +
+      '<div class="body"><div class="title">' + e.title + '</div>' +
+      '<div class="metarow"><span class="authorline"><span class="avatar">' + e.creatorName.slice(0, 1) + '</span>' +
+      '<span class="nm">' + e.creatorName + '</span></span><span class="size">12.3 MB</span></div>' +
+      '<div class="pathline">' + e.relPath + '</div></div></article>');
+  }
+  box.innerHTML = parts.join('');
+  const t1 = performance.now();
+  document.body.appendChild(box);
+  box.getBoundingClientRect();      // 强制布局，量"真渲染"而不只是拼字符串
+  const t2 = performance.now();
+  const nodes = box.querySelectorAll('*').length;
+  box.remove();
+  return { build: t1 - t0, layout: t2 - t1, nodes };
+}
+
+async function run() {
+  const db = await openDb();
+
+  // 清空重来
+  await new Promise(res => { const t = db.transaction(['file', 'thumb'], 'readwrite'); t.objectStore('file').clear(); t.objectStore('thumb').clear(); t.oncomplete = res; });
+
+  const quota = await navigator.storage.estimate().catch(() => null);
+  line('存储配额', quota ? Math.round(quota.quota / 1073741824) + ' GB（已用 ' + (quota.usage / 1048576).toFixed(1) + ' MB）' : '未知');
+
+  for (const n of [10000, 50000]) {
+    line('━━━━━━━━ 规模 ' + n.toLocaleString() + ' 条 ━━━━━━━━', '');
+    const m0 = mem();
+    const ins = await insert(n, 2000);
+    line('写入耗时', hr(ins.dt) + '（' + Math.round(n / (ins.dt / 1000)).toLocaleString() + ' 条/秒）', 'ok');
+    line('库内条数', ins.cnt.toLocaleString());
+
+    const g = await getAll(db);
+    const m1 = mem();
+    line('getAll() 全量读取', hr(g.dt), g.dt > 1500 ? 'warn' : 'ok');
+    /* 内存：performance.memory 在无 --enable-precise-memory-info 时不准，改用数据本身大小 + 堆增量双测 */
+    let bytes = 0;
+    try { bytes = JSON.stringify(g.list).length; } catch (e) { bytes = -1; }
+    line('数据本身大小', (bytes / 1048576).toFixed(1) + ' MB（JSON 序列化，' + Math.round(bytes / n) + ' 字节/条）', 'ok');
+    line('JS 堆增量', (m1 - m0 >= 0 ? (m1 - m0) + ' MB' : '测不到（需 --enable-precise-memory-info）'));
+
+    const q = await queryIndex(db, 'platform', 'x');
+    line('索引查询（platform=x）', hr(q.dt) + '，命中 ' + q.n.toLocaleString() + ' 条', q.dt > 300 ? 'warn' : 'ok');
+
+    const f = memFilter(g.list, '素材标题 1234');
+    line('内存 filter（关键词）', hr(f.dt) + '，命中 ' + f.n, f.dt > 100 ? 'warn' : 'ok');
+
+    const r = renderCards(g.list.slice(0, Math.min(g.list.length, n)));
+    line('DOM 渲染（全量卡片）', '拼串 ' + hr(r.build) + ' + 布局 ' + hr(r.layout) + '，' + r.nodes.toLocaleString() + ' 个节点',
+      r.nodes > 200000 ? 'warn' : 'ok');
+
+    // 清掉，进入下一档
+    await new Promise(res => { const t = db.transaction('file', 'readwrite'); t.objectStore('file').clear(); t.oncomplete = res; });
+  }
+
+  line('━━━━━━━━ 测完 ━━━━━━━━', '');
+  line('结论', '见上方标红的项', 'ok');
+  window.__DONE__ = true;
+}
+
+run().catch(e => { line('ERROR', String(e && e.stack || e), 'warn'); window.__DONE__ = true; });
+</script>
+</body>
+</html>
