@@ -1,5 +1,11 @@
 # 媒体溯源元数据方案（Media Provenance Metadata）
 
+> ⚠️ **本文的存储方案已过时，执行前必读 `docs/IMPACT-ANALYSIS-UI-REDESIGN.md` §5.1：**
+> 本文写于两条线合并**之前**，当时媒体库还是单文件 + `_index/index.json`。合并后媒体库已改为 **IndexedDB**（`js/library/db.js` 的 `file` / `thumb` store），**不再有 `_index/meta.json` 这个真源**。
+> 最小改动：不新建 `meta.json`，**直接给 IndexedDB 的 `file` 条目加字段**（`pageUrl`/`authorUrl`/`authorId`/`workId`/`mediaUrl`/`dlAt`），并把这几个字段加进 `mergeEntry()` 的保留白名单。
+> 正文的字段语义、埋点位置、九条验收用例仍然有效，只有"存哪里"这一条失效。
+
+
 - **日期**：2026-11-04 ｜ **状态**：📋 方案评审中（等苏哥拍板后施工）
 - **范围**：A 档（最小可用回溯集）
 - **关联**：`docs/BACKLOG.md`、ADR-037（去重账本）、`docs/MEDIA-LIBRARY-PLAN.md`
