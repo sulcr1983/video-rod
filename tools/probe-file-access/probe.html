@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>VR 文件直读探针</title>
+<style>
+  body{font:13px/1.7 -apple-system,"Segoe UI",sans-serif;margin:0;padding:18px 20px;background:#0f1218;color:#e6e9ef}
+  h1{font-size:15px;margin:0 0 4px}
+  .sub{color:#8b93a3;font-size:11.5px;margin-bottom:14px}
+  .row{display:flex;gap:10px;align-items:center;margin:8px 0}
+  input{flex:1;height:28px;padding:0 8px;border-radius:6px;border:1px solid #2a2f3a;background:#171b22;color:#e6e9ef;font-family:Consolas,monospace;font-size:12px}
+  button{height:30px;padding:0 14px;border-radius:7px;border:0;background:#0f766e;color:#fff;font-size:12px;cursor:pointer}
+  button:hover{background:#14857a}
+  .case{border:1px solid #262b36;border-radius:9px;padding:10px 12px;margin:10px 0;background:#141821}
+  .case h2{font-size:12.5px;margin:0 0 6px;display:flex;gap:8px;align-items:center}
+  .pill{font-size:10px;padding:1px 7px;border-radius:10px;background:#2a2f3a;color:#9aa3ae}
+  .pill.ok{background:#0f766e;color:#fff}
+  .pill.fail{background:#b8332a;color:#fff}
+  .pill.run{background:#8a6d1f;color:#fff}
+  pre{margin:6px 0 0;font-size:11px;color:#aab3c2;white-space:pre-wrap;word-break:break-all}
+  #env{font-size:11.5px;color:#aab3c2;margin-bottom:8px}
+  .warn{background:#3b2a12;border:1px solid #6b4a1a;color:#f0c674;padding:8px 10px;border-radius:7px;font-size:11.5px;margin:8px 0}
+  img,video{max-width:220px;max-height:120px;margin-top:6px;border-radius:6px;background:#000}
+  #out{background:#0b0e13;border:1px solid #262b36;border-radius:8px;padding:10px;margin-top:14px;font-family:Consolas,monospace;font-size:11px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>VR 文件直读探针（P0）</h1>
+<div class="sub">验证三件事：① 扩展页 &lt;img src="file://"&gt; ② &lt;video src="file://"&gt; 可播可 seek ③ downloads.search 的 filename 是否绝对路径</div>
+
+<div id="env">正在读取环境…</div>
+
+<div class="row">
+  <input id="dir" value="E:/test/_vr-probe-media" spellcheck="false">
+  <button id="run">开始探测</button>
+  <button id="dl">先造一条下载记录</button>
+</div>
+
+<div class="case" id="c1">
+  <h2>① 图片直读 <span class="pill" id="p1">待测</span></h2>
+  <pre id="r1">—</pre>
+  <img id="img" alt="">
+</div>
+
+<div class="case" id="c2">
+  <h2>② 视频直读 + seek <span class="pill" id="p2">待测</span></h2>
+  <pre id="r2">—</pre>
+  <video id="vid" muted playsinline></video>
+</div>
+
+<div class="case" id="c3">
+  <h2>③ downloads 绝对路径 <span class="pill" id="p3">待测</span></h2>
+  <pre id="r3">—</pre>
+</div>
+
+<div id="out">等待结果…</div>
+
+<script src="probe.js"></script>
+</body>
+</html>

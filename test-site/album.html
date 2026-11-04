@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 G：图集自动滚动夹具</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #f6f7f9; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    .note { color: #666; font-size: 13px; margin: 0 0 18px; }
+    .album { display: flex; flex-direction: column; gap: 24px; }
+    .item { display: block; }
+    /* 每张图占满一屏多一点：只有滚动才会进入视口，懒加载才有意义 */
+    .item img {
+      display: block; width: 640px; height: 640px; object-fit: cover;
+      border-radius: 10px; background: #e5e7eb;
+    }
+    .item .cap { font-size: 12px; color: #888; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <h1>图集自动滚动夹具</h1>
+  <p class="note">
+    24 张 ≥600×600 的图，纵向排列，初始只加载第一张；其余靠 IntersectionObserver
+    在滚入视口时才把 data-src 写进 src。整页高约 1.6 万像素，必须滚动才能看全。
+  </p>
+  <div class="album" id="album"></div>
+  <script>
+    // 只用两张真实大图（都是 1200×1200），靠查询串区分 URL——
+    // 同 URL 会被 scanImages 去重，那样就测不出「边滚边累积」了。
+    const names = ['original-1200.png', 'srcset-1200.png'];
+    const TOTAL = 24;
+    const album = document.getElementById('album');
+    const io = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (!e.isIntersecting) { continue; }
+        const img = e.target;
+        if (img.dataset.src && !img.src) {
+          img.src = img.dataset.src;
+        }
+        io.unobserve(img);
+      }
+    }, { rootMargin: '0px' });
+
+    for (let i = 0; i < TOTAL; i++) {
+      const box = document.createElement('figure');
+      box.className = 'item';
+      const img = document.createElement('img');
+      img.id = 'a' + i;
+      img.alt = '图 ' + (i + 1);
+      img.loading = 'lazy';
+      img.width = 640;
+      img.height = 640;
+      img.dataset.src = 'media/' + names[i % names.length] + '?a=' + i;
+      box.appendChild(img);
+      const cap = document.createElement('figcaption');
+      cap.className = 'cap';
+      cap.textContent = '第 ' + (i + 1) + ' / ' + TOTAL + ' 张';
+      box.appendChild(cap);
+      album.appendChild(box);
+      io.observe(img);
+    }
+
+    // 第一张立即加载：保证页面刚打开时就有可收集的图（否则「0 张」会让人误判扩展坏了）
+    document.getElementById('a0').src = document.getElementById('a0').dataset.src;
+  </script>
+</body>
+</html>

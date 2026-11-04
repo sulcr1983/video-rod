@@ -1,0 +1,942 @@
+/* ==========================================================
+ * 资源库页面 v2 —— 概览 / 博主速览 / 网格 / 表格
+ *
+ * 数据：VRDB.getAllFiles()（只读）；缩略图：VRThumbs 懒生成。
+ * 不含 S4 灯箱/视频弹层、S5 回收站。
+ * ========================================================== */
+(function (root) {
+    'use strict';
+
+    var state = {
+        type: 'all',          // all | video | image | audio
+        platform: '',
+        creator: '',
+        starred: false,
+        q: '',
+        sort: 'new',          // new | old | name | size
+        group: 'none',        // none | date
+        view: 'grid'          // grid | list
+    };
+
+    var all = [];
+    var map = {};
+    var objectUrls = [];
+    var searchTimer = 0;
+    var rendered = [];
+    var overviewCollapsed = true;
+    try { overviewCollapsed = localStorage.getItem('vrLibOverview') !== '1'; } catch (e) { /* 忽略 */ }
+
+    var PLAT = {
+        bilibili: { name: 'B站', short: 'B', color: '#fb7299' },
+        xiaohongshu: { name: '小红书', short: '红', color: '#ff2442' },
+        x: { name: 'X', short: 'X', color: '#111827' },
+        youtube: { name: 'YouTube', short: 'Y', color: '#ff0033' },
+        web: { name: '其他网页', short: '网', color: '#64748b' }
+    };
+
+    var TYPE_LABEL = { video: '视频', image: '图片', audio: '音频', other: '其他' };
+
+    function $(id) { return document.getElementById(id); }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function formatBytes(n) {
+        n = Number(n) || 0;
+        if (n < 1024) { return n + ' B'; }
+        var units = ['KB', 'MB', 'GB', 'TB'];
+        var i = -1;
+        do { n = n / 1024; i++; } while (n >= 1024 && i < units.length - 1);
+        return (n < 10 ? n.toFixed(1) : Math.round(n)) + ' ' + units[i];
+    }
+
+    function sizeParts(n) {
+        n = Number(n) || 0;
+        if (n < 1024) { return { v: String(Math.round(n)), u: 'B' }; }
+        var units = ['KB', 'MB', 'GB', 'TB'];
+        var i = -1;
+        do { n = n / 1024; i++; } while (n >= 1024 && i < units.length - 1);
+        return { v: n < 10 ? n.toFixed(1) : String(Math.round(n)), u: units[i] };
+    }
+
+    function formatDate(ts, withTime) {
+        if (!ts) { return ''; }
+        var d = new Date(ts);
+        if (isNaN(d.getTime())) { return ''; }
+        var md = (d.getMonth() + 1) + '-' + d.getDate();
+        if (!withTime) { return md; }
+        return md + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+
+    function formatDuration(sec) {
+        sec = Math.floor(Number(sec) || 0);
+        if (!sec) { return ''; }
+        var h = Math.floor(sec / 3600);
+        var m = Math.floor((sec % 3600) / 60);
+        var s = sec % 60;
+        if (h) { return h + ':' + ('0' + m).slice(-2) + ':' + ('0' + s).slice(-2); }
+        return m + ':' + ('0' + s).slice(-2);
+    }
+
+    function typeLabel(t) { return TYPE_LABEL[t] || '其他'; }
+
+    function platOf(e) { return PLAT[e.platform] || PLAT.web; }
+
+    function platformName(e) { return e.platformName || platOf(e).name; }
+
+    function creatorName(e) {
+        return e.creatorFull || e.creatorId || '待整理';
+    }
+
+    function creatorMeta(e) {
+        return e.creatorId ? '@' + e.creatorId : '无账号 ID';
+    }
+
+    function fileName(e) {
+        return e.fileName || String(e.relPath || '').split('/').pop() || '';
+    }
+
+    function matches(e) {
+        if (state.starred && !e.starred) { return false; }
+        if (state.type !== 'all' && e.type !== state.type) { return false; }
+        if (state.platform && (e.platform || 'web') !== state.platform) { return false; }
+        if (state.creator && creatorName(e) !== state.creator) { return false; }
+        if (state.q) {
+            var hay = [fileName(e), e.title, e.creatorFull, e.creatorId, e.platformName, e.relPath]
+                .join(' ').toLowerCase();
+            if (hay.indexOf(state.q) === -1) { return false; }
+        }
+        return true;
+    }
+
+    function sorted(list) {
+        var out = list.slice();
+        if (state.sort === 'name') {
+            out.sort(function (a, b) { return fileName(a).localeCompare(fileName(b), 'zh-Hans-CN'); });
+        } else if (state.sort === 'size') {
+            out.sort(function (a, b) { return (b.size || 0) - (a.size || 0); });
+        } else if (state.sort === 'old') {
+            out.sort(function (a, b) { return (a.mtime || 0) - (b.mtime || 0); });
+        } else {
+            out.sort(function (a, b) { return (b.mtime || 0) - (a.mtime || 0); });
+        }
+        return out;
+    }
+
+    function counts() {
+        var c = { all: all.length, video: 0, image: 0, audio: 0, starred: 0, platforms: {}, creators: {} };
+        all.forEach(function (e) {
+            if (c[e.type] !== undefined) { c[e.type]++; }
+            if (e.starred) { c.starred++; }
+            var p = e.platform || 'web';
+            c.platforms[p] = (c.platforms[p] || 0) + 1;
+            var cr = creatorName(e);
+            c.creators[cr] = (c.creators[cr] || 0) + 1;
+        });
+        return c;
+    }
+
+    function pct(n, total) {
+        if (!total) { return 0; }
+        return Math.round((n / total) * 100);
+    }
+
+    function sideItem(attrs, label, n, active, icon) {
+        return '<button class="side-item' + (active ? ' on' : '') + '" ' + attrs + ' type="button">' +
+            (icon || '') +
+            '<span class="label">' + esc(label) + '</span>' +
+            '<span class="n">' + n + '</span></button>';
+    }
+
+    function platIcon(p) {
+        var meta = PLAT[p] || PLAT.web;
+        return '<span class="pdot" style="--pc:' + meta.color + '">' + esc(meta.short) + '</span>';
+    }
+
+    function creatorIcon(name, color) {
+        return '<span class="avatar" style="--pc:' + color + '">' + esc(String(name).slice(0, 1)) + '</span>';
+    }
+
+    function renderSide() {
+        var c = counts();
+
+        $('libTypeNav').innerHTML =
+            sideItem('data-type="all" role="tab"', '全部资源', c.all, state.type === 'all' && !state.starred) +
+            sideItem('data-type="video" role="tab"', '视频', c.video, state.type === 'video') +
+            sideItem('data-type="image" role="tab"', '图片', c.image, state.type === 'image') +
+            sideItem('data-type="audio" role="tab"', '音频', c.audio, state.type === 'audio') +
+            sideItem('data-starred="1" role="tab"', '星标', c.starred, state.starred);
+
+        var pKeys = Object.keys(c.platforms).sort(function (a, b) { return c.platforms[b] - c.platforms[a]; });
+        $('libPlatformNav').innerHTML = pKeys.map(function (p) {
+            return sideItem('data-platform="' + esc(p) + '"', (PLAT[p] || PLAT.web).name,
+                c.platforms[p], state.platform === p, platIcon(p));
+        }).join('') || '<div class="side-empty">暂无平台数据</div>';
+
+        var crKeys = Object.keys(c.creators).sort(function (a, b) { return c.creators[b] - c.creators[a]; }).slice(0, 60);
+        $('libCreatorNav').innerHTML = crKeys.map(function (cr) {
+            var first = null;
+            for (var i = 0; i < all.length; i++) {
+                if (creatorName(all[i]) === cr) { first = all[i]; break; }
+            }
+            var color = first ? platOf(first).color : '#64748b';
+            return sideItem('data-creator="' + esc(cr) + '"', cr, c.creators[cr],
+                state.creator === cr, creatorIcon(cr, color));
+        }).join('') || '<div class="side-empty">暂无博主数据</div>';
+
+        var sel = $('libPlatformSelect');
+        if (sel) {
+            sel.innerHTML = '<option value="">全部平台</option>' + pKeys.map(function (p) {
+                return '<option value="' + esc(p) + '">' + esc((PLAT[p] || PLAT.web).name) + '（' + c.platforms[p] + '）</option>';
+            }).join('');
+            sel.value = state.platform || '';
+        }
+    }
+
+    /* ---------------- 概览（全局统计） ---------------- */
+
+    function applyOverviewState() {
+        var box = $('libOverview');
+        var btn = $('libOverviewToggle');
+        if (!box) { return; }
+        box.classList.toggle('collapsed', overviewCollapsed);
+        if (btn) {
+            btn.textContent = overviewCollapsed ? '展开' : '收起';
+            btn.setAttribute('aria-expanded', String(!overviewCollapsed));
+        }
+    }
+
+    function renderOverview() {
+        var box = $('libOverview');
+        if (!box) { return; }
+        var n = all.length;
+        if (!n) { box.hidden = true; return; }
+        box.hidden = false;
+
+        var c = counts();
+        var bytes = all.reduce(function (s, e) { return s + (Number(e.size) || 0); }, 0);
+        var missing = all.filter(function (e) { return e.state === 'missing'; }).length;
+        var sp = sizeParts(bytes);
+
+        $('libKpiTotal').textContent = n;
+        $('libKpiTotalFoot').textContent = '图片 ' + c.image + ' · 视频 ' + c.video + ' · 音频 ' + c.audio +
+            (missing ? ' · 缺失 ' + missing : '');
+        $('libKpiSize').textContent = sp.v;
+        $('libKpiSizeUnit').textContent = sp.u;
+        $('libKpiSizeFoot').textContent = '平均 ' + formatBytes(Math.round(bytes / n)) + ' / 项';
+        $('libKpiImage').textContent = c.image;
+        $('libKpiImageFoot').textContent = '占 ' + pct(c.image, n) + '% · 共 ' +
+            formatBytes(all.reduce(function (s, e) { return s + (e.type === 'image' ? Number(e.size) || 0 : 0); }, 0));
+        $('libKpiVideo').textContent = c.video;
+        $('libKpiVideoFoot').textContent = '占 ' + pct(c.video, n) + '% · 共 ' +
+            formatBytes(all.reduce(function (s, e) { return s + (e.type === 'video' ? Number(e.size) || 0 : 0); }, 0));
+
+        $('libKpiImageBar').style.width = pct(c.image, n) + '%';
+        $('libKpiVideoBar').style.width = pct(c.video, n) + '%';
+
+        var pKeys = Object.keys(c.platforms).sort(function (a, b) { return c.platforms[b] - c.platforms[a]; });
+        $('libPlatMeta').textContent = pKeys.length + ' 个平台';
+        $('libPlatStack').innerHTML = pKeys.map(function (p) {
+            var meta = PLAT[p] || PLAT.web;
+            return '<i style="width:' + Math.max(2, (c.platforms[p] / n) * 100) + '%;background:' + meta.color + '"></i>';
+        }).join('');
+        $('libPlatStack').setAttribute('aria-label', pKeys.map(function (p) {
+            return (PLAT[p] || PLAT.web).name + ' ' + c.platforms[p] + ' 项';
+        }).join('，'));
+
+        $('libPlatLegend').innerHTML = pKeys.map(function (p) {
+            var meta = PLAT[p] || PLAT.web;
+            return '<div class="legend-item">' +
+                '<span class="dot" style="--c:' + meta.color + '"></span>' +
+                '<span class="nm">' + esc(meta.name) + '</span>' +
+                '<b>' + c.platforms[p] + '</b>' +
+                '<span class="pct">' + pct(c.platforms[p], n) + '%</span></div>';
+        }).join('');
+
+        var tops = Object.keys(c.creators)
+            .map(function (k) { return { name: k, n: c.creators[k] }; })
+            .sort(function (a, b) { return b.n - a.n; })
+            .slice(0, 5);
+        var max = tops.length ? tops[0].n : 1;
+        var sum = $('libOverviewSummary');
+        if (sum) { sum.textContent = n + ' 项 · ' + formatBytes(bytes) + ' · ' + pKeys.length + ' 个平台'; }
+        applyOverviewState();
+
+        $('libCreatorBars').innerHTML = tops.map(function (t) {
+            return '<div class="bar-row">' +
+                '<span class="nm" title="' + esc(t.name) + '">' + esc(t.name) + '</span>' +
+                '<span class="track"><i class="fill" style="width:' + Math.max(4, (t.n / max) * 100) + '%"></i></span>' +
+                '<b>' + t.n + '</b></div>';
+        }).join('') || '<div class="side-empty">暂无数据</div>';
+    }
+
+    /* ---------------- 博主速览 ---------------- */
+
+    function renderCreators() {
+        var block = $('libCreatorBlock');
+        var box = $('libCreators');
+        if (!block || !box) { return; }
+
+        var show = state.view !== 'list' && !state.creator && !state.q &&
+            state.type === 'all' && !state.starred;
+        if (!show || !all.length) {
+            block.hidden = true;
+            box.innerHTML = '';
+            return;
+        }
+
+        var pool = state.platform
+            ? all.filter(function (e) { return (e.platform || 'web') === state.platform; })
+            : all;
+
+        var groups = {};
+        pool.forEach(function (e) {
+            var k = creatorName(e);
+            (groups[k] = groups[k] || []).push(e);
+        });
+        var keys = Object.keys(groups).sort(function (a, b) { return groups[b].length - groups[a].length; });
+        if (keys.length < 2) { block.hidden = true; box.innerHTML = ''; return; }
+
+        block.hidden = false;
+        box.innerHTML = keys.slice(0, 12).map(function (k) {
+            var items = groups[k];
+            var first = items[0];
+            var imgs = items.filter(function (e) { return e.type === 'image'; }).length;
+            var vids = items.filter(function (e) { return e.type === 'video'; }).length;
+            var color = platOf(first).color;
+            var single = items.length < 4;
+            var picks = single ? items.slice(0, 1) : items.slice(0, 4);
+            var mosaic = picks.map(function (e) {
+                return '<span class="mi t-' + esc(e.type || 'other') + '">' +
+                    '<img alt="" loading="lazy" data-thumb="' + esc(e.relPath) + '"></span>';
+            }).join('');
+            var blanks = '';
+            if (!single) {
+                for (var i = picks.length; i < 4; i++) { blanks += '<span class="mi blank"></span>'; }
+            }
+            return '<button type="button" class="ccard" data-creator="' + esc(k) + '">' +
+                creatorIcon(k, color) +
+                '<span class="info">' +
+                '<span class="nm" title="' + esc(k) + '">' + esc(k) + '</span>' +
+                '<span class="id">' + esc(creatorMeta(first)) + '</span>' +
+                '<span class="cnt">图片 ' + imgs + '<i>·</i>视频 ' + vids + '</span>' +
+                '</span>' +
+                '<span class="mosaic' + (single ? ' single' : '') + '">' + mosaic + blanks + '</span>' +
+                '</button>';
+        }).join('');
+    }
+
+    /* ---------------- 媒体卡片 ---------------- */
+
+    function thumbHtml(e) {
+        var label = typeLabel(e.type);
+        return '<div class="thumb">' +
+            '<div class="ph t-' + esc(e.type || 'other') + '"><span>' + esc(label) + '</span></div>' +
+            '<img alt="" loading="lazy" data-thumb="' + esc(e.relPath) + '">' +
+            '<span class="batch-check" aria-hidden="true"></span>' +
+            '<span class="type-chip">' + esc(label) + '</span>' +
+            (e.duration ? '<span class="dur">' + formatDuration(e.duration) + '</span>' : '') +
+            '<button type="button" class="star' + (e.starred ? ' on' : '') + '" data-star="' + esc(e.relPath) + '" ' +
+            'aria-label="' + (e.starred ? '取消星标' : '加星标') + '">' + (e.starred ? '★' : '☆') + '</button>' +
+            '<button type="button" class="more" data-more="' + esc(e.relPath) + '" ' +
+            'aria-label="更多操作" title="更多操作">⋯</button>' +
+            (e.state === 'missing' ? '<span class="missing-tag">文件缺失</span>' : '') +
+            '</div>';
+    }
+
+    function cardHtml(e) {
+        var color = platOf(e).color;
+        return '<article class="lib-card' + (e.state === 'missing' ? ' missing' : '') + '" ' +
+            'data-rel="' + esc(e.relPath) + '" tabindex="0">' +
+            thumbHtml(e) +
+            '<div class="body">' +
+            '<h3 title="' + esc(fileName(e)) + '">' + esc(fileName(e)) + '</h3>' +
+            '<p class="sub"><span class="pdot" style="--pc:' + color + '"></span>' +
+            esc(platformName(e)) + ' · ' + esc(creatorName(e)) + '</p>' +
+            '<p class="facts"><span>' + formatBytes(e.size) + '</span><span>' + formatDate(e.mtime) + '</span></p>' +
+            '</div></article>';
+    }
+
+    function rowHtml(e) {
+        var color = platOf(e).color;
+        return '<tr class="lib-row' + (e.state === 'missing' ? ' missing' : '') + '" ' +
+            'data-rel="' + esc(e.relPath) + '" tabindex="0">' +
+            '<td class="c-thumb"><div class="row-thumb">' +
+            '<div class="ph t-' + esc(e.type || 'other') + '"><span>' + esc(typeLabel(e.type)) + '</span></div>' +
+            '<img alt="" loading="lazy" data-thumb="' + esc(e.relPath) + '">' +
+            '<span class="batch-check" aria-hidden="true"></span>' +
+            (e.duration ? '<span class="dur">' + formatDuration(e.duration) + '</span>' : '') +
+            '</div></td>' +
+            '<td class="c-name"><div class="row-main">' +
+            '<div class="row-name" title="' + esc(fileName(e)) + '">' + esc(fileName(e)) + '</div>' +
+            '<div class="row-sub">' + esc(e.relPath || '') + '</div>' +
+            '</div></td>' +
+            '<td class="c-plat"><span class="row-plat"><i class="dot" style="--pc:' + color + '"></i>' +
+            esc(platformName(e)) + '</span></td>' +
+            '<td class="c-creator"><span class="row-creator">' + esc(creatorName(e)) + '</span></td>' +
+            '<td class="c-type"><span class="row-type">' + esc(typeLabel(e.type)) + '</span></td>' +
+            '<td class="c-size"><span class="row-size">' + formatBytes(e.size) + '</span></td>' +
+            '<td class="c-date"><span class="row-date">' + formatDate(e.mtime, true) + '</span></td>' +
+            '<td class="c-act"><div class="row-acts">' +
+            '<button type="button" class="more row-more" data-more="' + esc(e.relPath) + '" ' +
+            'aria-label="更多操作" title="更多操作">⋯</button>' +
+            '<button type="button" class="star' + (e.starred ? ' on' : '') + '" ' +
+            'data-star="' + esc(e.relPath) + '" aria-label="' + (e.starred ? '取消星标' : '加星标') + '">' +
+            (e.starred ? '★' : '☆') + '</button></div></td>' +
+            '</tr>';
+    }
+
+    /* ---------------- 分组 ---------------- */
+
+    function dayBucket(ts) {
+        var d = new Date(ts || 0);
+        if (isNaN(d.getTime())) { return '更早'; }
+        var now = new Date();
+        var startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        var startDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        var diff = Math.round((startToday - startDay) / 86400000);
+        if (diff <= 0) { return '今天'; }
+        if (diff === 1) { return '昨天'; }
+        if (diff < 7) { return '本周内'; }
+        if (diff < 30) { return '本月内'; }
+        return '更早';
+    }
+
+    function groupList(list) {
+        var order = [];
+        var buckets = {};
+        list.forEach(function (e) {
+            var k = dayBucket(e.mtime);
+            if (!buckets[k]) { buckets[k] = []; order.push(k); }
+            buckets[k].push(e);
+        });
+        return order.map(function (k) { return { label: k, items: buckets[k] }; });
+    }
+
+    function gridHtml(list) {
+        if (state.group !== 'date') { return list.map(cardHtml).join(''); }
+        return groupList(list).map(function (g) {
+            return '<div class="lib-day"><b>' + esc(g.label) + '</b>' +
+                '<span>' + g.items.length + ' 项</span><i class="ln"></i></div>' +
+                g.items.map(cardHtml).join('');
+        }).join('');
+    }
+
+    function tableHtml(list) {
+        if (state.group !== 'date') { return list.map(rowHtml).join(''); }
+        return groupList(list).map(function (g) {
+            return '<tr class="day-row"><td colspan="8"><b>' + esc(g.label) + '</b>' +
+                '<span>' + g.items.length + ' 项</span></td></tr>' +
+                g.items.map(rowHtml).join('');
+        }).join('');
+    }
+
+    /* ---------------- 筛选 chip / 空态 ---------------- */
+
+    function renderActiveFilters() {
+        var el = $('libActiveFilters');
+        var chips = [];
+        if (state.platform) {
+            chips.push('<button type="button" class="active-chip" data-clear="platform">' +
+                esc((PLAT[state.platform] || PLAT.web).name) + ' ×</button>');
+        }
+        if (state.creator) {
+            chips.push('<button type="button" class="active-chip" data-clear="creator">' + esc(state.creator) + ' ×</button>');
+        }
+        if (state.starred) {
+            chips.push('<button type="button" class="active-chip" data-clear="starred">仅星标 ×</button>');
+        }
+        if (state.q) {
+            chips.push('<button type="button" class="active-chip" data-clear="q">“' + esc(state.q) + '” ×</button>');
+        }
+        el.innerHTML = chips.join('');
+        el.hidden = chips.length === 0;
+    }
+
+    function renderEmpty(total) {
+        var empty = $('libEmpty');
+        if (total > 0) { empty.hidden = true; return; }
+        empty.hidden = false;
+        var isBlank = all.length === 0;
+        $('libEmptyTitle').textContent = isBlank ? '还没有资源' : '没有匹配的资源';
+        $('libEmptyText').textContent = isBlank
+            ? '资源库索引是空的。去设置页重建索引，或先下载一个文件。'
+            : '换个关键词，或清掉当前筛选条件。';
+        $('libEmptyAction').textContent = isBlank ? '去设置页' : '清空筛选';
+        $('libEmptyAction').dataset.action = isBlank ? 'options' : 'clear';
+    }
+
+    /* ---------------- 缩略图懒加载 ---------------- */
+
+    var observer = null;
+
+    function observeThumbs() {
+        if (observer) { observer.disconnect(); }
+        var nodes = document.querySelectorAll('[data-thumb]');
+        if (!('IntersectionObserver' in window)) {
+            [].forEach.call(nodes, function (img) {
+                var e = map[img.getAttribute('data-thumb')];
+                if (e) { root.VRThumbs.enqueue(e); }
+            });
+            return;
+        }
+        observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) { return; }
+                var img = entry.target;
+                var e = map[img.getAttribute('data-thumb')];
+                if (e) { root.VRThumbs.enqueue(e); }
+                observer.unobserve(img);
+            });
+        }, { rootMargin: '160px' });
+        [].forEach.call(nodes, function (img) { observer.observe(img); });
+    }
+
+    /* ---------------- 主渲染 ---------------- */
+
+    function renderMain() {
+        var list = sorted(all.filter(matches));
+        rendered = list;
+        var totalBytes = list.reduce(function (n, e) { return n + (Number(e.size) || 0); }, 0);
+
+        var titles = { all: '全部资源', video: '视频', image: '图片', audio: '音频' };
+        $('libTitle').textContent = state.starred ? '星标资源' : (titles[state.type] || '全部资源');
+        $('libSub').textContent = '共 ' + list.length + ' 项' + (list.length ? ' · ' + formatBytes(totalBytes) : '');
+
+        $('libCrumb').innerHTML = '<span>资源库</span><i class="sep">/</i><b>' +
+            esc($('libTitle').textContent) + '</b>' +
+            (state.creator ? '<i class="sep">/</i><span>' + esc(state.creator) + '</span>' : '');
+
+        var grid = $('libGrid');
+        var listEl = $('libList');
+        var listMode = state.view === 'list';
+        grid.hidden = list.length === 0 || listMode;
+        listEl.hidden = list.length === 0 || !listMode;
+        // 表格是紧凑管理视图：收起概览，让内容直接进视野
+        $('libOverview').hidden = listMode || all.length === 0;
+
+        if (state.view === 'grid') {
+            grid.innerHTML = gridHtml(list);
+        } else {
+            $('libListBody').innerHTML = tableHtml(list);
+        }
+        renderEmpty(list.length);
+        renderActiveFilters();
+        observeThumbs();
+        if (root.VRBatch) { root.VRBatch.refresh(); }
+    }
+
+    function apply() {
+        // 筛选/搜索变化后旧的勾选可能已不可见，直接清空（批量模式保留）
+        if (root.VRBatch) { root.VRBatch.clearSelection(); }
+        renderSide();
+        renderOverview();
+        renderCreators();
+        renderMain();
+    }
+
+    function renderRoot() {
+        var pathEl = $('libRootPath');
+        var metaEl = $('libRootMeta');
+        if (!pathEl) { return; }
+        var total = all.length;
+        var missing = all.filter(function (e) { return e.state === 'missing'; }).length;
+        pathEl.textContent = '未探测';
+        metaEl.textContent = total
+            ? (total + ' 个文件' + (missing ? ' · 缺失 ' + missing : '') + ' · 本地读取')
+            : '索引为空';
+        try {
+            chrome.storage.local.get('vrLibSettings', function (o) {
+                var s = (o && o.vrLibSettings) || {};
+                var base = s.mode === 'custom' ? s.customRoot
+                    : (s.detectedRoot ? s.detectedRoot + '\\' + (s.subdir || 'video-rod') : '');
+                if (base) { pathEl.textContent = base; }
+            });
+        } catch (e) { /* 非扩展环境 */ }
+    }
+
+    async function loadData() {
+        if (typeof root.VRDB === 'undefined') { return; }
+        try {
+            all = await root.VRDB.getAllFiles();
+        } catch (e) {
+            all = [];
+        }
+        map = {};
+        all.forEach(function (e) { map[e.relPath] = e; });
+        renderRoot();
+        apply();
+        if (root.VRTrashUI) { root.VRTrashUI.refreshBadge(); }
+    }
+
+    /* ---------------- 首次打开自动索引 ----------------
+     * 索引为空时用户看到的是「还没有资源」，还得自己去设置页点重建——
+     * 这一步没有信息量，所以首次进页面就替用户做掉。
+     * 但全量扫描很慢：用 storage.session 记住「本次浏览器会话已试过」，
+     * 刷新页面不再重扫（关浏览器即清，下次会话还能再兜一次）。
+     */
+
+    var AUTO_INDEX_KEY = 'vrLibAutoIndexAt';
+    var autoIndexRan = false;        // 同一页面生命周期内只跑一次
+    var toastTimer = 0;
+
+    function toast(msg, sticky) {
+        var el = $('libToast');
+        if (!el) { return; }
+        el.textContent = msg;
+        el.hidden = false;
+        clearTimeout(toastTimer);
+        // 建索引可能几十秒，提示要一直挂着；普通提示 3 秒自动消失
+        if (!sticky) { toastTimer = setTimeout(function () { el.hidden = true; }, 3000); }
+    }
+
+    function hideToast() {
+        clearTimeout(toastTimer);
+        var el = $('libToast');
+        if (el) { el.hidden = true; }
+    }
+
+    /** session 存储读一取一；老 Chrome 没有 session 就退到 local */
+    function sessionStore() {
+        try { return chrome.storage.session || chrome.storage.local; } catch (e) { return null; }
+    }
+
+    function storeGet(key) {
+        return new Promise(function (resolve) {
+            var s = sessionStore();
+            if (!s) { resolve(null); return; }
+            try {
+                s.get(key, function (o) { resolve((o && o[key]) || null); });
+            } catch (e) { resolve(null); }
+        });
+    }
+
+    function storeSet(key, val) {
+        return new Promise(function (resolve) {
+            var s = sessionStore();
+            if (!s) { resolve(false); return; }
+            var o = {};
+            o[key] = val;
+            try { s.set(o, function () { resolve(true); }); } catch (e) { resolve(false); }
+        });
+    }
+
+    /** 返回 true 表示本次真的建出了条目（调用方据此重新读库） */
+    async function autoIndexOnce() {
+        if (autoIndexRan) { return false; }
+        if (typeof root.VRIndex === 'undefined' || typeof root.VRDB === 'undefined') { return false; }
+        autoIndexRan = true;
+
+        if (await storeGet(AUTO_INDEX_KEY)) { return false; }
+        // 先占位再干活：万一中途失败，也不至于每次刷新都重扫一遍慢操作
+        await storeSet(AUTO_INDEX_KEY, Date.now());
+
+        toast('正在建立索引…', true);
+        var built = false;
+        try {
+            // 有目录句柄时全量扫描最准（能发现索引里没记录过的文件）
+            await root.VRIndex.build({ mode: 'full' });
+            built = true;
+        } catch (eFull) {
+            try {
+                // 没授权过目录就退到快照：只重放上次写下的索引，不碰文件系统
+                await root.VRIndex.build({ mode: 'snapshot' });
+                built = true;
+            } catch (eSnap) {
+                // 两条路都不通（多半是用户从未授权目录）：静默放弃，
+                // 让页面停在原有空态并保留「去设置页」入口，不弹错打断浏览
+            }
+        }
+        hideToast();
+        return built;
+    }
+
+    async function boot() {
+        await loadData();
+        if (all.length) { return; }          // 已有数据，不必扫
+        if (await autoIndexOnce()) { await loadData(); }
+    }
+
+    function setView(v) {
+        state.view = v === 'list' ? 'list' : 'grid';
+        $('libViewGrid').classList.toggle('on', state.view === 'grid');
+        $('libViewList').classList.toggle('on', state.view === 'list');
+        try { localStorage.setItem('vrLibView', state.view); } catch (e) { /* 忽略 */ }
+        renderCreators();
+        renderMain();
+    }
+
+    function clearFilters() {
+        state.platform = '';
+        state.creator = '';
+        state.starred = false;
+        state.type = 'all';
+        state.q = '';
+        var input = $('libSearch');
+        if (input) { input.value = ''; }
+        apply();
+    }
+
+    async function toggleStar(relPath) {
+        var e = map[relPath];
+        if (!e) { return; }
+        var next = e.starred ? 0 : 1;
+        e.starred = next;
+        try {
+            await root.VRDB.patchFile(relPath, { starred: next });
+        } catch (err) { /* 界面先反馈，落库失败下次刷新会回退 */ }
+        apply();
+    }
+
+    /* ---------------- 查看器 ---------------- */
+
+    function openViewer(relPath) {
+        if (root.VRBatch && root.VRBatch.active()) { return; }
+        if (root.VRViewer) { root.VRViewer.open(relPath); }
+    }
+
+    function openEntry(relPath) {
+        var e = map[relPath];
+        if (!e || !e.absPath || !root.VRPath) { return; }
+        try {
+            chrome.tabs.create({ url: root.VRPath.toFileUrl(e.absPath) });
+        } catch (err) { /* 忽略 */ }
+    }
+
+    function bind() {
+        document.addEventListener('click', function (ev) {
+            var tab = ev.target.closest('.side-item');
+            if (tab) {
+                if (tab.dataset.type !== undefined) {
+                    state.type = tab.dataset.type;
+                    state.starred = false;
+                }
+                if (tab.dataset.starred !== undefined) {
+                    state.starred = true;
+                    state.type = 'all';
+                }
+                if (tab.dataset.platform !== undefined) {
+                    state.platform = state.platform === tab.dataset.platform ? '' : tab.dataset.platform;
+                }
+                if (tab.dataset.creator !== undefined) {
+                    state.creator = state.creator === tab.dataset.creator ? '' : tab.dataset.creator;
+                }
+                apply();
+                return;
+            }
+
+            var card = ev.target.closest('.ccard');
+            if (card && card.dataset.creator) {
+                state.creator = card.dataset.creator;
+                apply();
+            }
+        });
+
+        var search = $('libSearch');
+        search.addEventListener('input', function () {
+            clearTimeout(searchTimer);
+            var v = search.value.trim().toLowerCase();
+            searchTimer = setTimeout(function () {
+                state.q = v;
+                apply();
+            }, 150);
+        });
+
+        $('libOverviewToggle').addEventListener('click', function () {
+            overviewCollapsed = !overviewCollapsed;
+            try { localStorage.setItem('vrLibOverview', overviewCollapsed ? '0' : '1'); } catch (e) { /* 忽略 */ }
+            applyOverviewState();
+        });
+
+        $('libSort').addEventListener('change', function () {
+            state.sort = this.value;
+            renderMain();
+        });
+
+        $('libGroup').addEventListener('change', function () {
+            state.group = this.value === 'date' ? 'date' : 'none';
+            renderMain();
+        });
+
+        var platSel = $('libPlatformSelect');
+        if (platSel) {
+            platSel.addEventListener('change', function () {
+                state.platform = this.value;
+                apply();
+            });
+        }
+
+        $('libViewGrid').addEventListener('click', function () { setView('grid'); });
+        $('libViewList').addEventListener('click', function () { setView('list'); });
+
+        $('libRefresh').addEventListener('click', function () { loadData(); });
+        $('libOptions').addEventListener('click', openOptions);
+        $('libFootOptions').addEventListener('click', openOptions);
+
+        $('libActiveFilters').addEventListener('click', function (ev) {
+            var chip = ev.target.closest('[data-clear]');
+            if (!chip) { return; }
+            var k = chip.dataset.clear;
+            if (k === 'starred') {
+                state.starred = false;
+            } else if (k === 'type') {
+                state.type = 'all';
+            } else {
+                state[k] = '';
+            }
+            if (k === 'q') { search.value = ''; }
+            apply();
+        });
+
+        $('libEmptyAction').addEventListener('click', function () {
+            if (this.dataset.action === 'options') {
+                openOptions();
+            } else {
+                clearFilters();
+            }
+        });
+
+        ['libGrid', 'libList'].forEach(function (id) {
+            var box = $(id);
+            box.addEventListener('click', function (ev) {
+                if (root.VRBatch && root.VRBatch.active()) {
+                    var pick = ev.target.closest('[data-rel]');
+                    if (pick) {
+                        ev.preventDefault();
+                        root.VRBatch.toggle(pick.dataset.rel);
+                    }
+                    return;
+                }
+                var star = ev.target.closest('[data-star]');
+                if (star) {
+                    ev.stopPropagation();
+                    toggleStar(star.dataset.star);
+                    return;
+                }
+                var card = ev.target.closest('[data-rel]');
+                if (card) { openViewer(card.dataset.rel); }
+            });
+            box.addEventListener('keydown', function (ev) {
+                if (ev.key !== 'Enter' && ev.key !== ' ') { return; }
+                var card = ev.target.closest('[data-rel]');
+                if (!card) { return; }
+                ev.preventDefault();
+                if (root.VRBatch && root.VRBatch.active()) {
+                    root.VRBatch.toggle(card.dataset.rel);
+                } else {
+                    openViewer(card.dataset.rel);
+                }
+            });
+        });
+
+        window.addEventListener('vrthumb', function (ev) {
+            var d = ev.detail || {};
+            if (!d.blob) { return; }
+            var url = URL.createObjectURL(d.blob);
+            objectUrls.push(url);
+            [].forEach.call(document.querySelectorAll('[data-thumb]'), function (el) {
+                if (el.getAttribute('data-thumb') !== d.relPath) { return; }
+                el.src = url;
+                el.classList.add('loaded');
+            });
+        });
+
+        document.addEventListener('keydown', function (ev) {
+            if (root.VRViewer && root.VRViewer.isOpen()) { return; }
+            if (ev.key === '/' && document.activeElement !== search) {
+                ev.preventDefault();
+                search.focus();
+            }
+            if (ev.key === 'Escape' && document.activeElement === search) {
+                search.value = '';
+                state.q = '';
+                apply();
+            }
+        });
+
+        try {
+            var saved = localStorage.getItem('vrLibView');
+            setView(saved === 'list' ? 'list' : 'grid');
+        } catch (e) { setView('grid'); }
+    }
+
+    function openOptions() {
+        try {
+            chrome.tabs.create({ url: chrome.runtime.getURL('options.html#anchorLibrary') });
+        } catch (e) { /* 忽略 */ }
+    }
+
+    function initViewer() {
+        if (!root.VRViewer) { return; }
+        root.VRViewer.init({
+            getList: function () { return rendered.length ? rendered : all; },
+            getEntry: function (rel) { return map[rel]; },
+            getUrl: function (e) {
+                return (e.absPath && root.VRPath) ? root.VRPath.toFileUrl(e.absPath) : '';
+            },
+            fileName: fileName,
+            platformName: platformName,
+            creatorName: creatorName,
+            formatBytes: formatBytes,
+            formatDate: formatDate,
+            typeLabel: typeLabel
+        });
+    }
+
+    function initTrashUi() {
+        if (!root.VRTrashUI) { return; }
+        root.VRTrashUI.init({
+            openViewer: openViewer,
+            openEntry: openEntry,
+            toggleStar: toggleStar,
+            fileName: fileName,
+            getEntry: function (rel) { return map[rel]; },
+            reload: loadData,
+            rename: function (rel) {
+                if (root.VRRename) { root.VRRename.open(rel); }
+            }
+        });
+    }
+
+    function initRename() {
+        if (!root.VRRename) { return; }
+        root.VRRename.init({
+            getEntry: function (rel) { return map[rel]; },
+            reload: loadData
+        });
+    }
+
+    function initBatch() {
+        if (!root.VRBatch) { return; }
+        root.VRBatch.init({
+            getRendered: function () { return rendered; },
+            getEntry: function (rel) { return map[rel]; },
+            reload: loadData
+        });
+    }
+
+    function init() {
+        if (!$('libGrid')) { return; }
+        initViewer();
+        initTrashUi();
+        initRename();
+        initBatch();
+        bind();
+        boot();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    root.VRLibrary = {
+        reload: loadData,
+        state: state,
+        _open: openEntry
+    };
+})(typeof self !== 'undefined' ? self : this);

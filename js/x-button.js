@@ -1,5 +1,5 @@
 /**
- * 钓鱼竿 video-rod — X(推特) 推文内联下载按钮（M8 v1）
+ * 苏哥的钓鱼竿 video-rod — X(推特) 推文内联下载按钮（M8 v1）
  * 只在 x.com / twitter.com 注入；独立模块，不碰猫抓 content-script.js
  *
  * 原理（ADR 后补）：
@@ -84,6 +84,18 @@
         const name = N.buildNameFromInfo(
             { title: i.title, post: i.title, authorFull: i.authorFull, site: 'x' },
             'https://x.com/', { tpl: settings.template, ext: ext });
+        // 目录：优先走三段结构（子目录/X/博主/类型）
+        if (self.VRPath && self.VRPath.buildRelDir) {
+            try {
+                const dir = self.VRPath.buildRelDir({
+                    pageUrl: location.href,
+                    authorFull: i.authorFull,
+                    ext: ext,
+                    subdir: settings.defaultDir || 'video-rod'
+                });
+                return dir + '/' + name;
+            } catch (e) { /* 退回旧逻辑 */ }
+        }
         const dir = String(settings.defaultDir || 'video-rod')
             .replace(/[<>:"|?*\\]/g, '').replace(/^\/+|\/+$/g, '') || 'video-rod';
         const author = String(i.authorFull || 'x')
@@ -104,8 +116,8 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'vr-xbtn';
-        btn.setAttribute('aria-label', '钓鱼竿下载此视频');
-        btn.title = '钓鱼竿：下载这个视频';
+        btn.setAttribute('aria-label', '苏哥的钓鱼竿下载此视频');
+        btn.title = '苏哥的钓鱼竿：下载这个视频';
         btn.innerHTML = ICON + '<span>下载</span>';
         wrap.appendChild(btn);
 

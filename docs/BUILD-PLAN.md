@@ -1,4 +1,4 @@
-# 钓鱼竿 video-rod 施工计划 v1
+# 苏哥的钓鱼竿 video-rod 施工计划 v1
 
 > 配套：PLAN.md（方案书 v1.3）+ popup-prototype-v5.html（交互原型，deliverables/prototypes/，浏览器直接打开）
 > 策略：**外壳大改、内核不动**——猫抓的嗅探内核/下载器/FFmpeg 合并一律不碰，保证随时能 cherry-pick 上游更新；所有新功能以独立模块挂在壳上，一个模块坏不影响其他。
@@ -257,7 +257,7 @@ M0 命名引擎 ──► M1 面板 ──► M2 下载管线 ──► M3 B站�
 
 **交付物**：
 - 图片批量：`collectImagesInPage()` 扫 `<img>`（currentSrc）+ `background-image`，滤小图（<120×120）、滤重复 URL、**滤加载失败的图**；`openImageModal()` 弹层勾选保存，`${title}_${index}` 命名
-- 右键秒存：`js/init.js` 两个一级菜单「钓鱼竿：下载这个视频」（contexts: video）/「钓鱼竿：保存这张图片」（contexts: image）→ `background.js` 的 `vrSaveContextMedia()`
+- 右键秒存：`js/init.js` 两个一级菜单「苏哥的钓鱼竿：下载这个视频」（contexts: video）/「苏哥的钓鱼竿：保存这张图片」（contexts: image）→ `background.js` 的 `vrSaveContextMedia()`
 - 快捷键：`manifest.json` 的 `_execute_action` 绑 `Alt+Shift+V`
 - `tools/cdp-m3-m5-test.py`（M3+M5 合并验收）、`tools/cdp-m5b-test.py`（秒存+快捷键）
 
@@ -322,7 +322,7 @@ M0 命名引擎 ──► M1 面板 ──► M2 下载管线 ──► M3 B站�
 ### M8 X(推特) 推文内联按钮 + 下载文件名保护 — ✅ 已完成（2026-10-18）
 
 **交付物**：
-- `js/x-button.js`（新建）：推文操作栏 `[role=group]` 注入钓鱼竿按钮（仅带 video 的 article），MutationObserver 250ms debounce 扫描；点击发 `vrQuickDownX`（页面只传 user/statusId/mediaId + 文件名，不传 URL——防借道下载任意地址）
+- `js/x-button.js`（新建）：推文操作栏 `[role=group]` 注入苏哥的钓鱼竿按钮（仅带 video 的 article），MutationObserver 250ms debounce 扫描；点击发 `vrQuickDownX`（页面只传 user/statusId/mediaId + 文件名，不传 URL——防借道下载任意地址）
 - `js/background.js`：`fetchXVideo()` 查 fxtwitter 预混流直链（按 URL 后缀 `.mp4` 过滤 variants，码率降序取最高）；`vrQuickDownX` handler
 - **下载文件名保护**（ADR-027）：SW 侧 URL 预记账 Map + 自注册 `onDeterminingFilename`（三道防线）+ `vrDownloadWithName()` 统一入口（3 处下载点改造）；`js/vr-download-hook.js`（新建）挂 popup/options/m3u8/downloader 四页，等记账 IPC 应答后再下载
 - 写法抄自苏哥星愿里装的 XBD/CocoCut/Imageye（三家独立趋同，见 ADR-027 / TESTING §7）

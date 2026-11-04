@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "VR File Access Probe",
+  "version": "1.0.0",
+  "description": "P0 探针：验证扩展页面能否直读 file:// 与 downloads.search 的 filename 是否为绝对路径",
+  "permissions": ["downloads", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

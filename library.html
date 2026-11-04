@@ -1,168 +1,388 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>钓鱼竿 · 媒体库</title>
-<link rel="stylesheet" href="css/library.css">
+  <meta charset="UTF-8" />
+  <title>资源库 — 苏哥的钓鱼竿</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" type="text/css" href="css/public.css" media="all" />
+  <link rel="stylesheet" type="text/css" href="css/library.css" media="all" />
+  <script src="js/library/path.js" defer></script>
+  <script src="js/library/db.js" defer></script>
+  <script src="js/library/thumbs.js" defer></script>
+  <script src="js/library/indexer.js" defer></script>
+  <script src="js/library/keyboard.js" defer></script>
+  <script src="js/library/video.js" defer></script>
+  <script src="js/library/lightbox.js" defer></script>
+  <script src="js/library/trash.js" defer></script>
+  <script src="js/library/trash-ui.js" defer></script>
+  <script src="js/library/rename.js" defer></script>
+  <script src="js/library/batch.js" defer></script>
+  <script src="js/library/ui.js" defer></script>
 </head>
-<body>
-<div id="app">
-  <aside class="sidebar">
-    <div class="brand"><div class="logo">钓</div><div>钓鱼竿<small>Media Library</small></div></div>
-    <button class="root-btn" id="rootBtn" title="选择媒体根目录">
-      <span>📁</span><span class="path" id="rootPath">选择媒体目录</span><span>⌄</span>
-    </button>
-    <div class="nav-title">资源树</div>
-    <div class="tree-search"><span>⌕</span><input id="treeSearch" placeholder="搜索平台 / 博主…" autocomplete="off"></div>
-    <div class="tree" id="tree"></div>
-    <div class="sidebar-foot">
-      <div><b id="sidebarCount">0</b> 个文件 · <b id="sidebarSize">0 B</b></div>
-      <div class="storage"><i id="storageBar"></i></div>
-      <div id="statusText">选择一个目录开始</div>
-      <button class="btn small" id="resetRoot">重置目录</button>
-      <div>索引：_index/index.json</div>
-    </div>
-  </aside>
 
-  <main>
-    <div class="topbar">
-      <div class="search"><span>⌕</span><input id="search" placeholder="搜索标题、博主、平台、路径…"><kbd>⌘ K</kbd></div>
-      <div class="actions">
-        <button class="btn" id="dedupBtn"># 查重</button>
-        <button class="btn" id="selectBtn">☑ 选择</button>
-        <button class="btn" id="rescanBtn">↻ 重新扫描</button>
-        <button class="btn primary" id="pickBtn">📁 选择目录</button>
-      </div>
+<body class="library-page">
+  <header class="lib-top">
+    <a class="brand" href="options.html#anchorLibrary" title="返回设置">
+      <span class="brand-mark" aria-hidden="true">VR</span>
+      <span class="brand-text">
+        <strong>苏哥的钓鱼竿</strong>
+        <small>本地资源库</small>
+      </span>
+    </a>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="m20 20-3.2-3.2"></path>
+      </svg>
+      <input id="libSearch" type="search" placeholder="搜索文件名、博主、路径…" autocomplete="off" aria-label="搜索资源" />
+      <kbd>/</kbd>
     </div>
 
-    <div class="hero">
-      <div>
-        <div class="kicker">MEDIA LIBRARY</div>
-        <div class="breadcrumb" id="breadcrumb">媒体库</div>
-        <h1 id="pageTitle">媒体库</h1>
-        <p id="pageSub">选择 Downloads/video-rod 后开始扫描</p>
-        <div class="sync"><i></i><span id="syncText">尚未扫描</span></div>
+    <div class="top-actions">
+      <div class="viewtoggle" role="group" aria-label="视图切换">
+        <button type="button" id="libViewGrid" class="on" data-view="grid" title="网格视图" aria-label="网格视图">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+          </svg>
+        </button>
+        <button type="button" id="libViewList" data-view="list" title="列表视图" aria-label="列表视图">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
       </div>
-      <div class="stats">
-        <div class="stat"><span class="stat-ico">📦</span><div class="stat-copy"><b id="statCount">0</b><span>素材</span></div></div>
-        <div class="stat"><span class="stat-ico">🖼️</span><div class="stat-copy"><b id="statImages">0</b><span>图片</span></div></div>
-        <div class="stat"><span class="stat-ico">🎬</span><div class="stat-copy"><b id="statVideos">0</b><span>视频</span></div></div>
-        <div class="stat"><span class="stat-ico">💾</span><div class="stat-copy"><b id="statSize">0 B</b><span>总大小</span></div></div>
-      </div>
-    </div>
-
-    <div class="filterbar">
-      <div class="type-tabs" id="typeTabs">
-        <button data-type="all" class="active">全部 <b>0</b></button>
-        <button data-type="image">图片 <b>0</b></button>
-        <button data-type="video">视频 <b>0</b></button>
-      </div>
-      <div class="chips" id="chips"></div>
-      <div class="tools">
-        <select id="sort">
-          <option value="new">最新保存</option>
-          <option value="old">最早保存</option>
-          <option value="size">文件最大</option>
-          <option value="name">标题 A-Z</option>
-        </select>
-        <div class="viewtoggle"><button data-view="grid" class="active">▦</button><button data-view="list">☰</button></div>
-      </div>
-    </div>
-
-    <div class="batchbar hidden" id="batchbar">
-      <b id="batchCount">已选 0</b>
-      <button class="btn small" id="batchAll">全选</button>
-      <button class="btn small" id="batchInvert">反选</button>
-      <button class="btn small" id="batchClear">清除</button>
-      <span class="spacer"></span>
-      <button class="btn small" id="batchMove">移动到…</button>
-      <button class="btn small danger" id="batchDelete">删除到回收站</button>
-    </div>
-    <div class="grid" id="grid"></div>
-    <div class="empty hidden" id="empty">
-      <b>还没有可显示的素材</b><br>
-      选择一个媒体目录，或点击「重新扫描」。
-    </div>
-  </main>
-</div>
-
-<div class="preview hidden" id="preview">
-  <header class="pv-head">
-    <button class="pv-back" id="pvBack">← 返回媒体库</button>
-    <div class="pv-crumb" id="pvCrumb">媒体库</div>
-    <div class="pv-tools">
-      <span class="pv-count" id="pvCount">0 / 0</span>
-      <button class="pv-btn" id="pvInfoBtn">信息 I</button>
-      <button class="pv-btn" id="pvFullBtn">全屏 F</button>
-      <button class="pv-btn" id="pvHelpBtn">? 快捷键</button>
+      <button type="button" id="libBatch" class="btn" aria-pressed="false" title="批量选择">批量</button>
+      <button type="button" id="libRefresh" class="btn">刷新</button>
+      <button type="button" id="libOptions" class="btn">设置</button>
     </div>
   </header>
-  <div class="pv-body" id="pvBody">
-    <button class="pv-arrow pv-prev" id="pvPrev" title="上一个 (↑)">‹</button>
-    <div class="pv-stage" id="pvStage">
-      <img id="pvImg" alt="">
-      <video id="pvVideo" controls playsinline></video>
-      <span class="pv-type" id="pvType">图片</span>
-    </div>
-    <button class="pv-arrow pv-next" id="pvNext" title="下一个 (↓)">›</button>
-    <aside class="pv-info" id="pvInfoPanel">
-      <div class="pv-eyebrow" id="pvEyebrow">图片</div>
-      <h2 id="pvTitle">—</h2>
-      <div class="pv-authorRow"><span class="avatar" id="pvAvatar">?</span><span id="pvAuthor"></span></div>
-      <div class="pv-meta" id="pvMeta"></div>
-      <div class="pv-path" id="pvPath"></div>
-      <div class="pv-tagRow"><b>标签</b><div class="pv-tags" id="pvTags"></div></div>
-      <div class="pv-tagAdd"><input id="pvTagInput" placeholder="添加标签…" autocomplete="off"><button class="pv-btn" id="pvTagAdd">添加</button></div>
-      <div class="pv-infoActions">
-        <button class="pv-btn" id="pvRename">✎ 重命名</button>
-        <button class="pv-btn" id="pvMove">↪ 移动</button>
-        <button class="pv-btn" id="pvReveal">📂 在文件夹中显示</button>
-        <button class="pv-btn danger" id="pvDelete">🗑 删除到回收站</button>
-        <button class="pv-btn" id="pvClose">关闭</button>
+
+  <div class="lib-body">
+    <aside class="lib-side" aria-label="资源筛选">
+      <div class="side-scroll">
+        <div class="side-group">
+          <h3>平台</h3>
+          <div id="libPlatformNav"></div>
+        </div>
+
+        <div class="side-group">
+          <h3>博主</h3>
+          <div id="libCreatorNav"></div>
+        </div>
       </div>
-      <div class="pv-shortcuts">
-        <b>键盘</b> ↑↓ 切换媒体 · ←→ 视频快退/快进、图片同专辑切换 · Space 播放/暂停 · M 静音 · F 全屏 · I 信息 · Esc 返回
+
+      <div class="side-foot">
+        <div class="root">
+          <span class="root-bar" aria-hidden="true"></span>
+          <div class="root-txt">
+            <div class="root-path" id="libRootPath">未探测</div>
+            <div class="root-meta" id="libRootMeta">在设置页点「校验落盘」</div>
+          </div>
+        </div>
+        <div class="foot-links">
+          <button type="button" class="link-btn" id="libFootOptions">索引维护 / 迁移…</button>
+          <button type="button" class="link-btn" id="libTrashOpen">回收站 <span class="foot-count" id="libTrashCount" hidden>0</span></button>
+        </div>
       </div>
     </aside>
-  </div>
-  <footer class="pv-film" id="pvFilm"></footer>
-</div>
 
-<div class="modal hidden" id="modal">
-  <div class="modalCard">
-    <h3 id="modalTitle">重命名</h3>
-    <div class="field"><label>新文件名</label><input id="modalInput" autocomplete="off"></div>
-    <div class="modalActions">
-      <button class="btn small" id="modalCancel">取消</button>
-      <button class="btn primary small" id="modalSave">保存</button>
+    <main class="lib-main">
+      <div class="lib-head">
+        <div class="crumb" id="libCrumb">
+          <span>资源库</span><i class="sep">/</i><b>全部资源</b>
+        </div>
+        <div class="title-row">
+          <h1 id="libTitle">全部资源</h1>
+          <p id="libSub">共 0 项</p>
+          <div class="head-tools">
+            <label class="field">
+              <span>排序</span>
+              <select id="libSort">
+                <option value="new">最新</option>
+                <option value="old">最旧</option>
+                <option value="name">名称</option>
+                <option value="size">大小</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>分组</span>
+              <select id="libGroup">
+                <option value="none">平铺</option>
+                <option value="date">按日期</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="lib-scroll" id="libScroll">
+        <section class="lib-overview" id="libOverview" aria-label="资源概览" hidden>
+          <div class="section-label">
+            <span>资源概览</span><i class="ln"></i>
+            <span class="hint" id="libOverviewSummary"></span>
+            <button type="button" class="link-toggle" id="libOverviewToggle" aria-expanded="false">展开</button>
+          </div>
+
+          <div class="overview-body" id="libOverviewBody">
+          <div class="kpi-row">
+            <article class="kpi">
+              <div class="kpi-head">
+                <span class="kpi-label">总文件</span>
+                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                  <rect x="4" y="4" width="12" height="14" rx="2"></rect>
+                  <path d="M8 8h4M8 12h4"></path>
+                </svg>
+              </div>
+              <div class="kpi-num"><b id="libKpiTotal">0</b><span>项</span></div>
+              <div class="kpi-foot" id="libKpiTotalFoot">—</div>
+              <div class="kpi-bar"><i id="libKpiTotalBar" style="width:100%"></i></div>
+            </article>
+
+            <article class="kpi">
+              <div class="kpi-head">
+                <span class="kpi-label">占用空间</span>
+                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                  <ellipse cx="12" cy="6" rx="7" ry="3"></ellipse>
+                  <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"></path>
+                  <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path>
+                </svg>
+              </div>
+              <div class="kpi-num"><b id="libKpiSize">0</b><span id="libKpiSizeUnit"></span></div>
+              <div class="kpi-foot" id="libKpiSizeFoot">—</div>
+              <div class="kpi-bar"><i style="width:100%"></i></div>
+            </article>
+
+            <article class="kpi">
+              <div class="kpi-head">
+                <span class="kpi-label">图片</span>
+                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2.5"></rect>
+                  <circle cx="8.5" cy="9.5" r="1.6"></circle>
+                  <path d="m4 17 5-5 4 4 3-3 4 4"></path>
+                </svg>
+              </div>
+              <div class="kpi-num"><b id="libKpiImage">0</b><span>张</span></div>
+              <div class="kpi-foot" id="libKpiImageFoot">—</div>
+              <div class="kpi-bar"><i id="libKpiImageBar" style="width:0"></i></div>
+            </article>
+
+            <article class="kpi">
+              <div class="kpi-head">
+                <span class="kpi-label">视频</span>
+                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="2.5"></rect>
+                  <path d="m10 9.5 5 2.5-5 2.5z"></path>
+                </svg>
+              </div>
+              <div class="kpi-num"><b id="libKpiVideo">0</b><span>个</span></div>
+              <div class="kpi-foot" id="libKpiVideoFoot">—</div>
+              <div class="kpi-bar"><i id="libKpiVideoBar" style="width:0"></i></div>
+            </article>
+          </div>
+
+          <div class="insight-row">
+            <section class="insight">
+              <header class="insight-head">
+                <h2>平台分布</h2>
+                <span id="libPlatMeta">—</span>
+              </header>
+              <div class="stack" id="libPlatStack" role="img" aria-label="平台分布"></div>
+              <div class="legend" id="libPlatLegend"></div>
+            </section>
+
+            <section class="insight">
+              <header class="insight-head">
+                <h2>博主产量</h2>
+                <span>Top 5</span>
+              </header>
+              <div class="bars" id="libCreatorBars"></div>
+            </section>
+          </div>
+          </div>
+        </section>
+
+        <div class="lib-toolbar">
+          <div class="lib-tabs" id="libTypeNav" role="tablist" aria-label="类型筛选"></div>
+          <label class="mobile-plat">
+            <span>平台</span>
+            <select id="libPlatformSelect" aria-label="平台筛选"></select>
+          </label>
+        </div>
+
+        <div class="active-filters" id="libActiveFilters" hidden></div>
+
+        <section class="lib-block" id="libCreatorBlock" hidden>
+          <div class="section-label">
+            <span>博主速览</span><i class="ln"></i><span class="hint">点卡片进入博主</span>
+          </div>
+          <div class="lib-creators" id="libCreators"></div>
+        </section>
+
+        <div class="lib-grid" id="libGrid"></div>
+
+        <div class="lib-list" id="libList" hidden>
+          <table class="lib-table">
+            <thead>
+              <tr>
+                <th class="c-thumb" scope="col"><span class="sr-only">预览</span></th>
+                <th class="c-name" scope="col">名称</th>
+                <th class="c-plat" scope="col">平台</th>
+                <th class="c-creator" scope="col">博主</th>
+                <th class="c-type" scope="col">类型</th>
+                <th class="c-size" scope="col">大小</th>
+                <th class="c-date" scope="col">下载时间</th>
+                <th class="c-act" scope="col"><span class="sr-only">操作</span></th>
+              </tr>
+            </thead>
+            <tbody id="libListBody"></tbody>
+          </table>
+        </div>
+
+        <div class="lib-empty" id="libEmpty" hidden>
+          <div class="empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+              <path d="M3 6h18l-2 13H5L3 6Z"></path>
+              <path d="m8 6 1-3h6l1 3"></path>
+            </svg>
+          </div>
+          <h2 id="libEmptyTitle">还没有资源</h2>
+          <p id="libEmptyText">资源库索引是空的。去设置页重建索引，或先下载一个文件。</p>
+          <div class="empty-actions">
+            <button type="button" id="libEmptyAction" class="btn primary" data-action="options">去设置页</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 批量操作条 -->
+  <div class="batch-bar" id="libBatchBar" hidden role="region" aria-label="批量操作">
+    <span class="bb-count" id="libBatchCount">已选 0 项</span>
+    <button type="button" class="bbtn" id="libBatchAll">全选</button>
+    <button type="button" class="bbtn" id="libBatchClear">取消</button>
+    <button type="button" class="bbtn danger" id="libBatchTrash" disabled>移到回收站</button>
+    <button type="button" class="bbtn primary" id="libBatchExit">退出</button>
+  </div>
+
+  <div class="lib-viewer" id="libViewer" hidden>
+    <header class="viewer-top">
+      <div class="viewer-title">
+        <strong id="libViewerTitle"></strong>
+        <span id="libViewerMeta"></span>
+      </div>
+      <span class="viewer-count" id="libViewerCount">1 / 1</span>
+      <div class="viewer-actions">
+        <button type="button" class="vbtn" id="libViewerInfoBtn" aria-pressed="true" title="信息 (i)">信息</button>
+        <button type="button" class="vbtn" id="libViewerOpen">在文件中打开</button>
+        <button type="button" class="vbtn icon" id="libViewerClose" aria-label="关闭预览">✕</button>
+      </div>
+    </header>
+
+    <div class="viewer-body">
+      <button type="button" class="viewer-nav prev" id="libViewerPrev" aria-label="上一个">‹</button>
+      <div class="viewer-stage" id="libViewerStage"></div>
+      <button type="button" class="viewer-nav next" id="libViewerNext" aria-label="下一个">›</button>
+
+      <aside class="viewer-panel" id="libViewerInfo" aria-label="文件信息">
+        <h3>文件信息</h3>
+        <dl class="facts" id="libViewerFacts"></dl>
+        <div class="panel-acts">
+          <button type="button" class="vbtn" id="libViewerCopyPath">复制路径</button>
+          <button type="button" class="vbtn" id="libViewerOpen2">在文件中打开</button>
+          <button type="button" class="vbtn danger" id="libViewerTrash">移到回收站</button>
+        </div>
+      </aside>
     </div>
-  </div>
-</div>
 
-<div class="modal hidden" id="moveModal">
-  <div class="modalCard">
-    <h3>移动到平台 / 博主</h3>
-    <div class="field"><label>平台</label>
-      <select id="movePlatform">
-        <option value="x">X / Twitter</option>
-        <option value="weibo">微博</option>
-        <option value="douyin">抖音</option>
-        <option value="xiaohongshu">小红书</option>
-        <option value="instagram">Instagram</option>
-        <option value="other">其他</option>
+    <div class="video-ctl" id="libVideoCtl" hidden>
+      <button type="button" class="vc-btn" id="libVideoPlay" aria-label="播放 / 暂停">▶</button>
+      <span class="vc-time" id="libVideoTime">0:00 / 0:00</span>
+      <input type="range" id="libVideoSeek" min="0" max="1000" value="0" step="1" aria-label="播放进度" />
+      <button type="button" class="vc-btn" id="libVideoMute" aria-label="静音">🔊</button>
+      <input type="range" id="libVideoVol" min="0" max="100" value="100" step="1" aria-label="音量" />
+      <select id="libVideoRate" aria-label="播放倍速">
+        <option value="0.5">0.5×</option>
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
       </select>
+      <label class="vc-auto"><input type="checkbox" id="libVideoAuto" checked /> 连播</label>
+      <button type="button" class="vc-btn" id="libVideoFull" aria-label="全屏">⛶</button>
     </div>
-    <div class="field"><label>博主目录</label><input id="moveAuthor" placeholder="作者(@ID)" autocomplete="off"></div>
-    <div class="modalHint">图片/视频会自动放入 images / videos；同名文件自动加序号。</div>
-    <div class="modalActions">
-      <button class="btn small" id="moveCancel">取消</button>
-      <button class="btn primary small" id="moveSave">移动</button>
+
+    <div class="image-ctl" id="libImageCtl" hidden>
+      <button type="button" class="vc-btn" id="libViewerZoomOut" aria-label="缩小">−</button>
+      <span class="vc-zoom" id="libViewerZoomVal">100%</span>
+      <button type="button" class="vc-btn" id="libViewerZoomIn" aria-label="放大">+</button>
+      <button type="button" class="vbtn" id="libViewerZoomReset">适应</button>
+    </div>
+
+    <div class="viewer-strip" id="libViewerStrip"></div>
+  </div>
+
+  <!-- 右键菜单 -->
+  <div class="ctxmenu" id="libCtxMenu" hidden role="menu">
+    <button type="button" data-act="preview" role="menuitem">预览</button>
+    <button type="button" data-act="open" role="menuitem">在文件中打开</button>
+    <button type="button" data-act="copy" role="menuitem">复制路径</button>
+    <button type="button" data-act="star" role="menuitem">加星标</button>
+    <button type="button" data-act="rename" role="menuitem">重命名…</button>
+    <div class="ctx-sep"></div>
+    <button type="button" data-act="trash" class="danger" role="menuitem">移到回收站</button>
+  </div>
+
+  <!-- 回收站抽屉 -->
+  <div class="trash-mask" id="libTrashMask" hidden></div>
+  <aside class="trash-drawer" id="libTrashDrawer" hidden aria-label="回收站">
+    <header class="trash-head">
+      <div>
+        <h2>回收站</h2>
+        <p id="libTrashMeta">—</p>
+      </div>
+      <button type="button" class="vbtn icon" id="libTrashClose" aria-label="关闭回收站">✕</button>
+    </header>
+    <div class="trash-list" id="libTrashList"></div>
+    <footer class="trash-foot">
+      <span class="trash-hint">恢复会写回原路径；彻底删除不可恢复。</span>
+      <button type="button" class="btn danger" id="libTrashEmpty">清空回收站</button>
+    </footer>
+  </aside>
+
+  <!-- 重命名弹窗 -->
+  <div class="rename-mask" id="libRenameMask" hidden>
+    <div class="rename-box" role="dialog" aria-modal="true" aria-labelledby="libRenameTitle">
+      <h3 id="libRenameTitle">重命名</h3>
+      <label class="rename-field" for="libRenameInput">文件名（目录不变，扩展名保持一致）</label>
+      <input id="libRenameInput" type="text" autocomplete="off" spellcheck="false" />
+      <p class="rename-dir" id="libRenameDir"></p>
+      <p class="rename-error" id="libRenameError" hidden></p>
+      <div class="rename-acts">
+        <button type="button" class="btn" id="libRenameCancel">取消</button>
+        <button type="button" class="btn primary" id="libRenameOk">保存</button>
+      </div>
     </div>
   </div>
-</div>
 
-<div class="toast" id="toast"></div>
-<script src="js/library.js"></script>
+  <!-- 确认框 -->
+  <div class="confirm-mask" id="libConfirmMask" hidden>
+    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="libConfirmTitle">
+      <h3 id="libConfirmTitle">确认操作</h3>
+      <p id="libConfirmText"></p>
+      <div class="confirm-acts">
+        <button type="button" class="btn" id="libConfirmCancel">取消</button>
+        <button type="button" class="btn danger" id="libConfirmOk">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="lib-toast" id="libToast" hidden></div>
 </body>
+
 </html>

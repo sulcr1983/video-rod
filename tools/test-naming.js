@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 钓鱼竿 video-rod — M0 智能起名引擎测试（tools/test-naming.js）
+ * 苏哥的钓鱼竿 video-rod — M0 智能起名引擎测试（tools/test-naming.js）
  * 跑法：node tools/test-naming.js
  * 内容：微型 DOM 解析器 + 10 个复刻真实站点结构的样本页 + TESTING.md N1-N8 用例断言。
  * 说明：页面提取选择器在 Node 里用迷你 DOM 验证；真实站点 DOM 会漂移，

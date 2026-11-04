@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 D：B站分P夹具</title>
+</head>
+<body>
+  <h1>B站分P夹具</h1>
+  <video id="v1" src="media/test.mp4" controls preload="auto" width="320"></video>
+  <script>
+    // 复刻 B站页面状态结构，供 fetchBiliParts 在 MAIN world 读取
+    window.__INITIAL_STATE__ = {
+      videoData: {
+        bvid: 'BV1FAKEFIXT',
+        title: '测试站 D：B站分P夹具',
+        pages: Array.from({ length: 12 }, (_, i) => ({
+          page: i + 1,
+          part: 'P' + (i + 1) + ' 测试分P',
+          cid: 100000 + i
+        }))
+      }
+    };
+  </script>
+</body>
+</html>

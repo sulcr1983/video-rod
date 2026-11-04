@@ -1,14 +1,16 @@
-# 🎣 钓鱼竿 Video Rod
+# 🎣 苏哥的钓鱼竿
 
-> 个人自用的浏览器媒体嗅探下载扩展：**猫抓（cat-catch）的全站嗅探内核 × Plucker 式文件管理体验 × B站/YouTube 主动抓取**。
+> 浏览器媒体嗅探下载扩展：**猫抓（cat-catch）的全站嗅探内核 × Plucker 式文件管理体验 × B站/YouTube 主动抓取**。
 >
-> 自用工具，不上架、不分发。开发者模式 Load unpacked 安装。
+> **私有仓库、本机自用**，不上架、不分发。开发者模式 Load unpacked 安装。
+>
+> **作者：Sunny** ｜ 代号 Video Rod ｜ 基于猫抓的衍生作品（GPL-3.0）；内核之外的增量见「本 fork 做了什么」。
 
 ---
 
 ## 这是什么
 
-钓鱼竿是一个 Chrome 扩展（MV3），把「网页里的视频和图片，按我想要的名字和文件夹，整整齐齐下到我电脑上」这件事做到极致：
+苏哥的钓鱼竿是一个 Chrome 扩展（MV3），把「网页里的视频和图片，按我想要的名字和文件夹，整整齐齐下到我电脑上」这件事做到极致：
 
 - 视频自动嗅探（m3u8/直链/`<video>` 标签），多档清晰度**默认自动选最高**
 - **智能起名**：文章页取文章标题、推特页取推文正文、B站/小红书带作者 `昵称(@账号)_标题`
@@ -16,8 +18,23 @@
 - **批量下载**、m3u8 碎片**自动合并**成完整 MP4
 - **网页图片批量下载**：扫 img/srcset/背景图/懒加载，滤掉小图标
 - **右键秒存**：视频/图片上右键直接下，不用开面板
-- **B站/YouTube 抓取**：B站分P/合集/大会员（零签名对抗嗅探增强）；YouTube 能抓则抓（2026 SABR/poToken 下纯扩展受限，见 docs/DECISIONS.md ADR-019）
+- **B站/YouTube 抓取**：B站分P/合集/大会员（零签名对抗嗅探增强）；**YouTube 播放器下方独立下载按钮**——1080p/4K 直选，音视频轨本地无损合并成 MP4（见 docs/YT-IMPLEMENTATION.md）
 - 快捷键 `Alt+Shift+V` 唤起面板
+
+## 本 fork 做了什么（相对上游）
+
+嗅探、m3u8/直链下载、图片批量扫描等**基础能力来自猫抓**；下面这些是本仓库自己做的增量：
+
+- **本地资源库（S0–S2）**：`平台/博主/类型` 三段中文目录、下载完成自动入库、三种迁移（预演 / 复制 / 校验 / 回滚）、索引三源（下载记录 / 快照 / FSA 全量扫描）与缺失校对。
+- **桌面端下载链路**：文件名保护（绕开 Chromium 579563）、X 推文内联下载、右键秒存与快捷键、面板浅色化。
+- **设置页重设计**：18 个平铺分区收敛为 4 组导航，重做卡片层级、响应式与深色模式。
+- **资源库浏览页**：概览 KPI / 平台分布 / 博主速览，全宽大图网格 + 真表格、筛选搜索、懒生成缩略图。
+- **查看器**：图片滚轮缩放/拖拽、信息面板、缩略图带；视频自绘控件、↑↓ 切条、←→ ±5s、Shift ±30s、空格、连播。
+- **删除与回收站**：右键/`⋯` 菜单、软删除到 `_回收站`、单条/整批恢复、彻底删除、清空、操作日志。
+- **图片悬停下载**：调研、方案 v1.2、可交互原型（实现待排期）。
+- **工程化**：文档先行 + 每步验收；8 套 CDP 自动化回归，**246 条断言**（57 / 17 / 14 / 39 / 35 / 30 / 27 / 27）。
+
+> 验收记录见 `docs/TESTING.md`；每个选择为什么这么做见 `docs/DECISIONS.md`（33 条 ADR）。
 
 ## 安装（开发者模式）
 
@@ -41,7 +58,7 @@
 ### 二、日常下一首歌 / 一个视频
 
 1. 打开有视频的网页，等它开始播放（嗅探靠浏览器真实发出的请求）
-2. 点工具栏钓鱼竿图标，或按 `Alt+Shift+V`
+2. 点工具栏苏哥的钓鱼竿图标，或按 `Alt+Shift+V`
 3. 面板列出这一页抓到的所有媒体：
    - **文件名**不满意 → 点这一行展开，在输入框里改
    - **存哪**不满意 → 点目录 chip 换（默认目录 / 最近用过 / 新建）
@@ -59,8 +76,8 @@
 
 ### 三、不想开面板，右键秒存
 
-- 在**视频画面**上右键 → 「钓鱼竿：下载这个视频」
-- 在**图片**上右键 → 「钓鱼竿：保存这张图片」
+- 在**视频画面**上右键 → 「苏哥的钓鱼竿：下载这个视频」
+- 在**图片**上右键 → 「苏哥的钓鱼竿：保存这张图片」
 
 直接落盘，名字按设置里的模板自动生成，不用开面板。
 
@@ -71,7 +88,7 @@
 
 ### 四之二、刷推特时看到视频，一键下（X 专用）
 
-推特/X 的视频推文，操作栏（点赞、转发那排）会自动多出一个钓鱼竿按钮：
+推特/X 的视频推文，操作栏（点赞、转发那排）会自动多出一个苏哥的钓鱼竿按钮：
 
 1. 点一下 → 直接下载**这条推文的最高画质**，视频和声音都在一个文件里
 2. 文件名按你的命名模板自动起（作者_标题），落在 `Downloads/video-rod/`
@@ -168,6 +185,10 @@
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | 需求规格：用户故事、功能清单（P0-P2）、非功能需求 |
 | [docs/DESIGN.md](docs/DESIGN.md) | 技术设计：架构、模块边界、数据流、集成对象 |
 | [docs/TESTING.md](docs/TESTING.md) | 测试策略：用例表、验收标准、回归清单、已知限制 |
+| [docs/LIBRARY-PLAN.md](docs/LIBRARY-PLAN.md) | 本地资源库权威方案：目录规范、数据模型、迁移、索引（S0–S2 已实现） |
+| [docs/OPTIONS-REDESIGN.md](docs/OPTIONS-REDESIGN.md) | 设置页重设计：现状审计、四组信息架构、组件规范、实施记录 |
+| [docs/FRONTEND-UI-SYSTEM.md](docs/FRONTEND-UI-SYSTEM.md) | 前端统一设计：popup + 资源库的 token、组件、全屏查看器与验收 |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | 交接文档：现状、环境、代码地图、测试基线、踩过的坑 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策记录（ADR）：每个重要选择为什么这么做 |
 | [docs/MEDIA-LIBRARY-PLAN.md](docs/MEDIA-LIBRARY-PLAN.md) | 媒体库方案：固定目录 + index.json + HTML 管理页（搜索/播放/CRUD）；含开源组件选型与大量数据管理 |
 | [docs/LIBRARY-IMPLEMENTATION.md](docs/LIBRARY-IMPLEMENTATION.md) | 媒体库 P1/P2 实施规格：目录契约、句柄、扫描、索引、预览、CRUD、验收 |
@@ -175,6 +196,8 @@
 | [deliverables/prototypes/media-library-v2.html](deliverables/prototypes/media-library-v2.html) | 媒体库原型 v2：图片/视频独立预览页、鼠标/键盘快捷方式、资源树搜索 |
 | [deliverables/prototypes/media-library-v3.html](deliverables/prototypes/media-library-v3.html) | 媒体库原型 v3：大厂后台浅色风格，图片/视频预览页与快捷键完整保留 |
 | [deliverables/prototypes/media-library-v4.html](deliverables/prototypes/media-library-v4.html) | 媒体库原型 v4（最新）：标准企业中后台 + 平台品牌色 + 彩色统计 + 标题可视化；↑/↓ 切媒体，←/→ 视频进度或同专辑图片切换 |
+| [docs/YT-FEASIBILITY.md](docs/YT-FEASIBILITY.md) | YouTube 高清可行性实测：SABR 封堵真相、客户端矩阵、n 参数归因、三条路线技术账 |
+| [docs/YT-IMPLEMENTATION.md](docs/YT-IMPLEMENTATION.md) | YouTube 下载实现记录：文件地图、数据流、三个关键设计、验证状态与已知限制 |
 | [deliverables/DELIVERABLES.md](deliverables/DELIVERABLES.md) | **产出物管理规范**：目录结构、命名、版本状态、登记表 |
 
 **目录速览**：`docs/` 工程文档 ｜ `deliverables/` 产出物（原型/评审/资产）｜ `tools/` 工具脚本 ｜ `archive/` 归档（上游猫抓遗产+作废产出物，留证不删）
@@ -191,6 +214,8 @@
 
 ## 许可证说明
 
-本项目为猫抓的衍生作品：**整体遵循 GPLv3**（与猫抓一致），保留上游 LICENSE 与署名。个人自用不分发，无额外义务；集成自 Apache-2.0 项目的代码保留其版权声明。
+本项目为猫抓的衍生作品：**整体遵循 GPLv3**（与猫抓一致），保留上游 LICENSE 与署名。**私有仓库、本机自用、不分发**，因此不产生分发义务；集成自 Apache-2.0 项目的代码保留其版权声明。
+
+> **复用策略**：私有自用、不分发，开源代码**能抄就抄**——成熟组件（PhotoSwipe、justified-layout 等）优先直接取用无需构建的成品文件，保留原版权声明；只有引入成本高于自研时才自己写。
 
 > ⚠️ `.env` 等含凭据的文件已被 `.gitignore` 屏蔽，请勿手动提交。

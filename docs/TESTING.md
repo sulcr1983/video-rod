@@ -1,8 +1,10 @@
-# 钓鱼竿 Video Rod — 测试策略与用例
+# 苏哥的钓鱼竿 — 测试策略与用例
 
-> 版本：v1.4 ｜ 日期：2026-11-04 ｜ 状态：已确认
-> v1.4 变更（2026-11-04）：§8 中 M9/M10 的「待办：真实站点实测」按实际结果回填关闭；待办状态统一迁至 `docs/BACKLOG.md`（唯一真源），本文档只留历史快照与用例。
-> v1.3 变更：M7 浅色重设计全量回归记录 + 3 条新测试环境限制（域名映射端口/flex item z-index/CDP 懒帧）。
+> 版本：v1.9（合并版）｜ 日期：2026-11-04 ｜ 状态：已确认
+> **本文件由两条开发线合并**：本地线 v1.4（2026-11-04）与远端线 v1.8（2026-10-25）。用例与验收记录一条不删，远端章节以「附」开头、编号自成体系。
+> v1.9 变更（2026-11-04）：合并两条线；本地线 §8–§10 与远端线 §8–§26 并存。
+> v1.4 变更（本地线）：§8 中 M9/M10 的「待办：真实站点实测」按实际结果回填关闭；待办状态统一迁至 `docs/BACKLOG.md`（唯一真源）。
+> v1.8 变更（远端线）：I6 图集模式 A（§26；§24/§25 编号已被 I5 与发现度占用）；基线 21 套 / 614 条断言。
 > 原则：小项目不搞重型测试框架，**冒烟 + 关键路径 + 回归清单**三件套，每个用例都是大白话可执行的。
 
 ---
@@ -50,7 +52,7 @@
 | U4 | 目录 chip | 可改目录、有最近目录、可新建 |
 | U5 | 清晰度下拉 | 默认「自动（最高）」，可手动改 |
 | U6 | B站分P卡 | 「分P ×N」点击展开/收起，可逐个勾选 |
-| U7 | 右键菜单 | 网页区域右键出「钓鱼竿下载这个视频」，触发下载 |
+| U7 | 右键菜单 | 网页区域右键出「苏哥的钓鱼竿下载这个视频」，触发下载 |
 | U8 | 空状态 | 无媒体页面面板显示友好空态 |
 | U9 | 标签切换 | 当前页/其他页/媒体控制切换后列表与底栏不串位 |
 | U10 | 批量命名同名 | 多条套同一模板时自动 `_01`/`_02`，不覆盖 |
@@ -231,7 +233,7 @@
 
 ### 新坑（复现测试必读）
 
-1. **星愿的钓鱼竿扩展 ID = `bilfgmaaplmlfgpmjfhdaillmnonjlbj`**（手动「加载已解压」，location 4，在 `Default/Secure Preferences` 里查——`Default/Preferences` 的 extensions.settings 是空的！）；多扩展环境 `find_ext_id` 会误匹配，必须按精确 ID 查 SW
+1. **星愿里的苏哥的钓鱼竿扩展 ID = `bilfgmaaplmlfgpmjfhdaillmnonjlbj`**（手动「加载已解压」，location 4，在 `Default/Secure Preferences` 里查——`Default/Preferences` 的 extensions.settings 是空的！）；多扩展环境 `find_ext_id` 会误匹配，必须按精确 ID 查 SW
 2. **苏哥的浏览器下载目录 = `E:/personal/Downloads`**（不是 C 盘 Users 下）
 3. **blob:/data: 下载的 IPC 记账赛跑**：不走网络的下载 onDeterminingFilename 几乎立即触发，popup 页 fire-and-forget 式 sendMessage 记账必输 → 必须等 SW 记账应答后再发起下载（hook v2 的核心修正）
 4. **X 推文页懒加载**：新标签页打开后 ~10-15s article/video 才渲染，且要 `window.scrollBy` 滚动触发 video 懒加载，`.vr-xbtn` 才会注入；复用旧标签页 + Page.navigate 可能卡在 X 错误页（"Something went wrong"），必须新建标签页
@@ -517,3 +519,889 @@
 ### 10.12 媒体库逐按钮全量（lib_full_test）
 
 完整记录见 `docs/LIBRARY-FULL-TEST.md`。实测 27 项：搜索、平台筛选、类型 tab、排序、网格/列表、预览/键盘、标签、重扫、设置均通过；`_index` 27 条、`hashes.json` 27 条、`thumbs/` 12 张。全屏按钮在 CDP trusted click 下未进入（需真实点击复验）；`#pickBtn/#rootBtn` 原生 picker 与 `#resetRoot` 未在自动验收中执行。
+
+---
+
+## 附：远端线验收记录（2026-10-24 ~ 10-25，章节编号自成体系）
+
+> 以下是另一台电脑那条线（I1–I6 图片能力 / YouTube 下载 / 资源库重构）的验收记录，章节号与上方不连续，勿混用。
+
+7. 改扩展代码后星愿里重载：`chrome://extensions` → 找「苏哥的钓鱼竿」卡片 → `#dev-reload-button`（shadow DOM 里，JS `el.click()` 可靠）；重载后 SW 里 `typeof vrDownloadWithName === 'function'` 可验证新代码上线
+
+---
+
+## 8. 本地资源库原型 v1.3 验收（2026-10-24）
+
+> 对象：`deliverables/prototypes/library-prototype-v1.html` v1.3（方案见 `docs/LIBRARY-PLAN.md` v1.3）
+> 方式：CDP 驱动本机 Chrome 打开 `file://` 原型，`Runtime.evaluate` 执行断言 + 收集 `Runtime.exceptionThrown` / `Log.entryAdded`
+> 判定：**所有断言 PASS 且控制台 0 error/warning** 才算通过；截图另存 `deliverables/assets/`
+
+### 8.1 断言分组（对应 LIBRARY-PLAN §9 验收 15–19）
+
+| 组 | 覆盖 | 关键断言 |
+|---|---|---|
+| A 基础 | 渲染与数据 | 27 张卡片、初始 5 星标、标签下拉动态生成 |
+| B 星标 | 四入口一致 | 卡片按钮、列表行、右键菜单、`F` 键；点星标不误开灯箱 |
+| C 只看星标 | 叠加筛选 | 卡片数 == 星标数；按钮高亮；关闭后恢复全量 |
+| D 标签筛选 | 动态集合 | 筛选后全部命中该标签；与星标/搜索互不重置 |
+| E 键盘导航 | `J/K/Enter/F` | J/K 只高亮不打开；Enter 打开高亮项；F 切换星标；输入框内不触发 |
+| F 灯箱缩略图带 | 同步 | 数量 == 图片数；当前项唯一高亮；点第 N 张后计数/主图/信息栏同步 |
+| G 右键菜单 | 五项 + 星标 | 菜单出现、含"星标"项、Esc 关闭 |
+| H 进度条气泡 | 时间换算 | 气泡出现、`mm:ss` 格式、不改变播放位置 |
+| I 视频回归 | 自绘控件 | ↓ 切换、计数格式正确、Esc 关闭（防原生 controls 回归） |
+
+### 8.2 已知限制（测试侧）
+
+1. 视频样本走公网（MDN CC0，5.055 秒），首次加载可能需数秒——断言前先轮询 `readyState >= 1 && duration > 0`，最多等 30 秒
+2. 图片样本走 `trae-api-cn.mchost.guru` 文生图接口，弱网会出现灰块（原型已有裂图兜底，不算失败）
+3. 原型是单文件 `file://` 页面，与真实扩展页面的 CSP/权限行为不同——**§4.4 的 P0 探针不能由本测试替代**
+4. **浏览器进程跑久了媒体管道会卡死**：表现为 `<video>` `networkState=2`、`readyState=0`、无 `error`，等待 30 秒也不恢复；本地文件与公网 URL 都一样卡。**重启浏览器即恢复**（不是产品缺陷，也不是网络问题）。同时 `Page.captureScreenshot` 也可能超时，同样重启解决。正常情况下视频约 10 秒内到 `readyState=4`
+
+### 8.3 执行结果（2026-10-24）
+
+- [x] A–I 全组跑通：**42/42 通过**，控制台 **0 error / 0 warning**
+- 脚本：`tools/cdp-library-test.py`（端口用 `CDP` 环境变量覆盖，默认 `http://127.0.0.1:9333`）
+- 截图：`deliverables/assets/library-v13-grid.png`、`library-v13-lightbox.png`、`library-v13-video.png`
+- 环境：Chrome 155 + profile `.work/profiles/chrome-prototype`，视口 1440×900
+- 首轮 2 项失败的根因是**测试脚本自身**，非产品缺陷：
+  - S32 右键菜单：dispatch 前未清理上次菜单状态、未加 `cancelable:true`、未等一帧 → 已修
+  - S38 时间气泡：`mousemove` 监听绑在 `#vSeek`（input）上，脚本却 dispatch 到父容器 `.vseek` → 已改为 dispatch 到 input
+
+---
+
+## 9. P0 探针实测记录（2026-10-24，全部通过）
+
+> 对应 LIBRARY-PLAN §13.7。对象：`tools/probe-file-access/`（最小 MV3 扩展）。
+> 目的：决定资源库读取走 `file://` 直读还是退化为 FSA。
+
+### 9.1 环境
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147.0.7727.15（`C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe`） |
+| 启动参数 | `--remote-debugging-port=9341 --user-data-dir=...\profiles\cft-147-probe --load-extension=...\tools\probe-file-access --disable-extensions-except=...` |
+| 扩展 ID | `bjfplhnnaanfpgioicjlnenplcpdblnm` |
+| 测试文件 | `.work\media\probe\probe.jpg`（3803 B）、`probe.mp4`（1,128,375 B，MDN CC0，5.055s） |
+| 文件访问开关 | `chrome.extension.isAllowedFileSchemeAccess() === true` |
+
+### 9.2 结果
+
+| # | 探测 | 结果 | 实测值 |
+|---|---|---|---|
+| 1 | `<img src="file:///E:/test/_vr-probe-media/probe.jpg">` | ✅ 通过 | `naturalWidth=320`、`naturalHeight=200` |
+| 2 | `<video src="file:///.../probe.mp4">` 播放 + seek | ✅ 通过 | `readyState=4`、`duration=5.055`；`currentTime` 设 2.0 → 读回 2.0 |
+| 3 | `chrome.downloads.search({limit:5})` | ✅ 通过 | `filename="D:\Users\liq21\Downloads\vr-probe-record.txt"`（绝对路径），`exists=true` |
+
+**总判定：PASS（3/3）**
+
+### 9.3 新坑（复现测试必读）
+
+1. **正式版 Chrome 137+ 移除了 `--load-extension`**：Chrome 155 上加 `--load-extension` 无效，加
+   `--disable-features=DisableLoadExtensionCommandLineSwitch` 也无效 → 命令行加载扩展只能改用 **Chrome for Testing**。
+   日常使用仍走 `chrome://extensions` → 开发者模式 → 加载已解压。
+2. **`chrome://extensions-internals` 可读扩展真实 ID**：比 `Preferences` / `Secure Preferences` 更可靠（新版 Chrome 那两个文件里已查不到 unpacked 扩展）。
+3. **unpacked 扩展 ID 不等于路径 SHA256 推算值**：实测推算出的两个候选 ID 都是错误页，必须以 `extensions-internals` 里的 `path` 为准。
+4. **探针造的下载记录会落在 Chrome 默认下载目录**（本机为 `D:\Users\liq21\Downloads`），测试后需手动清理。
+5. **Chrome for Testing 默认允许文件访问**（`isAllowedFileSchemeAccess=true`），正式版默认关闭——不能把探针环境结论直接当成"正式版开箱即用"。
+6. **临时目录已规范化**（2026-10-24）：本节当初的 `E:\test\_vr-probe-ct` 与 `E:\test\_vr-probe-media`
+   已归入项目内的 `.work/profiles/cft-147-probe` 与 `.work/media/probe`（`.work/` 不进 git、可整体删除）。
+   仓库外不再保留本项目文件，规则见 `deliverables/DELIVERABLES.md` §1.1。
+
+---
+
+## 10. S1a 三段中文目录验收（2026-10-24，17/17 通过）
+
+> 对应 LIBRARY-PLAN §13.9 的 S1a：`path.js` + 下载落位 + 设置页「资源库」分区。
+
+### 10.1 环境
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147（`--load-extension=E:\test\video-rod`，profile `.work/profiles/ext-test`） |
+| 测试页 | `http://127.0.0.1:18080/index.html`（`test-site` 起 `python -m http.server`，视频夹具在 `test-site/media/`） |
+| 下载根目录 | `D:\Users\liq21\Downloads`（由「校验落盘」实测得出，非猜测） |
+| 脚本 | `tools/test-path.js`（48 条单测）、`tools/cdp-s1a-test.py`（17 条端到端） |
+
+### 10.2 结果
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| 单测 | 平台识别 / 类型推断 / 博主段 / 目录拼装 / 长度保护 / file:// 编码 | **48/48** |
+| A 扩展 | 加载成功、SW 就绪 | 1/1 |
+| B 设置页 | 分区存在、`VRSettings` 挂载、导航入口、子目录默认值、迁移按钮禁用、**校验落盘通过**、根目录显示 | 7/7 |
+| C 落位 | 嗅探卡片、勾选、产生下载、**三段中文目录**、下载完成 | 6/6 |
+| D 控制台 | 无 error / exception | 1/1 |
+
+**实际落盘路径**：
+
+```
+D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4
+└──── 下载根 ────┘└─ 子目录 ─┘└── 平台 ──┘└── 博主 ──┘└类型┘
+```
+
+### 10.3 已知点
+
+1. **真机只测了 web 平台**：本地测试站域名是 `127.0.0.1`，落到「其他网页/127.0.0.1」。B站/小红书/X/YouTube 的目录拼装由 `tools/test-path.js` 单测覆盖（4 个平台各有断言），未用域名映射做真机验证。
+2. **「校验落盘」会留一个空目录**：`video-rod/_verify/` 里的文件已用 `downloads.removeFile` 删除，但目录本身保留。索引阶段需忽略 `_` 开头目录（与 `_回收站` 同一规则）。
+3. **单卡下载按钮是 SVG**：CDP 合成点击不稳定，端到端测试改用「勾选 + 批量下载」入口，两条路径最终都走 `vrFullPath`，落位逻辑一致。
+4. **FSA 拿不到绝对路径**：设置页「选择文件夹并授权」只能存句柄，自定义目录的完整路径要手填；「校验落盘」反推的才是真实路径。
+
+---
+
+## 11. 图片下载自动入库验收（2026-10-24，14/14 通过）
+
+> 对应 IMAGE-AUTO-INDEX-RESEARCH 的「预登记 + 完成确认」链路：`js/library/db.js`（IDB 索引）
+> + `js/library/sw-library.js`（SW 侧记账与落库）+ `vrQueueFilename` 透传 meta + options 索引状态 UI。
+
+### 11.1 环境
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147，**全新 profile** `.work/profiles/ext-test2` / `ext-test3`，调试端口 **9343 / 9344** |
+| 测试页 | `http://127.0.0.1:18080/index.html`（`test-site` + `python -m http.server 18080`） |
+| 下载根目录 | `D:\Users\liq21\Downloads\video-rod` |
+| 脚本 | `tools/cdp-index-test.py`（`VR_CDP=http://127.0.0.1:9344`） |
+| 单测 | `tools/test-path.js` **57/57**（新增 9 条 `parseRelPath` 往返断言） |
+| 稳定性 | 连跑 **3 轮全绿**（`ext-test2` 首次含 uniquify 改名场景；`ext-test3` 复跑两轮干净落盘） |
+
+### 11.2 结果
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A 准备 | 扩展加载、`vrLib.clear` 后 count=0 | 2/2 |
+| B 嗅探 | popup 出现媒体卡片 | 1/1 |
+| C 入库 | 下载完成 → 索引出现条目；relPath 含三段目录、platform=web、平台名「其他网页」、type=video、size>0、absPath 非空、fileName 非空、count=1 | 9/9 |
+| C UI | `vrLib.added` 广播后设置页「已入库 1 条」+ 最近入库含该 relPath（无需手动刷新） | 1/1 |
+| D 控制台 | 无 error / exception | 1/1 |
+
+**入库实拍**（`chrome.downloads.onChanged → complete` 后由 SW 落 IDB）：
+
+```json
+{"relPath":"video-rod/其他网页/127.0.0.1/视频/test2 (1).mp4","platform":"web",
+ "creatorFull":"127.0.0.1","type":"video","size":1128375,"mime":"video/mp4"}
+```
+
+### 11.3 本轮踩到并解决的坑
+
+1. **SW 脚本缓存**：旧 profile（`.work/profiles/ext-test`）上运行的仍是缓存版 background —— `VRDB`/`VRLib` undefined、`vrQueueFilename.length=3`（旧签名）。
+   `chrome://serviceworker-internals` 重注册、扩展重载均无效；**换全新 profile** 后立刻正常（`length=4`、`VRDB`/`VRLib` = object）。
+   → **改 SW 引入的 importScripts 列表后，测试必须用新 profile**。
+2. **运行期 `importScripts` 不可补救**：SW 已安装后再调 `importScripts()` 直接抛 `importScripts() of new scripts after service worker installation is not allowed`。
+   所以 `background.js` 顶部那些 try 补载只对「首次求值已包含」的场景兜底，不能指望热补。
+3. **`uniquify` 改名让相对路径算不出来**：`test2.mp4` 已存在 → 实际落盘 `test2 (1).mp4`，而预登记 meta 里的文件名是 `test2.mp4`。
+   兜底逻辑：`detectedRoot` 缺失或前缀不匹配时，用「预登记 meta 的目录 + 实际 absPath 文件名」拼接相对路径——本轮 C2 就是用这条路径通过的。
+4. **只认根目录内的下载**：`onChanged` 里算不出相对路径的下载直接忽略；反之落在 `video-rod` 根目录内、即使没预登记的也会收录（与 S2 全量扫描口径一致）。日常浏览器下载落在下载目录根部，不会被吸进资源库。
+
+### 11.4 尚未覆盖
+
+1. ~~**图片/网址类下载未真机验证**~~ → ✅ **已覆盖**：图片线 I1–I5 已落地，`cdp-image-test.py` 等 5 套覆盖单张/批量/面板/设置/发现度。
+2. ~~**缩略图未生成**~~ → ✅ **已做**：`js/library/thumbs.js` 已上线（页面侧生成，SW 无 DOM）。
+3. **SW 休眠恢复**：`chrome.storage.session` 存预登记表，理论上跨 SW 重启不丢；本轮 30 秒内完成下载，未构造「下载中途 SW 被杀」的极端场景。
+4. **并发写入**：本次只有单条下载，多文件批量入库的 IDB 事务并发未压测。
+
+### 11.5 对抗性复核加固（同轮补的两处）
+
+| 隐患 | 触发条件 | 处理 |
+|---|---|---|
+| IDB 连接泄漏 / 版本升级被 blocked | 每次读写都 `indexedDB.open` 一条新连接，SW 长跑会累积；将来升 v2 会被老连接卡住 | `db.js` 缓存单条连接，`onversionchange` 主动关闭并置空 |
+| 重下同名文件丢星标/标签 | `putFiles` 是覆盖写，`starred:0 / tags:[]` 会把用户之前标的星冲掉 | `sw-library.js` 落库前 `getFile(rel)` 读旧记录，保留非空 `starred`/`tags` |
+| 未知 `vrLib.*` 动作无应答 | 消息前缀匹配上但 `handleMessage` 返回 false，调用方回调永不触发 | 统一回 `LIB_E_ACTION` 错误应答，并把预登记 key 按命中键删除（`url` / `finalUrl` 分别记账） |
+
+---
+
+## 12. S1b 迁移验收（2026-10-24，39/39 通过）
+
+> 对应 LIBRARY-PLAN §13.10：`js/library/migrate.js`（引擎）+ `js/library/migrate-ui.js`（设置页面板）。
+> 三种形态：改子目录名 / 换根（A↔B）/ 整理旧文件；统一 dry-run → 复制 → 校验 → 删源 → 日志 → 回滚。
+
+### 12.1 环境与测试手法
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147，全新 profile `.work/profiles/ext-test4`，调试端口 **9345** |
+| 脚本 | `tools/cdp-migrate-test.py`（`VR_CDP=http://127.0.0.1:9345`） |
+| 目录来源 | **OPFS 句柄注入**：`navigator.storage.getDirectory()` 造真实 FSA 目录树，直接把句柄喂给 `VRMigrate` |
+| 为什么这样做 | `showDirectoryPicker()` 是原生选择器，CDP 点不了；OPFS 走的是同一套 `createWritable` / `getFile` / `removeEntry` 代码路径 |
+| 夹具 | `sub/clip.mp4`（2MB+123B）、`pic.jpg`（300KB+7B）、`note.part`、`readme.txt`、`_migration/log.json` |
+
+### 12.2 结果（39 条）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A 准备 | 扩展加载、VRMigrate/VRDB/VRSettings 已挂载 | 2/2 |
+| B 预演 | 只列媒体文件、2 条可迁移、跳过/冲突/阻断为 0、总字节正确、**预演不改动文件** | 5/5 |
+| C 执行 | 完成 2 条、未中止无失败、目标结构/大小一致、源媒体清空、非媒体与私有目录不动 | 6/6 |
+| D 回滚 | 回滚成功、源复原、目标清空 | 3/3 |
+| E 冲突 | 同名同大小 → skip；同名不同大小 → conflict；逐条动作正确 | 2/2 |
+| F 改名 | 预演 1 条、目标路径正确、执行完成、新目录就位、旧目录清理、**索引 relPath 同步**、星标/标签保留 | 7/7 |
+| G 整理 | 1 条可迁移（txt 不收）、三段路径正确、执行完成、文件落位、源删且非媒体保留 | 5/5 |
+| H 校验 | 同文件通过、内容不同被拒、截断被拒 | 3/3 |
+| I 面板 | 按钮可用、面板展开、三种方式、未预演禁用执行、缺目录给引导文案 | 5/5 |
+| J 控制台 | 无 error / exception | 1/1 |
+
+### 12.3 本轮修掉的两个真 bug
+
+1. **换根被误判成「路径未变」**：`classify()` 原本只看 `from === to` 就 skip。换根时两边相对路径本来就相同，导致整盘跳过（首轮 B2 得到 move=0 / skip=2）。
+   修法：只有**同一个根**（`srcHandle === dstHandle`）时 `from === to` 才算路径未变。整理旧文件仍走同根判定。
+2. **测试辅助函数 `exists()` 只查文件**：查 `_migration` 目录时永远 false（C6 假失败）。改为先 `getFileHandle` 再 `getDirectoryHandle`。属测试缺陷，非产品缺陷。
+
+### 12.4 回归
+
+| 套件 | 结果 |
+|---|---|
+| `tools/test-path.js` | **57/57** |
+| `tools/cdp-s1a-test.py` | **17/17**（B5 断言从「迁移按钮禁用」改为「已启用」） |
+| `tools/cdp-index-test.py` | **14/14** |
+| `tools/cdp-migrate-test.py` | **39/39** |
+
+### 12.5 尚未覆盖 / 已知边界
+
+1. **原生目录选择器没走自动化**：`showDirectoryPicker()` 的授权弹窗只能人点。引擎与 IO 已用 OPFS 全覆盖，剩下的是「拿句柄」这一步。
+2. **失败中止分支未构造真实场景**：配额不足 / 文件被占用无法在 OPFS 里稳定复现，靠代码路径保证「失败不删源」；`aborted` 分支只有设计保证。
+3. **深度校验（SHA-256）未跑**：`deepVerify` 开关存在但测试未开（大文件读两遍成本高）。
+4. **索引 absPath 依赖 `detectedRoot`**：没跑过「校验落盘」的 profile 里，迁移只更新 relPath，absPath 保留原值等 S2 校对。
+5. **改子目录名会自动改设置里的 `subdir`**（仅 UI 层）；引擎本身不改设置，避免测试互相污染。
+
+---
+
+## 13. S2 索引服务验收（2026-10-24，35/35 通过）
+
+### 13.1 环境与测试手法
+
+| 项 | 值 |
+|---|---|
+| 浏览器 | Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346） |
+| 测试站 | `python -m http.server 18080`（`test-site/`） |
+| 句柄来源 | **OPFS** `navigator.storage.getDirectory()` 造树，`VRIndex.setRoot(handle, 'D:/DL/idx-root', 'video-rod')` 注入（同 §12 思路，绕开原生目录选择器） |
+| downloads 源 | 真实下载 `http://127.0.0.1:18080/media/test.mp4` → `video-rod/其他网页/127.0.0.1/视频/idx-dl.mp4`；跑完 `removeFile` + `erase` |
+| 命令 | `VR_CDP=http://127.0.0.1:9346 python tools/cdp-indexer-test.py` |
+
+OPFS 树：`B站/影视飓风(@946974)/视频/a.mp4`、`…/图片/p.jpg`、`其他网页/site/音频/s.mp3`，外加 `readme.txt`、`_verify/x.mp4`、`_library/index-20260101.json`、`part.mp4.part`（均应被跳过）。
+
+### 13.2 结果（35 条）
+
+| 组 | 覆盖 | 通过 |
+|---|---|---|
+| A 模块/根绑定 | 模块加载、`setRoot` 返回 absRoot+prefix | 4/4 |
+| B 全量扫描 | 3 个媒体文件、跳过私有/临时目录、星标标签保留、absPath 重算、元数据反解、state=ok | 6/6 |
+| C 快照 | 命名 `index-YYYYMMDD.json`、version/count/subdir、含全部条目、清库后恢复 3 条、星标标签保留、absPath 重算 | 7/7 |
+| D 缺失语义 | 扫描 2 条/标缺失 2 条、条目不删（总数 4）、状态正确、`reconcile` 命中 2 个缺失、不删条目 | 5/5 |
+| E 设置页 | 三个按钮存在、重建有结果、写快照给出路径、状态行显示已入库 | 4/4 |
+| F 无句柄降级 | full/snapshot 均报 `LIB_E_NO_PERM`，downloads 仍可用 | 3/3 |
+| G downloads 源 | 真实下载→清库→重建：条目出现、relPath 带 `video-rod/` 前缀、absPath 用下载真名、platform/type 正确、size>0 | 5/5 |
+| H 控制台 | 无 error / exception | 1/1 |
+
+### 13.3 本轮修掉的真 bug
+
+1. **`reconcile()` 把整个索引误标 missing**：索引 key 带 `subdir` 前缀（`video-rod/…`），而 FSA 句柄指向资源库根，直接拿 `relPath` 去 `getFile()` 必然找不到。修法：先 `stripPrefix(relPath, prefix)` 再查。首轮 D4 把 4 条全标 missing 暴露了它。
+2. **测试手法坑（非产品 bug）**：用 `data:text/plain` 发下载，Chrome 会按 MIME 把 `.mp4` 改成 `.txt`，被媒体过滤掉 → downloads 源测出 0 条。改用测试站的 `media/test.mp4` 后正常。
+
+### 13.4 回归
+
+| 套件 | 结果 |
+|---|---|
+| `tools/test-path.js` | **57/57** |
+| `tools/cdp-s1a-test.py` | **17/17** |
+| `tools/cdp-index-test.py` | **14/14** |
+| `tools/cdp-migrate-test.py` | **39/39** |
+| `tools/cdp-indexer-test.py` | **35/35** |
+
+### 13.5 尚未覆盖 / 已知边界
+
+1. **原生目录选择器仍未自动化**：只验证了 OPFS 句柄注入，「用户点选目录拿句柄」这一步靠手动。
+2. **1k 文件首屏性能未测**：S2 只测正确性；「1k 文件 < 2s」要等 S3 页面出来才有真实首屏。
+3. **快照只保留 7 份的清理分支未单独断言**（代码路径简单，未构造 8 份）。
+4. **downloads 上限 5000 的 `truncated` 分支未构造**（需要 5000 条下载记录）。
+5. **B 模式（custom）的 downloads 源不可用**：新下载仍落系统下载目录，要等 `archive.js`；S2 只保证 A 模式（默认）可用。
+
+---
+
+## 14. 设置页重设计验收（2026-10-24）
+
+### 14.1 环境与手法
+
+Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），`options.html` 直接加载（`Network.setCacheDisabled`）；结构断言 + 交互冒烟 + 既有回归，不依赖截图比对。
+
+### 14.2 结构与布局
+
+| 项 | 结果 |
+|---|---|
+| 分区 / 导航项 | 18 / 18 |
+| 标题层级 | 1 个 `h1`（页面）+ 18 个 `h2.optionsTitle` |
+| 重复 ID | **0**（原 `allDisable/allEnable` ×4 已改 `data-all`） |
+| 横向溢出 | 1440px：`scrollWidth 1430`；900px：`890` → 均无溢出 |
+| 移动导航 | <980px 侧栏变顶部横向 chips，滚动条隐藏 |
+| 关于分区 | 4 张卡片（项目 / 上游与许可 / 本 fork 增量 / 开发手记）+ 4 个数据块；版本 `苏哥的钓鱼竿 v2.7.2.1`、作者 chip 正常 |
+| 控制台 | 0 error / exception |
+
+### 14.3 交互冒烟
+
+| 项 | 结果 |
+|---|---|
+| 动态表格 | `#extList` 33→34 行；输入 `zzztest` 写入 `storage.sync`；删除回到 33 行 |
+| 一键禁用/启用 | `data-all=0` 全部关闭、`data-all=1` 全部开启 |
+| 导航高亮 | 资源库 → 后缀 → 关于；页尾落在「关于」 |
+| i18n / 版本 | 导航「后缀」等文案正常；`苏哥的钓鱼竿 v2.7.2.1` |
+| 保存提示 | `storage.sync` 变更后出现「已保存」轻提示（不影响字段逻辑） |
+
+### 14.4 回归
+
+| 套件 | 结果 |
+|---|---|
+| `tools/cdp-s1a-test.py` | **17/17** |
+| `tools/cdp-indexer-test.py` | **35/35** |
+| `tools/cdp-index-test.py` | **14/14** |
+| `tools/cdp-migrate-test.py` | **39/39** |
+
+### 14.5 未覆盖
+
+1. 未跑 axe / 真实屏幕阅读器；只验证了结构、aria 注入、键盘焦点。
+2. 深色模式只做了 token 设计与截图，未逐项测对比度。
+3. 表格在 <640px 仍横向滚动（列多，堆叠会丢语义），属有意取舍。
+4. `lang="zh-CN"` 固定，i18n 切语言后不同步（原页面为 `en`，同样问题）。
+
+
+---
+
+## 15. popup 与资源库统一重设计验收（2026-10-24）
+
+### 15.1 环境
+
+Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），测试站 18080；资源库用 6 条种子数据（视频/图片/音频/两平台/星标/缺失）验证。
+
+### 15.2 popup
+
+| 项 | 结果 |
+|---|---|
+| 定宽 | 400px，无横向滚动 |
+| 主色 | 强调蓝 `#1a73e8`；批量下载按钮蓝底白字；筛选胶囊 chip |
+| 控件 | 勾选 17px、图标按钮 30px、`:focus-visible` 蓝环 |
+| M1 冒烟 | `errors: []`；卡片 1 张（图片夹具页）、设置视图开合、批量命名、全选正常 |
+| M2 下载 | 两条下载完成、去重生效、`errors: []` |
+
+> 视频页 `Page.captureScreenshot` 会卡死（CDP/媒体合成限制），不代表产品问题；截图改用图片夹具页。
+
+### 15.3 资源库
+
+| 项 | 结果 |
+|---|---|
+| 新增文件 | `library.html`、`css/library.css`、`js/library/ui.js`、`js/library/thumbs.js` |
+| 布局 | 全宽；侧栏 208px；卡片 `minmax(320px,1fr)`、4:3 缩略图；1280px 三列 |
+| 浏览 | 6 条渲染、类型/平台/星标筛选、搜索、排序、网格/列表切换 |
+| 查看器 | 单击打开、`←/→` 翻页、`Esc` 关闭、底部信息 +「在文件中打开」 |
+| 响应式 | 900px / 860px 无横向溢出；860px 侧栏折叠为顶部筛选 chips |
+| 端到端 | `tools/cdp-library-page-test.py` **22/22**，控制台 0 error |
+
+### 15.4 回归
+
+| 套件 | 结果 |
+|---|---|
+| `tools/cdp-s1a-test.py` | **17/17** |
+| `tools/cdp-index-test.py` | **14/14** |
+| `tools/cdp-indexer-test.py` | **35/35** |
+| `tools/cdp-m1-test.py` | `errors: []`（报告型） |
+| `tools/cdp-m2-test.py` | 2 条下载 + 去重，`errors: []` |
+
+### 15.5 未覆盖 / 边界
+
+1. ~~查看器视频暂用原生 `controls`；S4 再换自绘控件~~ → ✅ **已做**：`video.js` 自绘控件（进度/音量/倍速/全屏/连播）+ `keyboard.js`（↑↓ 切条、←→ ±5s、Shift ±30s、空格）已上线。
+2. 缩略图/预览依赖「允许访问文件网址」，正式 Chrome 需手动开启。
+3. 资源库尚未做 1k 条性能压测（缩略图懒加载已按 IntersectionObserver 实现）。
+4. 源文件被移动/删除时只标灰，重新定位留 S5。
+
+---
+
+## 16. 资源库 v2（概览可视化 + 表格）验收（2026-10-24）
+
+### 16.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 资源概览 | 4 个 KPI（总文件 / 占用空间 / 图片 / 视频），大号数字 + 占比条 + 脚注 |
+| 平台分布 | 8px 堆叠条 + 双列图例（色点 / 名称 / 数量 / 占比） |
+| 博主产量 | Top 5 横向条形，按最大值归一 |
+| 博主速览 | 头像（平台色渐变）+ 名称/ID/图片·视频计数 + 单封面或 2×2 拼图 |
+| 列表视图 | 真表格：8 列表头、数字列右对齐、等宽数字、`.lib-row` 行可点 |
+| 分组 | 「平铺 / 按日期」；网格用 `.lib-day` 分隔，表格用 `.day-row` |
+| 响应式 | ≤899px 侧栏折叠为横向筛选条（平台 + 博主 chips），`.mobile-plat` 兜底 |
+| 视觉 | 平台色点/分布条；卡片占位大图标；细滚动条；深色模式 |
+
+### 16.2 端到端验收（`tools/cdp-library-page-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 扩展加载、页面模块、种子 6 条 | 3/3 |
+| B | 网格 6 卡、空态隐藏、总数 742 MB、类型计数、**KPI 6/742/2/3**、**分布 4 段 + 4 图例**、**博主速览 5 卡**、**Top5 条形**、**表格 8 列**、**表头文案**、**按日期分组** | 11/11 |
+| C–G | 类型/平台/星标筛选、搜索、按大小排序 | 5/5 |
+| H | 列表 6 行、点行开查看器、翻页、Esc 关闭 | 4/4 |
+| I | 无结果空态、清空恢复 | 2/2 |
+| K | 900px 无横向溢出、860px 侧栏折叠为横条 | 2/2 |
+| L | 控制台 0 error | 1/1 |
+
+合计 **29/29**；其中 B5–B11、K2 为本轮新增/改写。
+
+### 16.3 截图
+
+`deliverables/assets/`：`library-page-grid.png`（1440 默认，概览收起）、`library-page-overview.png`（展开概览）、`library-page-cards.png`（大卡）、`library-page-table.png`（表格）、`library-page-900.png`（860 横向筛选条）、`library-page-dark.png`（深色）；查看器见 §17.3。
+
+### 16.4 边界与已知取舍
+
+1. 概览统计是**索引全局**，不随筛选变化（区块右侧标注「索引全局」）；筛选后的数量看标题下方。
+2. 表格列在窄屏逐级隐藏：≤1199 博主、≤999 类型、≤899 时间；宽屏完整 8 列。
+3. 视频缩略图抽帧失败时显示类型占位（大图标 + 文案），不阻塞列表。
+4. 博主速览最多 12 张卡；<4 项时用单封面，避免拼图空格。
+5. 概览 + 博主速览合计约 470px；表格视图会收起两者，保证内容直接进视野。
+
+---
+
+## 17. 查看器 v2（S4）验收（2026-10-24）
+
+### 17.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 概览收起 | 资源概览默认收起，只留「N 项 · 大小 · M 个平台 [展开]」；状态写 `localStorage.vrLibOverview` |
+| 查看器 | 顶栏（标题/序号/信息/在文件中打开）、舞台、信息面板、缩略图带、图片缩放工具、视频自绘控件 |
+| 图片 | 滚轮缩放 1–5×、放大后拖拽平移、双击复位、`+/-/0` 键盘缩放 |
+| 视频 | 播放/暂停、进度、时间、音量、静音、倍速、全屏、连播开关；`Space`、`←/→ ±5s`、`Shift ±30s`、`↑/↓` 切条 |
+| 信息面板 | 平台/博主/标题/文件名/类型/大小/尺寸/时长/相对路径/原始地址/下载时间/状态；复制路径 |
+| 缩略图带 | 当前项前后各 12 条，高亮 + 点击跳转；缩略图复用 `VRThumbs` 队列 |
+
+### 17.2 端到端验收（`tools/cdp-viewer-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 模块加载（VRViewer/VRVideo/VRKeys）、种子 4 条 | 3/3 |
+| B | 点卡片打开、标题/序号/队列、无 `controls` 属性、自绘控件可见、信息面板字段/路径/大小、面板收展 | 6/6 |
+| C | 媒体就绪、静音、`Space` 播放、`→` 快进、`Shift+←` 回退 30s、seek 边界算法 | 5/5 |
+| D | `↓` 切到图片、控件随类型切换、图片尺寸写入信息 | 3/3 |
+| E | 缩放 1→1.5625→1、复位无位移、图片 `←/→` 切队列 | 4/4 |
+| F | 缩略图带 4 条、点击跳转并高亮 | 2/2 |
+| G | 连播默认开、`ended` 自动下一条 | 2/2 |
+| H | `Esc` 关闭、清空舞台、隐藏视频控件 | 1/1 |
+| L | 控制台 0 error | 1/1 |
+
+合计 **27/27**。
+
+### 17.3 截图
+
+`viewer-image.png`（大图 + 信息面板 + 缩略图带）、`viewer-zoom.png`（156% 放大）、`viewer-video.png`（自绘控件 + 连播）。
+
+### 17.4 边界与已知取舍
+
+1. 自动播放受浏览器策略限制：无用户手势时 `play()` 被拒，界面保持暂停；点击卡片/空格后可播。
+2. 短片 seek 会夹到 `duration - 0.05`，避免一按 → 就触发 `ended`。
+3. 小于舞台的图片按原始尺寸显示（不强行放大），可用缩放按钮放大。
+4. 全屏 API 需要真实用户手势，自动化未覆盖；失败静默降级。
+5. 缩略图带只渲染当前项前后 12 条，超大索引不会一次性建几百个 `<img>`。
+
+---
+
+## 18. 删除与回收站验收（S5）
+
+### 18.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 引擎 | `trash.js`（VRTrash）：软删除到 `_回收站/<批次>/<原相对路径>`、批次 `_manifest.json`、恢复、彻底删除、清空、审计日志 |
+| 界面 | `trash-ui.js`（VRTrashUI）：卡片右键菜单、悬停 `⋯`、回收站抽屉、确认框、Toast |
+| 入口 | 卡片右键 / `⋯`、查看器信息面板「移到回收站」、侧栏底部「回收站 N」 |
+| 索引 | 删除成功 → `VRDB.deleteFiles()`；恢复 → `VRDB.putFiles()`；缺失文件只清索引 |
+| 安全 | 需要 `readwrite` 句柄；无权限返回 `LIB_E_NO_PERM` 并提示去设置页授权；恢复不覆盖同名文件 |
+
+### 18.2 端到端验收（`tools/cdp-trash-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 模块加载、OPFS 2 文件 + 索引 2 条、页面 2 卡 | 4/4 |
+| B | remove 批次、清单、索引移除、文件移动、源文件消失、页面同步 | 6/6 |
+| C | 右键菜单可见、5 个菜单项、星标文案、确认框、取消、确认删除、空态 | 7/7 |
+| D | 抽屉 2 批次 / 2 项 / 统计、单条恢复、文件回原路径 | 4/4 |
+| E | 彻底删除需确认、批次清空、无残留文件 | 3/3 |
+| F | 无句柄报 `LIB_E_NO_PERM` | 1/1 |
+| G | 清空回收站 | 1/1 |
+| L | 控制台 0 error | 1/1 |
+
+合计 **27/27**。
+
+### 18.3 截图
+
+`trash-menu.png`（右键菜单）、`trash-confirm.png`（确认框）、`trash-drawer.png`（回收站抽屉）。
+
+### 18.4 边界与后续
+
+1. 删除/恢复需要一次 `readwrite` 目录授权（设置页「授权目录并全量扫描」）；未授权时明确报错，不静默失败。
+2. 批次目录用 `YYYYMMDD-HHmmss-xxxx`（比方案里的「日期」多时间与随机后缀），避免同日同名冲突；清单在批次内。
+3. 只展示带 `_manifest.json` 的批次；手工丢进 `_回收站` 的目录不列出。
+4. 本次不含**重命名**与**批量选择**（原型里的批量条），留在 S5b。
+5. 移动用「复制 → 校验大小 → 删源」，不是 FSA `move()`；Windows 上先关查看器再移动，避免文件占用。
+
+---
+
+## 19. 批量选择 + 重命名验收（S5b）
+
+> 实现口径：`docs/S5B-BATCH-RENAME.md`（与本文冲突时以该文为准）。
+
+### 19.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 选择态 | `batch.js`（VRBatch）：`body.batch-mode` 驱动样式，**不改网格 DOM**（表格仍 8 列） |
+| 浮条 | `#libBatchBar`：已选 N 项 / 全选 / 取消 / 移到回收站 / 退出；`Esc` 退出 |
+| 批量删除 | 复用 `VRTrash.remove(relPaths)` 单批次 + 现有确认框；成功后退出模式并刷新徽标 |
+| 重命名 | `rename.js`（VRRename）：引擎 + 自绘弹窗；复制→校验大小→删源；索引删旧写新 |
+| 入口 | 右键菜单「重命名…」（批量模式下仅选中 1 项可用，其余 `disabled`） |
+| 错误码 | `LIB_E_NAME` / `LIB_E_EXISTS` / `LIB_E_NO_PERM` / `LIB_E_NOT_FOUND` / `LIB_E_COPY` / `LIB_E_DB` |
+
+### 19.2 端到端验收（`tools/cdp-batch-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 扩展加载、模块加载、OPFS + 索引 3 条、3 张卡、顶栏批量按钮 | 5/5 |
+| B | 进入模式、勾选框与计数、勾选 1/2 项不打开查看器、全选、取消、Esc/退出、筛选与搜索清空选择 | 14/14 |
+| C | 右键重命名弹窗、默认选中文件名主体、目录提示、非法字符就地报错、Enter 提交 | 7/7 |
+| D | 新文件存在且内容不变、旧文件已删、索引换 key、保留星标/标签、`thumbKey` 置空、`absPath` 更新、条数不变 | 7/7 |
+| E | 非法字符/空名/同名 → `LIB_E_NAME`、目标存在 → `LIB_E_EXISTS`、源不存在 → `LIB_E_NOT_FOUND`、扩展名保护 | 5/5 |
+| F | 批量删除 2 项：确认文案、退出模式、回收站 count=2、索引只留 1 条、文件进批次、原路径清空 | 7/7 |
+| G | 无句柄 → `LIB_E_NO_PERM` | 1/1 |
+| L | 控制台 0 error | 1/1 |
+
+合计 **47/47**。
+
+### 19.3 回归
+
+`cdp-library-page-test.py` 30/30、`cdp-trash-test.py` 27/27、`cdp-viewer-test.py` 27/27。
+`cdp-trash-test.py` 的 C2 断言同步为 `preview / open / copy / star / rename / trash`（条数不变）。
+
+### 19.4 截图
+
+`batch-bar.png`（批量浮条 + 勾选态）、`rename-dialog.png`（重命名弹窗，默认选中主体）。
+
+### 19.5 边界与后续
+
+1. **不做批量重命名**（编号/替换/正则），本轮只做单条。
+2. 全选范围是「当前渲染列表」，受筛选/搜索影响，不做跨页/跨全库。
+3. 重命名是「复制→校验→删源」，失败会清理目标副本；成功即生效，**无撤销**。
+4. 大小写重命名（`b.png → B.png`）在 Windows 下判为同名，返回 `LIB_E_NAME`，本轮不支持两步改名。
+5. 旧缩略图 blob 不级联删除（`VRDB` 无 `deleteThumb`），留待 S6 清理任务。
+
+---
+
+## 20. 图片悬停下载验收（I1 + I2）
+
+> 实现口径：`docs/IMAGE-I1I2-IMPL.md`。
+
+### 20.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 工具 | `lib-image-util.js`（`self.VRImageUtil`，Node 可 require）：五级候选、srcset 最大 w、扫描过滤、扩展名 |
+| 入口 | `image-hover.js`：悬停 300ms 出「下载原图」，Shadow DOM 隔离，滚动/缩放/移开即隐藏 |
+| SW | `vrImg.resolve` / `vrImg.download`：逐候选 fetch 校验 `image/*`，全失败回退最后一个 |
+| 防盗链 | **DNR 会话规则**补 `Referer`（`downloads.download` 的 `headers` 会被拒） |
+| 开关 | `vrLibSettings.imgHover`，缺省开；关闭后宿主节点移除 |
+
+### 20.2 单测（`tools/test-image-util.js`）
+
+覆盖 URL 规范化、占位图判定、srcset 选择、五级候选顺序与去重、扫描过滤、扩展名推导。
+合计 **58/58**。
+
+### 20.3 端到端验收（`tools/cdp-image-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 扩展加载、夹具齐全 | 2/2 |
+| B | 页面加载无注入节点、快速划过不出、悬停出按钮、Shadow DOM 内、位置内缩 8px、移开隐藏 | 6/6 |
+| C | 点击 3 秒内完成（实测 0.26s）、路径含 `图片/`、按 host 归入其他网页、文件名格式、内容与源图一致 | 6/6 |
+| D | 夹具注入并解码 | 1/1 |
+| E–G | `a[href]` / `srcset` / 懒加载 三种场景各 4 条：出按钮、下载完成、取到原图、不触发链接跳转 | 12/12 |
+| H | 16×16 / SVG / 占位图 / data URI 均不出按钮 | 4/4 |
+| I | `imgHover=false` 无节点且悬停不出；`true` 恢复 | 2/2 |
+| J | 控制台 0 error | 1/1 |
+
+合计 **34/34**。
+
+### 20.4 关键坑（已修，别再踩）
+
+1. **`downloads.download` 不接受 `Referer`**：传 `headers:[{name:'Referer'}]` 直接报
+   `Unsafe request header name`，下载根本发不出去，`vrImg.download` 恒返回 `IMG_E_FETCH`
+   且 `chrome.downloads` 里查不到任何记录。必须用 **DNR 会话规则**补头（id 从 9000 起，
+   一次性使用、`finally` 里撤销）。详见 `IMAGE-I1I2-IMPL.md` §4.3.1。
+2. **内容脚本在 isolated world**：主世界读 `window.__vrImgHoverLoaded` 恒为 `false`，
+   断言要改看「无宿主节点 + 悬停不出按钮」这两个可跨 world 观测的事实。
+3. **测试脚手架两处**（非产品缺陷）：`scrollIntoView` 后要等一帧再取 `getBoundingClientRect`；
+   点完一张图后按钮有 1.2s 的 `done` 态，下一张必须**重新悬停**，否则点到旧坐标、下到上一张图。
+
+### 20.5 截图
+
+`image-hover-button.png`（悬停态）、`image-hover-done.png`（✓ 已存）。
+
+### 20.6 边界与后续
+
+1. **未做**：I3 批量队列、I4 浮标 + 清单面板、I5 设置/快捷键、I6 图集。
+2. 单张重复点击会按 `uniquify` 生成 `(1)` 文件，已下载去重（`vrDownloaded`）留给批量阶段。
+3. iframe 内图片不抓（`all_frames:false`，用户明确要求）。
+4. 深色站点按钮对比度按站点后续适配；Shadow DOM 用 `mode:'open'`，自用优先可测性。
+
+---
+
+## 21. 图片批量下载验收（I3）
+
+> 实现口径：`docs/IMAGE-I3-IMPL.md`。
+
+### 21.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 悬停条 | 追加「全部 N」按钮（`image-hover.js`）；图宽 < 140px 时收成纯图标 |
+| 批量 UI | `image-batch.js`（`VRImgBatch`）：确认条 + 进度条 + 取消 + 去重 + 上限 |
+| SW | `vrImg.batch` / `vrImg.batchCancel`：并发池（缺省 3）、进度广播（200ms 节流）、可取消 |
+| 去重 | `chrome.storage.local` 键 `vrImgDownloaded`，上限 2000 条按时间淘汰 |
+| 上限 | `vrLibSettings.imgBatchLimit`，缺省 200 |
+
+### 21.2 单测（`tools/test-image-batch.js`）
+
+并发上限、任务只跑一次、失败/异常不中断、取消不再启动、去重跳过、上限截断、进度节流、去重键规范化、空批次。
+合计 **27/27**。
+
+### 21.3 端到端验收（`tools/cdp-image-batch-test.py`）
+
+| 组 | 断言 | 结果 |
+|---|---|---|
+| A | 扩展/夹具/页面、8 张 img | 4/4 |
+| B | 悬停条两个按钮、单张文案不变、「全部 5」、不重叠 | 4/4 |
+| C | 确认条出现、文案含张数与过滤数、按钮文案、取消关闭且不下载 | 6/6 |
+| D | 批量下载 5 张、进度条、文案、完成、5 个文件、路径/文件名/字节数 | 9/9 |
+| E | 二次批量全部跳过（去重生效，无新增文件） | 3/3 |
+| F | 上限 2：文案「下载 2 张」、只下 2 张、新增 2 个文件 | 4/4 |
+| G | 30 张页「全部 30」、批量启动、取消链路有响应 | 3/3 |
+| H | `imgBatch=false` 无宿主；`true` 恢复 | 2/2 |
+| J | 控制台 0 error | 1/1 |
+
+合计 **35/35**。
+
+### 21.4 截图
+
+`image-batch-hoverbar.png`（悬停条两个按钮）、`image-batch-confirm.png`（确认条）、
+`image-batch-progress.png`（进度条完成态）。
+
+### 21.5 关键坑（都已修）
+
+**产品侧**
+
+1. **DNR 规则 id 撞车**：`9000 + Date.now() % 900` 在并发 3 时会拿到同一 id，
+   先完成的把别人的规则删了 → 「5 张只下到 3 张」。改单调递增计数器。
+2. **DNR 规则删太早**：`download()` 返回就撤，此时请求可能还没发出，Referer 丢失。
+   改成等 `downloads.onChanged` 到终态再撤（30s 兜底）。
+3. **capture 阶段 stopPropagation**：会把事件挡在按钮之前，按钮 click 收不到。改冒泡阶段。
+4. **CSS `display` 重复声明**：`.vr-wrap` 写了两次 `display`，后者覆盖前者 → 悬停条永远显示。
+5. **pending 未取消计时器**：快速划过时按钮仍会弹。新增 `onLeaveImage()`。
+6. **按钮组盖住图片中心 → 自己把自己藏了**：200px 的图上，按钮组几乎全覆盖，
+   鼠标停在中心已落在按钮上 → 触发 `mouseout` 隐藏 → I1/I2 的 F1 间歇失败。
+   修法：按钮组宽度 > 图宽 75%（且图宽 < 320）时也收成纯图标。
+
+**测试侧**
+
+1. `downloads.search` 记录登记时机不受控 → 改用**磁盘文件集合**判定。
+2. 下载目录残留会让 `uniquify` 加序号 → 测试开头必须清磁盘。
+3. 去重表异步写入 → 清两次并断言为空。
+4. 本地测试站毫秒级下完 → 取消常常没赶上，测试如实打印，不假装成功。
+
+### 21.6 边界与后续
+
+1. **未做**：I4 浮标 + 清单面板、I5 设置 UI/快捷键、I6 图集。确认条里「先看清单」目前提示「I4 上线」。
+2. 浏览器首次批量下载会弹「是否允许下载多个文件」，确认条已提前告知，无法用代码绕过。
+3. 并发过高反而慢（`chrome.downloads` 是单队列），并发 3 是实测折中，设置项留给 I5。
+
+---
+
+## 22. 图片浮标 + 清单面板验收（I4）
+
+> 实现口径：`docs/IMAGE-I4-IMPL.md`。
+
+### 22.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 浮标 | `js/image-panel.js`：右下角 40px 圆标，角标=可下张数，可拖动、可关闭（`sessionStorage`） |
+| 清单面板 | 缩略图网格（首屏 24 张、滚动追加）+ 尺寸档位 + URL 过滤 + 排序 + 勾选 + 批量下载 |
+| 尺寸档位 | 小≥100 / 中≥500 / 大≥1200 / 超大≥2000 / 自定义，**每档实时显示命中数**，按**短边**判定 |
+| 勾选 | 单击切换、`Shift+单击` 区间、全选/反选/清空，以 URL 为键（排序过滤后不丢） |
+| 键盘 | `Esc` 关、`J/K` 移动、`X` 勾选、`A` 全选、`Enter` 下载 |
+| 工具函数 | `js/lib-image-util.js` 新增 `shortSide/parseTierMin/tierCounts/filterByTier/filterByKeyword/sortItems` |
+| 队列复用 | `js/image-batch.js` 抽出 `runQueue(items)`，暴露 `VRImgBridge.download(items)` 给面板 |
+
+### 22.2 单测（`tools/test-image-tier.js`）**57/57**
+
+短边判定、四档阈值边界（99/100、499/500、1199/1200、1999/2000）、竖图按短边、
+每档命中数、自定义阈值合法性、URL 关键词、三种排序、组合取交集、空/null 安全。
+
+### 22.3 端到端（`tools/cdp-image-panel-test.py`）**46/46**
+
+| 组 | 断言 |
+|---|---|
+| A | 扩展/夹具、浮标出现、角标=8、距右下 16px |
+| B | 点浮标开面板、标题含张数、首屏 8 张、显示尺寸 |
+| C | 小 8 / 中 2 / 大 2 / 超大 0 且禁用、切档网格数、自定义 1200 命中 2 |
+| D | 关键词 sprite=1、cover=2、无命中空态、清空恢复 |
+| E | 单击勾选、已选计数、下载可用、Shift 区间 4 张、清空、全选 8、反选 0 |
+| F | 尺寸降序顺序变化、排序后勾选不丢 |
+| G | `A` 全选、`X` 取消当前项、`J` 移动焦点 |
+| H | 下载选中 2 张落盘、文件名含日期前缀 |
+| I | `Esc` 关闭 |
+| J | 浮标拖动改位置、位置持久化 |
+| K | 关闭后本页不再显示 |
+| L | `imgPanel=false` 无宿主 / `true` 恢复 |
+| M | 控制台 0 error |
+
+### 22.4 截图
+
+`image-panel-float.png`（浮标）、`image-panel-grid.png`（面板网格）、
+`image-panel-tier.png`（切大档）。
+
+### 22.5 关键坑（都已修）
+
+1. **浮标永远不出现**：`ensureUI()` 只在开面板时调，而浮标是入口 → 死循环。
+   修法：脚本末尾主动 `boot()`，`DOMContentLoaded` 兜底；设置关→开时重建。
+2. **Shadow DOM 焦点**：`document.activeElement` 只返回 host，`J/K/X` 全失效。
+   修法：读 `shadowRoot.activeElement`。
+3. **`prompt`/`alert` 可能被 CSP 拦**：自定义档位改**面板内联输入行**。
+4. **自定义档位显示 0**：会被读成「一张都没有」，改初始显示「…」。
+5. **`total` 与档位计数语义不同**：`total` 含不达任何档的图，档位计数才是有阈值的。
+
+### 22.6 边界与后续
+
+1. **未做**：设置页 UI 与快捷键（I5）、图集/多页（I6）。
+2. 只认 `<img>`：CSS 背景图、`<picture>` 的 `<source>`、Canvas 扫不到（与 I1–I3 一致）。
+3. 懒加载图未解码时不进清单（`scanImages` 已过滤），滚动后才补。
+4. 浮标关闭用 `sessionStorage`（刷新恢复）；位置用 `localStorage`（跨站共享偏移，I5 可按站点存）。
+
+---
+
+## 23. YouTube 播放器下载验收（YT）
+
+> 脚本：`tools/yt-download-test.py`（**21 条断言，离线**）+ `tools/yt-ext-test.py`（真机级联，需网络）
+> 实现与背景：`docs/YT-IMPLEMENTATION.md`、`docs/YT-FEASIBILITY.md`
+
+### 23.1 为什么单开一套「离线端到端」
+
+YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进回归会导致**测试结果随环境漂移**。
+所以这套测试只把「取格式」打桩，其余全是产品代码原样执行：
+
+1. 本地起带 CORS 的静态服务，吐出真实的一对 DASH 轨（`.work/_video.mp4` / `_audio.mp4`）；
+2. `Page.addScriptToEvaluateOnNewDocument` 在页面脚本之前替换 `chrome.runtime.sendMessage`，
+   只拦 `ytFormats` 并回假档位，其余消息透传；
+3. 用内存 mock 顶替 FSA 根句柄（记录 path/size/blob），因为 `showDirectoryPicker` 无法自动化。
+
+于是「档位渲染 → n 参数判断 → 拉流 → fMP4 合并 → 三段路径 → FSA 写盘 → Chrome 解码」
+这条链完全可无人值守回归，且不依赖 YouTube 是否放行。
+
+### 23.2 用例（21 条）
+
+| 组 | 断言 |
+|---|---|
+| 加载 | 扩展加载成功；`downloads.download.__vrNameHooked` 为真；`VRPath.buildRelPath` 可用 |
+| 档位 | 4K60 / 1080p / 720p / 360p(免合并) / 仅音频 全部渲染；**4K 档没被 codec 过滤掉** |
+| 落盘 | 只写 1 个文件；路径含 `video-rod/YouTube/<博主>/视频/`；文件名带分辨率；字节数与合并结果一致 |
+| 兜底 | 未走 `chrome.downloads`；没有任何 UUID 名文件 |
+| 容器 | 能取到合并字节；`MediaError=0`；时长 12.10s；**视频/音频解码字节均 > 0** |
+
+### 23.3 踩过的坑（测试脚手架，不是产品缺陷）
+
+1. **mock 的 `createWritable()` 必须返回 Promise** —— 真 FSA API 返回 Promise，返回普通对象会在 `.then` 上炸，
+   表现为「FSA 静默失败、悄悄退回下载器」。
+2. **小窗里解码会被节流** —— 下载页是 popup 窗口，后台状态下 `<video>` 的 `readyState` 停在 0 且
+   `play()` 会把 CDP 连接挂死；校验要搬到前台标签页（`data:` URL）做。
+3. **CDP 固定端口会连到上一轮没退干净的 Chrome** —— 症状是「点下载的瞬间 socket closed」；
+   端口改成随机即稳定。
+4. **`Page.captureScreenshot` 的 clip 是文档坐标** —— 要加 `scrollX/scrollY`，否则截到视口外的位置。
+
+### 23.4 边界
+
+1. **不测**「YouTube 接口通不通」——那由 `tools/yt-ext-test.py` 单独跑，且允许失败（受风控影响）。
+2. 只覆盖 MP4 容器：WebM/Opus 档不在本套断言内。
+3. 4K 长视频的内存峰值未做压力测试（>1GB 有 OOM 风险，见实现文档 §6）。
+
+---
+
+## 23. 图片设置与快捷键验收（I5）
+
+> 实现口径：`docs/IMAGE-I5-IMPL.md`。
+
+### 23.1 本轮改动
+
+| 模块 | 内容 |
+|---|---|
+| 设置项定义 | `js/lib-image-util.js` 新增 `DEFAULT_SETTINGS` / `RANGES` / `parseIntRange` / `validateSetting` / `mergeSettings`（纯函数） |
+| 面板设置区 | `js/image-panel.js` 标题栏齿轮 → 替换主体的设置区：5 个开关 + 4 个数值 + 恢复默认 |
+| 上游设置页 | `options.html` 新增 `#anchorImage` 分区 + 侧栏项；`js/library/settings.js` 加 `VRImgSettings` 读写 |
+| 快捷键 | manifest 声明 `imgDownload`（Alt+Shift+D）/ `imgPanelOpen`（Alt+Shift+A），SW `chrome.commands` 转发 `vrImg.hotkey` |
+| 悬停延迟可配 | `js/image-hover.js` 的 `SHOW_DELAY` 改为 `showDelay`（读 `imgHoverDelay`） |
+
+### 23.2 单测（`tools/test-image-settings.js`）**47/47**
+
+`DEFAULT_SETTINGS` 键与类型、`RANGES` 边界、`parseIntRange` 九种输入、
+`validateSetting` 十二种情况（含边界 16/4096/8/0）、`mergeSettings` 十三种合并场景。
+
+### 23.3 端到端（`tools/cdp-image-settings-test.py`）**48/48**
+
+| 组 | 断言 |
+|---|---|
+| A | 扩展加载、未写入时无该键、面板兜底 100、扩展页 `mergeSettings` 兜底 |
+| B | 面板打开、齿轮存在、设置区打开、标题变化、5 个开关全开、4 个数值与默认一致 |
+| C | 改最小尺寸 → 落库 1200 且面板张数降到 2；延迟/并发/上限逐项落库 |
+| D | 非数字/空值/超上限 → 标红 + 提示 + **不落库**；恢复 100 后张数回 8 |
+| E | 面板改 → 设置页读到（4 个数值 + 开关状态） |
+| F | 设置页改 → 面板读到；设置页超范围不落库 |
+| G | 关「全部按钮」→ 悬停条只剩一个；关「右下浮标」→ 宿主消失；都能开回 |
+| H | 恢复默认：第一次点击变「确定恢复？」，确认后四项回默认 |
+| I | 快捷键：找 tab、悬停记录目标、`panel` 开面板、`download` 落盘 1 个文件、关开关后落库 |
+| J | 关悬停 → 宿主移除；开回 → 按钮恢复 |
+| L | 控制台 0 error |
+
+### 23.4 关键坑（都已修）
+
+1. **`settings` 变量根本没声明**：一次 patch 三处替换，第三处失败导致整个写文件没执行，
+   前两处白改。表现是「UI 变了但存储永远空」。**教训：一次 patch 只改一处，改完立刻 grep 验证。**
+2. **`toast` 在 `image-hover.js` 里不存在**：它在 `image-batch.js`。快捷键下载里直接调会
+   `ReferenceError`，把 Promise 永久卡住 → `sendResponse` 永不触发。改用 `note()` 兜底。
+3. **`display:flex` 盖掉 `hidden`**：设置区打开时底部仍显示「已选 0 张」。
+   修法：显式写 `.vr-foot[hidden] { display:none }`（I3 的 `.vr-wrap` 踩过同一个坑）。
+
+### 23.5 测试脚手架的坑
+
+1. **`chrome.storage` 在页面主世界不可用**：`cdp.eval` 默认主世界，读写全报
+   `Cannot read properties of undefined`。存储与 `chrome.tabs.sendMessage` 一律在扩展页执行。
+2. **`VRImageUtil` / `VRImgPanel` / `VRImgHover` 都在隔离世界**：主世界 `typeof` 为
+   `undefined`，断言要用 DOM 表现间接验证。
+3. **写 storage 是异步的**：改完立刻断言必挂，加 `wait_setting()` 轮询。
+4. **文件名日期前缀每天变**：早先写死 `20261024_` 判测试产物，第二天失效。改成含「测试站」。
+
+---
+
+## 26. 图集扫描验收（I6 模式 A：自动滚动）
+
+> 脚本：`tools/cdp-image-album-test.py`（40 条）｜夹具：`test-site/album.html`（24 张 ≥600×600，纵向懒加载）
+
+### 26.1 覆盖范围
+
+| 组 | 验什么 |
+|---|---|
+| A | 扩展加载、夹具存在、图集页为可见标签、拿到 tabId、24 张 img、初始只加载首屏、页高 > 3 屏 |
+| B | 直接打三条协议：`albumScan` 返回 taskId、初始 `scanning`、进度四字段齐全、`maxPages` 回显、滚动后 `collected`/`page` 双递增、`albumStop` 返回 `ok` 且 `stopped`、停止后不再滚且已收集保留、`withItems` 能取回清单、`paging` 模式如实拒绝 |
+| C | 面板入口：图集条存在、按钮文案「图集扫描」、扫描时出现「停止」、进度文案含「第 N/10 屏 · 已收集 M 张」且数字递增、停止后文案「已停止」、出现「下载这 N 张」与「重新扫描」 |
+| D | 滚到底：文案「扫描完成」、收集 ≥20 张、不超过页面有效图数、24 张全加载、下载按钮把清单交给既有批量下载（真产生下载记录） |
+| J | 控制台 0 error/exception |
+
+### 26.2 关键坑
+
+1. **后台标签页不触发 IntersectionObserver**：Chrome 会节流不可见标签，懒加载图永不出现，
+   测出来是 0 张（会误判成扩展坏了）。测试里必须 `Target.activateTarget` 再断言 `visibilityState`。
+2. **`rootMargin` 让「初始只加载 1 张」不成立**：夹具第一版用 `rootMargin:'200px'`，
+   首屏就预载了第 2 张，断言写死 1 会假失败。改成 `0px`，断言放宽为「≤3 张」。
+3. **`executeScript` 拿不到内容脚本的闭包**：序列化函数后单独求值，`U`（VRImageUtil）
+   在那边是 `undefined`。采集入口必须挂到 isolated world 的 `self` 上，由 SW 侧一行包装函数转调。
+4. **SW 会被回收**：任务状态（已滚几屏 / 已收集 URL）必须落 `chrome.storage.session`，
+   面板的 400ms 轮询同时充当「叫醒 + 续跑探针」，否则长图集扫到一半就断。
+5. **停止不能只信内存**：SW 重建后 `VR_ALBUM_STOP` 这个 Set 就空了，
+   所以每轮循环都回读一次存储里的 `state`，只认落库的状态。

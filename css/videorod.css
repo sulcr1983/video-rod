@@ -1,5 +1,5 @@
 /* ==========================================================================
-   钓鱼竿 video-rod — popup 视觉层
+   苏哥的钓鱼竿 video-rod — popup 视觉层
    M1 基准：deliverables/prototypes/popup-prototype-v5.html（深色）
    M7 重设计：deliverables/reviews/2026-10-17-popup-redesign.md 方案 A「收网」
      · 浅色 token（正文 #0E1116 18.9:1 / 次要 #6B7480 5.1:1 / 分隔线 #EFF1F4）
@@ -14,17 +14,20 @@
     --vr-bg: #ffffff;
     --vr-bg-deep: #f5f6f8;
     --vr-card: #ffffff;
-    --vr-card-hi: #eef6f4;
+    --vr-card-hi: #eef5ff;
     --vr-line: #eff1f4;
     --vr-line-2: #e4e6ea;
     --vr-text: #0e1116;
-    --vr-text-dim: #6b7480;
-    --vr-text-mute: #98a1ac;
-    --vr-cyan: #0f6e63;
-    --vr-cyan-deep: #0b5750;
-    --vr-cyan-soft: #0f6e63;
-    --vr-cyan-tint: #e6f4f1;
-    --vr-cyan-tint-line: #bfe0da;
+    --vr-text-dim: #5b6472;
+    --vr-text-mute: #8a94a3;
+    --vr-accent: #1a73e8;
+    --vr-accent-strong: #1765cc;
+    --vr-accent-weak: #e8f0fe;
+    --vr-cyan: var(--vr-accent);
+    --vr-cyan-deep: var(--vr-accent-strong);
+    --vr-cyan-soft: var(--vr-accent);
+    --vr-cyan-tint: var(--vr-accent-weak);
+    --vr-cyan-tint-line: #bfd7f5;
     --vr-orange: #c2410c;
     --vr-green: #12805c;
     --vr-ink: #16181d;
@@ -55,6 +58,12 @@ body.popupBody {
     flex-direction: column;
     max-height: 600px;
     background: var(--vr-bg);
+}
+
+#vrShell :focus-visible {
+    outline: 2px solid var(--vr-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
 }
 
 /* 统一盒模型，避免 padding 撑破 400px */
@@ -113,8 +122,8 @@ body.popupBody {
 }
 
 .iconbtn {
-    width: 27px;
-    height: 27px;
+    width: 30px;
+    height: 30px;
     border-radius: 8px;
     border: none;
     cursor: pointer;
@@ -130,7 +139,7 @@ body.popupBody {
 .iconbtn:first-of-type { margin-left: auto; }
 
 .iconbtn:hover { background: var(--vr-hover); color: var(--vr-text); }
-.iconbtn svg { width: 14px; height: 14px; }
+.iconbtn svg { width: 15px; height: 15px; }
 
 /* ---------- 两行式头部 ①：站点 · 标题 · 数量 + 页签 ---------- */
 .sitebar {
@@ -178,7 +187,7 @@ body.popupBody {
 .vr-tabs .TabButton {
     flex: none;
     width: auto;
-    font-size: 10.5px;
+    font-size: 11px;
     padding: 1px 0 2px;
     background: none;
     border: none;
@@ -205,22 +214,21 @@ body.popupBody {
     color: var(--vr-text-mute);
 }
 
-/* ---------- 两行式头部 ②：类型筛选（文字，选中下划线） ---------- */
+/* ---------- 两行式头部 ②：类型筛选（胶囊 chip） ---------- */
 .filters {
     display: flex;
-    gap: 13px;
-    padding: 7px 13px 8px;
+    gap: 6px;
+    padding: 8px 13px;
     flex: none;
     border-bottom: 1px solid var(--vr-line);
-    align-items: baseline;
+    align-items: center;
 }
 
 .fchip {
-    font-size: 11px;
-    padding: 1px 0 3px;
-    border-radius: 0;
-    border: none;
-    border-bottom: 2px solid transparent;
+    font-size: 11.5px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid transparent;
     background: none;
     color: var(--vr-text-dim);
     cursor: pointer;
@@ -229,25 +237,39 @@ body.popupBody {
     white-space: nowrap;
 }
 
-.fchip:hover { color: var(--vr-ink); }
+.fchip:hover {
+    background: var(--vr-hover);
+    color: var(--vr-ink);
+}
 
 .fchip.on {
-    color: var(--vr-ink);
+    color: var(--vr-accent-strong);
+    background: var(--vr-accent-weak);
+    border-color: var(--vr-cyan-tint-line);
     font-weight: 600;
-    border-bottom-color: var(--vr-ink);
 }
 
 .fchip b { font-weight: 600; color: var(--vr-text-mute); margin-left: 2px; }
-.fchip.on b { color: var(--vr-text-dim); }
+.fchip.on b { color: var(--vr-accent-strong); }
 
-/* 抓图按钮靠右，安静的文字按钮 */
+/* 抓图按钮靠右，安静的胶囊按钮 */
 .filters .vr-imgbtn {
     margin-left: auto;
-    color: var(--vr-cyan);
-    border-bottom: 2px solid transparent;
+    color: var(--vr-accent);
+    border: 1px solid var(--vr-cyan-tint-line);
+    background: #fff;
 }
 
-.filters .vr-imgbtn:hover { color: var(--vr-cyan-deep); }
+.filters .vr-imgbtn:hover { color: var(--vr-accent-strong); background: var(--vr-accent-weak); }
+
+/* 空态 / 提示 */
+#Tips {
+    padding: 22px 16px;
+    font-size: 11.5px;
+    line-height: 1.8;
+    color: var(--vr-text-2);
+    text-align: center;
+}
 
 /* ---------- 图片批量弹层 ---------- */
 .vrimg-list {
@@ -372,8 +394,8 @@ body.popupBody {
 .chk {
     appearance: none;
     -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 17px;
+    height: 17px;
     border-radius: 5px;
     flex: none;
     cursor: pointer;
@@ -390,10 +412,10 @@ body.popupBody {
 .chk:checked::after {
     content: '';
     position: absolute;
-    left: 4.5px;
-    top: 1.5px;
-    width: 4px;
-    height: 8px;
+    left: 5px;
+    top: 2px;
+    width: 4.5px;
+    height: 8.5px;
     border: solid #fff;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
@@ -401,7 +423,7 @@ body.popupBody {
 
 /* 类型徽章 */
 .panel .badge {
-    font-size: 9px;
+    font-size: 9.5px;
     font-weight: 700;
     padding: 2.5px 6px;
     border-radius: 5px;
@@ -436,7 +458,7 @@ body.popupBody {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--vr-text);
     margin: 0;
 }
@@ -454,7 +476,7 @@ body.popupBody {
 
 .panel-heading .size {
     float: none;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 400;
     color: var(--vr-text-mute);
     flex: none;
@@ -697,7 +719,7 @@ body.popupBody {
     background: #fff;
     border: 1px solid var(--vr-line-2);
     color: var(--vr-text-dim);
-    font-size: 10.5px;
+    font-size: 11px;
     padding: 6px 9px;
     border-radius: 8px;
     cursor: pointer;
@@ -711,15 +733,15 @@ body.popupBody {
 
 .fbtn.primary {
     margin-left: auto;
-    background: var(--vr-ink);
-    border-color: var(--vr-ink);
+    background: var(--vr-accent);
+    border-color: var(--vr-accent);
     color: #fff;
     font-weight: 600;
 }
 
 .fbtn.primary:hover {
-    background: #23282f;
-    border-color: #23282f;
+    background: var(--vr-accent-strong);
+    border-color: var(--vr-accent-strong);
     color: #fff;
 }
 
@@ -1019,7 +1041,7 @@ body.popupBody {
     margin: 0;
 }
 
-.sw:checked { background: var(--vr-ink); }
+.sw:checked { background: var(--vr-accent); }
 
 .sw::after {
     content: '';
@@ -1092,8 +1114,8 @@ body.popupBody {
 }
 
 .setview .back {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     border-radius: 8px;
     border: none;
     background: none;

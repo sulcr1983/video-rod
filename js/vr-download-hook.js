@@ -1,5 +1,5 @@
 /**
- * 钓鱼竿：下载文件名保护（页面侧挂钩）
+ * 苏哥的钓鱼竿：下载文件名保护（页面侧挂钩）
  * 背景：Chromium bug 579563——浏览器内任何扩展注册 onDeterminingFilename 监听后，
  * downloads.download({filename}) 的 filename 会被忽略（落盘变服务器名/UUID名）。
  * SW 侧（background.js）已注册监听并按 URL 记账 suggest；页面自身发起的下载，
@@ -20,12 +20,33 @@
         var orig = api.download;
         var wrapped = function (opts, cb) {
             if (opts && typeof opts.filename === 'string' && opts.filename) {
+                // 资源库：从三段路径反解平台/博主/类型，随记账一起预登记
+                var meta = null;
+                try {
+                    var P = self.VRPath;
+                    if (P && P.parseRelPath) {
+                        var rel = String(opts.filename).replace(/\\/g, '/');
+                        var p = P.parseRelPath(rel) || {};
+                        meta = {
+                            relPath: rel,
+                            platform: p.platform || '',
+                            platformName: p.platformName || '',
+                            creatorFull: p.creatorFull || '',
+                            creatorId: p.creatorId || '',
+                            type: p.type || '',
+                            pageUrl: '',
+                            title: ''
+                        };
+                    }
+                } catch (e) { meta = null; }
+
                 try {
                     chrome.runtime.sendMessage({
                         Message: 'vrQueueName',
                         url: opts.url,
                         filename: opts.filename,
-                        conflictAction: opts.conflictAction
+                        conflictAction: opts.conflictAction,
+                        meta: meta
                     }, function () {
                         // 无论 SW 是否应答（休眠唤醒失败等极端情况），都继续下载，
                         // 最多退化回落盘默认名，不能卡住用户的下载。

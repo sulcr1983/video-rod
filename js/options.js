@@ -131,6 +131,10 @@ function Gethtml(Type, Param = new Object()) {
         html.remove();
         Save(Type);
     });
+    html.find(".RemoveButton").attr({ role: "button", tabindex: "0", "aria-label": "删除这一行" })
+        .on("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $(this).click(); }
+        });
     html.find("input").on("input", function () {
         Save(Type, 200);
     });
@@ -186,8 +190,8 @@ $("[save='select']").on("change", function () {
 });
 
 // 一键禁用/启用
-$("#allDisable, #allEnable").bind("click", function () {
-    const state = this.id == "allEnable";
+$("[data-all]").bind("click", function () {
+    const state = this.dataset.all == "1";
     const obj = $(this).data("switch");
     let query;
     if (obj == "Ext") {
@@ -455,24 +459,90 @@ function Save(option, sec = 0) {
 }
 
 // 导航栏
-document.querySelectorAll('nav a').forEach(anchor => {
+document.querySelectorAll('nav a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', function (e) {
         e.preventDefault();
         const targetId = this.getAttribute('href');
         const targetElement = document.querySelector(targetId);
         if (targetElement) {
             targetElement.scrollIntoView({
-                behavior: 'smooth'
+                behavior: 'smooth',
+                block: 'start'
             });
+            history.replaceState(null, '', targetId);
         }
     });
 });
-const adjustSidebarPosition = () => {
-    const wrapper = document.querySelector('.wrapper');
-    const sidebar = document.querySelector('.sidebar');
-    if (wrapper && sidebar) {
-        sidebar.style.left = `${wrapper.getBoundingClientRect().left - sidebar.offsetWidth - 20}px`;
+
+// 当前分区高亮
+(function () {
+    const links = new Map();
+    document.querySelectorAll('nav a[href^="#"]').forEach(a => {
+        links.set(a.getAttribute('href').slice(1), a);
+    });
+    const sections = Array.from(document.querySelectorAll('section[id]'));
+    if (!links.size || !sections.length) { return; }
+    let ticking = false;
+    function update() {
+        ticking = false;
+        const y = window.scrollY + 120;
+        let current = sections[0];
+        sections.forEach(section => {
+            const top = section.getBoundingClientRect().top + window.scrollY;
+            if (top <= y) { current = section; }
+        });
+        links.forEach(link => link.classList.remove('active'));
+        const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+        const link = links.get((atBottom ? sections[sections.length - 1] : current).id);
+        if (link) { link.classList.add('active'); }
     }
-}
-window.addEventListener('load', adjustSidebarPosition)
-window.addEventListener('resize', adjustSidebarPosition);
+    function onScroll() {
+        if (ticking) { return; }
+        ticking = true;
+        requestAnimationFrame(update);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    update();
+})();
+
+// 可访问性：开关/删除按钮补可读名称（不改 HTML 结构）
+(function () {
+    document.querySelectorAll('.item, .field').forEach(function (row) {
+        const input = row.querySelector('.switchInput');
+        if (!input || input.getAttribute('aria-label')) { return; }
+        const label = row.querySelector('div, label');
+        const text = label ? (label.textContent || '').trim().replace(/\s+/g, ' ') : '';
+        if (text) { input.setAttribute('aria-label', text); }
+    });
+    document.querySelectorAll('img.RemoveButton').forEach(function (img) {
+        img.setAttribute('role', 'button');
+        img.setAttribute('tabindex', '0');
+        img.setAttribute('aria-label', '删除这一行');
+        img.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                img.click();
+            }
+        });
+    });
+})();
+
+// 保存反馈：storage.sync 变化时右下角轻提示，不阻断任何操作
+(function () {
+    let timer = 0;
+    let tip = null;
+    chrome.storage.onChanged.addListener(function (changes, area) {
+        if (area !== 'sync' || !changes || !Object.keys(changes).length) { return; }
+        if (!tip) {
+            tip = document.createElement('div');
+            tip.className = 'save-toast';
+            tip.setAttribute('role', 'status');
+            tip.textContent = '已保存';
+            document.body.appendChild(tip);
+        }
+        tip.classList.add('show');
+        clearTimeout(timer);
+        timer = setTimeout(function () { tip.classList.remove('show'); }, 1400);
+    });
+})();

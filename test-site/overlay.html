@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 G：小图标与覆盖层</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; }
+    h1 { font-size: 18px; }
+    h2 { font-size: 14px; margin: 22px 0 8px; }
+    .note { color: #666; font-size: 13px; }
+    .row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+
+    /* 小图标组：原始像素够大（都是 640x480 的 cover.jpg），但显示尺寸很小。
+       用户实测反馈：这类图不该出悬停下载按钮。门槛是 600（宽高都要）。 */
+    .ico16 img { width: 16px; height: 16px; }
+    .ico32 img { width: 32px; height: 32px; }
+    .ico40 img { width: 40px; height: 40px; }
+    .ico599 img { width: 599px; height: 599px; }
+
+    /* 细长装饰条：宽度够、高度很小，长宽比超限 */
+    .strip img { width: 1200px; height: 6px; }
+
+    /* 隐藏图：不该出按钮 */
+    .gone img { display: none; }
+
+    /* 覆盖层组：模拟微博/B 站的播放按钮盖在图片上 */
+    .cover-wrap {
+      position: relative; width: 640px; height: 640px; border-radius: 10px;
+      overflow: hidden; cursor: pointer;
+    }
+    .cover-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .cover-mask {
+      position: absolute; inset: 0; z-index: 2;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, .18);
+    }
+    .cover-mask .play {
+      width: 64px; height: 64px; border-radius: 50%; border: 0;
+      background: rgba(255, 255, 255, .92); color: #111;
+      font-size: 26px; line-height: 1; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    /* 更极端的覆盖：一个铺满的 span（复刻微博 SPAN.mwbv-icon） */
+    .cover-span {
+      position: absolute; inset: 0; z-index: 3;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: auto; color: #fff; font-size: 40px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, .5);
+    }
+  </style>
+</head>
+<body>
+  <h1>小图标与覆盖层夹具</h1>
+  <p class="note">
+    两组用例，分别对应两个真实缺陷：<br>
+    <b>A 组</b>：原始像素 640×480（够大），但 CSS 显示成 16/32/40/599px、细条、display:none ——
+    <b>都不该出现悬停下载按钮</b>（门槛 600×600，宽高都要 ≥600；599 差 1px 也不认）。<br>
+    <b>B 组</b>：图片被绝对定位的遮罩（button / span）完全盖住，鼠标事件目标是遮罩 ——
+    <b>仍然要能悬停出按钮</b>（这是微博的实际结构）。
+  </p>
+
+  <h2>A 组：小显示尺寸（都不该出按钮）</h2>
+  <div class="row">
+    <span class="ico16"><img id="i16" src="media/cover.jpg" alt="16px"></span>
+    <span class="ico32"><img id="i32" src="media/cover.jpg" alt="32px"></span>
+    <span class="ico40"><img id="i40" src="media/cover.jpg" alt="40px"></span>
+    <span class="strip"><img id="istrip" src="media/cover.jpg" alt="细条"></span>
+    <span class="gone"><img id="igone" src="media/cover.jpg" alt="隐藏"></span>
+  </div>
+
+  <h2>A 组边界：599px（差 1px，不该出按钮）</h2>
+  <div class="row">
+    <span class="ico599"><img id="i599" src="media/srcset-1200.png" alt="599px"></span>
+  </div>
+
+  <h2>A 组边界：600px（刚好够，应出按钮）</h2>
+  <div class="row">
+    <img id="i600" src="media/original-1200.png" width="600" height="600" alt="600px">
+  </div>
+
+  <h2>A 组：400px（用于验「门槛调低到 500 时仍不出」）</h2>
+  <div class="row">
+    <img id="i400" src="media/srcset-400.png" width="400" height="400" alt="400px">
+  </div>
+
+  <h2>B 组：被遮罩盖住（仍要出按钮）</h2>
+  <div class="row">
+    <div class="cover-wrap">
+      <img id="c1" src="media/cover.jpg" alt="被 button 覆盖">
+      <div class="cover-mask"><button class="play" type="button">▶</button></div>
+    </div>
+    <div class="cover-wrap">
+      <img id="c2" src="media/thumb-320.png" alt="被 span 覆盖">
+      <span class="cover-span">▶</span>
+    </div>
+  </div>
+</body>
+</html>

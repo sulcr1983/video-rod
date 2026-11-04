@@ -1,5 +1,5 @@
 /**
- * 钓鱼竿 video-rod — popup 交互层（M1）
+ * 苏哥的钓鱼竿 video-rod — popup 交互层（M1）
  * ---------------------------------------------------------------
  * 定位：只做「外壳与交互」，猫抓内核算术（嗅探/下载器/m3u8）一行不动。
  * 依赖：popup.js 已把卡片渲染到 DOM，本文件在其之后加载，负责：
@@ -80,7 +80,24 @@
     }
 
     window.vrDirOf = function (data) {
-        return (data && data.vrDir) || settings.defaultDir;
+        // 手动选过目录的条目优先；否则按「子目录/平台/博主/类型」自动拼
+        if (data && data.vrDir) { return data.vrDir; }
+        var P = window.VRPath;
+        if (P && P.buildRelDir) {
+            try {
+                return P.buildRelDir({
+                    pageUrl: (data && data.webUrl) || '',
+                    mediaUrl: data && data.url,
+                    site: pageInfo && pageInfo.site,
+                    authorFull: pageInfo && pageInfo.authorFull,
+                    creatorId: pageInfo && pageInfo.creatorId,
+                    type: data && (data.type || data.mediaType),
+                    ext: data && data.ext,
+                    subdir: settings.defaultDir
+                });
+            } catch (e) { /* 出错退回默认目录，不阻断下载 */ }
+        }
+        return settings.defaultDir;
     };
 
     window.vrOpenDirMenu = function (anchor, data) {
@@ -1744,6 +1761,11 @@
             func: function () {
                 var out = [];
                 var seen = {};
+                // 与 js/lib-image-util.js 的 MIN_SHOW / MAX_ASPECT 保持一致。
+                // 这里是 executeScript 注入到页面的函数，拿不到外部模块变量，
+                // 只能就地写一份；改门槛时**两处都要改**（当前 600 / 6）。
+                var MIN_SHOW = 600;
+                var MAX_ASPECT = 6;
                 function push(src, w, h, alt) {
                     if (!src || src.indexOf('data:') === 0 || seen[src]) { return; }
                     seen[src] = 1;
@@ -1759,7 +1781,22 @@
                     // 明确加载失败的图（complete 且无固有尺寸）直接跳过，
                     // 还没加载完的保留——可能是懒加载，扫描后正好触发加载
                     if (im.complete && !im.naturalWidth) { continue; }
-                    if (w && h && (w < 120 || h < 120)) { continue; }   // 跳过图标/小图
+                    // 跳过图标/小图：判**显示尺寸**而不是原始像素。
+                    // 早先只看 naturalWidth<120，一张 640x480 的图标被 CSS 缩成 16px 显示
+                    // 仍然会通过 —— 和页面悬停踩的是同一个坑（见 docs/RESEARCH-COMPETITOR-IMAGE.md）。
+                    var box = null;
+                    try { box = im.getBoundingClientRect(); } catch (e) { box = null; }
+                    var dw = box ? Math.round(box.width) : (im.clientWidth || 0);
+                    var dh = box ? Math.round(box.height) : (im.clientHeight || 0);
+                    // 门槛与页面悬停共用同一份常量（MIN_SHOW / MAX_ASPECT），
+                    // 不在这里写死数字 —— 早先写死 48，用户把门槛调到 600 后两边就不一致了。
+                    if (dw > 0 && dh > 0) {
+                        if (Math.min(dw, dh) < MIN_SHOW) { continue; }
+                        var ratio = Math.max(dw, dh) / Math.min(dw, dh);
+                        if (ratio > MAX_ASPECT) { continue; }
+                    } else if (w && h && (w < MIN_SHOW || h < MIN_SHOW)) {
+                        continue;   // 量不到显示尺寸时退回原始像素兜底
+                    }
                     push(src, w, h, im.alt);
                 }
                 // background-image（只扫前 3000 个节点，避免卡）
@@ -1868,8 +1905,19 @@
             var filename = dir + '/' + cleanPath(names[i]);
             if (isDownloaded(filename)) { return; }
             markDownloaded(filename);
-            chrome.downloads.download({ url: im.src, filename: filename }, function () {
-                chrome.runtime.lastError && console.warn(chrome.runtime.lastError);
+            // 交给 SW 落盘（vrImg.download），不再直接调 chrome.downloads。
+            // Chrome 147 起 downloads 的文件名保护失效（ADR-040），SW 侧会优先走
+            // FSA 直写保住文件名，拿不到句柄才回退下载器。
+            chrome.runtime.sendMessage({
+                Message: 'vrImg.download',
+                url: im.src,
+                title: names[i],
+                index: i,
+                pageUrl: (G && G.pageUrl) || ''
+            }, function (r) {
+                if (chrome.runtime.lastError || !r || !r.ok) {
+                    console.warn('[video-rod] 抓图落盘失败', chrome.runtime.lastError || r);
+                }
             });
             ok++;
         });
