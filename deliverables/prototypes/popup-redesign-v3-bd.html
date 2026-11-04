@@ -63,6 +63,19 @@ svg{display:block}
 .sitebar .count{font-size:11px;color:var(--faint);flex:0 0 auto}
 .sitebar .count b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
 
+/* 本页概览条 */
+.overview{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--line-2)}
+.ov-types{display:flex;gap:4px}
+.ovt{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:7px;background:var(--surface-2);font-size:11px;color:var(--ink-2);transition:.12s}
+.ovt:hover{background:var(--surface-3)}
+.ovt b{font-weight:700;font-variant-numeric:tabular-nums;color:var(--accent)}
+.ovt:active{transform:translateY(1px)}
+.ov-save{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;border-radius:7px;color:var(--ink-2);font-size:11px;margin-left:auto}
+.ov-save:hover{background:var(--surface-3)}
+.ov-save .dir{color:var(--muted)}
+.ov-q{height:26px;padding:0 9px;border-radius:7px;font-size:11px;color:var(--ok);background:var(--ok-soft)}
+.ov-q:hover{filter:brightness(.97)}
+
 /* 页签 */
 .tabs{display:flex;gap:2px;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--line)}
 .tabs .tab{display:flex;align-items:center;gap:6px;height:34px;padding:0 12px;font-size:12px;color:var(--muted);position:relative}
@@ -71,6 +84,8 @@ svg{display:block}
 .tabs .tab.on::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:2px;background:var(--accent);border-radius:2px}
 .tabs .tab .q{font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums}
 .tabs .tab.on .q{color:var(--accent)}
+.tab-ignore{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer;height:34px}
+.tab-ignore input{width:14px;height:14px;accent-color:var(--accent)}
 
 /* 筛选 chips */
 .filters{display:flex;gap:6px;padding:9px 14px;flex-wrap:wrap}
@@ -92,6 +107,13 @@ svg{display:block}
 .row .thumb .cover{position:absolute;inset:0}
 .row .thumb .dur{position:absolute;right:3px;bottom:3px;font-size:9px;color:#fff;background:rgba(20,18,15,.72);padding:0 4px;border-radius:5px;font-variant-numeric:tabular-nums}
 .row .thumb .fmt{position:absolute;left:3px;top:3px;font-size:8.5px;color:#fff;background:rgba(20,18,15,.6);padding:0 4px;border-radius:4px}
+/* 已下载行 */
+.row.saved{cursor:default}
+.row.saved .thumb{opacity:.5}
+.row.saved .name{color:var(--muted)}
+.row.saved .cb{opacity:.35}
+.row.saved .saved-tag{position:absolute;left:3px;top:3px;font-size:8.5px;color:#fff;background:var(--ok);padding:0 5px;border-radius:4px;display:flex;align-items:center;gap:2px}
+.row .thumb{position:relative}
 .row .main{flex:1;min-width:0}
 .row .name{font-size:12.5px;font-weight:550;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .name:hover{color:var(--accent)}
@@ -205,14 +227,28 @@ svg{display:block}
   <div class="sitebar">
     <span class="site">哔哩哔哩</span>
     <span class="ptitle">纪录片 · 深海的秘密（全 6 话）</span>
-    <span class="count">嗅探到 <b id="vrCount">6</b> 个</span>
+    <span class="count">嗅探到 <b id="vrCount">12</b> 个</span>
+  </div>
+
+  <!-- 本页概览条：按类型一键全选 + 存到哪 + 默认画质 -->
+  <div class="overview">
+    <div class="ov-types">
+      <button class="ovt" data-ot="video"><b>4</b> 视频</button>
+      <button class="ovt" data-ot="img"><b>1</b> 图片</button>
+      <button class="ovt" data-ot="stream"><b>1</b> 流</button>
+    </div>
+    <button class="ov-save" id="ovSave" title="点击下载到哪">
+      <svg class="ic sm" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span class="dir">深海纪录片</span>
+    </button>
+    <button class="ov-q" id="ovQ" title="默认最高画质，点开可改">画质 最高</button>
   </div>
 
   <!-- 页签 -->
   <div class="tabs">
     <button class="tab on" data-tab="cur">当前页 <span class="q">6</span></button>
-    <button class="tab" data-tab="all">其他页 <span class="q">3</span></button>
-    <button class="tab" data-tab="ctl">媒体控制</button>
+    <button class="tab" data-tab="all">其他页 <span class="q">6</span></button>
+    <label class="tab-ignore"><input type="checkbox" id="ignoreDone" checked> 忽略已下载</label>
   </div>
 
   <!-- 筛选 -->
@@ -306,8 +342,8 @@ svg{display:block}
   function cover(i,w,h){const[c1,c2]=PAL[i%12];const s=`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="g${i}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g${i})"/><circle cx="${w*.3}" cy="${h*.35}" r="${Math.min(w,h)*.18}" fill="rgba(255,255,255,.18)"/></svg>`;return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s);}
 
   const VIDS=[
-    {t:'第1话 · 阳光层的海流',kind:'video',dur:'12:04',sz:88,plat:'#fb7299',res:'1080P',url:'bilibili.com/video/BV1xx/1.mp4'},
-    {t:'第2话 · 暮色带的微光',kind:'video',dur:'11:38',sz:82,plat:'#fb7299',res:'1080P',url:'bilibili.com/video/BV1xx/2.mp4'},
+    {t:'第1话 · 阳光层的海流',kind:'video',dur:'12:04',sz:88,plat:'#fb7299',res:'1080P',url:'bilibili.com/video/BV1xx/1.mp4',saved:true},
+    {t:'第2话 · 暮色带的微光',kind:'video',dur:'11:38',sz:82,plat:'#fb7299',res:'1080P',url:'bilibili.com/video/BV1xx/2.mp4',saved:true},
     {t:'第3话 · 午夜带的巨乌贼',kind:'video',dur:'13:20',sz:96,plat:'#fb7299',res:'1080P',url:'bilibili.com/video/BV1xx/3.mp4'},
     {t:'第4话 · 深海热泉',kind:'video',dur:'10:52',sz:74,plat:'#fb7299',res:'720P',url:'bilibili.com/video/BV1xx/4.mp4'},
     {t:'封面 · 深海的秘密',kind:'img',sz:2.4,plat:'#fb7299',fmt:'JPG',url:'bilibili.com/cover.jpg'},
@@ -324,14 +360,16 @@ svg{display:block}
   let DATA = VIDS.concat(MORE); // 默认 12
   let sel = new Set();
   let filter = 'all';
+  let ignoreDone = true;
 
   function kindMatch(m,f){ if(f==='all')return true; return m.kind===f; }
+  function visible(m){ return kindMatch(m,filter) && !m.saved; }  // 主列表永远排除已存；已存只在置灰区显示
 
   function render(){
     const list=$('list'); list.innerHTML='';
-    const rows = DATA.filter(m=>kindMatch(m,filter));
-    if(!rows.length){ list.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div class="h">这个筛选下没有内容</div><div class="p">换个类型，或点「抓图」扫描本页全部图片</div></div>'; return; }
-    rows.forEach((m,i)=>{
+    const rows = DATA.filter(visible);
+    if(!rows.length){ list.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><div class="h">这个筛选下没有内容</div><div class="p">换个类型，或关掉「忽略已下载」看已存的</div></div>'; return; }
+    rows.forEach((m)=>{
       const idx=DATA.indexOf(m);
       const on=sel.has(idx);
       const thumb=`<div class="cover"><img src="${cover(idx,104,76)}" style="width:100%;height:100%;object-fit:cover"></div>${m.dur?`<span class="dur">${m.dur}</span>`:''}${m.fmt?`<span class="fmt">${m.fmt}</span>`:''}`;
@@ -353,6 +391,24 @@ svg{display:block}
       el.onclick=()=>toggle(idx);
       list.appendChild(el);
     });
+    // 已下载区（忽略关闭时显示，置灰不可勾）
+    if(!ignoreDone){
+      DATA.filter(m=>m.saved&&kindMatch(m,filter)).forEach(m=>{
+        const idx=DATA.indexOf(m);
+        const el=document.createElement('div');
+        el.className='row saved';
+        el.innerHTML=`
+          <span class="cb"></span>
+          <div class="thumb"><div class="cover"><img src="${cover(idx,104,76)}" style="width:100%;height:100%;object-fit:cover"></div>${m.dur?`<span class="dur">${m.dur}</span>`:''}<span class="saved-tag">✓ 已存</span></div>
+          <div class="main">
+            <div class="name">${esc(m.t)}</div>
+            <div class="meta"><span class="pdot" style="background:${m.plat}"></span>${m.res||m.fmt||''}<span class="dot"></span><span class="sz">${m.sz} MB</span></div>
+          </div>
+          <button class="exp" title="展开"><svg class="ic sm" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>`;
+        el.querySelector('.exp').onclick=e=>{e.stopPropagation();el.classList.toggle('open');};
+        list.appendChild(el);
+      });
+    }
     updateFoot();
   }
   function pathOf(m){
@@ -365,24 +421,42 @@ svg{display:block}
     if(nv&&nv.trim()){m.t=nv.trim();render();toast('已改名',m.t);}
   }
   function updateFoot(){
-    const rows=DATA.filter(m=>kindMatch(m,filter));
-    const chosen=rows.filter((m)=>sel.has(DATA.indexOf(m)));
+    const rows=DATA.filter(visible);
+    const chosen=rows.filter(m=>sel.has(DATA.indexOf(m)));
     $('selN').textContent=chosen.length;
-    $('selSz').textContent=(chosen.reduce((a,b)=>a+b.sz,0)).toFixed(0)+' MB';
-    $('vrCount').textContent=rows.length;
+    $('selSz').textContent=chosen.reduce((a,b)=>a+b.sz,0).toFixed(0)+' MB';
+    $('vrCount').textContent=DATA.filter(m=>kindMatch(m,filter)).length;
     $('allBtn').classList.toggle('on',rows.length&&chosen.length===rows.length);
     $('dlBtn').disabled=chosen.length===0;
-    $('dlTxt').textContent=chosen.length?`下载 ${chosen.length}`:'下载';
+    $('dlTxt').textContent=chosen.length?`下载 ${chosen.length} · ${chosen.reduce((a,b)=>a+b.sz,0).toFixed(0)} MB`:'下载';
   }
 
   /* 全选 */
   $('allBtn').onclick=()=>{
-    const rows=DATA.filter(m=>kindMatch(m,filter));
+    const rows=DATA.filter(visible);
     const chosen=rows.filter(m=>sel.has(DATA.indexOf(m)));
     if(chosen.length===rows.length){rows.forEach(m=>sel.delete(DATA.indexOf(m)));}
     else{rows.forEach(m=>sel.add(DATA.indexOf(m)));}
     render();
   };
+
+  /* 概览条：点某类 = 只勾选该类（再点同一类 = 取消该类） */
+  document.querySelectorAll('.ovt').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.ot;
+    const rows=DATA.filter(m=>m.kind===k&&!m.saved);
+    const ids=rows.map(m=>DATA.indexOf(m));
+    const exactlyThis = ids.length && ids.every(i=>sel.has(i)) && [...sel].every(i=>ids.includes(i));
+    if(exactlyThis){ ids.forEach(i=>sel.delete(i)); }
+    else { sel=new Set(ids); filter=k; document.querySelectorAll('.fchip[data-f]').forEach(x=>x.classList.toggle('on',x.dataset.f===k)); }
+    render();
+    toast(exactlyThis?('已取消该类'):('只选 '+rows.length+' 项 '+({video:'视频',img:'图片',stream:'流'}[k])));
+  });
+  /* 存到哪 */
+  $('ovSave').onclick=()=>toast('选择下载文件夹…','当前：哔哩哔哩/深海纪录片/');
+  /* 默认画质 */
+  $('ovQ').onclick=()=>toast('默认取最高画质（N-05）','要改到展开详情里逐条改');
+  /* 忽略已下载 */
+  $('ignoreDone').onchange=e=>{ignoreDone=e.target.checked;render();};
 
   /* 筛选 */
   document.querySelectorAll('.fchip[data-f]').forEach(c=>c.onclick=()=>{
@@ -390,12 +464,11 @@ svg{display:block}
     filter=c.dataset.f;render();
   });
 
-  /* 页签 */
+  /* 页签（媒体控制已收进齿轮→高级） */
   document.querySelectorAll('.tabs .tab').forEach(t=>t.onclick=()=>{
     document.querySelectorAll('.tabs .tab').forEach(x=>x.classList.remove('on'));t.classList.add('on');
-    if(t.dataset.tab==='all'){DATA=MORE.slice();sel=new Set();$('vrScanImages').textContent='';render();toast('切换到其他页缓存');}
-    else if(t.dataset.tab==='cur'){DATA=VIDS.concat(MORE);sel=new Set();render();}
-    else{toast('媒体控制：切源 / 清晰度 / 合并（演示）');}
+    if(t.dataset.tab==='all'){DATA=MORE.slice();sel=new Set();render();toast('切换到其他页缓存');}
+    else{DATA=VIDS.concat(MORE);sel=new Set(DATA.filter(m=>!m.saved).map(m=>DATA.indexOf(m)));render();}
   });
 
   /* 抓图 */
@@ -437,12 +510,12 @@ svg{display:block}
   }
 
   /* ---------- 演示数据量 ---------- */
-  $('dFew').onclick=()=>{DATA=VIDS.slice();sel=new Set(DATA.map((_,i)=>i));document.querySelectorAll('.demo button').forEach(x=>x.classList.remove('on'));$('dFew').classList.add('on');render();};
-  $('dMany').onclick=()=>{DATA=VIDS.concat(MORE);sel=new Set(DATA.map((_,i)=>i));document.querySelectorAll('.demo button').forEach(x=>x.classList.remove('on'));$('dMany').classList.add('on');render();};
+  $('dFew').onclick=()=>{DATA=VIDS.slice();sel=new Set(DATA.filter(m=>!m.saved).map(m=>DATA.indexOf(m)));document.querySelectorAll('.demo button').forEach(x=>x.classList.remove('on'));$('dFew').classList.add('on');render();};
+  $('dMany').onclick=()=>{DATA=VIDS.concat(MORE);sel=new Set(DATA.filter(m=>!m.saved).map(m=>DATA.indexOf(m)));document.querySelectorAll('.demo button').forEach(x=>x.classList.remove('on'));$('dMany').classList.add('on');render();};
   $('dEmpty').onclick=()=>{DATA=[];sel=new Set();document.querySelectorAll('.demo button').forEach(x=>x.classList.remove('on'));$('dEmpty').classList.add('on');render();};
 
-  /* 初始：全选 */
-  sel=new Set(DATA.map((_,i)=>i));
+  /* 初始：全选未下载的 */
+  sel=new Set(DATA.filter(m=>!m.saved).map(m=>DATA.indexOf(m)));
   render();
 })();
 </script>
