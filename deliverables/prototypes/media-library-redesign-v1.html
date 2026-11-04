@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>苏哥的钓鱼竿 · 媒体库 · 重设计原型 v1</title>
 <style>
+
+/* ===== 界面字体：思源黑体（正文）+ 思源宋体（大标题）—— OFL 免费商用 =====
+   原型经 jsdelivr 演示；正式实现=子集化 woff2 自托管进扩展（离线可用，不依赖 CDN）
+   决策记录：DESIGN-SYSTEM-BD.md §字体（2026-11-04 苏哥拍板换字体） */
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:400;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/files/noto-sans-sc-chinese-simplified-400-normal.woff2') format('woff2');}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:500;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/files/noto-sans-sc-chinese-simplified-500-normal.woff2') format('woff2');}
+@font-face{font-family:'Noto Sans SC';font-style:normal;font-weight:700;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-sans-sc@5/files/noto-sans-sc-chinese-simplified-700-normal.woff2') format('woff2');}
+@font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:700;font-display:swap;
+  src:url('https://cdn.jsdelivr.net/npm/@fontsource/noto-serif-sc@5/files/noto-serif-sc-chinese-simplified-700-normal.woff2') format('woff2');}
 /* ============================================================
    Video Rod Media Library — Redesign Prototype v1
    设计系统：近黑主色（与 popup 方案 A 统一）+ 蓝作强调色
@@ -44,7 +56,7 @@ html[data-theme="dark"]{
 html,body{height:100%}
 body{
   margin:0;background:var(--bg);color:var(--ink);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-family:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums;
 }
@@ -239,8 +251,16 @@ html[data-theme="light"] .stat-ico.c-vid{color:#047857}
 
 /* 收藏夹下拉菜单（苏哥 2026-11-04：侧栏常驻没必要，一个菜单入口即可） */
 .fav-menu-wrap{position:relative}
+.fav-side{position:relative;margin-top:8px}
+.fav-side-btn{
+  display:flex;align-items:center;gap:7px;width:100%;padding:8px 10px;border-radius:9px;
+  background:var(--surface-2);color:var(--ink-2);font-size:12px;font-weight:600;
+}
+.fav-side-btn:hover{background:var(--surface-3);color:var(--ink)}
+.fav-side-btn b{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;color:var(--faint)}
+.fav-side-btn .chev{margin-left:2px}
 .fav-menu{
-  display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:600;width:264px;
+  display:none;position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:600;width:auto;
   background:var(--surface);border:1px solid var(--line);border-radius:12px;
   box-shadow:var(--sh-3);padding:4px;
 }
@@ -983,7 +1003,7 @@ a.pi-row:hover .go{opacity:1}
   background:var(--grp,var(--muted));margin-right:7px;vertical-align:1px;
 }
 .pi-item dt{display:flex;align-items:center;gap:5px}
-.pi-item dt .k-ico{width:12px;height:12px;flex:0 0 12px;color:var(--grp,var(--muted));opacity:.85}
+.pi-item dt .k-ico{width:12px;height:12px;flex:0 0 12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;color:var(--grp,var(--muted));opacity:.9}
 .pi-label{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
   margin:0 0 7px;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
@@ -1552,7 +1572,7 @@ kbd{
   --sh-1:0 1px 2px rgba(80,64,40,.05);
   --sh-2:0 2px 8px rgba(80,64,40,.09);
   --sh-3:0 10px 28px rgba(80,64,40,.13);
-  --serif:Georgia,"Songti SC","Noto Serif SC","Source Han Serif SC",serif;
+  --serif:"Noto Serif SC",Georgia,"Songti SC","Noto Serif SC","Source Han Serif SC",serif;
   --sidebar:268px; --info:372px;
 }
 
@@ -1578,7 +1598,7 @@ h1{
   letter-spacing:-.2px;line-height:1.22;
 }
 h1 .pill{
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-family:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
   font-size:11px;font-weight:600;letter-spacing:0;
 }
 .pv-info h2{
@@ -2089,6 +2109,29 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
     </div>
     <nav class="tree" id="tree"></nav>
 
+    <div class="fav-side">
+      <button class="fav-side-btn" id="favMenuBtn">
+        <svg class="i i-sm"><use href="#i-bookmark"/></svg><span>收藏夹</span>
+        <b id="favSideCnt">0</b>
+        <svg class="i i-sm chev"><use href="#i-chevron-up"/></svg>
+      </button>
+      <div class="fav-menu" id="favMenu">
+          <div class="side-fav">
+      <div class="fav-head">
+        <span>收藏夹</span>
+        <button class="fav-add" id="favNewBtn" title="新建收藏夹"><svg class="i"><use href="#i-bookmark-plus"/></svg></button>
+        <button class="fav-add" id="favSaveFilter" title="把当前筛选存为智能收藏夹"><svg class="i"><use href="#i-funnel"/></svg></button>
+      </div>
+      <nav id="favList"></nav>
+      <div class="fav-new" id="favNewRow">
+        <input id="favNewInput" placeholder="收藏夹名字，回车创建" autocomplete="off" spellcheck="false">
+        <button class="ok" id="favNewOk">创建</button>
+      </div>
+      <button class="fav-more hidden" id="favMore">全部收藏夹（<span id="favMoreN">0</span>）</button>
+    </div>
+      </div>
+    </div>
+
     <div class="side-foot">
       <div class="sf-row"><span><b id="fCount">27</b> 个文件</span><span><b id="fSize">418 MB</b></span></div>
       <div class="meter"><i id="meterBar"></i></div>
@@ -2110,26 +2153,6 @@ html[data-theme="dark"] .favpop{background:#12141A;border-color:#1F232B}
         <kbd>⌘K</kbd>
       </div>
       <div class="actions">
-        <button class="btn" id="dedupBtn"><svg class="i i-sm"><use href="#i-copy"/></svg>查重</button>
-        <button class="btn" id="favMenuBtn" title="收藏夹"><svg class="i i-sm"><use href="#i-bookmark"/></svg>收藏夹<svg class="i i-sm" style="margin-left:2px"><use href="#i-chevron-down"/></svg></button>
-        <div class="fav-menu" id="favMenu">
-          <div class="fav-menu-inner">
-    <div class="side-fav">
-      <div class="fav-head">
-        <span>收藏夹</span>
-        <button class="fav-add" id="favNewBtn" title="新建收藏夹"><svg class="i"><use href="#i-bookmark-plus"/></svg></button>
-        <button class="fav-add" id="favSaveFilter" title="把当前筛选存为智能收藏夹"><svg class="i"><use href="#i-funnel"/></svg></button>
-      </div>
-      <nav id="favList"></nav>
-      <div class="fav-new" id="favNewRow">
-        <input id="favNewInput" placeholder="收藏夹名字，回车创建" autocomplete="off" spellcheck="false">
-        <button class="ok" id="favNewOk">创建</button>
-      </div>
-      <button class="fav-more hidden" id="favMore">全部收藏夹（<span id="favMoreN">0</span>）</button>
-    </div>
-
-          </div>
-        </div>
         <button class="btn" id="selectBtn"><svg class="i i-sm"><use href="#i-square-check"/></svg>选择</button>
         <button class="btn" id="rescanBtn"><svg class="i i-sm"><use href="#i-refresh-cw"/></svg>重新扫描</button>
         <button class="btn" id="pickBtn"><svg class="i i-sm"><use href="#i-folder"/></svg>选择目录</button>
@@ -2612,21 +2635,12 @@ const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx
    —— 「已加星标」做成规则型系统收藏夹：
       星标不再是一个加完没有出口的开关，而是有归宿的一栏
    ============================================================ */
+/* 苏哥 2026-11-04：四个预置栏目不要，初始只有一个空的收藏夹功能。
+   「已加星标」改为动态系统夹：有星标内容才出现（renderFavs 里 count>0 才渲染） */
 let FAVORITES = [
   {id:'fav-star', name:'已加星标', sys:'star'},
-  {id:'fav-1', name:'旅行素材', desc:'川西、折多山、路上随手拍'},
-  {id:'fav-2', name:'教程待看', desc:'还没看完的，看完就移出去'},
-  {id:'fav-3', name:'给客户的', desc:'挑过的成片，发之前再核一遍'},
 ];
-(function seedFavs(){
-  const match = pred => FILES.filter(pred).map(f => f.id);
-  /* 用 id 片段匹配，复制出来的副本（带 ~n 后缀）也会被算进去 */
-  FAVORITES.find(x=>x.id==='fav-1').ids = match(f => f.id.includes('weibo/tang'));
-  FAVORITES.find(x=>x.id==='fav-2').ids = match(f => f.id.includes('youtube') || /\/videos\/a1/.test(f.id));
-  FAVORITES.find(x=>x.id==='fav-3').ids = match(f => f.id.includes('xiaohongshu') && f.id.includes('/images/'));
-  /* 预置几个星标，让「已加星标」一开始不是空的 */
-  FILES.filter(f => f.id.includes('NASA') || f.id.includes('云海')).slice(0,6).forEach(f => f.starred = true);
-})();
+/* 不预置任何演示夹与星标：收藏夹从零开始（苏哥定稿） */
 
 function favHas(fav, f){
   if (!fav) return false;
@@ -2669,24 +2683,35 @@ const TREE = [
   {kind:'plat',key:'weibo',label:'微博',count:2},
   {kind:'author',label:'唐十七呀',count:2,lv:2},
 ];
+/* 树折叠状态（苏哥 2026-11-04：平台/博主太多时别甩长滚动条）：
+   平台行点击=展开/收起其博主；默认收起，只见平台行；搜索时自动全展开 */
+const treeOpen = {};
 function renderTree(){
   const q = $('#treeSearch').value.trim().toLowerCase();
   const rows = TREE.filter(t=>!q || t.label.toLowerCase().includes(q));
   /* 分母用真实素材数，别用 mock 里的 27，否则占比条对不上总数 */
   const total = FILES.length || 1;
   let curColor = '#9AA3AF';
+  let lastPlat = '';
   $('#tree').innerHTML = rows.map(t=>{
     /* root 就是全量，用 100%；其余按真实总数算占比 */
     const pct = t.kind === 'root' ? 100
       : Math.max(2, Math.min(100, Math.round(t.count / total * 100)));
-    if (t.kind === 'plat') { curColor = PLAT[t.key].dot; }
+    if (t.kind === 'plat') {
+      curColor = PLAT[t.key].dot;
+      lastPlat = t.key;
+    }
+    /* 博主行：所属平台收起且非搜索态 → 不渲染（这就是「不见长滚动条」的关键） */
+    if (t.kind === 'author' && !treeOpen[lastPlat] && !q) return '';
     if (t.kind === 'root') {
       return `<button class="tree-node active" style="--pct:${pct}%">` +
         `<svg class="i i-sm"><use href="#i-folder"/></svg>` +
         `<span class="label">${t.label}</span><span class="count">${total}</span></button>`;
     }
     if (t.kind === 'plat') {
-      return `<button class="tree-node plat" style="--pct:${pct}%;--pc:${curColor}">` +
+      const open = !!treeOpen[t.key] || !!q;
+      return `<button class="tree-node plat" data-plat="${t.key}" style="--pct:${pct}%;--pc:${curColor}">` +
+        `<svg class="i i-sm chev" style="transform:rotate(${open?0:-90}deg)"><use href="#i-chevron-down"/></svg>` +
         `<span class="dot" style="--pc:${curColor}"></span>` +
         `<span class="label">${esc(t.label)}</span><span class="count">${t.count}</span></button>`;
     }
@@ -2699,6 +2724,8 @@ function renderTree(){
 $('#treeSearch').addEventListener('input',renderTree);
 $('#tree').addEventListener('click',e=>{
   const n = e.target.closest('.tree-node'); if(!n) return;
+  const plat = n.dataset.plat;
+  if (plat) { treeOpen[plat] = !treeOpen[plat]; renderTree(); return; }  // 平台行=折叠开关
   $$('.tree-node').forEach(x=>x.classList.remove('active'));
   n.classList.add('active');
 });
@@ -2828,7 +2855,6 @@ $('#grid').addEventListener('keydown',e=>{
   if(e.key==='Enter'){const c=e.target.closest('.card'); if(c) openPreview(FILES.find(f=>f.id===c.dataset.id));}
 });
 $('#sort').addEventListener('change',render);
-$('#dedupBtn').addEventListener('click',()=>toast('查重已完成：4 组重复 / 12 个文件'));
 $('#rescanBtn').addEventListener('click',()=>toast('已重新扫描，27 项'));
 
 /* ---------- 预览 ---------- */
@@ -3874,6 +3900,8 @@ function favIcon(fav, cls){
 $('#favMenuBtn').addEventListener('click', e => {
   e.stopPropagation();
   $('#favMenu').classList.toggle('on');
+  const visCnt = FAVORITES.filter(f => f.sys !== 'star' || favCount(f) > 0).length;
+  $('#favSideCnt').textContent = visCnt;
 });
 document.addEventListener('click', e => {
   if (e.target.closest('#favMenu .fav-row')) { $('#favMenu').classList.remove('on'); return; }
@@ -3897,7 +3925,8 @@ $('#favSaveFilter').addEventListener('click', () => {
 function renderFavs(){
   const list = $('#favList');
   if (!list) return;
-  const shown = FAVORITES.slice(0, FAV_SHOW_MAX);
+  const visible = FAVORITES.filter(fav => fav.sys !== 'star' || favCount(fav) > 0);
+  const shown = visible.slice(0, FAV_SHOW_MAX);
   list.innerHTML = shown.length
     ? shown.map(fav =>
         '<button class="fav-row' + (S.fav === fav.id ? ' active' : '') + '" data-fav="' + fav.id + '">'
@@ -3906,7 +3935,7 @@ function renderFavs(){
         + '<span class="count">' + favCount(fav) + '</span>'
         + '</button>').join('')
     : '<div class="fav-empty">还没有收藏夹。点上面的 + 建一个。</div>';
-  const rest = FAVORITES.length - FAV_SHOW_MAX;
+  const rest = visible.length - FAV_SHOW_MAX;
   $('#favMore').classList.toggle('hidden', rest <= 0);
   $('#favMoreN').textContent = FAVORITES.length;
 }
