@@ -66,6 +66,12 @@ button{cursor:pointer;border:0;background:none;padding:0}
   padding:16px 12px 12px;display:flex;flex-direction:column;gap:14px;
   position:sticky;top:0;height:100vh;overflow:auto;
 }
+/* 只有资源树伸缩，其余块固定高度 ——
+   否则窗口不够高时 flex-shrink 会把「收藏夹 / 资源树」这些小标题压成 0 高 */
+.sidebar > *{flex:0 0 auto}
+/* 只有资源树伸缩，其余块固定高度 ——
+   否则窗口不够高时 flex-shrink 会把「收藏夹 / 资源树」这些小标题压成 0 高 */
+.sidebar > *{flex:0 0 auto}
 .brand{display:flex;align-items:center;gap:10px;padding:0 4px}
 .brand .logo{
   width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
@@ -92,7 +98,7 @@ button{cursor:pointer;border:0;background:none;padding:0}
 
 .side-label{
   display:flex;align-items:center;justify-content:space-between;
-  padding:2px 8px 0;font-size:10px;letter-spacing:.1em;color:var(--faint);
+  padding:2px 8px 0;font-size:10px;letter-spacing:.1em;color:var(--muted);
   text-transform:uppercase;font-weight:650;
 }
 .tree-search{
@@ -103,7 +109,8 @@ button{cursor:pointer;border:0;background:none;padding:0}
 .tree-search:focus-within{border-color:var(--accent);background:var(--surface)}
 .tree-search input{flex:1;min-width:0;border:0;background:transparent;font-size:11.5px;color:var(--ink);outline:none}
 .tree-search input::placeholder{color:var(--faint)}
-.tree{display:flex;flex-direction:column;gap:1px;overflow:auto;margin:0 -4px;padding:0 4px}
+.tree{display:flex;flex-direction:column;gap:1px;overflow:auto;margin:0 -4px;padding:0 4px;
+  flex:1 1 auto;min-height:90px}
 .tree-node{
   display:flex;align-items:center;gap:7px;width:100%;text-align:left;
   padding:6px 8px;border-radius:var(--r-sm);color:var(--ink-2);font-size:12px;
@@ -1257,6 +1264,125 @@ a.pi-item:hover dd .go{opacity:1}
 .preview.vt-morph .pv-info,
 .preview.vt-morph .pv-film{animation:none}
 
+/* ============================================================
+   收藏夹（一级栏目）
+   —— 收藏夹是"视图"不是"位置"：文件永远不动，一手素材可在多个夹里
+   ============================================================ */
+.side-fav{display:flex;flex-direction:column;gap:1px;flex:0 0 auto}
+.fav-head{display:flex;align-items:center;justify-content:space-between;padding:2px 8px 4px}
+.fav-head span{
+  font-size:10px;letter-spacing:.1em;color:var(--muted);
+  text-transform:uppercase;font-weight:650;
+}
+.fav-add{
+  width:20px;height:20px;border-radius:5px;display:grid;place-items:center;
+  color:var(--faint);transition:all .12s;
+}
+.fav-add:hover{background:var(--surface-2);color:var(--ink)}
+.fav-add .i{width:13px;height:13px}
+
+.fav-row{
+  display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+  padding:6px 8px;border-radius:var(--r-sm);
+  color:var(--ink-2);font-size:12px;position:relative;
+  transition:background .12s,color .12s;
+}
+.fav-row:hover{background:var(--surface-2);color:var(--ink)}
+.fav-row.active{background:var(--surface-2);color:var(--ink);font-weight:600}
+.fav-row.active::before{
+  content:"";position:absolute;left:0;top:6px;bottom:6px;width:2px;
+  border-radius:2px;background:var(--ink);
+}
+.fav-row .fi{width:15px;height:15px;flex:0 0 15px;color:var(--muted)}
+.fav-row.active .fi{color:var(--ink)}
+.fav-row .fi.star{color:#E0A02E}
+.fav-row .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fav-row .count{
+  font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums;
+  padding:0 4px;border-radius:99px;flex:0 0 auto;
+}
+.fav-row.active .count{color:var(--muted)}
+/* 新建：内联输入，像文件管理器，不用弹窗 */
+.fav-new{display:none;align-items:center;gap:5px;padding:3px 6px}
+.fav-new.on{display:flex}
+.fav-new input{
+  flex:1;min-width:0;height:26px;padding:0 7px;font-size:11.5px;
+  border:1px solid var(--accent);border-radius:6px;outline:none;
+  background:var(--surface);color:var(--ink);
+  box-shadow:0 0 0 2px var(--accent-soft);
+}
+.fav-new .ok{font-size:10.5px;color:var(--accent);padding:0 5px;font-weight:600}
+.fav-more{
+  font-size:10.5px;color:var(--faint);padding:4px 8px;text-align:left;
+  border-radius:var(--r-sm);
+}
+.fav-more:hover{color:var(--ink-2);background:var(--surface-2)}
+.fav-empty{font-size:10.5px;color:var(--faint);padding:4px 8px;line-height:1.6}
+
+/* 收藏夹视图标题行的操作 */
+.ph-fav-acts{display:flex;gap:5px;margin-top:8px}
+
+/* 加入收藏夹浮层（浅色，与页面同族；和播放器的深色浮层不同族） */
+.favpop{
+  position:fixed;z-index:88;width:252px;padding:8px;
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--sh-3);
+  opacity:0;pointer-events:none;transform:translateY(-4px);
+  transition:opacity .13s var(--ease),transform .13s var(--ease);
+}
+.favpop.on{opacity:1;pointer-events:auto;transform:none}
+.favpop .fp-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:2px 5px 7px;font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint);font-weight:700;
+}
+.favpop .fp-list{max-height:210px;overflow:auto;display:flex;flex-direction:column;gap:1px}
+.favpop .fp-item{
+  display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+  padding:7px 8px;border-radius:6px;font-size:11.5px;color:var(--ink-2);
+}
+.favpop .fp-item:hover{background:var(--surface-2);color:var(--ink)}
+.favpop .fp-item .fi{width:14px;height:14px;flex:0 0 14px;color:var(--muted)}
+.favpop .fp-item .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.favpop .fp-item .box{
+  width:15px;height:15px;flex:0 0 15px;border-radius:4px;
+  border:1.5px solid var(--line);display:grid;place-items:center;color:#fff;
+}
+.favpop .fp-item.on .box{background:var(--ink);border-color:var(--ink)}
+.favpop .fp-item .box .i{width:10px;height:10px;opacity:0;stroke-width:3.2}
+.favpop .fp-item.on .box .i{opacity:1}
+.favpop .fp-foot{
+  display:flex;gap:5px;padding:6px 5px 1px;margin-top:3px;
+  border-top:1px solid var(--line-2);
+}
+.favpop .fp-new{
+  flex:1;display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:6px;
+  font-size:11px;color:var(--accent);
+}
+.favpop .fp-new:hover{background:var(--accent-soft)}
+.favpop .fp-new .i{width:12px;height:12px}
+.favpop .fp-done{font-size:11px;font-weight:600;color:var(--ink);padding:5px 10px;border-radius:6px}
+.favpop .fp-done:hover{background:var(--surface-2)}
+
+/* 管理抽屉里的行 */
+.mg-row{
+  display:flex;align-items:center;gap:8px;padding:8px;border-radius:var(--r);
+  transition:background .12s;
+}
+.mg-row:hover{background:var(--surface-2)}
+.mg-row .fi{width:15px;height:15px;flex:0 0 15px;color:var(--muted)}
+.mg-row .label{flex:1;min-width:0;font-size:12px;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mg-row .n{font-size:10px;color:var(--faint);flex:0 0 auto}
+.mg-row .ops{display:flex;gap:2px;flex:0 0 auto;opacity:0;transition:opacity .12s}
+.mg-row:hover .ops{opacity:1}
+.mg-row .ops button{
+  width:22px;height:22px;border-radius:5px;display:grid;place-items:center;color:var(--muted);
+}
+.mg-row .ops button:hover{background:var(--surface-3);color:var(--ink)}
+.mg-row .ops button.del:hover{background:var(--danger-soft);color:var(--danger)}
+.mg-row .ops .i{width:12px;height:12px}
+
 /* ---------- 倍速选择浮层（视频 / 动图共用） ---------- */
 .ratepop{
   position:absolute;z-index:12;width:200px;padding:8px;
@@ -1396,7 +1522,11 @@ kbd{
 <symbol id="i-folder-open" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
 <symbol id="i-hard-drive" viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></symbol>
-<symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+<symbol id="i-bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></symbol>
+  <symbol id="i-bookmark-plus" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/><line x1="12" x2="12" y1="7" y2="13"/><line x1="15" x2="9" y1="10" y2="10"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></symbol>
+  <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
 <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
 <symbol id="i-keyboard" viewBox="0 0 24 24"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></symbol>
 <symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
@@ -1443,6 +1573,20 @@ kbd{
       <svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
     </button>
 
+    <!-- 一级栏目：收藏夹 -->
+    <div class="side-fav">
+      <div class="fav-head">
+        <span>收藏夹</span>
+        <button class="fav-add" id="favNewBtn" title="新建收藏夹"><svg class="i"><use href="#i-bookmark-plus"/></svg></button>
+      </div>
+      <nav id="favList"></nav>
+      <div class="fav-new" id="favNewRow">
+        <input id="favNewInput" placeholder="收藏夹名字，回车创建" autocomplete="off" spellcheck="false">
+        <button class="ok" id="favNewOk">创建</button>
+      </div>
+      <button class="fav-more hidden" id="favMore">全部收藏夹（<span id="favMoreN">0</span>）</button>
+    </div>
+
     <div>
       <div class="side-label"><span>资源树</span><span id="treeTotal">27</span></div>
     </div>
@@ -1485,6 +1629,11 @@ kbd{
       <div class="ph-left">
         <div class="crumb" id="crumb"><b>媒体库</b><span class="sep">/</span><span>全部平台</span></div>
         <h1 id="pageTitle">全部素材 <span class="pill">27 项</span></h1>
+        <div class="ph-fav-acts hidden" id="favActs">
+          <button class="btn small" id="favRename"><svg class="i i-sm"><use href="#i-pencil"/></svg>重命名</button>
+          <button class="btn small" id="favExport"><svg class="i i-sm"><use href="#i-copy"/></svg>复制清单</button>
+          <button class="btn small danger" id="favDelete"><svg class="i i-sm"><use href="#i-trash-2"/></svg>删除收藏夹</button>
+        </div>
         <p class="ph-sub" id="pageSub">来自 4 个平台 · 6 位博主</p>
         <div class="sync"><i></i><span id="syncText">2 分钟前扫描完成</span></div>
       </div>
@@ -1502,8 +1651,8 @@ kbd{
           <div><b id="sVid">9</b><span>视频</span></div>
         </div>
         <div class="stat">
-          <span class="stat-ico"><svg class="i"><use href="#i-hard-drive"/></svg></span>
-          <div><b id="sSize">418</b><span>总大小 MB</span></div>
+          <span class="stat-ico"><svg class="i"><use href="#i-repeat-1"/></svg></span>
+          <div><b id="sAnim">0</b><span>动图</span></div>
         </div>
       </div>
     </section>
@@ -1548,6 +1697,7 @@ kbd{
       <button class="btn small" id="batchInvert">反选</button>
       <button class="btn small" id="batchClear">清除</button>
       <span class="spacer"></span>
+      <button class="btn small" id="batchFav"><svg class="i i-sm"><use href="#i-bookmark-plus"/></svg>加入收藏夹</button>
       <button class="btn small"><svg class="i i-sm"><use href="#i-folder-input"/></svg>移动到…</button>
       <button class="btn small danger" id="batchTrash"><svg class="i i-sm"><use href="#i-trash-2"/></svg>删除到回收站</button>
       <button class="btn small ghost" id="batchExit" title="退出批量选择">退出</button>
@@ -1805,7 +1955,8 @@ kbd{
     <button data-act="preview"><svg class="i"><use href="#i-maximize"/></svg>预览<span class="kbd">Enter</span></button>
     <button data-act="open"><svg class="i"><use href="#i-folder-open"/></svg>在文件中打开</button>
     <button data-act="copy"><svg class="i"><use href="#i-copy"/></svg>复制路径</button>
-    <button data-act="star"><svg class="i"><use href="#i-tag"/></svg>加星标</button>
+    <button data-act="star"><svg class="i"><use href="#i-star"/></svg>加星标</button>
+    <button data-act="fav"><svg class="i"><use href="#i-bookmark-plus"/></svg>加入收藏夹…</button>
     <hr>
     <button data-act="rename"><svg class="i"><use href="#i-pencil"/></svg>重命名<span class="kbd">F2</span></button>
     <button data-act="reveal"><svg class="i"><use href="#i-folder-input"/></svg>移动…</button>
@@ -1855,6 +2006,34 @@ kbd{
     </div>
   </div>
 
+  <!-- 加入收藏夹浮层 -->
+  <div class="favpop" id="favPop" role="menu" aria-label="加入收藏夹">
+    <div class="fp-head"><span>加入收藏夹</span><span id="favPopN">已选 0 项</span></div>
+    <div class="fp-list" id="favPopList"></div>
+    <div class="fp-foot">
+      <button class="fp-new" id="favPopNew"><svg class="i"><use href="#i-bookmark-plus"/></svg>新建收藏夹</button>
+      <button class="fp-done" id="favPopDone">完成</button>
+    </div>
+  </div>
+
+  <!-- 收藏夹管理抽屉 -->
+  <div class="drawer-mask" id="favMask"></div>
+  <aside class="drawer" id="favDrawer" aria-label="管理收藏夹" style="width:400px">
+    <div class="dw-head">
+      <svg class="i" style="width:15px;height:15px;color:var(--muted)"><use href="#i-bookmark"/></svg>
+      <h3>管理收藏夹</h3>
+      <span class="cnt" id="favDrawerN">0</span>
+      <button class="close" id="favDrawerClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dw-note">收藏夹只是「视图」，移动素材文件本身不会被改动。顺序可上下调整——收藏夹是给人看的，顺序有意义。</div>
+    <div class="dw-list" id="favDrawerList"></div>
+    <div class="dw-foot">
+      <button class="btn small" id="favDrawerNew">新建收藏夹</button>
+      <span class="spacer"></span>
+      <span style="font-size:10px;color:var(--faint)">拖动排序将在正式版支持</span>
+    </div>
+  </aside>
+
   <div class="toast" id="toast"></div>
 <button class="themebtn" id="themeBtn" title="切换暗色"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
 
@@ -1895,8 +2074,6 @@ const FILES = [
   {id:'web/未分类/images/g3.jpg',plat:'web',author:'',authorState:'unsupported',source:'download',dlAt:'2026-11-04 16:51',title:'网页里右键存下的一张长图（来源页已关）',kind:'image',size:3.7,h:132},
   /* 情况四：名字也没抓到（接口失败 / 页面结构变了）—— 这是真缺陷，必须让人看见并能重试 */
   {id:'xiaohongshu/未分类/videos/g4.mp4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
-  /* 情况四：名字也没抓到（接口失败 / 页面结构变了）—— 这是真缺陷，必须让人看见并能重试 */
-  {id:'xiaohongshu/未分类/videos/g4.mp4',plat:'xiaohongshu',author:'',authorState:'missing',workId:'66f0a1b2000000001e02c3dd',source:'download',dlAt:'2026-11-04 16:58',title:'阳台改造第 4 期（作者信息抓取失败）',kind:'video',size:27.9,dur:'00:44',h:74},
 ];
 // 补到 27 条，并**交错插回**，避免同一条素材连续出现（看起来像 bug）
 (() => {
@@ -1915,7 +2092,39 @@ const FILES = [
 })();
 
 /* ---------- 状态 ---------- */
-const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[],autoplay:true,loopEnd:false,rate:1,vTime:0};
+const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[],autoplay:true,loopEnd:false,rate:1,vTime:0,fav:null};
+/* ============================================================
+   收藏夹
+   —— 收藏夹是「视图」不是「位置」：素材文件永远不动，
+      一条素材可以同时在多个收藏夹里（不像文件夹是排他的）
+   —— 「已加星标」做成规则型系统收藏夹：
+      星标不再是一个加完没有出口的开关，而是有归宿的一栏
+   ============================================================ */
+let FAVORITES = [
+  {id:'fav-star', name:'已加星标', sys:'star'},
+  {id:'fav-1', name:'旅行素材', desc:'川西、折多山、路上随手拍'},
+  {id:'fav-2', name:'教程待看', desc:'还没看完的，看完就移出去'},
+  {id:'fav-3', name:'给客户的', desc:'挑过的成片，发之前再核一遍'},
+];
+(function seedFavs(){
+  const match = pred => FILES.filter(pred).map(f => f.id);
+  /* 用 id 片段匹配，复制出来的副本（带 ~n 后缀）也会被算进去 */
+  FAVORITES.find(x=>x.id==='fav-1').ids = match(f => f.id.includes('weibo/tang'));
+  FAVORITES.find(x=>x.id==='fav-2').ids = match(f => f.id.includes('youtube') || /\/videos\/a1/.test(f.id));
+  FAVORITES.find(x=>x.id==='fav-3').ids = match(f => f.id.includes('xiaohongshu') && f.id.includes('/images/'));
+  /* 预置几个星标，让「已加星标」一开始不是空的 */
+  FILES.filter(f => f.id.includes('NASA') || f.id.includes('云海')).slice(0,6).forEach(f => f.starred = true);
+})();
+
+function favHas(fav, f){
+  if (!fav) return false;
+  return fav.sys === 'star' ? !!f.starred : fav.ids.indexOf(f.id) >= 0;
+}
+function favMembers(fav){
+  return FILES.filter(f => favHas(fav, f));
+}
+function favCount(fav){ return favMembers(fav).length; }
+
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = n => n>=1024? (n/1024).toFixed(1)+' GB' : n>=1? n.toFixed(1)+' MB' : Math.round(n*1024)+' KB';
@@ -1969,6 +2178,11 @@ $('#tree').addEventListener('click',e=>{
 /* ---------- 筛选 ---------- */
 function filtered(){
   return FILES.filter(f=>{
+    /* 收藏夹是第一层筛选，类型/平台/关键词在它内部继续叠加 */
+    if(S.fav){
+      const fav = FAVORITES.find(x=>x.id===S.fav);
+      if(fav && !favHas(fav,f)) return false;
+    }
     if(S.type==='image' && f.kind!=='image') return false;
     if(S.type==='video' && f.kind!=='video') return false;
     if(S.type==='anim' && f.kind!=='anim') return false;
@@ -2019,12 +2233,13 @@ function render(){
   $('#listhead').classList.toggle('on', S.view==='list');
   renderEmpty(rows.length);
   $('#grid').classList.toggle('hidden', rows.length===0);
-  const T = {all:'全部素材', image:'图片', anim:'动图', video:'视频'}[S.type] || '全部素材';
-  $('#pageTitle').innerHTML = `${T} <span class="pill">${rows.length} 项</span>`;
+  applyFavView(rows);
   $('#sCount').textContent = rows.length;
   $('#sImg').textContent = rows.filter(f=>f.kind==='image').length;
   $('#sVid').textContent = rows.filter(f=>f.kind==='video').length;
-  $('#sSize').textContent = Math.round(rows.reduce((a,b)=>a+b.size,0));
+  /* 四张卡必须能加得起来：素材 = 图片 + 动图 + 视频。
+     之前第四张是「总大小」，导致 5 ≠ 1+2（动图没算），数字自相矛盾 */
+  $('#sAnim').textContent = rows.filter(f=>f.kind==='anim').length;
   $('#fCount').textContent = rows.length;
   $('#fSize').textContent = Math.round(rows.reduce((a,b)=>a+b.size,0)) + ' MB';
   $('#treeTotal').textContent = FILES.length;
@@ -2402,6 +2617,12 @@ $('#pvFullBtn').addEventListener('click',()=>toast('全屏（原型未启用）'
 document.addEventListener('keydown',e=>{
   const tag = (e.target.tagName || '').toLowerCase();
   const typing = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
+  /* 全局浮层/抽屉的 Esc 要放在「预览是否打开」判断之前——
+     否则没开预览时函数直接 return，抽屉永远关不掉 */
+  if(e.key === 'Escape' && !typing){
+    if($('#favPop').classList.contains('on')){ closeFavPop(); return; }
+    if($('#favDrawer').classList.contains('on')){ closeFavDrawer(); return; }
+  }
   if($('#preview').classList.contains('hidden')){
     if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();$('#search').focus();}
     return;
@@ -2409,7 +2630,9 @@ document.addEventListener('keydown',e=>{
   /* 在输入框打字时快捷键让位，只有 Esc 保留（VW-10） */
   if(typing && e.key !== 'Escape') return;
   if(e.key==='Escape'){
-    /* 逐层退出：先关浮层，再关快捷键表，最后才退出预览 */
+    /* 逐层退出：先关最上层的浮层，再往下 */
+    if($('#favPop').classList.contains('on')){ closeFavPop(); return; }
+    if($('#favDrawer').classList.contains('on')){ closeFavDrawer(); return; }
     if($('#ratePop').classList.contains('on')){ closeRatePop(); return; }
     if(!$('#keysheet').classList.contains('hidden')){ closeKeys(); return; }
     closePreview(); return;
@@ -2812,7 +3035,7 @@ $('#dwEmpty').addEventListener('click', () => {
 });
 
 /* ---------- 右键菜单 ---------- */
-let ctxFile = null;
+let ctxFile = null, ctxPos = { x: 0, y: 0 };
 function closeCtx(){ $('#ctx').classList.remove('on'); }
 
 document.addEventListener('contextmenu', e => {
@@ -2821,6 +3044,7 @@ document.addEventListener('contextmenu', e => {
   e.preventDefault();
   ctxFile = FILES.find(f => f.id === card.dataset.id) || null;
   if (!ctxFile) return;
+  ctxPos = { x: e.clientX, y: e.clientY };
   const m = $('#ctx');
   m.classList.add('on');
   const w = m.offsetWidth, h = m.offsetHeight;
@@ -2837,8 +3061,11 @@ $('#ctx').addEventListener('click', e => {
     openPreview(f);
   } else if (act === 'copy') {
     navigator.clipboard.writeText(f.id).then(() => toast('路径已复制')).catch(() => toast('复制失败'));
+  } else if (act === 'fav') {
+    openFavPop(ctxPos, [f]);
   } else if (act === 'star') {
-    f.starred = !f.starred; render(); toast(f.starred ? '已加星标' : '已取消星标');
+    f.starred = !f.starred; render();
+    toast(f.starred ? '已加星标 → 收藏夹「已加星标」' : '已取消星标');
   } else if (act === 'trash') {
     const i = FILES.findIndex(x => x.id === f.id);
     if (i < 0) return;
@@ -2862,9 +3089,26 @@ function renderEmpty(n){
   el.classList.remove('hidden');
   const filtering = !!(S.q || S.type !== 'all' || S.plat !== 'all');
   const noData = FILES.length === 0;
+  const fav = S.fav ? FAVORITES.find(x => x.id === S.fav) : null;
   const ico = h => $('#emptyIco').innerHTML = '<svg class="i"><use href="#' + h + '"/></svg>';
 
-  if (noData) {
+  /* 空收藏夹要单独说：素材都在库里，只是没加进来 ——
+     不能沿用"索引可能是空的"那套文案，那会让人以为库坏了 */
+  if (fav && !filtering) {
+    ico('i-bookmark');
+    $('#emptyTitle').textContent = '「' + fav.name + '」还是空的';
+    $('#emptyText').textContent = fav.sys === 'star'
+      ? '在素材上右键「加星标」，或选中后右键「加入收藏夹」，就会自动收到这里。'
+      : '在全部素材里选中想要的，右键「加入收藏夹」就能放进来。一个素材可以同时在多个收藏夹里。';
+    $('#emptyAction').textContent = fav.sys === 'star' ? '去全部素材' : '去全部素材挑';
+    $('#emptyAction').dataset.act = 'exitfav';
+  } else if (fav && filtering) {
+    ico('i-search');
+    $('#emptyTitle').textContent = '「' + fav.name + '」里没有匹配的素材';
+    $('#emptyText').textContent = '收藏夹共 ' + favCount(fav) + ' 项，当前还叠加了筛选条件。清掉筛选看看。';
+    $('#emptyAction').textContent = '清除筛选';
+    $('#emptyAction').dataset.act = 'clear';
+  } else if (noData) {
     ico('i-folder');
     $('#emptyTitle').textContent = '这个目录里还没有素材';
     $('#emptyText').innerHTML = '在网页上抓到的东西会自动存进来。<br>也可以先扫一遍目录里已有的文件。';
@@ -2890,6 +3134,10 @@ function renderEmpty(n){
 }
 $('#emptyAction').addEventListener('click', e => {
   const act = e.currentTarget.dataset.act;
+  if (act === 'exitfav') {
+    exitFav();
+    return;
+  }
   if (act === 'clear') {
     S.q = ''; S.type = 'all'; S.plat = 'all';
     const si = $('#search'); if (si) si.value = '';
@@ -3064,6 +3312,308 @@ $('#batchTrash').addEventListener('click', () => {
   const list = S.list.filter(f => S.sel.has(f.id));
   if (!list.length) { toast('还没有选中任何素材'); return; }
   trashFiles(list);
+});
+$('#batchFav').addEventListener('click', () => {
+  const list = S.list.filter(f => S.sel.has(f.id));
+  if (!list.length) { toast('还没有选中任何素材'); return; }
+  openFavPop($('#batchFav'), list);
+});
+
+/* ============================================================
+   收藏夹：渲染 / 切换 / 新建 / 加入 / 管理
+   ============================================================ */
+const FAV_SHOW_MAX = 5;          /* 侧栏最多显示几个，其余进管理抽屉 */
+
+function favIcon(fav, cls){
+  const c = 'i ' + (cls || 'fi') + (fav.sys === 'star' ? ' star' : '');
+  return '<svg class="' + c + '"><use href="#i-' + (fav.sys === 'star' ? 'star' : 'bookmark') + '"/></svg>';
+}
+
+function renderFavs(){
+  const list = $('#favList');
+  if (!list) return;
+  const shown = FAVORITES.slice(0, FAV_SHOW_MAX);
+  list.innerHTML = shown.length
+    ? shown.map(fav =>
+        '<button class="fav-row' + (S.fav === fav.id ? ' active' : '') + '" data-fav="' + fav.id + '">'
+        + favIcon(fav)
+        + '<span class="label">' + esc(fav.name) + '</span>'
+        + '<span class="count">' + favCount(fav) + '</span>'
+        + '</button>').join('')
+    : '<div class="fav-empty">还没有收藏夹。点上面的 + 建一个。</div>';
+  const rest = FAVORITES.length - FAV_SHOW_MAX;
+  $('#favMore').classList.toggle('hidden', rest <= 0);
+  $('#favMoreN').textContent = FAVORITES.length;
+}
+
+/* 视图切换：收藏夹是「第一层筛选」，类型/平台/关键词在它里面继续叠加 */
+function applyFavView(rows){
+  const fav = S.fav ? FAVORITES.find(x => x.id === S.fav) : null;
+  if (fav) {
+    $('#crumb').innerHTML = '<b id="crumbBack" style="cursor:pointer">收藏夹</b>'
+      + '<span class="sep">/</span><span>' + esc(fav.name) + '</span>';
+    $('#pageTitle').innerHTML = esc(fav.name) + ' <span class="pill">' + rows.length + ' 项</span>';
+    const size = rows.reduce((a, b) => a + b.size, 0);
+    $('#pageSub').textContent = (fav.desc ? fav.desc + ' · ' : '')
+      + rows.length + ' 个素材 · ' + Math.round(size) + ' MB'
+      + (fav.sys === 'star' ? ' · 自动收集' : ' · 手动收藏');
+    $('#favActs').classList.remove('hidden');
+    $('#favDelete').style.display = fav.sys === 'star' ? 'none' : '';
+    $('#favRename').style.display = fav.sys === 'star' ? 'none' : '';
+    const back = $('#crumbBack');
+    if (back) back.addEventListener('click', exitFav);
+  } else {
+    const T = { all: '全部素材', image: '图片', anim: '动图', video: '视频' }[S.type] || '全部素材';
+    $('#crumb').innerHTML = '<b>媒体库</b><span class="sep">/</span><span>全部平台</span>';
+    $('#pageTitle').innerHTML = T + ' <span class="pill">' + rows.length + ' 项</span>';
+    const plats = new Set(rows.map(f => f.plat)).size;
+    const authors = new Set(rows.map(f => f.author).filter(Boolean)).size;
+    $('#pageSub').textContent = '来自 ' + plats + ' 个平台 · ' + authors + ' 位博主';
+    $('#favActs').classList.add('hidden');
+  }
+  renderFavs();
+}
+
+function enterFav(id){
+  S.fav = id;
+  /* 切大视图时清掉细筛，否则会「进了收藏夹却看不到东西」 */
+  S.type = 'all'; S.plat = 'all'; S.q = '';
+  const si = $('#search'); if (si) si.value = '';
+  $$('#typeTabs button').forEach(b => b.classList.toggle('active', b.dataset.type === 'all'));
+  $$('#chips .chip').forEach(c => c.classList.toggle('active', c.dataset.plat === 'all'));
+  S.select = false; S.sel.clear();
+  $('#batchbar').classList.add('hidden');
+  render();
+}
+function exitFav(){
+  if (!S.fav) return;
+  S.fav = null;
+  render();
+}
+$('#favList').addEventListener('click', e => {
+  const b = e.target.closest('[data-fav]');
+  if (!b) return;
+  if (S.fav === b.dataset.fav) exitFav();
+  else enterFav(b.dataset.fav);
+});
+
+/* ---------- 新建（侧栏内联输入，不用弹窗） ---------- */
+let favPending = null;       /* 从「加入收藏夹」浮层转过来时，待加入的素材 */
+
+function openFavNew(){
+  $('#favNewRow').classList.add('on');
+  const i = $('#favNewInput');
+  i.value = ''; i.focus();
+}
+function closeFavNew(){
+  $('#favNewRow').classList.remove('on');
+  $('#favNewInput').value = '';
+  favPending = null;
+}
+function createFav(name, files){
+  name = String(name || '').trim();
+  if (!name) { toast('收藏夹名字不能为空'); return null; }
+  if (FAVORITES.some(f => f.name === name)) { toast('已经有同名收藏夹了'); return null; }
+  const fav = { id: 'fav-' + Date.now().toString(36), name, ids: [] };
+  FAVORITES.push(fav);
+  if (files && files.length) {
+    files.forEach(f => { if (fav.ids.indexOf(f.id) < 0) fav.ids.push(f.id); });
+  }
+  return fav;
+}
+function commitFavNew(){
+  const fav = createFav($('#favNewInput').value, favPending);
+  if (!fav) return;
+  const n = favPending ? favPending.length : 0;
+  closeFavNew();
+  toast('已创建「' + fav.name + '」' + (n ? '，加入 ' + n + ' 项' : ''));
+  enterFav(fav.id);
+}
+$('#favNewBtn').addEventListener('click', openFavNew);
+$('#favNewOk').addEventListener('click', commitFavNew);
+$('#favNewInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); commitFavNew(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeFavNew(); }
+});
+
+/* ---------- 加入收藏夹浮层 ---------- */
+let favPopFiles = [];
+
+function renderFavPop(){
+  $('#favPopN').textContent = '已选 ' + favPopFiles.length + ' 项';
+  $('#favPopList').innerHTML = FAVORITES.map(fav => {
+    const all = favPopFiles.length > 0 && favPopFiles.every(f => favHas(fav, f));
+    return '<button class="fp-item' + (all ? ' on' : '') + '" data-fp="' + fav.id + '">'
+      + favIcon(fav)
+      + '<span class="label">' + esc(fav.name) + '</span>'
+      + '<span class="box"><svg class="i"><use href="#i-check"/></svg></span>'
+      + '</button>';
+  }).join('');
+}
+function openFavPop(anchor, files){
+  favPopFiles = (files || []).slice();
+  if (!favPopFiles.length) { toast('先选中素材'); return; }
+  renderFavPop();
+  const pop = $('#favPop');
+  pop.classList.add('on');
+  const r = anchor && anchor.getBoundingClientRect
+    ? anchor.getBoundingClientRect()
+    : { left: (anchor && anchor.x) || 200, top: (anchor && anchor.y) || 200, width: 0, height: 0 };
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  let left = Math.min(r.left, innerWidth - w - 12);
+  let top = r.top + (r.height || 0) + 6;
+  if (top + h > innerHeight - 12) top = Math.max(12, r.top - h - 6);
+  pop.style.left = Math.max(12, left) + 'px';
+  pop.style.top = top + 'px';
+}
+function closeFavPop(){ $('#favPop').classList.remove('on'); }
+
+$('#favPopList').addEventListener('click', e => {
+  const b = e.target.closest('[data-fp]');
+  if (!b) return;
+  const fav = FAVORITES.find(x => x.id === b.dataset.fp);
+  if (!fav) return;
+  const all = favPopFiles.every(f => favHas(fav, f));
+  if (fav.sys === 'star') {
+    favPopFiles.forEach(f => { f.starred = !all; });
+  } else if (all) {
+    favPopFiles.forEach(f => { const i = fav.ids.indexOf(f.id); if (i >= 0) fav.ids.splice(i, 1); });
+  } else {
+    favPopFiles.forEach(f => { if (fav.ids.indexOf(f.id) < 0) fav.ids.push(f.id); });
+  }
+  renderFavPop();
+  render();
+  toast(all ? '已从「' + fav.name + '」移出 ' + favPopFiles.length + ' 项'
+            : '已加入「' + fav.name + '」' + favPopFiles.length + ' 项');
+});
+$('#favPopDone').addEventListener('click', closeFavPop);
+$('#favPopNew').addEventListener('click', () => {
+  favPending = favPopFiles.slice();
+  closeFavPop();
+  openFavNew();
+});
+
+/* ---------- 管理抽屉 ---------- */
+function openFavDrawer(){
+  renderFavDrawer();
+  $('#favDrawer').classList.add('on');
+  $('#favMask').classList.add('on');
+}
+function closeFavDrawer(){
+  $('#favDrawer').classList.remove('on');
+  $('#favMask').classList.remove('on');
+}
+function renderFavDrawer(){
+  $('#favDrawerN').textContent = FAVORITES.length;
+  $('#favDrawerList').innerHTML = FAVORITES.map((fav, i) => {
+    const sys = !!fav.sys;
+    return '<div class="mg-row" data-mgi="' + i + '">'
+      + favIcon(fav)
+      + '<span class="label">' + esc(fav.name) + (sys ? ' <span style="font-size:9.5px;color:var(--faint)">自动</span>' : '') + '</span>'
+      + '<span class="n">' + favCount(fav) + ' 项</span>'
+      + '<span class="ops">'
+      + (sys ? '' :
+          '<button data-mv="-1" title="上移"' + (i <= 1 ? ' disabled style="opacity:.3"' : '') + '><svg class="i"><use href="#i-chevron-up"/></svg></button>'
+        + '<button data-mv="1" title="下移"' + (i >= FAVORITES.length - 1 ? ' disabled style="opacity:.3"' : '') + '><svg class="i"><use href="#i-chevron-down"/></svg></button>'
+        + '<button data-mn="1" title="重命名"><svg class="i"><use href="#i-pencil"/></svg></button>'
+        + '<button data-mdel="1" class="del" title="删除"><svg class="i"><use href="#i-trash-2"/></svg></button>')
+      + '</span></div>';
+  }).join('');
+}
+function moveFav(i, dir){
+  const j = i + dir;
+  if (j < 1 || j >= FAVORITES.length) return;    /* 第 0 位留给「已加星标」 */
+  const t = FAVORITES[i]; FAVORITES[i] = FAVORITES[j]; FAVORITES[j] = t;
+  renderFavDrawer(); renderFavs();
+}
+function deleteFav(fav){
+  if (!fav || fav.sys) { toast('系统收藏夹不能删除'); return; }
+  openConfirm({
+    title: '删除收藏夹「' + fav.name + '」',
+    msg: '只删这个收藏夹，<b>里面的素材文件不受影响</b>，之后仍能在全部素材里找到。',
+    okText: '删除收藏夹',
+    onOk: () => {
+      FAVORITES = FAVORITES.filter(x => x !== fav);
+      if (S.fav === fav.id) S.fav = null;
+      renderFavDrawer(); render();
+      toast('已删除「' + fav.name + '」');
+    }
+  });
+}
+function renameFavInline(fav, rowEl){
+  const lab = rowEl.querySelector('.label');
+  if (!lab) return;
+  let closed = false;
+  const inp = document.createElement('input');
+  inp.className = 'md-input';
+  inp.style.cssText = 'height:24px;font-size:12px;border-radius:6px;padding:0 7px';
+  inp.value = fav.name;
+  lab.replaceWith(inp);
+  inp.focus(); inp.select();
+  const done = save => {
+    if (closed) return;
+    closed = true;
+    const v = inp.value.trim();
+    if (save && v && v !== fav.name) {
+      if (FAVORITES.some(x => x !== fav && x.name === v)) toast('已经有同名收藏夹了');
+      else { fav.name = v; toast('已重命名'); if (S.fav === fav.id) render(); }
+    }
+    renderFavDrawer(); renderFavs();
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); done(true); }
+    if (e.key === 'Escape') { e.preventDefault(); done(false); }
+  });
+  inp.addEventListener('blur', () => done(true));
+}
+$('#favDrawerList').addEventListener('click', e => {
+  const row = e.target.closest('[data-mgi]');
+  if (!row) return;
+  const i = +row.dataset.mgi;
+  const fav = FAVORITES[i];
+  if (!fav) return;
+  if (e.target.closest('[data-mv]')) { moveFav(i, +e.target.closest('[data-mv]').dataset.mv); return; }
+  if (e.target.closest('[data-mn]')) { renameFavInline(fav, row); return; }
+  if (e.target.closest('[data-mdel]')) { deleteFav(fav); return; }
+});
+$('#favDrawerClose').addEventListener('click', closeFavDrawer);
+$('#favMask').addEventListener('click', closeFavDrawer);
+$('#favMore').addEventListener('click', openFavDrawer);
+$('#favDrawerNew').addEventListener('click', () => { closeFavDrawer(); openFavNew(); });
+
+/* 点外部关闭：右键菜单里的按钮不算"外部"（否则点开就立刻被关） */
+document.addEventListener('click', e => {
+  if (e.target.closest('#favPop') || e.target.closest('#ctx')
+      || e.target.closest('#batchFav') || e.target.closest('#favList')) return;
+  closeFavPop();
+});
+
+/* 点外部关闭：右键菜单里的按钮不算"外部"（否则点开就立刻被关） */
+document.addEventListener('click', e => {
+  if (e.target.closest('#favPop') || e.target.closest('#ctx')
+      || e.target.closest('#batchFav') || e.target.closest('#favList')) return;
+  closeFavPop();
+});
+
+/* 标题下方的收藏夹操作 */
+$('#favRename').addEventListener('click', () => {
+  const fav = FAVORITES.find(x => x.id === S.fav);
+  if (!fav) return;
+  openFavDrawer();
+  const row = $('#favDrawerList').querySelector('[data-mgi="' + FAVORITES.indexOf(fav) + '"]');
+  if (row) setTimeout(() => renameFavInline(fav, row), 60);
+});
+$('#favDelete').addEventListener('click', () => {
+  deleteFav(FAVORITES.find(x => x.id === S.fav));
+});
+$('#favExport').addEventListener('click', () => {
+  const fav = FAVORITES.find(x => x.id === S.fav);
+  if (!fav) return;
+  const list = favMembers(fav);
+  if (!list.length) { toast('这个收藏夹是空的'); return; }
+  navigator.clipboard.writeText(list.map(f => f.id).join('\n'))
+    .then(() => toast('已复制 ' + list.length + ' 条路径'))
+    .catch(() => toast('复制失败'));
 });
 
 /* 启动 */
