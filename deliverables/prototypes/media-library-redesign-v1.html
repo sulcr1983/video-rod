@@ -1135,6 +1135,27 @@ a.pi-item:hover dd .go{opacity:1}
 /* 卡片点击时的按压反馈，让"点开了"有手感 */
 .card:active{transform:scale(.985)}
 
+/* ---------- 连播：底部进度 + 开关 ---------- */
+/* 不脱离文档流：占位在顶栏下方，absolute 会被顶栏盖住看不见 */
+.autobar{
+  position:relative;flex:0 0 auto;height:3px;z-index:9;
+  background:color-mix(in srgb,var(--line) 55%,transparent);
+}
+.autobar.hidden{display:none}
+.autobar i{display:block;height:100%;width:0;background:var(--accent)}
+.autobar i.run{animation:autoFill var(--auto-dur,4000ms) linear forwards}
+@keyframes autoFill{from{width:0}to{width:100%}}
+.autobar i.run{animation:autoFill var(--auto-dur,4000ms) linear forwards}
+@keyframes autoFill{from{width:0}to{width:100%}}
+/* 自动播放暂停时的提示（手动操作后） */
+.pv-paused-tip{
+  position:absolute;left:50%;bottom:70px;transform:translateX(-50%);z-index:8;
+  padding:5px 11px;border-radius:var(--r-full);font-size:10.5px;
+  background:rgba(12,16,22,.72);color:#fff;backdrop-filter:blur(6px);
+  opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.pv-paused-tip.on{opacity:1}
+
 /* ---------- 快捷键面板 ---------- */
 .keysheet{
   position:fixed;inset:0;z-index:110;background:rgba(8,10,14,.62);
@@ -1423,12 +1444,14 @@ kbd{
     <div class="pv-crumb" id="pvCrumb"><b>X</b> / NASA / videos</div>
     <div class="pv-tools">
       <span class="pv-count" id="pvCount">1 / 27</span>
+      <button class="iconbtn on" id="autoBtn" title="连播：播完自动下一个（滚轮可切换）" aria-pressed="true"><svg class="i i-sm"><use href="#i-repeat-1"/></svg></button>
       <button class="iconbtn on" id="pvInfoBtn" title="信息 I"><svg class="i i-sm"><use href="#i-info"/></svg></button>
       <button class="iconbtn" id="pvFullBtn" title="全屏 F"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
       <button class="iconbtn" id="pvHelpBtn" title="快捷键"><svg class="i i-sm"><use href="#i-keyboard"/></svg></button>
       <button class="iconbtn" id="pvClose" title="关闭 Esc"><svg class="i i-sm"><use href="#i-x"/></svg></button>
     </div>
   </header>
+  <div class="autobar hidden" id="autoBar"><i id="autoFill"></i></div>
   <div class="pv-body" id="pvBody">
     <div class="pv-stage" id="pvStageEl">
       <span class="pv-type" id="pvType">VIDEO</span>
@@ -1730,7 +1753,7 @@ const FILES = [
 })();
 
 /* ---------- 状态 ---------- */
-const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[]};
+const S = {type:'all',plat:'all',q:'',view:'grid',select:false,sel:new Set(),idx:0,list:[],autoplay:true};
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt = n => n>=1024? (n/1024).toFixed(1)+' GB' : n>=1? n.toFixed(1)+' MB' : Math.round(n*1024)+' KB';
@@ -1885,9 +1908,11 @@ $('#rescanBtn').addEventListener('click',()=>toast('已重新扫描，27 项'));
 function openPreview(f){
   if(!f) return;
   S.idx = S.list.findIndex(x=>x.id===f.id);
-  paintPreview();
+  /* 先显示再渲染：paintPreview 里的 armAuto() 会检查预览是否可见，
+     顺序反了就会把连播计时直接 return 掉，表现为"打开不自动播" */
   $('#preview').classList.remove('hidden');
   document.body.style.overflow='hidden';
+  paintPreview();
 }
 /* ---------- 来源链接（按平台规则拼，拿不到就留空，不编） ---------- */
 function srcLinks(f){
@@ -2123,6 +2148,7 @@ function paintPreview(){
   $('#pvSaved').textContent = f.savedAt || (f.dlAt ? f.dlAt : '未记录');
   renderTags(f);
   renderMore(f);
+  armAuto();          /* 每次切到新材料，重新计时 */
   $('#pvFilm').innerHTML = S.list.map((x,i)=>`
     <button class="film${i===S.idx?' active':''}" data-i="${i}">
       <div class="cover" style="--h:${x.h}"></div>
@@ -2131,8 +2157,8 @@ function paintPreview(){
   $('#pvPrev').disabled = S.idx<=0;
   $('#pvNext').disabled = S.idx>=S.list.length-1;
 }
-$('#pvPrev').addEventListener('click',()=>{if(S.idx>0){S.idx--;paintPreview()}});
-$('#pvNext').addEventListener('click',()=>{if(S.idx<S.list.length-1){S.idx++;paintPreview()}});
+$('#pvPrev').addEventListener('click',()=>goPrev());
+$('#pvNext').addEventListener('click',()=>goNext());
 $('#pvFilm').addEventListener('click',e=>{
   const b=e.target.closest('.film'); if(!b) return;
   S.idx=+b.dataset.i; paintPreview();
@@ -2140,6 +2166,8 @@ $('#pvFilm').addEventListener('click',e=>{
 $('#pvClose').addEventListener('click',closePreview);
 $('#pvBack').addEventListener('click',closePreview);
 function closePreview(){
+  if (typeof disarmAuto === 'function') { disarmAuto(); }
+  if (typeof disarmAuto === 'function') { disarmAuto(); }
   clearInterval(vTimer); clearInterval(gTimer);
   $('#pvStageEl').classList.remove('idle');
   $('#preview').classList.add('hidden'); document.body.style.overflow='';
@@ -2183,6 +2211,82 @@ window.addEventListener('scroll',()=>{
   $('#topbar').classList.toggle('stuck', window.scrollY>4);
 },{passive:true});
 
+/* ============================================================
+   连播：播完/停留自动下一个 + 滚轮切换
+   —— 图片停留 4 秒、动图 6 秒、视频以播完为准
+   —— 手动切换后重新计时；最后一条自动停下，不循环（避免"看着看着回到开头"）
+   ============================================================ */
+const AUTO_MS = { image: 4000, anim: 6000 };
+let autoTimer = null, wheelLock = 0;
+
+function updateAutoBtn(){
+  const b = $('#autoBtn');
+  b.classList.toggle('on', S.autoplay);
+  b.setAttribute('aria-pressed', String(S.autoplay));
+  b.title = S.autoplay ? '连播：开（播完自动下一个）' : '连播：关';
+}
+
+function disarmAuto(){
+  clearTimeout(autoTimer); autoTimer = null;
+  const bar = $('#autoBar');
+  if (bar) {
+    bar.classList.add('hidden');
+    const f = $('#autoFill');
+    if (f) { f.classList.remove('run'); f.style.removeProperty('--auto-dur'); }
+  }
+}
+
+function armAuto(){
+  disarmAuto();
+  if (!S.autoplay) return;
+  if ($('#preview').classList.contains('hidden')) return;
+  const f = curFile(); if (!f) return;
+  /* 视频靠"播完"触发，不按时间猜；只有图片和动图需要定时 */
+  if (f.kind === 'video') return;
+  const dur = AUTO_MS[f.kind] || 4000;
+  const bar = $('#autoBar'), fill = $('#autoFill');
+  if (bar) {
+    bar.classList.remove('hidden');
+    /* 用 animation 而不是 transition：
+       transition 在"先设 none 再设 100%"时会被浏览器合到同一帧，直接跳到底不带动画 */
+    fill.classList.remove('run');
+    fill.style.removeProperty('--auto-dur');
+    void fill.offsetWidth;                    /* 强制回流，让动画能重放 */
+    fill.style.setProperty('--auto-dur', dur + 'ms');
+    fill.classList.add('run');
+  }
+  autoTimer = setTimeout(() => goNext(), dur);
+}
+
+function goNext(){
+  if (S.idx < S.list.length - 1) { S.idx++; paintPreview(); return; }
+  /* 到底了：停掉连播并说一声，别无声无息地不动 */
+  if (S.autoplay) { S.autoplay = false; updateAutoBtn(); disarmAuto(); toast('已经是最后一条，连播已暂停'); }
+}
+function goPrev(){
+  if (S.idx > 0) { S.idx--; paintPreview(); }
+  else { toast('已经是第一条'); }
+}
+
+/* 滚轮切换：向下=下一个，向上=上一个
+   节流 350ms，否则一次滑动会连跳好几个 */
+$('#preview').addEventListener('wheel', e => {
+  if ($('#preview').classList.contains('hidden')) return;
+  if (e.ctrlKey || e.metaKey) return;      /* 留给缩放/页面缩放 */
+  const now = Date.now();
+  if (now < wheelLock) { e.preventDefault(); return; }
+  wheelLock = now + 350;
+  e.preventDefault();
+  if (e.deltaY > 0) { goNext(); } else if (e.deltaY < 0) { goPrev(); }
+}, { passive: false });
+
+$('#autoBtn').addEventListener('click', () => {
+  S.autoplay = !S.autoplay;
+  updateAutoBtn();
+  if (S.autoplay) { armAuto(); toast('连播已开启'); }
+  else { disarmAuto(); toast('连播已关闭'); }
+});
+
 /* ---------- 视图控件：视频 / 图片 / GIF ---------- */
 const RATES = [1, 1.25, 1.5, 2, 0.5];
 let vTimer = null, gTimer = null;
@@ -2216,7 +2320,11 @@ function togglePlay(){
   const total = parseDur($('#vDur').textContent) || 100;
   vTimer = setInterval(() => {
     let t = parseDur($('#vCur').textContent) + 1;
-    if (t >= total) { t = total; S.playing = false; setPlayIcon(false); clearInterval(vTimer); }
+    if (t >= total) {
+      t = total; S.playing = false; setPlayIcon(false); clearInterval(vTimer);
+      /* 连播：这一条播完自动跳下一个（最后一条则停下） */
+      if (S.autoplay) { setTimeout(() => goNext(), 320); }
+    }
     $('#vCur').textContent = fmtT(t);
     $('#vFill').style.width = (t/total*100) + '%';
   }, 1000);
@@ -2647,7 +2755,9 @@ $('#batchTrash').addEventListener('click', () => {
 });
 
 /* 启动 */
-renderTree(); render(); renderTrash(); renderTrash();
+renderTree(); render(); renderTrash();
+updateAutoBtn();
+updateAutoBtn(); renderTrash();
 </script>
 </body>
 </html>
