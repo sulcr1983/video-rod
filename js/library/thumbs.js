@@ -9,8 +9,8 @@
     'use strict';
 
     var MAX_RUNNING = 2;
-    var MAX_EDGE = 480;
-    var QUALITY = 0.72;
+    var MAX_EDGE = 400;   /* F8：卡片最宽 268px，400 已够 1.5x，5 万张约省 30-40% */
+    var QUALITY = 0.66;
     var TIMEOUT = 8000;
 
     var queue = [];
