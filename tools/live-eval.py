@@ -66,10 +66,11 @@ class Cdp:
                 return t["targetId"], t.get("url")
         return None, None
 
-    def attach(self, tid):
+    def attach(self, tid, page=True):
         sid = self.send("Target.attachToTarget", {"targetId": tid, "flatten": True})["sessionId"]
         self.send("Runtime.enable", {}, sid)
-        self.send("Page.enable", {}, sid)
+        if page:
+            self.send("Page.enable", {}, sid)
         return sid
 
 
@@ -108,7 +109,7 @@ def main():
             print("[失败] 没找到匹配标签，也没给 --open")
             return 2
 
-    sid = c.attach(tid)
+    sid = c.attach(tid, page=not a.sw)
     js = a.js or (open(a.file, "r", encoding="utf-8").read() if a.file else "")
     if not js:
         info = c.ev("JSON.stringify({title:document.title,url:location.href})", sid, False)

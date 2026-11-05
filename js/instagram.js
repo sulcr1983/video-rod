@@ -4,7 +4,7 @@
  */
 (() => {
     'use strict';
-    const POST_RE = /^\/(p|reel|tv)\/([^/?#]+)/;
+    const POST_RE = /^\/(?:[^/]+\/)?(p|reel|tv)\/([^/?#]+)/;
     const BTN_ID = 'vr-ig-download-btn';
     let busy = false;
 

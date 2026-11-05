@@ -53,8 +53,8 @@ eq('ID 无', V.creatorIdFromUrl('https://example.com/a'), '');
 /* ---------- 博主段 ---------- */
 eq('博主 完整', V.creatorSegment('影视飓风(@946974)'), '影视飓风(@946974)');
 eq('博主 仅昵称', V.creatorSegment('影视飓风'), '影视飓风');
-eq('博主 都有缺失', V.creatorSegment('', ''), '待整理');
-eq('博主 只有 ID', V.creatorSegment('', '946974'), '待整理(@946974)');
+eq('博主 都有缺失', V.creatorSegment('', ''), '');
+eq('博主 只有 ID', V.creatorSegment('', '946974'), '@946974');
 
 /* ---------- 目录拼装 ---------- */
 eq('目录 B站',
@@ -63,11 +63,11 @@ eq('目录 B站',
 
 eq('目录 小红书（从 URL 提 ID）',
     V.buildRelDir({ pageUrl: 'https://www.xiaohongshu.com/user/profile/5f8abc', ext: 'jpg' }),
-    'video-rod/小红书/待整理(@5f8abc)/图片');
+    'video-rod/小红书/@5f8abc/图片');
 
 eq('目录 X（从 URL 提 handle）',
     V.buildRelDir({ pageUrl: 'https://x.com/ken_shoots/status/1', ext: 'mp4' }),
-    'video-rod/X/待整理(@ken_shoots)/视频');
+    'video-rod/X/@ken_shoots/视频');
 
 eq('目录 普通网页（域名占位）',
     V.buildRelDir({ pageUrl: 'https://example.com/post/1', ext: 'jpg' }),
@@ -75,7 +75,7 @@ eq('目录 普通网页（域名占位）',
 
 eq('目录 自定义子目录',
     V.buildRelDir({ subdir: '我的库', pageUrl: 'https://youtu.be/a', ext: 'mp4' }),
-    '我的库/YouTube/待整理/视频');
+    '我的库/YouTube/youtu.be/视频');
 
 eq('目录 音频',
     V.buildRelDir({ pageUrl: 'https://example.com/a', ext: 'm4a' }),
