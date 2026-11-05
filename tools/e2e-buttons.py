@@ -118,6 +118,8 @@ def main():
     ap.add_argument("--port", type=int, default=9560)
     ap.add_argument("--ext", default=KNOWN_EXT)
     ap.add_argument("--shot", default="deliverables/assets/e2e-buttons.png")
+    ap.add_argument("--allow-real-db", action="store_true",
+                    help="显式允许在含真实数据的库上种测试数据（默认拒绝；请优先用 e2e-all --isolated）")
     a = ap.parse_args()
 
     c = Cdp(a.port)
@@ -125,6 +127,32 @@ def main():
     # ==================== 资源库 ====================
     tid, sid = c.open_page("chrome-extension://%s/library.html" % a.ext, 1440, 900)
     time.sleep(2.5)
+
+    # 防护：这个套件会 deleteFiles(全部) 再种 10 条假数据。
+    # 如果当前库里有真实 absPath（不是 D:/f/* 或 D:/fake/*），默认拒绝执行，
+    # 避免在 9480 真实 profile 上误清用户索引。
+    rows_raw = c.ev(
+        "VRDB.getAllFiles().then(r=>JSON.stringify(r.map(x=>({relPath:x.relPath,absPath:x.absPath}))))",
+        sid)
+    rows = []
+    try:
+        rows = json.loads(rows_raw) if isinstance(rows_raw, str) else []
+    except Exception:
+        rows = []
+    real = []
+    for r in rows:
+        apath = str((r or {}).get("absPath") or "").replace("\\", "/").lower()
+        if apath and not (apath.startswith("d:/f/") or apath.startswith("d:/fake/")):
+            real.append(r)
+    if real and not a.allow_real_db:
+        print("[拒绝] 当前库含 %d 条真实数据（示例：%s）。" %
+              (len(real), (real[0] or {}).get("relPath", "?")))
+        print("       本套件会清空索引再种 10 条假数据；请改用：")
+        print("       python tools/e2e-all.py --isolated --only e2e-buttons")
+        c.send("Target.closeTarget", {"targetId": tid})
+        c.close()
+        return 2
+
     c.ev(SEED, sid)
     c.send("Page.reload", {}, sid)
     time.sleep(3.5)
