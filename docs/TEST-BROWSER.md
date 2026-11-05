@@ -59,3 +59,18 @@ python tools/stage-rewrite-test.py --port 9480
 # 4) 测完关掉，下次要用有头再起
 python tools/test-browser-close.py
 ```
+
+## 归档目录前置检查（2026-11-05 新增）
+
+**症状**：`chrome.downloads.download` 带子目录时永远 `in_progress`（headless 下 `USER_CANCELED`），不带子目录正常。
+
+**真因**：`D://personal//Downloads//video-rod` 曾是指向 `F://download//video-rod` 的**悬空软链**（F 盘已不存在）。Chrome 写不进软链目录，下载直接挂住。
+
+**结论**：Chrome/Edge 的子目录下载本身没问题（实测多级目录 + 中文 + 空格都 OK）。归档目录必须是**真实目录**，不能是软链/网盘占位。
+
+**下次排查顺序**：
+1. `ls -la "$DOWNLOADS/video-rod"` 看是不是 `->` 软链
+2. 目标盘还在不在（本例 F 盘已没）
+3. 确认真实目录后再测
+
+跑法：`python tools/download-path-test.py --port <调试端口>`（10 条断言）
