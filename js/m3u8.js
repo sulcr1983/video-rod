@@ -976,7 +976,7 @@ $("#m3u8DL").click(function () {
     }
     const m3u8dlArg = getM3u8DlArg();
     $m3u8dlArg.val(m3u8dlArg);
-    navigator.clipboard.writeText(m3u8dlArg);
+    navigator.clipboard.writeText(m3u8dlArg).catch(function () { /* 无焦点/无剪贴板权限时静默失败，别抛未捕获异常 */ });
     const m3u8dl = 'm3u8dl:' + (G.m3u8dl == 1 ? Base64.encode(m3u8dlArg) : m3u8dlArg);
     if (m3u8dl.length >= 2046) {
         alert(i18n.M3U8DLparameterLong);
@@ -2182,7 +2182,7 @@ document.querySelector("#mediaList").addEventListener("click", (e) => {
     const copyBtn = e.target.closest(".copy");
     const urlText = mediaItem.querySelector(".url-text");
     if (copyBtn) {
-        navigator.clipboard.writeText(urlText.textContent);
+        navigator.clipboard.writeText(urlText.textContent).catch(function () { /* 无焦点/无剪贴板权限时静默失败，别抛未捕获异常 */ });
         return;
     }
     // 双击展开/隐藏 多行url

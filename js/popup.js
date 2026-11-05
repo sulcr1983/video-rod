@@ -307,7 +307,7 @@ function AddMedia(data, currentTab = true) {
   //点击复制网址
   data.html.find('#copy').click(function () {
     const text = copyLink(data);
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(text).catch(function () { /* 无焦点/无剪贴板权限时静默失败，别抛未捕获异常 */ });
     Tips(i18n.copiedToClipboard);
     return false;
   });
@@ -328,7 +328,7 @@ function AddMedia(data, currentTab = true) {
         const m3u8dlArg = templates(G.m3u8dlArg, data);
         const url = 'm3u8dl:' + (G.m3u8dl == 1 ? Base64.encode(m3u8dlArg) : m3u8dlArg);
         if (url.length >= 2046) {
-          navigator.clipboard.writeText(m3u8dlArg);
+          navigator.clipboard.writeText(m3u8dlArg).catch(function () { /* 无焦点/无剪贴板权限时静默失败，别抛未捕获异常 */ });
           Tips(i18n.M3U8DLparameterLong, 2000);
           return false;
         }
@@ -675,8 +675,12 @@ $('#AllCopy').click(function () {
   getData().forEach(function (data) {
     data.checked && url.push(copyLink(data));
   });
-  navigator.clipboard.writeText(url.join("\n"));
-  Tips(i18n.copiedToClipboard);
+  // 无焦点/无剪贴板权限时 writeText 会 reject，不接住就是未捕获异常
+  navigator.clipboard.writeText(url.join("\n")).then(function () {
+    Tips(i18n.copiedToClipboard);
+  }).catch(function () {
+    Tips('复制失败：窗口没聚焦或没给剪贴板权限');
+  });
 });
 // 全选 反选
 $('#AllSelect, #invertSelection').click(function () {
