@@ -815,7 +815,23 @@ async function vrImgDownload(msg) {
     const ext = vrImgExt(url, msg && msg.contentType);
     let title = '';
     try { title = P.cleanSeg(String((msg && msg.title) || '')) || ''; } catch (e) { title = ''; }
-    if (!title) { title = '图片'; }
+    // 标题太弱就换更有信息量的：
+    //   · 空 / 只剩标点（微博实测会得到「- 微博」这种）
+    //   · 页面标题跟站点名一样（X 的 title 是空串，只剩「图片」）
+    // 宁可用「平台名」或 URL 末段，也不要用一个点开才能分辨的名字。
+    const weak = (s) => !s || s.replace(/[\s\-_.·|:：]/g, '').length < 2;
+    if (weak(title)) {
+        let alt = '';
+        try { alt = String((msg && msg.siteName) || ''); } catch (e) { alt = ''; }
+        if (weak(alt)) {
+            try {
+                const u = new URL(pageUrl || url);
+                const seg = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || '');
+                if (seg && seg.length <= 40 && !/^\d+$/.test(seg)) { alt = seg.replace(/^@/, ''); }
+            } catch (e) { /* ignore */ }
+        }
+        title = weak(alt) ? '图片' : alt;
+    }
     if (title.length > 60) { title = title.slice(0, 60); }
 
     const fileName = vrImgDate() + '_' + title + '.' + ext;
