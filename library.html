@@ -287,13 +287,13 @@
 
       <!-- 图片工具栏：缩放 / 旋转 / 适应 / 1:1 -->
       <div class="imgbar hidden" id="imgBar">
-        <button class="ibtn" title="缩小 (−)">−</button>
+        <button class="ibtn" id="imgZoomOut" title="缩小 (−)">−</button>
         <span class="izoom" id="iZoom">100%</span>
-        <button class="ibtn" title="放大 (+)">+</button>
+        <button class="ibtn" id="imgZoomIn" title="放大 (+)">+</button>
         <span class="idiv"></span>
-        <button class="ibtn" title="旋转 90° (R)"><svg class="i"><use href="#i-rotate-cw"/></svg></button>
-        <button class="ibtn" title="适应窗口 (0)">适应</button>
-        <button class="ibtn" title="实际像素 (1)">1:1</button>
+        <button class="ibtn" id="imgRotate" title="旋转 90° (R)"><svg class="i"><use href="#i-rotate-cw"/></svg></button>
+        <button class="ibtn" id="imgFit" title="适应窗口 (0)">适应</button>
+        <button class="ibtn" id="imgActual" title="实际像素 (1)">1:1</button>
       </div>
 
       <!-- GIF 控件条：暂停 / 帧号 / 循环 / 倍速 -->

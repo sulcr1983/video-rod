@@ -32,6 +32,10 @@
     var el = {};
     var videoEl = null;
     var animCtl = null;
+    var imgEl = null;
+    var imgScale = 1;
+    var imgRot = 0;
+    var imgBaseW = 0;
 
     /* 成熟播放器（Plyr 3.8.3）实例与布局状态 */
     var plyr = null;
@@ -84,6 +88,34 @@
         videoEl.currentTime = Math.max(0, Math.min(videoEl.duration || 0, t));
     }
 
+    /* ---- 图片缩放/旋转（工具栏和键盘共用） ---- */
+    function applyImgView() {
+        if (!imgEl) { return; }
+        imgEl.style.transformOrigin = 'center center';
+        imgEl.style.transform = 'scale(' + imgScale + ') rotate(' + imgRot + 'deg)';
+        setTxt('iZoom', Math.round(imgScale * 100) + '%');
+    }
+    function fitImg() {
+        if (!imgEl) { return; }
+        imgScale = 1; imgRot = 0; applyImgView();
+    }
+    function actualImg() {
+        if (!imgEl) { return; }
+        var base = imgBaseW || imgEl.clientWidth || imgEl.naturalWidth || 1;
+        imgScale = Math.max(0.1, Math.min(8, (imgEl.naturalWidth || base) / base));
+        applyImgView();
+    }
+    function zoomImg(factor) {
+        if (!imgEl) { return; }
+        imgScale = Math.max(0.1, Math.min(8, imgScale * factor));
+        applyImgView();
+    }
+    function rotateImg() {
+        if (!imgEl) { return; }
+        imgRot = (imgRot + 90) % 360;
+        applyImgView();
+    }
+
     function cache() {
         ['preview', 'pvCrumb', 'pvCount', 'pvTitle', 'pvPlat', 'pvType', 'pvMedia',
             'pvPrev', 'pvNext', 'pvClose', 'pvBack', 'pvInfoBtn', 'pvFullBtn', 'pvFilm',
@@ -115,6 +147,8 @@
         destroyPlayer();
         stage.innerHTML = '';
         videoEl = null;
+        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0;
+        setTxt('iZoom', '100%');
         var url = urlOf(f);
         var kind = f.kind;
 
@@ -231,7 +265,12 @@
         } else if (kind === 'image' || kind === 'anim') {
             var img = document.createElement('img');
             img.alt = f._title || f.title; img.draggable = false;
-            img.addEventListener('load', function () { setTxt('st1v', img.naturalWidth + '×' + img.naturalHeight); });
+            imgEl = img; imgScale = 1; imgRot = 0; imgBaseW = 0;
+            img.addEventListener('load', function () {
+                setTxt('st1v', img.naturalWidth + '×' + img.naturalHeight);
+                imgBaseW = img.clientWidth || img.naturalWidth || 1;
+                applyImgView();
+            });
             img.src = url;
             stage.appendChild(img);
             setTxt('st1v', '—');
@@ -412,6 +451,7 @@
         destroyPlayer();
         var stage = $('#pvMedia'); if (stage) { stage.innerHTML = ''; }
         videoEl = null;
+        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0;
         try { if (animCtl) { animCtl.destroy(); } } catch (e) { /* ignore */ }
         animCtl = null;
     }
@@ -495,6 +535,18 @@
                 gRate.textContent = r + '×';
             });
         }
+
+        /* 图片工具栏：缩放 / 旋转 / 适应 / 1:1 */
+        var izi = document.getElementById('imgZoomIn');
+        if (izi) { izi.addEventListener('click', function () { zoomImg(1.25); }); }
+        var izo = document.getElementById('imgZoomOut');
+        if (izo) { izo.addEventListener('click', function () { zoomImg(0.8); }); }
+        var irt = document.getElementById('imgRotate');
+        if (irt) { irt.addEventListener('click', rotateImg); }
+        var ift = document.getElementById('imgFit');
+        if (ift) { ift.addEventListener('click', fitImg); }
+        var iac = document.getElementById('imgActual');
+        if (iac) { iac.addEventListener('click', actualImg); }
 
         if (el.pvPrev) { el.pvPrev.addEventListener('click', function () { step(-1); }); }
         if (el.pvNext) { el.pvNext.addEventListener('click', function () { step(1); }); }
@@ -603,7 +655,28 @@
             else if (e.key === 'i' || e.key === 'I') { if (el.pvInfoBtn) { el.pvInfoBtn.click(); } }
             else if (e.key === 'f' || e.key === 'F') { if (el.pvFullBtn) { el.pvFullBtn.click(); } }
             else if (e.key === ' ' && videoEl) { e.preventDefault(); if (videoEl.paused) { videoEl.play(); } else { videoEl.pause(); } }
-            else if (e.key === ' ' && animCtl) { e.preventDefault(); animCtl.toggle(); }
+            else if (e.key === ' ' && animCtl) {
+                e.preventDefault();
+                var gp = document.getElementById('gPause');
+                if (gp) { gp.click(); } else { animCtl.toggle(); }
+            }
+            else if ((e.key === '+' || e.key === '=') && imgEl) { e.preventDefault(); zoomImg(1.25); }
+            else if (e.key === '-' && imgEl) { e.preventDefault(); zoomImg(0.8); }
+            else if (e.key === '0' && imgEl) { e.preventDefault(); fitImg(); }
+            else if (e.key === '1' && imgEl) { e.preventDefault(); actualImg(); }
+            else if ((e.key === 'r' || e.key === 'R') && imgEl) { e.preventDefault(); rotateImg(); }
+            else if ((e.key === ',' || e.key === '.') && animCtl) {
+                e.preventDefault();
+                animCtl.pause();
+                animCtl.seek(animCtl.frame() - 1 + (e.key === '.' ? 1 : -1));
+                setTxt('gNo', animCtl.frame());
+            }
+            else if ((e.key === 'l' || e.key === 'L') && animCtl) {
+                e.preventDefault();
+                var gl = document.getElementById('gLoop');
+                if (gl) { gl.click(); }
+            }
+            else if (e.key === '0' && animCtl) { e.preventDefault(); animCtl.seek(0); setTxt('gNo', 1); }
             else if ((e.key === 'k' || e.key === 'K') && videoEl) {
                 e.preventDefault();
                 if (videoEl.paused) { videoEl.play().catch(function () { }); } else { videoEl.pause(); }
