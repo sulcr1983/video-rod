@@ -48,9 +48,13 @@
         const rows = ((info && info.rows) || []).filter(function (x) {
             return x && x.url;
         }).slice().sort(function (a, b) {
+            /* 先保证能播：Chromium 默认不带 HEVC 解码，优先 H.264；
+             * 同为 H.264 再按分辨率/码率取最高。 */
+            const ac = a.h265 ? 1 : 0;
+            const bc = b.h265 ? 1 : 0;
             const pa = (Number(a.w) || 0) * (Number(a.h) || 0);
             const pb = (Number(b.w) || 0) * (Number(b.h) || 0);
-            return (pb - pa) || ((Number(b.br) || 0) - (Number(a.br) || 0));
+            return (ac - bc) || (pb - pa) || ((Number(b.br) || 0) - (Number(a.br) || 0));
         });
         const out = [], seen = {};
         rows.forEach(function (x) {
@@ -102,6 +106,7 @@
                 return {
                     w: p.width || 0, h: p.height || 0,
                     br: b.bit_rate || 0, size: p.data_size || 0,
+                    h265: !!b.is_h265,
                     url: (p.url_list || [])[0] || ''
                 };
             }).filter(function (x) { return !!x.url; });
