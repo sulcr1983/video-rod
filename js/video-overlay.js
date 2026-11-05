@@ -235,21 +235,30 @@
         if (busy) { return; }
         busy = true;
         setState('busy', 0);
-        chrome.runtime.sendMessage(
-            { Message: 'vrVideoDownload', optionId: optionId, wantBest: !!wantBest },
-            function (res) {
-                if (chrome.runtime.lastError || !res || !res.ok) {
+        // 扩展被更新/重新加载后，旧页面的 content script 会变成「孤儿」，
+        // 此时 sendMessage 会同步抛 "Extension context invalidated."（Edge 错误面板可查）。
+        // 以前这里没包 try，用户点一下按钮就是一条红色错误且永久 busy。
+        try {
+            chrome.runtime.sendMessage(
+                { Message: 'vrVideoDownload', optionId: optionId, wantBest: !!wantBest },
+                function (res) {
+                    if (chrome.runtime.lastError || !res || !res.ok) {
+                        busy = false;
+                        flash('warn', 2600);
+                        return;
+                    }
+                    if (res.started) {
+                        // B站 路线：后台会推 vrVideoProgress 过来，等它通知
+                        return;
+                    }
                     busy = false;
-                    flash('warn', 2600);
-                    return;
-                }
-                if (res.started) {
-                    // B站 路线：后台会推 vrVideoProgress 过来，等它通知
-                    return;
-                }
-                busy = false;
-                flash('done', 2000);
-            });
+                    flash('done', 2000);
+                });
+        } catch (e) {
+            busy = false;
+            flash('warn', 3200);
+            try { console.warn('[video-rod] 扩展已更新，请刷新本页面后再下载'); } catch (e2) { }
+        }
     }
 
     btnMain.addEventListener('click', function (ev) {
