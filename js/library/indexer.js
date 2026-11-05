@@ -27,7 +27,7 @@
     var MAX_DEPTH = 8;
     var DL_LIMIT = 5000;
 
-    var SKIP_DIRS = { '_verify': 1, '_回收站': 1, '_library': 1, '_migration': 1 };
+    var SKIP_DIRS = { '_verify': 1, '_回收站': 1, '_library': 1, '_migration': 1, '_selftest': 1 };
     var SKIP_SUFFIX = /\.(part|crdownload|tmp)$/i;
 
     var memHandle = null;
@@ -288,6 +288,9 @@
         for (var i = 0; i < list.length; i++) {
             var d = list[i];
             if (!d || d.state !== 'complete' || !d.filename) { continue; }
+            // 幽灵条目过滤：下载记录还在、文件已被删/移走的话，别把空壳塞进库
+            // （2026-11-05：测试残留让资源库显示一堆点开是空的条目）
+            if (d.exists === false) { continue; }
             var relFromRoot = relFromAbs(d.filename, absRoot);
             if (!relFromRoot || skipRel(relFromRoot)) { continue; }
             if (root.VRPath && root.VRPath.typeOf({ fileName: relFromRoot }) === 'other') { continue; }
