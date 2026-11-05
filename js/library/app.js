@@ -281,12 +281,16 @@
     }
 
     /* ---------- 主渲染 ---------- */
+    var PAGE = 120;          // F7 分级加载：首屏只铺这么多，滚动再追加
+
     function render() {
         var rows = sorted(filtered());
         S.list = rows;
+        S.rows = rows;
+        S.shown = Math.min(PAGE, rows.length);
         var grid = $('#grid');
         grid.className = 'grid' + (S.view === 'list' ? ' list' : '') + (S.select ? ' selecting' : '');
-        grid.innerHTML = rows.map(card).join('');
+        grid.innerHTML = rows.slice(0, S.shown).map(card).join('');
         var lh = $('#listhead');
         if (lh) { lh.classList.toggle('on', S.view === 'list'); }
         grid.classList.toggle('hidden', rows.length === 0);
@@ -312,6 +316,30 @@
         });
         renderFavs();
     }
+
+    /* ---------- F7 分级加载（虚拟滚动轻量版） ---------- */
+    function appendMore() {
+        var rows = S.rows || [];
+        if (!rows.length || S.shown >= rows.length) { return; }
+        var grid = $('#grid');
+        if (!grid) { return; }
+        var next = Math.min(S.shown + PAGE, rows.length);
+        var html = rows.slice(S.shown, next).map(card).join('');
+        grid.insertAdjacentHTML('beforeend', html);
+        S.shown = next;
+        observeThumbs();
+    }
+
+    function nearBottom() {
+        var grid = $('#grid');
+        if (!grid) { return false; }
+        var r = grid.getBoundingClientRect();
+        return r.bottom - window.innerHeight < 600;
+    }
+
+    window.addEventListener('scroll', function () {
+        if (nearBottom()) { appendMore(); }
+    }, { passive: true });
 
     /* ---------- F5 去重统计：逻辑大小 vs 物理占用 ---------- */
     function renderDedupStat(rows) {

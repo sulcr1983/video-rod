@@ -1655,3 +1655,7 @@ body.library-page{background:var(--bg);color:var(--ink);min-height:100vh}
 .ref-tag{position:absolute;right:8px;top:8px;z-index:3;font-size:9.5px;color:#141210;background:var(--accent);padding:2px 7px;border-radius:999px;font-weight:600}
 /* 去重统计两行口径 */
 .sf-dedup{font-size:10px;color:var(--faint);margin-top:3px;font-variant-numeric:tabular-nums}
+
+/* F6 动图逐帧：canvas 播放器 */
+.anim-holder{position:absolute;inset:0;display:grid;place-items:center;background:#0B0A09}
+.anim-holder canvas{max-width:100%;max-height:100%;object-fit:contain;display:block}
