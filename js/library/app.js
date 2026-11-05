@@ -151,7 +151,7 @@
                 var terms = raw.split(/\s+/).filter(Boolean);
                 var must = terms.filter(function (t) { return t.charAt(0) !== '-'; });
                 var excl = terms.filter(function (t) { return t.charAt(0) === '-'; }).map(function (t) { return t.slice(1); }).filter(Boolean);
-                var hay = (f.title + ' ' + (f.author || '') + ' ' + (f.authorId || '') + ' ' + f.id + ' ' + f.plat).toLowerCase();
+                var hay = ((f._title || f.title || '') + ' ' + (f.title || '') + ' ' + (f.author || '') + ' ' + (f.authorId || '') + ' ' + f.id + ' ' + f.plat).toLowerCase();
                 if (must.length && !must.every(function (w) { return hay.indexOf(w) >= 0; })) { return false; }
                 if (excl.length && excl.some(function (w) { return hay.indexOf(w) >= 0; })) { return false; }
             }

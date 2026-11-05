@@ -248,6 +248,9 @@
         if (!old) { return out; }
         out.starred = old.starred || 0;
         out.tags = Array.isArray(old.tags) ? old.tags : [];
+        /* R2：重命名只改 displayName。重建索引时若不保留，
+         * 用户改的名字会在下一次扫描后静默回退。 */
+        if (old.displayName) { out.displayName = old.displayName; }
         if (old.thumbKey) { out.thumbKey = old.thumbKey; }
         ['width', 'height', 'duration'].forEach(function (k) {
             if (old[k]) { out[k] = old[k]; }
