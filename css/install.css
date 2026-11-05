@@ -6,26 +6,26 @@
 }
 
 :root {
-  --primary: #4361ee;
-  --primary-light: #4895ef;
-  --secondary: #06d6a0;
-  --danger: #ef476f;
-  --light: #f8f9fa;
-  --dark: #212529;
-  --gray: #6c757d;
+  --primary: #E8B04B;
+  --primary-light: #F0C066;
+  --secondary: #4FBF8B;
+  --danger: #E86466;
+  --light: #191715;
+  --dark: #EFEAE0;
+  --gray: #B0A89A;
   --border-radius: 16px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
   --transition: all 0.3s ease;
 
-  /* 新增深色模式变量 */
-  --bg-gradient-start: #f0f4ff;
-  --bg-gradient-end: #e6f7ff;
-  --card-bg: white;
-  --card-header-bg: linear-gradient(to right, #f8f9fa, #e9ecef);
-  --text-color: #212529;
-  --subtitle-color: #6c757d;
+  /* 配色变量（舞台常驻深色） */
+  --bg-gradient-start: #100F0E;
+  --bg-gradient-end: #0B0A09;
+  --card-bg: #191715;
+  --card-header-bg: linear-gradient(to right, #1F1C18, #191715);
+  --text-color: #EFEAE0;
+  --subtitle-color: #B0A89A;
   --content-bg: #f8f9fa;
-  --agreement-bg: #f8f9fa;
+  --agreement-bg: #1F1C18;
   --agreement-border: rgba(0, 0, 0, 0.1);
   --agreement-color: #6c757d;
 }
@@ -375,37 +375,5 @@ h1 {
 }
 
 /* 深色模式支持 */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-gradient-start: #0f172a;
-    --bg-gradient-end: #1e293b;
-    --card-bg: #1e293b;
-    --card-header-bg: linear-gradient(to right, #334155, #1e293b);
-    --text-color: #e2e8f0;
-    --subtitle-color: #94a3b8;
-    --content-bg: #334155;
-    --agreement-bg: #334155;
-    --agreement-border: rgba(255, 255, 255, 0.1);
-    --agreement-color: #cbd5e1;
-    --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-  }
+/* 舞台：安装页也常驻深色（ADR-049） */
 
-  .lang-switch {
-    background: #334155;
-    color: #e2e8f0;
-  }
-
-  .content-box a {
-    background-color: rgba(67, 97, 238, 0.15);
-    color: #93c5fd;
-  }
-
-  .content-box a:hover {
-    background-color: rgba(67, 97, 238, 0.25);
-    box-shadow: 0 4px 10px rgba(67, 97, 238, 0.2);
-  }
-
-  .btn-outline:hover {
-    background-color: rgba(239, 71, 111, 0.15);
-  }
-}

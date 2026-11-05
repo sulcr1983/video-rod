@@ -37,6 +37,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=9477)
     ap.add_argument("--shot", default="deliverables/assets/rewrite-regression.png")
+    ap.add_argument("--ext", default="ceogmckiinjolbbdkjfelmfcfepccabp",
+                    help="扩展 ID（同一路径加载的 unpacked 扩展 ID 固定）")
     a = ap.parse_args()
 
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -65,43 +67,10 @@ def main():
             return {"__err": r["exceptionDetails"].get("text")}
         return r.get("result", {}).get("value")
 
-    # 找扩展 id（开页即唤醒 SW）
-    # 注意：Edge 自带组件也是 chrome-extension://，会排在前面抢到 first match。
-    # 判据：必须是「我们的」扩展——用固定 id 优先，或按路径匹配 video-rod。
-    ext = None
-    KNOWN = "ceogmckiinjolbbdkjfelmfcfepccabp"
-    for _ in range(30):
-        try:
-            tabs = json.load(opener.open("http://127.0.0.1:%d/json/list" % a.port, timeout=3))
-            ids = []
-            for t in tabs:
-                u = t.get("url") or ""
-                if u.startswith("chrome-extension://"):
-                    eid = u.split("/")[2]
-                    if eid not in ids:
-                        ids.append(eid)
-            if KNOWN in ids:
-                ext = KNOWN
-                break
-            # 退路：找路径指向本项目目录的扩展（从 Secure Preferences 读）
-            if not ext:
-                import glob, os
-                for pref in glob.glob(os.path.join(os.environ.get("LOCALAPPDATA", ""), "**", "edge-*", "Default", "Secure Preferences"), recursive=True):
-                    pass
-                # 直接按 sw-library 特征判断：我们的 SW 路径含 js/background.js
-                for t in tabs:
-                    u = t.get("url") or ""
-                    if "/js/background.js" in u:
-                        ext = u.split("/")[2]
-                        break
-            if ext:
-                break
-        except Exception:
-            pass
-        time.sleep(0.5)
-    if not ext:
-        print("FAIL 找不到扩展 id")
-        return 1
+    # 扩展 id：直接用固定 ID（同一路径 unpacked 扩展 ID 不变）。
+    # 旧实现在 /json/list 里找 first match，会被 Edge 自带组件抢到；后来加的
+    # AppData 递归 glob 兜底会让脚本卡死——已移除。
+    ext = a.ext
 
     tid = send("Target.createTarget", {"url": "chrome-extension://%s/library.html" % ext})["targetId"]
     sid = send("Target.attachToTarget", {"targetId": tid, "flatten": True})["sessionId"]

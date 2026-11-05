@@ -1,42 +1,44 @@
 /* ==========================================================================
-   苏哥的钓鱼竿 video-rod — 猫抓原生组件浅色校准（M7）
-   作用域：#vrShell（ID 特异性 100 > :root 的 10，media query 不参与特异性，
-   所以 public.css 里 prefers-color-scheme:dark 的翻深色也压得住）
-   口径与 css/videorod.css 的浅色 token 一致：
-   正文 #0E1116 / 次要 #6B7480 / 分隔线 #EFF1F4 / 主色墨黑 #16181D / 深青 #0F6E63
+   苏哥的钓鱼竿 video-rod — 猫抓原生组件「舞台」校准层
+   作用域：#vrShell（ID 特异性 100 > :root 的 10；media query 不参与特异性，
+   所以 public.css 的基线配色压得住）
+   口径与 css/videorod.css 的舞台 token 一致（ADR-049）：
+   底色 #100F0E / 卡面 #191715 / 正文 #EFEAE0 / 次要 #B0A89A / 舞台金 #E8B04B
+   注：文件名沿用 popup-light.css（popup.html 引用不变），内容已全量改为舞台深色；
+       旧的浅色校准（正文 #0E1116 / 深青 #0F6E63）随 ADR-049 退役。
    ========================================================================== */
 
 #vrShell {
-    --background-color: #ffffff;
-    --background-color-opacity: #fffffff2;
-    --background-color-two: #f5f6f8;
-    --text-color: #0e1116;
-    --text-error-color: #b91c1c;
-    --text2-color: #0f6e63;
-    --link-color: #0f6e63;
+    --background-color: #100F0E;
+    --background-color-opacity: #100f0ef2;
+    --background-color-two: #191715;
+    --text-color: #efeae0;
+    --text-error-color: #e86466;
+    --text2-color: #e8b04b;
+    --link-color: #e8b04b;
 
-    --optionBox-color: #ffffff;
+    --optionBox-color: #191715;
 
-    --button-color: #ffffff;
-    --button-text-color: #16181d;
-    --button-border: solid 1px #e4e6ea;
-    --button-hover-color: #f1f3f6;
-    --button-active-color: #e9ebef;
+    --button-color: #191715;
+    --button-text-color: #efeae0;
+    --button-border: solid 1px #2b2620;
+    --button-hover-color: #241f19;
+    --button-active-color: #2b2620;
 
-    --button2-color: #16181d;
-    --button2-text-color: #ffffff;
-    --button2-border: solid 1px #16181d;
-    --button2-hover-color: #23282f;
-    --button2-active-color: #353b44;
+    --button2-color: #e8b04b;
+    --button2-text-color: #17130d;
+    --button2-border: solid 1px #e8b04b;
+    --button2-hover-color: #f0c066;
+    --button2-active-color: #d9a33f;
 
-    --scrollbar-track-color: #f5f5f500;
-    --scrollbar-thumb-color: #c9ced6;
+    --scrollbar-track-color: #100f0e00;
+    --scrollbar-thumb-color: #3a332a;
 
-    --switch-off-color: #d3d8df;
-    --switch-on-color: #16181d;
-    --switch-round-color: #fff;
+    --switch-off-color: #3a332a;
+    --switch-on-color: #e8b04b;
+    --switch-round-color: #efeae0;
 
-    --input-border: solid 1px #e4e6ea;
+    --input-border: solid 1px #2b2620;
 }
 
 /* 面板内漏样式的基础控件兜底（猫抓 public.css 的 input/textarea/select 规则） */
