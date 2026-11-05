@@ -2890,6 +2890,50 @@ async function vrBulkDownload(items, tabId) {
     };
 }
 
+/**
+ * F2 溯源：在页面上下文抓「原帖/作者ID/作品ID/平台」。
+ * 全部 try/catch 包裹——埋点异常不得影响下载（铁律）。
+ * 优先用 naming.js 已提取的页面信息，失败退回 URL 解析。
+ */
+async function vrTraceMetaInTab(tabId) {
+    try {
+        const r = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function () {
+                try {
+                    var N = self.VideoRodNaming;
+                    var info = N ? (N.extractPageInfo(document, location.href) || {}) : {};
+                    var out = {
+                        pageUrl: location.href || '',
+                        author: info.author || '',
+                        authorId: info.authorId || '',
+                        authorHandle: info.authorHandle || '',
+                        authorState: info.author ? 'ok' : 'unsupported',
+                        title: info.title || '',
+                        post: info.post || '',
+                        site: info.site || ''
+                    };
+                    // 作品 ID：优先页面显式链接，其次 URL 里的 id 段
+                    var work = '';
+                    var a = document.querySelector('a[href*="/video/"], a[href*="/status/"], a[href*="/note/"], a[href*="/watch"], a[href*="/p/"]');
+                    if (a) {
+                        var m = String(a.getAttribute('href') || '').match(/\/(?:video|status|note|watch|p)\/([A-Za-z0-9_-]{6,})/);
+                        if (m) { work = m[1]; }
+                    }
+                    if (!work) {
+                        var mu = String(location.href).match(/[?&](?:item_?id|v=|status_?id|video_?id)=([A-Za-z0-9_-]{6,})/i);
+                        if (mu) { work = mu[1]; }
+                    }
+                    out.workId = work;
+                    return out;
+                } catch (e) { return null; }
+            }
+        });
+        const v = r && r[0] && r[0].result;
+        return v || null;
+    } catch (e) { return null; }
+}
+
 async function vrPageMetaInTab(tabId) {
     // 1) 微博 feed：内容脚本在点击视频卡片时记录了作者/文案（isolated world）
     try {
@@ -3114,10 +3158,26 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         const meta = await vrPageMetaInTab(tabId);
         const filename = await vrNameInTab(tabId, VR_VIDEO_EXT.test(ext) ? ext : 'mp4', meta || null);
 
+        // F2 溯源：把「原帖地址/作者/作品ID/直链」一起预登记进库，
+        // 否则库里来源永远是「未记录」。埋点失败绝不影响下载。
+        const trace = {
+            pageUrl: pageUrl || (meta && meta.pageUrl) || '',
+            mediaUrl: pick.url || '',
+            author: (meta && meta.author) || '',
+            authorId: (meta && meta.authorId) || '',
+            workId: (meta && meta.workId) || '',
+            title: (meta && meta.title) || '',
+            platform: (meta && meta.site) || ''
+        };
+        try {
+            const nm = await vrTraceMetaInTab(tabId);
+            if (nm) { Object.assign(trace, nm); }
+        } catch (e) { /* 埋点失败不影响下载 */ }
+
         // 路线 1（默认）：downloads API + DNR 回放页面 Referer。
         // 保留子目录和文件名保护；普通站点/抖音都走这条。
         if (pageUrl) { await vrSetMediaHeadersFor(pick.url, pageUrl); }
-        const id = await vrDownloadWithName(pick.url, filename);
+        const id = await vrDownloadWithName(pick.url, filename, { meta: trace });
         let pageDl = null;
         if (id !== null) {
             const outcome = await vrWaitDownload(id, 2500);
