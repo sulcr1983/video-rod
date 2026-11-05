@@ -209,7 +209,7 @@
                 onError: function () {
                     /* 解码失败退回静态图，不让预览空白 */
                     var img0 = document.createElement('img');
-                    img0.alt = f.title; img0.src = url;
+                    img0.alt = f._title || f.title; img0.src = url;
                     holder.innerHTML = '';
                     holder.appendChild(img0);
                     var bar = document.getElementById('gifBar');
@@ -230,7 +230,7 @@
             });
         } else if (kind === 'image' || kind === 'anim') {
             var img = document.createElement('img');
-            img.alt = f.title; img.draggable = false;
+            img.alt = f._title || f.title; img.draggable = false;
             img.addEventListener('load', function () { setTxt('st1v', img.naturalWidth + '×' + img.naturalHeight); });
             img.src = url;
             stage.appendChild(img);
@@ -249,7 +249,7 @@
         if (el.pvCrumb) { el.pvCrumb.innerHTML = '<b>' + esc(p.label) + '</b> / ' + esc(f.author || '未分类'); }
         setTxt('pvCount', (S.idx + 1) + ' / ' + S.list.length);
         setTxt('pvType', (KIND_LABEL[f.kind] || '媒体').toUpperCase());
-        setTxt('pvTitle', f.title);
+        setTxt('pvTitle', f._title || f.title);
 
         if (el.pvPlat) {
             el.pvPlat.innerHTML = '<i class="dot" style="--pc:' + p.dot + '"></i>' + esc(p.label) + ' · ' + (KIND_LABEL[f.kind] || '');
@@ -370,7 +370,7 @@
         // 原型（media-library-stage-v1.html 3226 行）：96×66 的编号缩略图按钮。
         // cover 显示真实抽帧缓存，fno 只留编号角标；原来是「一排只有数字的空按钮」。
         el.pvFilm.innerHTML = S.list.map(function (f, i) {
-            return '<button class="film' + (i === S.idx ? ' on' : '') + '" data-i="' + i + '" title="' + esc(f.title) + '">' +
+            return '<button class="film' + (i === S.idx ? ' on' : '') + '" data-i="' + i + '" title="' + esc(f._title || f.title) + '">' +
                 '<span class="cover" data-rel="' + esc(f.relPath) + '"></span>' +
                 '<span class="fno">' + (i + 1) + '</span></button>';
         }).join('');
