@@ -1498,13 +1498,6 @@ kbd{
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
 /* 主题切换（原型专用） */
-.themebtn{
-  position:fixed;right:16px;bottom:16px;z-index:60;width:38px;height:38px;border-radius:50%;
-  display:grid;place-items:center;background:var(--surface);color:var(--ink-2);
-  border:1px solid var(--line);box-shadow:var(--sh-2);
-}
-.themebtn:hover{color:var(--ink);transform:scale(1.04)}
-
 /* 响应式 */
 @media(max-width:1380px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:1080px){
@@ -1639,7 +1632,7 @@ body{background:radial-gradient(110% 70% at 50% 0%, #171410 0%, #100F0E 62%) fix
 .card:hover{box-shadow:0 12px 32px rgba(0,0,0,.55),0 0 0 1px rgba(232,176,75,.30)}
 .card.selected{box-shadow:0 0 0 2px rgba(232,176,75,.25),0 0 0 1px #E8B04B,0 10px 28px rgba(232,176,75,.14)}
 .toolbar{box-shadow:inset 0 -1px 0 rgba(232,176,75,.16)}
-h1,html[data-theme="dark"] .page-title{letter-spacing:.02em}
+h1,.page-title{letter-spacing:.02em}
 ::selection{background:rgba(232,176,75,.35)}
 
 /* 页面底色钉死 */

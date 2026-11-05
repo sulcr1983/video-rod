@@ -11,29 +11,34 @@
    ========================================================================== */
 
 :root {
-    --vr-bg: #ffffff;
-    --vr-bg-deep: #f5f6f8;
-    --vr-card: #ffffff;
-    --vr-card-hi: #eef5ff;
-    --vr-line: #eff1f4;
-    --vr-line-2: #e4e6ea;
-    --vr-text: #0e1116;
-    --vr-text-dim: #5b6472;
-    --vr-text-mute: #8a94a3;
-    --vr-accent: #1a73e8;
-    --vr-accent-strong: #1765cc;
-    --vr-accent-weak: #e8f0fe;
+    /* 舞台皮肤（ADR-049）：暖黑 + 舞台金 + 暖纸白字。亮色已退役，本文件只一套深色。 */
+    --vr-bg: #100F0E;
+    --vr-bg-deep: #0B0A09;
+    --vr-card: #191715;
+    --vr-card-hi: #241F19;
+    --vr-line: #2B2620;
+    --vr-line-2: #211E1A;
+    --vr-text: #EFEAE0;
+    --vr-text-dim: #B0A89A;
+    --vr-text-mute: #8C8478;
+    --vr-accent: #E8B04B;
+    --vr-accent-strong: #F0C066;
+    --vr-accent-weak: #2C2418;
     --vr-cyan: var(--vr-accent);
     --vr-cyan-deep: var(--vr-accent-strong);
     --vr-cyan-soft: var(--vr-accent);
     --vr-cyan-tint: var(--vr-accent-weak);
-    --vr-cyan-tint-line: #bfd7f5;
-    --vr-orange: #c2410c;
-    --vr-green: #12805c;
-    --vr-ink: #16181d;
-    --vr-hover: #f1f3f6;
-    --vr-shadow: 0 10px 30px rgba(16, 24, 40, .12);
+    --vr-cyan-tint-line: #4A3B22;
+    --vr-orange: #E8B04B;
+    --vr-green: #4FBF8B;
+    --vr-ink: #EFEAE0;
+    --vr-hover: #232019;
+    --vr-shadow: 0 10px 30px rgba(0, 0, 0, .55);
     --vr-radius: 10px;
+    --vr-danger: #E86466;
+    --vr-danger-soft: #2A1618;
+    --vr-ok: #4FBF8B;
+    --vr-ok-soft: #132A21;
 }
 
 /* ---------- 外壳 ---------- */
@@ -257,7 +262,7 @@ body.popupBody {
     margin-left: auto;
     color: var(--vr-accent);
     border: 1px solid var(--vr-cyan-tint-line);
-    background: #fff;
+    background: var(--vr-card);
 }
 
 .filters .vr-imgbtn:hover { color: var(--vr-accent-strong); background: var(--vr-accent-weak); }
@@ -335,7 +340,7 @@ body.popupBody {
 #allMediaList::-webkit-scrollbar-thumb,
 #otherOptions::-webkit-scrollbar-thumb,
 #vrTools::-webkit-scrollbar-thumb {
-    background: #d7dbe1;
+    background: var(--vr-line);
     border-radius: 3px;
 }
 
@@ -355,7 +360,7 @@ body.popupBody {
 
 .panel + .panel { border-top: 1px solid var(--vr-line); }
 
-.panel:hover { background: #fafbfc; }
+.panel:hover { background: var(--vr-bg-deep); }
 .panel:has(.DownCheck:checked) { background: var(--vr-card-hi); }
 
 /* 类型筛选：独立 class，不与猫抓的扩展名筛选（inline display）互相覆盖 */
@@ -370,8 +375,8 @@ body.popupBody {
     right: 12px;
     font-size: 9px;
     color: var(--vr-green);
-    background: #e7f6ee;
-    border: 1px solid #c2e6d2;
+    background: var(--vr-ok-soft);
+    border: 1px solid var(--vr-line);
     padding: 1.5px 6px;
     border-radius: 20px;
     pointer-events: none;
@@ -399,8 +404,8 @@ body.popupBody {
     border-radius: 5px;
     flex: none;
     cursor: pointer;
-    border: 1.5px solid #c9ced6;
-    background: #fff;
+    border: 1.5px solid var(--vr-line);
+    background: var(--vr-card);
     transition: .15s;
     position: relative;
     padding: 0;
@@ -416,7 +421,7 @@ body.popupBody {
     top: 2px;
     width: 4.5px;
     height: 8.5px;
-    border: solid #fff;
+    border: solid var(--vr-line);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
 }
@@ -433,12 +438,12 @@ body.popupBody {
     text-transform: uppercase;
 }
 
-.panel .badge.b-mp4 { background: #fdf0e0; color: #9a4a06; border: 1px solid #f3d9b8; }
-.panel .badge.b-hls { background: #e9f3fb; color: #175e8a; border: 1px solid #c8e0f0; }
-.panel .badge.b-mpd { background: #eef0fb; color: #3b4a8a; border: 1px solid #d5d9ee; }
-.panel .badge.b-img { background: #e7f6ee; color: #11683f; border: 1px solid #c2e6d2; }
-.panel .badge.b-aud { background: #f3edfa; color: #6b3fa0; border: 1px solid #e0d2f0; }
-.panel .badge.b-other { background: #f1f3f6; color: #5b6472; border: 1px solid #e2e5ea; }
+.panel .badge.b-mp4 { background: var(--vr-accent-weak); color: var(--vr-accent); border: 1px solid var(--vr-cyan-tint-line); }
+.panel .badge.b-hls { background: var(--vr-card-hi); color: var(--vr-accent-strong); border: 1px solid var(--vr-line); }
+.panel .badge.b-mpd { background: var(--vr-card-hi); color: var(--vr-text-dim); border: 1px solid var(--vr-line); }
+.panel .badge.b-img { background: var(--vr-ok-soft); color: var(--vr-ok); border: 1px solid var(--vr-line); }
+.panel .badge.b-aud { background: var(--vr-card-hi); color: var(--vr-text-dim); border: 1px solid var(--vr-line); }
+.panel .badge.b-other { background: var(--vr-card-hi); color: var(--vr-text-dim); border: 1px solid var(--vr-line); }
 
 /* 标题 + 元信息（两行：名称 / 大小·格式） */
 .panel-heading .meta {
@@ -556,7 +561,7 @@ body.popupBody {
 
 .namebox:focus-within {
     border-color: var(--vr-cyan-tint-line);
-    background: #fff;
+    background: var(--vr-card);
 }
 
 .namebox .lbl {
@@ -615,7 +620,7 @@ body.popupBody {
     overflow: hidden;
 }
 
-.dirchip:hover { background: #d9ede8; border-color: var(--vr-cyan); }
+.dirchip:hover { background: var(--vr-cyan-tint, var(--vr-cyan-tint)); border-color: var(--vr-cyan); }
 .dirchip svg { width: 10px; height: 10px; flex: none; }
 .dirchip span { overflow: hidden; text-overflow: ellipsis; }
 
@@ -716,7 +721,7 @@ body.popupBody {
     display: flex;
     align-items: center;
     gap: 4px;
-    background: #fff;
+    background: var(--vr-card);
     border: 1px solid var(--vr-line-2);
     color: var(--vr-text-dim);
     font-size: 11px;
@@ -728,31 +733,31 @@ body.popupBody {
     white-space: nowrap;
 }
 
-.fbtn:hover { background: var(--vr-hover); border-color: #d3d8df; color: var(--vr-text); }
+.fbtn:hover { background: var(--vr-hover); border-color: var(--vr-line); color: var(--vr-text); }
 .fbtn svg { width: 11px; height: 11px; }
 
 .fbtn.primary {
     margin-left: auto;
     background: var(--vr-accent);
     border-color: var(--vr-accent);
-    color: #fff;
+    color: #17130D;
     font-weight: 600;
 }
 
 .fbtn.primary:hover {
     background: var(--vr-accent-strong);
     border-color: var(--vr-accent-strong);
-    color: #fff;
+    color: #17130D;
 }
 
 .fbtn.primary:disabled { opacity: .45; cursor: not-allowed; }
 
 .fbtn .cnt {
-    background: rgba(255, 255, 255, .18);
+    background: rgba(0, 0, 0, .18);
     border-radius: 10px;
     padding: 0 5px;
     font-size: 9px;
-    color: #fff;
+    color: #17130D;
 }
 
 /* 原生按钮统一缩窄 */
@@ -764,7 +769,7 @@ body.popupBody {
     padding: 5px 7px;
     border-radius: 7px;
     border: 1px solid var(--vr-line-2);
-    background: #fff;
+    background: var(--vr-card);
     color: var(--vr-text-dim);
     cursor: pointer;
     font-family: inherit;
@@ -788,9 +793,9 @@ body.popupBody {
     right: auto !important;
     bottom: 58px;
     transform: translateX(-50%);
-    background: var(--vr-ink);
-    border: none;
-    color: #fff;
+    background: var(--vr-card-hi);
+    border: 1px solid var(--vr-line);
+    color: var(--vr-text);
     font-size: 10.5px;
     padding: 7px 13px;
     border-radius: 9px;
@@ -806,7 +811,7 @@ body.popupBody {
 #filter.more,
 #features.more {
     position: fixed;
-    background: #fffffff2;
+    background: #191715f2;
     backdrop-filter: blur(6px);
     border-top: 1px solid var(--vr-line-2);
     padding: 9px 11px;
@@ -830,7 +835,7 @@ body.popupBody {
 #ext .flexFilter {
     font-size: 10px;
     color: var(--vr-text-dim);
-    background: #fff;
+    background: var(--vr-card);
     border: 1px solid var(--vr-line-2);
     border-radius: 6px;
     padding: 3px 7px;
@@ -922,9 +927,9 @@ body.popupBody {
 .tplrow input:focus { border-color: var(--vr-cyan-tint-line); }
 
 .tplrow button {
-    background: var(--vr-ink);
-    border: 1px solid var(--vr-ink);
-    color: #fff;
+    background: var(--vr-accent);
+    border: 1px solid var(--vr-accent);
+    color: #17130D;
     font-size: 11px;
     padding: 0 12px;
     border-radius: 8px;
@@ -934,7 +939,7 @@ body.popupBody {
     flex: none;
 }
 
-.tplrow button:hover { background: #23282f; }
+.tplrow button:hover { background: var(--vr-accent-strong); }
 
 .preview {
     background: var(--vr-bg-deep);
@@ -958,7 +963,7 @@ body.popupBody {
     right: 0;
     bottom: 0;
     width: 246px;
-    background: #fff;
+    background: var(--vr-card);
     border-left: 1px solid var(--vr-line-2);
     z-index: 460;
     transform: translateX(102%);
@@ -1032,7 +1037,7 @@ body.popupBody {
     width: 31px;
     height: 17px;
     border-radius: 20px;
-    background: #d3d8df;
+    background: var(--vr-line);
     cursor: pointer;
     position: relative;
     transition: .18s;
@@ -1051,7 +1056,7 @@ body.popupBody {
     width: 13px;
     height: 13px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--vr-card);
     transition: .18s;
     box-shadow: 0 1px 2px rgba(16, 24, 40, .2);
 }
@@ -1079,13 +1084,13 @@ body.popupBody {
     padding: 7px 5px;
     border-radius: 7px;
     border: 1px solid var(--vr-line-2);
-    background: #fff;
+    background: var(--vr-card);
     color: var(--vr-text-dim);
     cursor: pointer;
     font-family: inherit;
 }
 
-.drawer .toolgrid button:hover { background: var(--vr-hover); border-color: #d3d8df; }
+.drawer .toolgrid button:hover { background: var(--vr-hover); border-color: var(--vr-line); }
 .drawer .toolgrid button.wide { grid-column: span 2; }
 
 /* ---------- 设置视图（方案 A：4 组，全屏面板内视图） ---------- */
@@ -1183,7 +1188,7 @@ body.popupBody {
     box-sizing: border-box;
 }
 
-.setview .srow input[type=text]:focus { border-color: var(--vr-cyan-tint-line); background: #fff; }
+.setview .srow input[type=text]:focus { border-color: var(--vr-cyan-tint-line); background: var(--vr-card); }
 
 .setview .toggle {
     padding: 9px 0;
@@ -1196,14 +1201,14 @@ body.popupBody {
     padding: 5px 11px;
     border-radius: 7px;
     border: 1px solid var(--vr-line-2);
-    background: #fff;
+    background: var(--vr-card);
     color: var(--vr-text-dim);
     cursor: pointer;
     font-family: inherit;
     transition: .15s;
 }
 
-.ghostbtn:hover { background: var(--vr-hover); color: var(--vr-text); border-color: #d3d8df; }
+.ghostbtn:hover { background: var(--vr-hover); color: var(--vr-text); border-color: var(--vr-line); }
 
 .setview .note {
     font-size: 9.5px;
@@ -1275,7 +1280,7 @@ body.popupBody {
 
 .hrow .hbtn:hover { background: var(--vr-hover); color: var(--vr-text); }
 .hrow .hbtn svg { width: 13px; height: 13px; }
-.hrow .hbtn.del:hover { color: #dc2626; background: #fef2f2; }
+.hrow .hbtn.del:hover { color: var(--vr-danger); background: var(--vr-danger-soft); }
 
 .hempty {
     display: none;
@@ -1301,8 +1306,8 @@ body.popupBody {
     line-height: 1.6;
 }
 
-.ghostbtn.danger { color: #dc2626; border-color: #fecaca; white-space: nowrap; }
-.ghostbtn.danger:hover { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
+.ghostbtn.danger { color: var(--vr-danger); border-color: var(--vr-danger); white-space: nowrap; }
+.ghostbtn.danger:hover { background: var(--vr-danger-soft); border-color: var(--vr-danger); color: var(--vr-danger); }
 
 /* ---------- 多段合并徽标（M11） ---------- */
 .vr-multibadge {
@@ -1317,12 +1322,12 @@ body.popupBody {
     white-space: nowrap;
 }
 
-.vr-multibadge.idle { background: #eef2ff; color: #4f46e5; cursor: default; }
-.vr-multibadge.running { background: #fff0e6; color: #c2410c; cursor: default; }
-.vr-multibadge.ready { background: #dcfce7; color: #15803d; cursor: pointer; }
-.vr-multibadge.ready:hover { background: #bbf7d0; }
-.vr-multibadge.saved { background: #f0f1f3; color: #646a73; cursor: default; }
-.vr-multibadge.error { background: #fef2f2; color: #dc2626; cursor: default; }
+.vr-multibadge.idle { background: var(--vr-accent-weak); color: var(--vr-text-dim); cursor: default; }
+.vr-multibadge.running { background: var(--vr-danger-soft); color: var(--vr-accent); cursor: default; }
+.vr-multibadge.ready { background: var(--vr-ok-soft); color: var(--vr-ok); cursor: pointer; }
+.vr-multibadge.ready:hover { background: var(--vr-ok-soft); }
+.vr-multibadge.saved { background: var(--vr-card-hi); color: var(--vr-text-dim); cursor: default; }
+.vr-multibadge.error { background: var(--vr-danger-soft); color: var(--vr-danger); cursor: default; }
 
 /* ---------- 站点增强横幅（M3 B站分P） ---------- */
 .vr-banner {
@@ -1348,8 +1353,8 @@ body.popupBody {
     font-weight: 700;
     padding: 2px 6px;
     border-radius: 5px;
-    background: var(--vr-ink);
-    color: #fff;
+    background: var(--vr-accent);
+    color: #17130D;
     border: none;
     flex: none;
 }
@@ -1377,7 +1382,7 @@ body.popupBody {
 
 /* ===== B站「完整视频」入口 + 下载进度 ===== */
 .vr-banner-whole {
-    background: linear-gradient(180deg, #f2fbf8, var(--vr-cyan-tint));
+    background: linear-gradient(180deg, var(--vr-bg-deep), var(--vr-cyan-tint));
     border-bottom-color: var(--vr-cyan-tint-line);
 }
 
@@ -1404,9 +1409,9 @@ body.popupBody {
 .vr-whole-btns .fbtn { white-space: nowrap; }
 
 .vr-whole-btns .vr-whole-hd {
-    background: var(--vr-orange);
-    border-color: var(--vr-orange);
-    color: #fff;
+    background: var(--vr-accent);
+    border-color: var(--vr-accent);
+    color: #17130D;
 }
 
 .vr-whole-btns .fbtn[disabled] { opacity: .55; cursor: default; }
@@ -1424,7 +1429,7 @@ body.popupBody {
     flex: 1;
     height: 5px;
     border-radius: 99px;
-    background: #e8eef0;
+    background: var(--vr-card-hi);
     overflow: hidden;
 }
 
@@ -1433,7 +1438,7 @@ body.popupBody {
     height: 100%;
     width: 0%;
     border-radius: 99px;
-    background: linear-gradient(90deg, var(--vr-cyan), #34d399);
+    background: linear-gradient(90deg, var(--vr-cyan), var(--vr-accent));
     transition: width .25s ease;
 }
 
@@ -1461,8 +1466,8 @@ body.popupBody {
     flex: none;
     font-size: 9px;
     color: var(--vr-orange);
-    background: #fff;
-    border: 1px solid #f3d9b8;
+    background: var(--vr-card);
+    border: 1px solid var(--vr-cyan-tint-line);
     border-radius: 4px;
     padding: 0 4px;
 }
@@ -1478,9 +1483,9 @@ body.popupBody {
     font-size: 9px;
     padding: 2px 6px;
     border-radius: 99px;
-    border: 1px solid #f3d9b8;
-    background: #fdf0e0;
-    color: #9a4a06;
+    border: 1px solid var(--vr-cyan-tint-line);
+    background: var(--vr-accent-weak);
+    color: var(--vr-accent);
     cursor: pointer;
     font-family: inherit;
     white-space: nowrap;
@@ -1606,58 +1611,58 @@ body.popupBody {
    设置页 UX/UI 重构（语义分组色 + 卡片层级）
    ========================================================== */
 #vrSettings {
-    background: #f5f7fb;
+    background: var(--vr-bg-deep);
     z-index: 10050;
 }
 #vrSettings .sethead {
     position: sticky;
     top: 0;
     z-index: 3;
-    background: #fff;
+    background: var(--vr-card);
     padding: 12px 16px;
-    border-bottom: 1px solid #e5e8ef;
+    border-bottom: 1px solid var(--vr-line);
 }
 #vrSettings .sethead .ttl {
     font-size: 15px;
     font-weight: 650;
-    color: #1d2129;
+    color: var(--vr-text);
 }
 #vrSettings .sethead .back {
-    color: #4e5969;
-    background: #f7f9fc;
-    border: 1px solid #e5e8ef;
+    color: var(--vr-text-dim);
+    background: var(--vr-card);
+    border: 1px solid var(--vr-line);
 }
 #vrSettings .sethead .back:hover {
-    color: #1677ff;
-    border-color: #bcd7ff;
-    background: #f7fbff;
+    color: var(--vr-accent);
+    border-color: var(--vr-cyan-tint-line);
+    background: var(--vr-card);
 }
 #vrSettings .setbody {
-    background: #f5f7fb;
+    background: var(--vr-bg-deep);
     padding: 10px 14px 24px;
 }
 #vrSettings .setbody::-webkit-scrollbar { width: 6px; }
 #vrSettings .setbody::-webkit-scrollbar-thumb {
-    background: #d9dee8;
+    background: var(--vr-line);
     border-radius: 99px;
 }
 #vrSettings .sgroup {
-    --sg: #1677ff;
-    --sgsoft: #eef5ff;
-    --sgline: #d6e8ff;
+    --sg: var(--vr-accent);
+    --sgsoft: var(--vr-accent-weak);
+    --sgline: var(--vr-cyan-tint-line);
     margin: 10px 0;
     padding: 10px 12px 2px;
-    background: #fff;
-    border: 1px solid #e5e8ef;
+    background: var(--vr-card);
+    border: 1px solid var(--vr-line);
     border-left: 3px solid var(--sg);
     border-radius: 10px;
     box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
 }
-#vrSettings .sgroup[data-group="path"] { --sg:#1677ff; --sgsoft:#eef5ff; --sgline:#d6e8ff; }
-#vrSettings .sgroup[data-group="naming"] { --sg:#722ed1; --sgsoft:#f5efff; --sgline:#e5d8ff; }
-#vrSettings .sgroup[data-group="quality"] { --sg:#ff7d00; --sgsoft:#fff4e8; --sgline:#ffe0bd; }
-#vrSettings .sgroup[data-group="panel"] { --sg:#00b42a; --sgsoft:#edfcf3; --sgline:#c9f2d8; }
-#vrSettings .sgroup[data-group="library"] { --sg:#0f766e; --sgsoft:#e6f7f5; --sgline:#bfe8e3; }
+#vrSettings .sgroup[data-group="path"] { --sg:#E8B04B; --sgsoft:#2C2418; --sgline:#4A3B22; }
+#vrSettings .sgroup[data-group="naming"] { --sg:#B79CE8; --sgsoft:#241E2E; --sgline:#3B3049; }
+#vrSettings .sgroup[data-group="quality"] { --sg:#E0A25C; --sgsoft:#2C2218; --sgline:#4A3A26; }
+#vrSettings .sgroup[data-group="panel"] { --sg:#4FBF8B; --sgsoft:#132A21; --sgline:#1E4133; }
+#vrSettings .sgroup[data-group="library"] { --sg:#63C7C0; --sgsoft:#122826; --sgline:#1D403E; }
 #vrSettings .glabel {
     display: flex;
     align-items: center;
@@ -1682,28 +1687,28 @@ body.popupBody {
     align-items: center;
     gap: 10px;
     padding: 10px 0;
-    border-bottom: 1px solid #f0f2f6;
+    border-bottom: 1px solid var(--vr-line);
 }
 #vrSettings .srow:last-child { border-bottom: 0; }
 #vrSettings .srow .txt { flex: 1; min-width: 0; }
 #vrSettings .srow .slabel {
     font-size: 12px;
     font-weight: 500;
-    color: #1d2129;
+    color: var(--vr-text);
 }
 #vrSettings .srow .shint {
     font-size: 10px;
-    color: #86909c;
+    color: var(--vr-text-mute);
     margin-top: 2px;
     line-height: 1.5;
     word-break: break-all;
 }
 #vrSettings .srow input[type=text] {
     width: 100%;
-    background: #f7f9fc;
-    border: 1px solid #e5e8ef;
+    background: var(--vr-card);
+    border: 1px solid var(--vr-line);
     border-radius: 7px;
-    color: #1d2129;
+    color: var(--vr-text);
     font-size: 11.5px;
     padding: 8px 9px;
     outline: none;
@@ -1713,7 +1718,7 @@ body.popupBody {
 #vrSettings .srow input[type=text]:focus {
     border-color: var(--sg);
     box-shadow: 0 0 0 3px var(--sgsoft);
-    background: #fff;
+    background: var(--vr-card);
 }
 #vrSettings .toggle {
     display: flex;
@@ -1721,9 +1726,9 @@ body.popupBody {
     justify-content: space-between;
     gap: 12px;
     padding: 10px 0;
-    border-bottom: 1px solid #f0f2f6;
+    border-bottom: 1px solid var(--vr-line);
     font-size: 12px;
-    color: #1d2129;
+    color: var(--vr-text);
 }
 #vrSettings .toggle:last-child { border-bottom: 0; }
 #vrSettings .toggle span { flex: 1; line-height: 1.5; }
@@ -1732,7 +1737,7 @@ body.popupBody {
     height: 20px;
     flex: 0 0 34px;
     border-radius: 20px;
-    background: #d9dee8;
+    background: var(--vr-line);
     border: 0;
     margin: 0;
 }
@@ -1741,7 +1746,7 @@ body.popupBody {
     height: 16px;
     top: 2px;
     left: 2px;
-    background: #fff;
+    background: var(--vr-card);
     box-shadow: 0 1px 2px rgba(15, 23, 42, .22);
 }
 #vrSettings .sw:checked {
@@ -1764,24 +1769,24 @@ body.popupBody {
     transition: .15s;
 }
 #vrSettings .ghostbtn:hover {
-    background: #fff;
+    background: var(--vr-card);
     border-color: var(--sg);
 }
 #vrSettings .ghostbtn.danger {
-    background: #fff7f7;
-    border-color: #ffd3d3;
-    color: #f53f3f;
+    background: var(--vr-danger-soft);
+    border-color: var(--vr-danger);
+    color: var(--vr-danger);
 }
 #vrSettings .ghostbtn.danger:hover {
-    background: #fff0f0;
-    border-color: #f53f3f;
+    background: var(--vr-danger-soft);
+    border-color: var(--vr-danger);
 }
 #vrSettings .note {
-    background: #fff;
-    border: 1px solid #e5e8ef;
+    background: var(--vr-card);
+    border: 1px solid var(--vr-line);
     border-radius: 8px;
     padding: 10px 12px;
-    color: #86909c;
+    color: var(--vr-text-mute);
     font-size: 9.5px;
     line-height: 1.8;
     margin-top: 12px;

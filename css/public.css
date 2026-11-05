@@ -1,40 +1,35 @@
 :root {
-  /* 两个背景色 两个文字以及链接文字配色 */
-  --background-color: #fff;
-  --background-color-opacity: #ffffffea;
-  --background-color-two: #f5f5f5;
-  --text-color: #000;
-  --text-error-color: #ff0000;
-  --text2-color: rgb(26, 115, 232);
-  --link-color: #3079ed;
+  /* 舞台皮肤（ADR-049）：全站唯一一套深色。亮色已退役。 */
+  --background-color: #100F0E;
+  --background-color-opacity: #100F0EEA;
+  --background-color-two: #191715;
+  --text-color: #EFEAE0;
+  --text-error-color: #E86466;
+  --text2-color: #E8B04B;
+  --link-color: #E8B04B;
 
-  /* 设置页面 设置box 背景色 */
-  --optionBox-color: var(--background-color);
+  --optionBox-color: var(--background-color-two);
 
-  /* 两个按钮 配色 边框 */
-  --button-color: #fff;
-  --button-text-color: rgb(26, 115, 232);
-  --button-border: solid 1px #c7c7c780;
-  --button-hover-color: rgb(66 133 244 / 4%);
-  --button-active-color: rgb(66 133 244 / 10%);
+  --button-color: #191715;
+  --button-text-color: #EFEAE0;
+  --button-border: solid 1px #2B2620;
+  --button-hover-color: #241F19;
+  --button-active-color: #2B2620;
 
-  --button2-color: rgb(26, 115, 232);
-  --button2-text-color: #fff;
-  --button2-border: solid 1px #c7c7c780;
-  --button2-hover-color: rgb(26 115 232 / 90%);
-  --button2-active-color: rgb(26 115 232 / 50%);
+  --button2-color: #E8B04B;
+  --button2-text-color: #17130D;
+  --button2-border: solid 1px #E8B04B;
+  --button2-hover-color: #F0C066;
+  --button2-active-color: #D9A33F;
 
-  /* 滚动条配色 */
-  --scrollbar-track-color: #f5f5f500;
-  --scrollbar-thumb-color: #1a73e8;
+  --scrollbar-track-color: #100F0E00;
+  --scrollbar-thumb-color: #3A332A;
 
-  /* 设置页面 滑动开关配色 */
-  --switch-off-color: rgb(189, 193, 198);
-  --switch-on-color: rgb(26, 115, 232);
-  --switch-round-color: #fff;
+  --switch-off-color: #3A332A;
+  --switch-on-color: #E8B04B;
+  --switch-round-color: #EFEAE0;
 
-  /* input textarea select 边框配色 */
-  --input-border: solid 1px #000;
+  --input-border: solid 1px #2B2620;
 }
 html {
   color: var(--text-color);
@@ -136,40 +131,8 @@ button:disabled,
   border-radius: 10px;
   background-color: var(--scrollbar-thumb-color);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background-color: #0f172a;
-    --background-color-opacity: #0f172aea;
-    --background-color-two: #1e293b;
-    --text-color: #fff;
-    --text-error-color: #ff0000;
-    --text2-color: #fff;
-    --link-color: #94a3b8;
-
-    --optionBox-color: var(--background-color-two);
-
-    --button-color: #161b22;
-    --button-border: solid 1px #c7c7c780;
-    --button-text-color: #fff;
-    --button-hover-color: rgb(66 133 244 / 4%);
-    --button-active-color: rgb(66 133 244 / 10%);
-
-    --button2-color: rgb(26 115 232 / 50%);
-    --button2-border: solid 1px #c7c7c780;
-    --button2-text-color: #fff;
-    --button2-hover-color: rgb(26 115 232 / 90%);
-    --button2-active-color: rgb(26 115 232 / 50%);
-
-    --scrollbar-track-color: #f5f5f500;
-    --scrollbar-thumb-color: #1a73e8;
-
-    --switch-off-color: rgb(189, 193, 198);
-    --switch-on-color: rgb(26 115 232 / 50%);
-    --switch-round-color: #fff;
-
-    --input-border: solid 1px #ffffffb6;
-  }
-  img.regex {
+/* 深色图标常驻（产品只一套深色，不再区分系统主题） */
+img.regex {
     content: url(../img/regex-dark.png);
   }
   img.copy {
@@ -214,4 +177,3 @@ button:disabled,
   img.retry {
     content: url(../img/retry-dark.svg);
   }
-}
