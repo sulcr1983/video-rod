@@ -242,6 +242,30 @@ def main():
             time.sleep(0.3)
             zactual = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
             check("1 实际像素", isinstance(zactual, str) and zactual.endswith("%"), zactual)
+
+            # 滚轮缩放
+            before_wheel = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
+            c.ev("""(()=>{const s=document.getElementById('pvMedia');
+              s.dispatchEvent(new WheelEvent('wheel',{deltaY:-120,bubbles:true,cancelable:true}));return 1})()""", sid)
+            time.sleep(0.3)
+            after_wheel = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
+            check("滚轮放大图片", str(after_wheel).replace('%','').isdigit() and int(str(after_wheel).replace('%','')) > int(str(before_wheel).replace('%','')), {"before": before_wheel, "after": after_wheel})
+
+            # 拖拽平移
+            c.ev("""(()=>{const s=document.getElementById('pvMedia');const i=s.querySelector('img');
+              i.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,clientX:100,clientY:100,pointerId:1}));
+              s.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:130,clientY:120,pointerId:1}));
+              s.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,clientX:130,clientY:120,pointerId:1}));return 1})()""", sid)
+            time.sleep(0.2)
+            tr2 = c.ev("(document.querySelector('#pvMedia img')||{}).style.transform||''", sid, False)
+            check("拖拽平移图片", "translate(30px" in str(tr2) and "20px)" in str(tr2), tr2)
+
+            # 双击切换适应/实际
+            c.ev("""(()=>{const s=document.getElementById('pvMedia');
+              s.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));return 1})()""", sid)
+            time.sleep(0.3)
+            zdbl = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
+            check("双击切换缩放", isinstance(zdbl, str) and zdbl.endswith("%"), zdbl)
             c.ev("(()=>{const b=document.getElementById('pvClose');if(b)b.click();return 1})()", sid)
             time.sleep(0.3)
 
