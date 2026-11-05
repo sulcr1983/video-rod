@@ -734,8 +734,9 @@
         if (el.preview) {
             el.preview.addEventListener('wheel', function (e) {
                 if (el.preview.classList.contains('hidden')) { return; }
-                /* 图片：滚轮缩放；视频/GIF 才走上下切换/左右 seek */
-                if (imgEl) {
+                /* 图片：普通滚轮和视频/GIF 一样切上一张/下一张；
+                 * Ctrl/⌘ + 滚轮才缩放（避免用户想翻图却误放大）。 */
+                if (imgEl && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
                     zoomImg(e.deltaY < 0 ? 1.12 : 0.89);
                     return;
