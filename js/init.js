@@ -297,8 +297,8 @@ function InitOptions() {
             chrome.storage.sync.set({ m3u8dl: items.m3u8dl });
         }
 
-        // 侧边栏
-        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: items.sidePanel });
+        // 侧边栏（Edge/旧版无 sidePanel 时跳过，不影响 popup 主流程）
+        try { if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) { chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: items.sidePanel }); } } catch (e) { /* 可选 API */ }
 
         // 右键菜单注册
         contextMenusInit(items.contextMenus);
@@ -375,7 +375,7 @@ chrome.storage.onChanged.addListener(function (changes, namespace) {
             continue;
         }
         if (key == "sidePanel" && !G.isFirefox) {
-            chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: newValue });
+            try { if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) { chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: newValue }); } } catch (e) { /* 可选 API */ }
             continue;
         }
         if (key == "contextMenus") {
