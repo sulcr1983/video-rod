@@ -601,7 +601,46 @@
             else if (e.key === 'ArrowLeft') { if (videoEl) { e.preventDefault(); seekBy(-5); } }
             else if (e.key === 'ArrowRight') { if (videoEl) { e.preventDefault(); seekBy(5); } }
             else if (e.key === 'i' || e.key === 'I') { if (el.pvInfoBtn) { el.pvInfoBtn.click(); } }
+            else if (e.key === 'f' || e.key === 'F') { if (el.pvFullBtn) { el.pvFullBtn.click(); } }
             else if (e.key === ' ' && videoEl) { e.preventDefault(); if (videoEl.paused) { videoEl.play(); } else { videoEl.pause(); } }
+            else if (e.key === ' ' && animCtl) { e.preventDefault(); animCtl.toggle(); }
+            else if ((e.key === 'k' || e.key === 'K') && videoEl) {
+                e.preventDefault();
+                if (videoEl.paused) { videoEl.play().catch(function () { }); } else { videoEl.pause(); }
+            }
+            else if ((e.key === 'm' || e.key === 'M') && videoEl) {
+                e.preventDefault();
+                videoEl.muted = !videoEl.muted;
+            }
+            else if ((e.key === '-' || e.key === '=') && videoEl) {
+                e.preventDefault();
+                videoEl.volume = Math.max(0, Math.min(1, (videoEl.volume || 1) + (e.key === '=' ? 0.05 : -0.05)));
+            }
+            else if ((e.key === '>' || e.key === '<') && videoEl) {
+                e.preventDefault();
+                var rates = [0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+                var ri = 5;
+                for (var ri2 = 0; ri2 < rates.length; ri2++) { if (Math.abs(rates[ri2] - S.rate) < 0.001) { ri = ri2; break; } }
+                ri = Math.max(0, Math.min(rates.length - 1, ri + (e.key === '>' ? 1 : -1)));
+                S.rate = rates[ri];
+                videoEl.playbackRate = S.rate;
+                setTxt('vRate', S.rate + '×');
+                buildRates();
+            }
+            else if ((e.key === ',' || e.key === '.') && videoEl && videoEl.paused) {
+                e.preventDefault();
+                videoEl.currentTime = Math.max(0, Math.min(videoEl.duration || 0,
+                    (videoEl.currentTime || 0) + (e.key === '.' ? 1 : -1) / 30));
+            }
+            else if (/^[0-9]$/.test(e.key) && videoEl && isFinite(videoEl.duration)) {
+                e.preventDefault();
+                videoEl.currentTime = videoEl.duration * (Number(e.key) / 10);
+            }
+            else if ((e.key === 'p' || e.key === 'P') && videoEl && document.pictureInPictureEnabled &&
+                     videoEl.requestPictureInPicture) {
+                e.preventDefault();
+                videoEl.requestPictureInPicture().catch(function () { });
+            }
         });
 
         /* 滚轮：上下切上一个/下一个，左右（或 Shift+滚轮）调进度。
