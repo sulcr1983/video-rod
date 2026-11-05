@@ -90,7 +90,7 @@
             }
             var meta = pageMeta();
             btn.disabled = true;
-            btn.querySelector('span').textContent = '打开中…';
+            btn.querySelector('span').textContent = '开始下载…';
             try {
                 chrome.runtime.sendMessage({
                     Message: 'ytOpen',
@@ -102,7 +102,7 @@
                 }, function (res) {
                     btn.disabled = false;
                     var ok = res && res.ok;
-                    btn.querySelector('span').textContent = ok ? '已打开' : '打开失败';
+                    btn.querySelector('span').textContent = ok ? '已开始' : '启动失败';
                     setTimeout(function () {
                         btn.querySelector('span').textContent = '下载';
                     }, 1800);
@@ -175,6 +175,60 @@
     try {
         mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
     } catch (e) { /* 忽略 */ }
+
+    /* ---------- 后台合并进度浮层（右下角，苏哥 2026-11-05） ----------
+     * 不再弹下载窗口：后台标签跑合并，进度由 background 转发到这里。 */
+    var PROG_ID = 'vr-yt-prog-host';
+    var progRoot = null;
+    var progTimer = 0;
+    function ensureProg() {
+        var h = document.getElementById(PROG_ID);
+        if (!h) {
+            h = document.createElement('div');
+            h.id = PROG_ID;
+            document.body.appendChild(h);
+        }
+        if (!h.shadowRoot) {
+            var r = h.attachShadow({ mode: 'open' });
+            r.innerHTML =
+                '<style>' +
+                '.box{position:fixed;right:18px;bottom:18px;z-index:2147483000;width:268px;' +
+                'padding:12px 14px;border-radius:12px;background:#191715;color:#EFEAE0;' +
+                'border:1px solid #2B2620;box-shadow:0 12px 36px rgba(0,0,0,.6);' +
+                'font:12px/1.5 "Noto Sans SC",system-ui,sans-serif;opacity:0;transform:translateY(8px);' +
+                'transition:opacity .2s,transform .2s;pointer-events:none}' +
+                '.box.on{opacity:1;transform:none}' +
+                '.t{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+                '.t.ok{color:#4FBF8B}.t.err{color:#E86466}' +
+                '.bar{height:4px;margin-top:9px;border-radius:2px;background:#2B2620;overflow:hidden}' +
+                '.bar i{display:block;height:100%;width:0;background:#E8B04B;transition:width .25s}' +
+                '</style><div class="box" id="box"><div class="t" id="t"></div><div class="bar"><i id="i"></i></div></div>';
+        }
+        progRoot = h.shadowRoot;
+        return progRoot;
+    }
+    function renderProg(m) {
+        try {
+            var r = ensureProg();
+            var box = r.getElementById('box');
+            var t = r.getElementById('t');
+            var bar = r.getElementById('i');
+            box.classList.add('on');
+            t.className = 't' + (m.done ? (m.kind === 'err' ? ' err' : ' ok') : '');
+            if (m.text) { t.textContent = m.text; }
+            else if (m.pct !== null && m.pct !== undefined) { t.textContent = '后台合并中… ' + Math.round(m.pct) + '%'; }
+            if (m.pct !== null && m.pct !== undefined) { bar.style.width = Math.max(0, Math.min(100, m.pct)) + '%'; }
+            clearTimeout(progTimer);
+            if (m.done) {
+                progTimer = setTimeout(function () { box.classList.remove('on'); }, 6000);
+            }
+        } catch (e) { /* 浮层失败不影响下载 */ }
+    }
+    try {
+        chrome.runtime.onMessage.addListener(function (msg) {
+            if (msg && msg.Message === 'vrYtProgress') { renderProg(msg); }
+        });
+    } catch (e) { /* ignore */ }
 
     schedule();
 })();

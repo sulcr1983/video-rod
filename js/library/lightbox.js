@@ -141,6 +141,7 @@
             box.className = 'vr-player';
             var v = document.createElement('video');
             v.src = url; v.preload = 'metadata'; v.playsInline = true; v.controls = false;
+            v.muted = false; v.volume = 1;   // 别让自动播放策略把声音吞掉
             box.appendChild(v);
             stage.appendChild(box);
             playerBox = box;
@@ -172,7 +173,7 @@
                         controls: ['play-large', 'play', 'progress', 'current-time',
                                    'mute', 'volume', 'settings', 'pip', 'fullscreen'],
                         settings: ['speed'],
-                        speed: { selected: S.rate, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+                        speed: { selected: S.rate, options: [0.1, 0.2, 0.5, 0.75, 1, 1.25, 1.5, 2, 3] },
                         iconUrl: iconUrl,
                         /* 键盘语义由本模块统一定义（↑↓ 切素材、←→ 调进度），
                            不让播放器自带的 ↑↓ 调音量抢走按键 */
@@ -445,7 +446,7 @@
         }
         function buildRates() {
             if (!el.rpGrid) { return; }
-            var rates = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+            var rates = [0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
             el.rpGrid.innerHTML = rates.map(function (r) {
                 return '<button data-r="' + r + '" class="' + (Math.abs(r - S.rate) < 0.001 ? 'on' : '') + '">' + r + '×</button>';
             }).join('');

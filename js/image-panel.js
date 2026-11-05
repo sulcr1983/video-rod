@@ -690,8 +690,10 @@
 
     /* ---------------- 打开/关闭 ---------------- */
 
-    function openPanel() {
-        if (!enabled || !ensureUI()) { return; }
+    function openPanel(force) {
+        /* force：用户在别处主动点「选择图片」时要能打开，
+         * 不能因为「右下浮标」开关关着就静默无反应（苏哥反馈的 bug）。 */
+        if ((!enabled && !force) || !ensureUI()) { return; }
         open = true;
         refreshCount();
         renderAll();

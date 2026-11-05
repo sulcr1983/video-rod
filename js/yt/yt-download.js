@@ -15,6 +15,7 @@
     var qs = new URLSearchParams(location.search);
     var videoId = qs.get('videoId') || '';
     var tabId = parseInt(qs.get('tabId') || '0', 10) || 0;
+    var autoMode = qs.get('auto') === '1';   // 后台模式：不展示界面、自动最高画质
     var meta = {
         title: qs.get('title') || '',
         author: qs.get('author') || '',
@@ -53,13 +54,26 @@
     var sandbox = { frame: null, ready: null, seq: 0, wait: {} };
 
     // ---------- 小工具 ----------
+    /** 把进度广播回原 YouTube 标签，右下角浮层显示 */
+    function broadcast(text, pct, done, kind) {
+        try {
+            chrome.runtime.sendMessage({
+                Message: 'vrYtProgress', tabId: tabId,
+                text: text || '', pct: (pct === null || pct === undefined) ? null : pct,
+                done: !!done, kind: kind || ''
+            }, function () { void chrome.runtime.lastError; });
+        } catch (e) { /* 广播失败不影响下载 */ }
+    }
+
     function setMsg(text, kind) {
         el.msg.textContent = text || '';
         el.msg.className = 'msg' + (kind ? ' ' + kind : '');
         el.msg.style.whiteSpace = 'pre-line';
+        broadcast(text, null, false, kind);
     }
 
     function setBar(pct) {
+        if (pct !== null && pct !== undefined) { broadcast(null, pct, false); }
         if (pct == null) { el.bar.classList.remove('on'); return; }
         el.bar.classList.add('on');
         el.barI.style.width = Math.max(0, Math.min(100, pct)) + '%';
@@ -616,6 +630,8 @@
             el.file.classList.add('on');
             state.busy = false;
             el.go.disabled = !state.chosen;
+            broadcast('下载完成：' + (meta.title || '视频'), 100, true, 'ok');
+            if (autoMode) { setTimeout(function () { try { window.close(); } catch (e) {} }, 1800); }
             // FSA 直写没有下载事件，主动补一次入库，让资源库立刻能看到这张卡
             ingestSaved(saved).then(function (r) {
                 if (r && r.ok) {
@@ -628,6 +644,7 @@
         function fail(e) {
             setBar(null);
             setMsg(String((e && e.message) || e), 'err');
+            broadcast(String((e && e.message) || e), null, true, 'err');
             state.busy = false;
             el.go.disabled = !state.chosen;
         }
@@ -670,10 +687,18 @@
             }).then(function (aBytes) { return { v: vBytes, a: aBytes }; });
         }).then(function (pair) {
             stage('合并音视频…', 86);
-            if (!pair.a) {
+            /* 音频轨必须真有数据且带 mp4a 标记，否则明确报错，
+             * 不能静默产出一个「能播但没声音」的文件（苏哥反馈的老问题）。 */
+            var aBytes = pair.a || new Uint8Array(0);
+            var hasMp4a = false;
+            for (var bi = 0; bi < Math.min(aBytes.length, 20000) - 4; bi++) {
+                if (aBytes[bi] === 109 && aBytes[bi + 1] === 112 &&
+                    aBytes[bi + 2] === 52 && aBytes[bi + 3] === 97) { hasMp4a = true; break; }
+            }
+            if (!pair.a || pair.a.length < 1000 || !hasMp4a) {
                 return save(new Blob([pair.v], { type: 'video/mp4' }),
                     buildPath('mp4', nameSuffix + '_无音轨'))
-                    .then(function () { throw new Error('没取到音频轨，已保存无声视频'); });
+                    .then(function () { throw new Error('音频轨为空/格式不对，已保存无声视频并标注'); });
             }
             setMsg('合并音视频（不重编码，' + mb(pair.v.length + pair.a.length) + '）…');
             return new Promise(function (res) { setTimeout(res, 30); }).then(function () {
@@ -735,3 +760,18 @@
         loadFormats();
     }
 })();
+
+    /* 后台模式：隐藏界面，格式就绪后自动选最高画质并开始合并；
+     * 完成后 broadcast(done) 并自动关掉这个后台标签。 */
+    if (autoMode) {
+        document.body.classList.add('vr-auto');
+        var autoTimer = setInterval(function () {
+            if (el.qc && el.qc.children.length) {
+                clearInterval(autoTimer);
+                try {
+                    el.qc.children[0].click();      // 最高画质（列表已按高度降序）
+                    setTimeout(function () { el.go.click(); }, 120);
+                } catch (e) { broadcast('自动开始失败，请手动下载', null, true, 'err'); }
+            }
+        }, 300);
+    }

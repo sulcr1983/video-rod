@@ -643,8 +643,81 @@
 
     /** 页面标题：document.title 在部分 SPA 上会是空的（X 实测为 ""），
      *  这样文件名就退化成「图片」。按 og:title → h1 → URL 末段 逐层兜底。 */
-    function pageTitle() {
-        var t = String(document.title || '').replace(/\s+/g, ' ').trim();
+    /** 向上找最近的内容卡片（微博一条 / 推文一条），用来取正文与博主 */
+    function nearestCard(img) {
+        var p = img && img.parentElement;
+        for (var i = 0; i < 5 && p; i++, p = p.parentElement) {
+            var t = String(p.innerText || p.textContent || '').replace(/\s+/g, ' ').trim();
+            /* 一路找到「含图片的整条内容卡片」，别停在图片网格那层 */
+            if (t.length >= 40 && t.length < 3000 && /[，。！？]/.test(t)) { return p; }
+        }
+        return null;
+    }
+
+    /** 博主：从内容卡片里的主页链接取昵称 + ID（通用，不写站点特例） */
+    function pageAuthor(img) {
+        var out = { authorFull: '', creatorId: '' };
+        try {
+            var card = nearestCard(img);
+            var links = card ? card.querySelectorAll('a[href*="/u/"], a[href*="/profile/"]') : [];
+            var best = '';
+            links.forEach(function (a) {
+                var nm = String(a.textContent || '').replace(/^@/, '').trim();
+                if (nm.length < 2 || nm.length > 24) { return; }
+                if (/^[\d.,万亿\s]+/.test(nm)) { return; }
+                if (/粉丝|关注|转评赞|指数|主页|视频|文章/.test(nm)) { return; }
+                if (!best || nm.length < best.length) { best = nm; }  // 昵称一般最短
+                var m = (a.getAttribute('href') || '').match(/\/(?:u|profile)\/(\d+)/);
+                if (m && !out.creatorId) { out.creatorId = m[1]; }
+            });
+            out.authorFull = best.slice(0, 30);
+            /* 兜底：主页标题里的 @昵称 */
+            if (!out.authorFull) {
+                var mt = String(document.title || '').match(/@([^\s的，,]{2,20})/);
+                if (mt && !/^\d+$/.test(mt[1])) { out.authorFull = mt[1]; }
+            }
+            if (!out.creatorId) {
+                var m2 = location.pathname.match(/\/(?:u|profile)\/(\d+)/);
+                if (m2) { out.creatorId = m2[1]; }
+            }
+        } catch (e) { /* ignore */ }
+        return out;
+    }
+
+    function pageTitle(img) {
+        var t = '';
+        /* 苏哥 2026-11-05：微博主页 document.title 是「@某某 的个人主页」，
+         * 下载下来的图全叫这个名字。优先用「这张图所在那条内容」的正文当标题。 */
+        try {
+            var card = nearestCard(img);
+            if (card) {
+                /* 正文节点常嵌有话题/链接子标签，纯「叶子」规则会漏掉它。
+                 * 改为按「中文标点 + 长度」打分：正文有逗号句号，统计行没有；
+                 * 容器整体文本太长（>300）直接排除，避免抓成整张卡片。 */
+                var cand = [];
+                if (card) {
+                    card.querySelectorAll('div,span,p,article,section').forEach(function (n2) {
+                        var x = String(n2.innerText || '').replace(/\s+/g, ' ').trim();
+                        if (x.length < 20 || x.length > 300) { return; }
+                        /* 只认句子标点：统计/标签行常有「：」但没有「，。！？」 */
+                        var punct = (x.match(/[，。！？]/g) || []).length;
+                        if (!punct) { return; }
+                        cand.push({ t: x, score: punct * 2 + Math.min(x.length, 80) / 10 });
+                    });
+                }
+                cand.sort(function (x, y) { return y.score - x.score; });
+                t = cand.length ? cand[0].t : '';
+                if (t.length > 60) { t = t.slice(0, 60); }
+            }
+        } catch (e) { /* 落到页面标题兜底 */ }
+        if (!t) {
+            /* 抓不到正文时用博主名，绝不退回「@某某 的个人主页」这种首页标题 */
+            try {
+                var who0 = pageAuthor(img);
+                if (who0 && who0.authorFull) { t = who0.authorFull; }
+            } catch (e) { /* ignore */ }
+        }
+        if (!t) { t = String(document.title || '').replace(/\s+/g, ' ').trim(); }
         if (!t) {
             try {
                 var og = document.querySelector('meta[property="og:title"],meta[name="og:title"]');
@@ -705,7 +778,8 @@
         if (hotkeyBusy) { return Promise.resolve({ ok: false, code: 'IMG_E_BUSY' }); }
         hotkeyBusy = true;
         const pageUrl = location.href;
-        const title = pageTitle();
+        const title = pageTitle(img);
+        const who = pageAuthor(img);
         const candidates = U.collectCandidates(img, document);
         if (!candidates.length) {
             hotkeyBusy = false;
@@ -727,7 +801,9 @@
                     url: url,
                     candidates: candidates,
                     pageUrl: pageUrl,
-                    title: title
+                    title: title,
+                    authorFull: who.authorFull,
+                    creatorId: who.creatorId
                 }, r2 => {
                     hotkeyBusy = false;
                     if (r2 && r2.ok) {
@@ -750,7 +826,8 @@
 
         const img = currentImg;
         const pageUrl = location.href;
-        const title = pageTitle();
+        const title = pageTitle(img);
+        const who = pageAuthor(img);
         const candidates = U.collectCandidates(img, document);
         if (!candidates.length) { flashFail('IMG_E_NO_URL'); return; }
 
@@ -774,7 +851,9 @@
                 url: url,
                 candidates: candidates,
                 pageUrl: pageUrl,
-                title: title
+                title: title,
+                authorFull: who.authorFull,
+                creatorId: who.creatorId
             }, r2 => {
                 if (seq !== clickSeq) { return; }
                 if (r2 && r2.ok) { onDone(); } else { flashFail(r2 && r2.code); }

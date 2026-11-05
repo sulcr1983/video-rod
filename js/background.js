@@ -853,7 +853,11 @@ async function vrImgDownload(msg) {
             type: 'image',
             ext: ext,
             fileName: fileName,
-            subdir: subdir
+            subdir: subdir,
+            /* 苏哥 2026-11-05：图片之前拿不到博主，全落进「待整理」。
+             * 现在 content script 会把这条内容的博主带过来，直接自动分类。 */
+            authorFull: String((msg && msg.authorFull) || ''),
+            creatorId: String((msg && msg.creatorId) || '')
         });
     } catch (e) {
         return { ok: false, code: 'IMG_E_FETCH', message: '路径拼装失败' };
@@ -1735,6 +1739,21 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         sendResponse({ tasks: list });
         return true;
     }
+    // YouTube 后台合并进度：工作页 → 原 YouTube 标签右下角浮层
+    if (Message && Message.Message === 'vrYtProgress') {
+        const tid = Number(Message.tabId || 0);
+        if (tid) {
+            try {
+                chrome.tabs.sendMessage(tid, {
+                    Message: 'vrYtProgress',
+                    text: Message.text || '', pct: Message.pct,
+                    done: !!Message.done, kind: Message.kind || ''
+                }, function () { void chrome.runtime.lastError; });
+            } catch (e) { /* 原标签已关就算了 */ }
+        }
+        sendResponse({ ok: true });
+        return true;
+    }
     // YouTube：页面按钮点击 → 开下载窗口（单开小窗的理由见 js/yt/yt-download.js 抬头注释）
     if (Message && Message.Message === 'ytOpen') {
         var ytUrl = chrome.runtime.getURL('js/yt/yt-download.html') +
@@ -1744,14 +1763,15 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             '&author=' + encodeURIComponent(Message.author || '') +
             '&authorId=' + encodeURIComponent(Message.authorId || '') +
             '&pageUrl=' + encodeURIComponent(Message.pageUrl || '');
-        chrome.windows.create({
-            url: ytUrl, type: 'popup', width: 480, height: 700, focused: true
-        }, function (w) {
+        /* 苏哥 2026-11-05：不要弹出那个下载窗口。改成后台标签（不抢焦点），
+         * 页面自己选最高画质、后台合并音视频，进度广播回原页面右下角。 */
+        ytUrl += '&auto=1';
+        chrome.tabs.create({ url: ytUrl, active: false }, function (t) {
             if (chrome.runtime.lastError) {
                 sendResponse({ ok: false, error: chrome.runtime.lastError.message });
                 return;
             }
-            sendResponse({ ok: true, windowId: w && w.id });
+            sendResponse({ ok: true, tabId: t && t.id });
         });
         return true;
     }
@@ -2975,8 +2995,11 @@ async function vrBulkDownload(items, tabId) {
     const batch = new Set();
     let done = 0;
     let skipped = 0;
+    let failed = 0;
+    let hardFail = 0;
     let failStreak = 0;
     let paused = false;
+    let pauseReason = '';
     for (let i = 0; i < list.length; i++) {
         const it = list[i] || {};
         // X 主页视频是 blob，按推文坐标用 fxtwitter 解析完整 MP4
@@ -3008,6 +3031,15 @@ async function vrBulkDownload(items, tabId) {
                     const outcome = await vrWaitDownload(id, 15000);
                     if (outcome && outcome.state === 'interrupted') {
                         try { vrDropDownload(id); } catch (e) { /* ignore */ }
+                        /* 404（SERVER_BAD_CONTENT）是内容不存在，不是风控：
+                         * 之前 URL 拼错全 404，连败 3 次误报「疑似风控」暂停。
+                         * 内容错误不计入风控连败，继续下一条。 */
+                        if (outcome.error === 'SERVER_BAD_CONTENT' ||
+                            outcome.error === 'FILE_INVALID' ||
+                            outcome.error === 'SERVER_BAD_RANGE') {
+                            hardFail++;
+                            ok = null;   // null=内容错误：不算成功也不算风控失败
+                        }
                     } else {
                         ok = true;
                     }
@@ -3039,19 +3071,31 @@ async function vrBulkDownload(items, tabId) {
                     ok = id !== null;
                 }
             }
-            if (ok) {
+            if (ok === true) {
                 done++;
                 failStreak = 0;
                 if (mediaKey) { seen.add(mediaKey); }
+            } else if (ok === null) {
+                failed++;          // 内容错误：计入失败但不触发风控暂停
+                failStreak = 0;
             } else {
+                failed++;
                 failStreak++;
             }
         }
-        if (failStreak >= 3) { paused = true; break; }
+        /* 只有限流类失败（403/网络错误）才暂停；404 内容错误继续走。
+         * 且只有「还没成功过就连续失败」才像风控——成功过几条后再失败
+         * 更可能是单条内容问题。 */
+        if (failStreak >= 3 && done === 0) {
+            paused = true;
+            pauseReason = '连续失败 3 次且无一成功，已暂停（可能触发风控）';
+            break;
+        }
         try {
             chrome.tabs.sendMessage(tabId, {
                 Message: 'vrBulkProgress', done: done, skipped: skipped,
-                total: list.length, paused: paused
+                failed: failed, total: list.length, paused: paused,
+                reason: pauseReason
             });
         } catch (e) { /* 页面关了 */ }
         await vrBulkSleep((it.site === 'x' || it.site === 'xhs')
@@ -3061,7 +3105,8 @@ async function vrBulkDownload(items, tabId) {
     vrDedupSave(seen);
     return {
         ok: true, total: list.length, done: done, skipped: skipped,
-        paused: paused, reason: paused ? '连续失败 3 次，已暂停（可能触发风控）' : ''
+        failed: failed + hardFail, hardFail: hardFail,
+        paused: paused, reason: pauseReason
     };
 }
 

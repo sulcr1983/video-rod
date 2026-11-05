@@ -177,8 +177,8 @@
             if (id) { return cleanSeg(full) + '(@' + cleanSeg(id) + ')'; }
             return cleanSeg(full);
         }
-        if (id) { return '待整理(@' + cleanSeg(id) + ')'; }
-        return '待整理';
+        if (id) { return '@' + cleanSeg(id); }
+        return '';
     }
 
     /* ---------------- 主入口 ---------------- */
@@ -206,12 +206,14 @@
 
         var creator;
         if (platform === 'web') {
-            // 无法识别平台时，用页面域名当「博主」占位；拿不到就「待整理」
             var host = hostOf(pageUrl) || cleanSeg(o.site || '');
             creator = host ? cleanSeg(host) : creatorSegment(o.authorFull, o.creatorId);
         } else {
             creator = creatorSegment(o.authorFull, o.creatorId || creatorIdFromUrl(pageUrl));
         }
+        /* 实在拿不到博主，就用站点域名归类；「待整理」这个说法用户看不懂，
+         * 而且它其实没做任何整理。保留三级目录结构，parseRelPath 不受影响。 */
+        if (!creator) { creator = cleanSeg(hostOf(pageUrl) || o.site || '') || '网页'; }
 
         return [sub, PLATFORM_DIR[platform] || PLATFORM_DIR.web, creator, typeSeg].join('/');
     }

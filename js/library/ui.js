@@ -88,7 +88,7 @@
     function platformName(e) { return e.platformName || platOf(e).name; }
 
     function creatorName(e) {
-        return e.creatorFull || e.creatorId || '待整理';
+        return e.creatorFull || e.creatorId || '—';
     }
 
     function creatorMeta(e) {
