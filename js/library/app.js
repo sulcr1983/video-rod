@@ -1115,9 +1115,6 @@
 
         var bmBtn = $('#batchMove');
         if (bmBtn) { bmBtn.addEventListener('click', async function () {
-            /* 「移动到…」此前连 id 和 handler 都没有 —— 纯装饰按钮。
-             * 真移动必须写盘，需要素材目录授权（与单条「移动」同一前提）；
-             * 未授权时明确引导去授权，不装作成功。 */
             var list = FILES.filter(function (f) { return S.sel.has(f.id); });
             if (!list.length) { toast('先选素材'); return; }
             var rr = null;
@@ -1135,29 +1132,63 @@
             if (dest === null) { return; }
             dest = String(dest).replace(/[\\/:*?"<>|]/g, '_').replace(/^\/+|\/+$/g, '').trim();
             if (!dest) { toast('文件夹名不能为空'); return; }
-            var okN = 0, failN = 0;
+
+            /* 索引 relPath 的首段是 subdir（video-rod），而 FSA 句柄指向库根，
+             * 所以物理操作必须把首段剥掉；原实现直接把 video-rod/... 传给
+             * moveFile，有句柄也会多一层目录。 */
+            var pfx = String(rr.prefix || '').replace(/^\/+|\/+$/g, '');
+            var stripPfx = function (rel) {
+                var p = pfx ? (pfx + '/') : '';
+                return (p && rel.indexOf(p) === 0) ? rel.slice(p.length) : rel;
+            };
+            var absRoot = String(rr.absRoot || '').replace(/[\\/]+$/, '');
+            var okN = 0, failN = 0, skipN = 0;
+
             for (var i = 0; i < list.length; i++) {
                 var f = list[i];
                 var name = String(f.relPath).split('/').pop();
-                var newRel = 'video-rod/' + dest + '/' + name;
+                var newRel = (pfx ? pfx + '/' : '') + dest + '/' + name;
+                if (newRel === f.relPath) { skipN++; continue; }
+                if (RAW[newRel]) { failN++; continue; }     // DB 已有同名目标，先不覆盖
+
+                var fromFs = stripPfx(f.relPath);
+                var toFs = stripPfx(newRel);
+                var moved = false, dbWritten = false;
                 try {
-                    await root.VRTrash.moveFile(rr.handle, f.relPath, newRel);
+                    await root.VRTrash.moveFile(rr.handle, fromFs, toFs, { noOverwrite: true });
+                    moved = true;
                     var old = RAW[f.relPath] || {};
                     if (root.VRDB && root.VRDB.putFiles) {
-                        await root.VRDB.deleteFiles([f.relPath]);
-                        var absRoot = String(rr.absRoot || '').replace(/[\\/]+$/, '');
-                        await root.VRDB.putFiles([Object.assign({}, old, {
+                        var absRel = toFs.replace(/\//g, '\\');
+                        var next = Object.assign({}, old, {
                             relPath: newRel,
-                            absPath: absRoot ? absRoot + '\\' + newRel.replace(/\//g, '\\') : (old.absPath || ''),
-                            thumbKey: null
-                        })]);
+                            /* absRoot 是库根，toFs 已剥掉 subdir，不能再拼 video-rod */
+                            absPath: absRoot ? absRoot + '\\' + absRel : (old.absPath || ''),
+                            thumbKey: null,
+                            state: 'ok'
+                        });
+                        /* 先写新条目再删旧条目：写失败时旧索引还在，记录不会消失 */
+                        await root.VRDB.putFiles([next]);
+                        dbWritten = true;
+                        await root.VRDB.deleteFiles([f.relPath]);
                     }
                     okN++;
-                } catch (e) { failN++; }
+                } catch (e) {
+                    /* 物理已移动但 DB 未写成功：尽量移回去，避免文件与索引脱节 */
+                    if (moved && !dbWritten) {
+                        try { await root.VRTrash.moveFile(rr.handle, toFs, fromFs, { noOverwrite: true }); }
+                        catch (e2) { /* 回滚失败，保留失败计数，用户可重扫 */ }
+                    }
+                    failN++;
+                }
             }
             S.sel.clear(); S.select = false;
+            var sb = $('#selectBtn'); if (sb) { sb.classList.remove('is-on'); }
+            var bb = $('#batchbar'); if (bb) { bb.classList.add('hidden'); }
             await load();
-            toast('移动完成：' + okN + ' 项' + (failN ? '，失败 ' + failN : ''));
+            toast('移动完成：' + okN + ' 项' +
+                (skipN ? '，跳过 ' + skipN : '') +
+                (failN ? '，失败 ' + failN : ''));
         }); }
 
         var bf = $('#batchFav');

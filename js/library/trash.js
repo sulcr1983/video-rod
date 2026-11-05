@@ -137,7 +137,14 @@
     }
 
     /** 复制 → 校验大小 → 删源；不依赖 FSA move() */
-    async function moveFile(rootHandle, fromRel, toRel) {
+    async function moveFile(rootHandle, fromRel, toRel, opts) {
+        opts = opts || {};
+        /* 移动也是写盘操作：必须和删除一样先确认句柄/S 权限。
+         * 原实现没有这一步，授权过期时会在 createWritable 才失败。 */
+        await ensureRW(rootHandle);
+        if (opts.noOverwrite && await exists(rootHandle, toRel)) {
+            throw makeErr('LIB_E_EXISTS', '目标已存在，未覆盖：' + toRel);
+        }
         var srcHandle = await fileAt(rootHandle, fromRel);
         var srcFile = await srcHandle.getFile();
 
@@ -435,6 +442,9 @@
         restore: restore,
         purge: purge,
         empty: empty,
-        resolveRoot: resolveRoot
+        resolveRoot: resolveRoot,
+        /* app.js 的「移动到…」需要；原实现调用未导出的 moveFile，必然失败。 */
+        moveFile: moveFile,
+        exists: exists
     };
 })(typeof self !== 'undefined' ? self : this);
