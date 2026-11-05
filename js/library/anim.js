@@ -49,7 +49,11 @@
             var buf = await resp.arrayBuffer();
             decoder = new root.ImageDecoder({ data: buf, type: mime });
             await decoder.completed;
-            var track = decoder.tracks && decoder.tracks.selectedTrack;
+            /* GIF/WebP 的 track 元数据可能在 completed 之后才 ready；
+             * 旧实现直接读 selectedTrack.frameCount，部分文件会得到 1，
+             * 表现为“动图只能看第一帧、逐帧按钮无效”。 */
+            try { if (decoder.tracks && decoder.tracks.ready) { await decoder.tracks.ready; } } catch (e) { /* ignore */ }
+            var track = decoder.tracks && (decoder.tracks.selectedTrack || decoder.tracks[0]);
             frames = (track && track.frameCount) || 1;
         } catch (e) {
             try { if (decoder) { decoder.close(); } } catch (e2) { /* ignore */ }

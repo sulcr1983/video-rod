@@ -104,7 +104,8 @@
 - 视频：K 播放/暂停、M 静音、`>` 提倍速、数字 5 跳到约 50%。
 - 图片：`+/-` 缩放、`R` 旋转、`0` 适应、`1` 实际像素；工具栏按钮已接线；滚轮缩放、拖拽平移、双击切换适应/实际像素。
 - 键盘回归 **27/27 PASS**；真实库未被删除/改名。
-- GIF 的 `Space/,/./L/0` 已实现，但当前真实库没有动图素材，未自动化验证。
+- GIF：`Space` 暂停/继续、`,`/`.` 逐帧、`L` 循环、`0` 首帧，使用 10 帧公开夹具回归 **9/9 PASS**。
+- 修复了一个真实动图缺陷：`ImageDecoder` 的 `tracks` 在 `completed` 后不保证已 ready，旧代码直接读 `selectedTrack.frameCount` 会得到 1，表现为动图只能看第一帧、逐帧无效；现在先 `await tracks.ready` 并回退到 `tracks[0]`。
 
 ---
 
@@ -117,6 +118,14 @@
 **影响：** 用户以为删除成功，实际文件没进回收站；DB 条目消失后无法恢复。
 **修复：** 新增 `stripPrefix(rel, prefix)`；`remove/restore/purge` 的物理操作使用剥掉 `video-rod/` 后的路径；manifest/DB 继续保留原始 relPath。
 **验证：** OPFS 库根句柄：`remove moved=1`、DB 条目消失、文件进回收站、没有多一层 `video-rod`、`restore restored=1`、文件回原位、DB 恢复，7/7 PASS。
+
+### P1：动图帧数读取过早（已修）
+
+**代码：** `js/library/anim.js`。
+**现象：** 10 帧 GIF 被识别成 1 帧，逐帧按钮无效。
+**根因：** `ImageDecoder.completed` 之后直接读 `tracks.selectedTrack.frameCount`，此时 tracks 元数据可能尚未 ready。
+**修复：** `await tracks.ready`，并回退 `selectedTrack || tracks[0]`。
+**验证：** 公开 10 帧 GIF 夹具：控件条、帧数、Space 暂停/继续、`.` 逐帧、`L` 循环、`0` 首帧，9/9 PASS。
 
 ### 不是产品 bug 的测试侧问题
 
@@ -173,6 +182,7 @@
 | 首次使用脚本 | `tools/first-run-audit.py` |
 | 收藏夹回归 | `tools/library-favorites-e2e.py`（11/11） |
 | 键盘回归 | `tools/library-keyboard-e2e.py`（27/27） |
+| 动图回归 | `tools/library-gif-e2e.py`（9/9） |
 | 回收站修复 | `js/library/trash.js` |
 | P0 回归矩阵 | `docs/TEST-MATRIX-P0.md` |
 | 真实库基线 | `.work/db-snapshots/vr-library-pre-audit.json`（35 条） |
