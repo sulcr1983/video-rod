@@ -68,10 +68,17 @@
             throw makeErr('LIB_E_NO_PERM', '需要一次目录授权才能重命名');
         }
         if (typeof handle.queryPermission !== 'function') { return; }
-        var state = await handle.queryPermission({ mode: 'readwrite' });
+        var state = 'prompt';
+        try {
+            state = await handle.queryPermission({ mode: 'readwrite' });
+        } catch (e) {
+            // 句柄来自别的档案/已被回收时会抛 "Permissions check failed"，别让它冒到按钮上
+            throw makeErr('LIB_E_NO_PERM', '目录句柄已失效，请到设置里重新选一次目录');
+        }
         if (state === 'granted') { return; }
         if (typeof handle.requestPermission === 'function') {
-            state = await handle.requestPermission({ mode: 'readwrite' });
+            try { state = await handle.requestPermission({ mode: 'readwrite' }); }
+            catch (e2) { state = 'denied'; }
         }
         if (state !== 'granted') {
             throw makeErr('LIB_E_NO_PERM', '目录写权限未授权');

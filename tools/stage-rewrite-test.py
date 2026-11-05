@@ -94,7 +94,7 @@ def main():
     check("卡片数=8", ev("document.querySelectorAll('#grid .card').length", sid), 8)
     check("侧栏 264px", ev("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)", sid), 264)
     check("树根编号 00", ev("document.querySelector('#tree .ix') && document.querySelector('#tree .ix').textContent", sid), "00")
-    check("平台 chips=9", ev("document.querySelectorAll('#chips .chip').length", sid), 9)
+    check("平台 chips=10（含 B站）", ev("document.querySelectorAll('#chips .chip').length", sid), 10)
     check("页签计数", ev("[...document.querySelectorAll('#typeTabs button')].map(b=>b.dataset.type+':'+b.querySelector('b').textContent).join(',')", sid),
           "all:8,image:2,anim:1,video:4,audio:1")
     check("缺失角标", ev("document.querySelectorAll('#grid .card .missing-tag').length", sid), 1)
