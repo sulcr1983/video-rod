@@ -22,7 +22,7 @@
     if (!U) { return; }
 
     const HIDE_DELAY = 300;
-    let showDelay = 300;           // 可配（imgHoverDelay），缺省 300ms
+    let showDelay = 700;           // 可配（imgHoverDelay）。缺省 700ms：太快会满屏冒按钮（用户反馈）
     const DONE_MS = 1200;
     const FAIL_MS = 1800;
     const MIN = U.MIN_SIZE;
@@ -98,9 +98,10 @@
 .vr-wrap.on { display: flex; }
 .vr-btn {
   pointer-events: auto;
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 30px; padding: 0 10px;
-  border: 1px solid rgba(255, 255, 255, .35); border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0;
+  /* 22px 小圆钮：只留图标，文字靠 title。原来 30px 带文字在图上又大又挡视线 */
+  height: 22px; padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, .35); border-radius: 6px;
   background: rgba(17, 24, 39, .88); color: #fff;
   font: inherit; line-height: 1; cursor: pointer; white-space: nowrap;
   box-shadow: 0 2px 10px rgba(0, 0, 0, .28);
@@ -110,8 +111,12 @@
 .vr-btn:hover { background: rgba(37, 99, 235, .94); border-color: rgba(255, 255, 255, .6); }
 .vr-btn:active { transform: translateY(1px); }
 .vr-btn:disabled { cursor: default; }
-.vr-btn svg { width: 14px; height: 14px; display: block; }
-.vr-ico { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; }
+.vr-btn svg { width: 12px; height: 12px; display: block; }
+/* 文字不占宽度：说明改走 title。批量键只显示数量 */
+.vr-text { display: none; }
+.vr-btn.all { min-width: 22px; padding: 0 5px; }
+.vr-btn.all .vr-text { display: inline; font-size: 10px; line-height: 1; letter-spacing: 0; }
+.vr-ico { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
 .vr-btn.busy .vr-ico {
   border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff;
   border-radius: 50%; width: 10px; height: 10px;
@@ -159,7 +164,8 @@
         ico.innerHTML = ICON;
         txt = document.createElement('span');
         txt.className = 'vr-text';
-        txt.textContent = '下载原图';
+        txt.textContent = '';
+        if (btn) { btn.title = '下载原图'; }
         btn.appendChild(ico);
         btn.appendChild(txt);
 
@@ -178,7 +184,8 @@
         allIco.innerHTML = ICON;
         allTxt = document.createElement('span');
         allTxt.className = 'vr-text';
-        allTxt.textContent = '全部';
+        allTxt.textContent = '';
+        if (allBtn) { allBtn.title = '下载本页全部图片'; }
         allBtn.appendChild(allIco);
         allBtn.appendChild(allTxt);
         allBtn.addEventListener('click', onAll);
@@ -204,7 +211,8 @@
         }
         allBtn.hidden = false;
         // 图窄时只显示图标，数字放 title / aria
-        allTxt.textContent = allNarrow ? '' : ('全部 ' + n);
+        allTxt.textContent = n ? String(n) : '';   // 小圆钮里只放数量
+        if (allBtn) { allBtn.title = '下载全部 ' + n + ' 张'; }
         allBtn.title = '下载本页全部 ' + n + ' 张图片';
         allBtn.setAttribute('aria-label', '下载本页全部 ' + n + ' 张图片');
     }
@@ -314,7 +322,9 @@
         btn.classList.toggle('done', s === 'done');
         btn.classList.toggle('fail', s === 'fail');
         btn.disabled = (s === 'busy' || s === 'done');
-        txt.textContent = text;
+        // 按钮收成小图标后不再画文字，状态说明放 title（原生 tooltip，不占宽度）
+        if (text) { btn.title = text; }
+        txt.textContent = '';
     }
 
     function show(img) {
@@ -405,10 +415,40 @@
      * 原始尺寸仍然够大，只看 naturalWidth 会让满屏头像/按钮/表情都冒下载图标
      * （用户实测反馈的核心问题）。
      */
+    /** 图是否属于某个视频容器（封面/海报/视频卡片缩略图） */
+    function nearVideo(img) {
+        var p = img && img.parentElement;
+        for (var i = 0; i < 4 && p; i++, p = p.parentElement) {
+            try {
+                if (p.tagName === 'VIDEO') { return true; }
+                if (p.querySelector && p.querySelector('video')) { return true; }
+            } catch (e) { /* 忽略 */ }
+        }
+        return false;
+    }
+
+    /** 页面上是否已有一块「大到占主视野」的视频（≥35% 视口） */
+    function pageIsVideoDominant() {
+        var vs;
+        try { vs = document.querySelectorAll('video'); } catch (e) { return false; }
+        if (!vs || !vs.length) { return false; }
+        var area = Math.max(1, window.innerWidth * window.innerHeight);
+        for (var i = 0; i < vs.length; i++) {
+            var r;
+            try { r = vs[i].getBoundingClientRect(); } catch (e) { continue; }
+            if (r.width * r.height >= area * 0.35) { return true; }
+        }
+        return false;
+    }
+
     function eligible(img) {
         if (!img || img.tagName !== 'IMG' || !img.isConnected) { return false; }
         if (host && (img === host || (host.contains && host.contains(img)))) { return false; }
         if (!U.isWorthDownloading(img, { minNatural: MIN, minShow: minShow })) { return false; }
+        // 视频页抑制（用户反馈：视频页老冒图片下载键，很困扰）：
+        //   ① 这张图就在播放器容器里（封面/海报）→ 用户要的是视频，不是这张图
+        //   ② 页面主区域已有大尺寸 video（≥35% 视口）→ 判定为视频页，别抢戏
+        if (nearVideo(img) || pageIsVideoDominant()) { return false; }
         const raw = img.currentSrc || img.src || img.getAttribute('src') || '';
         const url = U.absolutize(raw, document.baseURI);
         if (!url) { return false; }

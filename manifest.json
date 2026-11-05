@@ -92,6 +92,18 @@
         "http://*/*"
       ],
       "js": [
+        "js/net-sniff.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
         "js/content-script.js"
       ],
       "run_at": "document_start",
