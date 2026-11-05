@@ -191,10 +191,12 @@ def main():
             muted2 = c.ev("document.querySelector('#pvMedia video').muted", sid, False)
             check("M 切换静音", muted2 != vs.get("muted"), {"before": vs.get("muted"), "after": muted2})
 
-            c.key(">", "Period", 190, 8, sid)
+            before_rate = vs.get("rate") or 1
+            speed_key = ">" if before_rate < 3 else "<"
+            c.key(speed_key, "Period", 190, 8 if speed_key == ">" else 0, sid)
             time.sleep(0.3)
             rate2 = c.ev("document.querySelector('#pvMedia video').playbackRate", sid, False)
-            check("> 提高倍速", rate2 > (vs.get("rate") or 1), {"before": vs.get("rate"), "after": rate2})
+            check("倍速键生效", rate2 != before_rate, {"key": speed_key, "before": before_rate, "after": rate2})
 
             c.key("5", "Digit5", 53, sid=sid)
             time.sleep(0.4)
