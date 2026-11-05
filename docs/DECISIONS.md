@@ -1039,4 +1039,34 @@
 
 ---
 
+## ADR-053 后台 service worker 启动铁律 + 防盗链三路线（2026-11-05）
+
+- **日期**：2026-11-05 ｜ **状态**：✅ 已定 ｜ **触发**：苏哥报「抖音下载点了没反应」，实测挖出后台静默死亡
+
+**事故链（按证据顺序）**
+
+1. 抖音悬浮面板出现、点击后进入 `vr-busy 0%`，60 秒不落盘；但 `vrLastVideoDown` 读到 `null`，说明后台从没处理过下载请求。
+2. 三条消息（`HeartBeat` / `getAllData` / `vrVideoOptions`）**全部超时**，`Target.getTargets` 里**根本没有扩展的 service_worker** → 后台从未启动。
+3. 加启动打点定位到 `importScripts`：在 `js/library/dedup.js` 处中断。该文件第 15 行写死 `var root = window;`，而 SW 里没有 `window` → `ReferenceError` → `background.js` 第五行就断，`chrome.runtime.onMessage` 从未注册。
+4. 表现之所以「看着都好」：资源库页面、皮肤、悬浮按钮全是 content script / 页面侧能力，不依赖后台。**此前 7 个套件全绿，没有一条验证过后台消息**——静默失效被完全掩盖。
+
+**决策**
+
+1. **凡被 `importScripts` 加载进 SW 的脚本，禁止直接引用 `window` / `document`**；统一写 `var root = (typeof window !== 'undefined') ? window : ((typeof self !== 'undefined') ? self : this);`。
+2. **回归必须含「后台存活」套件**：新增 `tools/e2e-sw.py`（4 条：HeartBeat 应答 / getAllData 应答 / vrVideoOptions 12s 内返回 / 扩展上下文正常），置于 `e2e-all.py` 首位。后台静默死亡从此是红灯，不再是隐形。
+3. **任何可能卡死的 await 必须有硬超时**：新增 `vrWithTimeout(promise, ms, label)`，已覆盖抖音详情探测（8s）、B站探测（8s）、命名注入（8s）、当前播放探测（4s）。超时即落到下一分支，永不把面板挂在「正在问…」。
+4. **`chrome.offscreen.createDocument` 只有 Promise 形态、不接受 callback**。按 callback 写会让 `resolve` 永不触发、调用方永久挂起（实测踩到，m3u8 合并链路同样受影响，已一并修正）。
+5. **防盗链站点按三路线递进**（抖音实测唯一可行序）：
+   - ① `chrome.downloads` + DNR 补 Referer —— **抖音无效**（DNR 的 modifyHeaders 对下载器请求不生效），直链返回 `SERVER_FORBIDDEN` 并落 0 字节 `.htm` 残件。
+   - ② 页面主世界 fetch → blob → `<a download>` —— **抖音无效**（CDN 跨域，`TypeError: Failed to fetch`）。
+   - ③ **离屏文档直连**（`js/offscreen-fetch.js`）：扩展上下文 fetch 有 host_permissions 不受 CORS 限制、DNR 的 Referer 对 fetch 生效 → 取到 blob → `<a download>` 落盘。**实测 18.5MB 完整落盘、文件名正确**。
+   - 注：离屏文档里 `chrome.downloads` 是 `undefined`，不能在里面调下载器；用 `<a download>` 才能保住文件名。
+
+**已知残项（如实记录，未解决）**
+
+- 路线③ 的 `<a download>` **不支持子目录**，文件落在 `Downloads` 根目录，未进 `video-rod/<平台>/<作者>/<类型>/` 归档结构（与 B站 durl / 微博 blob 路线同一取舍）。
+- 无 FSA 目录授权时，`chrome.downloads` 回退路径会丢文件名与子目录（`download-path` 套件 6/10 即此原因，与 ADR-040 同源）。要完整命名 + 自动归档，需授权一次归档目录。
+
+---
+
 *新增决策在此追加，编号顺延。*

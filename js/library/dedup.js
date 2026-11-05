@@ -12,7 +12,12 @@
  * ========================================================== */
 (function () {
     'use strict';
-    var root = window;
+    // ⚠️ 本文件同时被 background service worker（importScripts）和资源库页面加载。
+    //    SW 里没有 window，写死 window 会让 importScripts 抛 ReferenceError，
+    //    进而整个 background.js 中断、chrome.runtime.onMessage 从未注册 —— 表现为
+    //    「资源库看着正常、页面悬浮按钮也在，但点下载毫无反应」。2026-11-05 实测踩过。
+    var root = (typeof window !== 'undefined') ? window
+        : ((typeof self !== 'undefined') ? self : this);
 
     var CHUNK = 131072;          // 128KB 一块，不整读进内存
     var HASH_FIELD = 'sha256';

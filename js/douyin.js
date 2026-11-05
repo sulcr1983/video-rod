@@ -83,7 +83,15 @@
         try {
             const u = '/aweme/v1/web/aweme/detail/?aweme_id=' +
                 encodeURIComponent(awemeId) + '&aid=6383&device_platform=webapp';
-            const r = await fetch(u, { credentials: 'include' });
+            // 接口偶发不返回：7 秒必断，否则面板会一直停在「正在问…」（2026-11-05 实测）
+            const ac = new AbortController();
+            const tm = setTimeout(function () { try { ac.abort(); } catch (e) { } }, 7000);
+            let r;
+            try {
+                r = await fetch(u, { credentials: 'include', signal: ac.signal });
+            } finally {
+                clearTimeout(tm);
+            }
             if (!r.ok) { return null; }
             const j = await r.json();
             const d = j && j.aweme_detail;

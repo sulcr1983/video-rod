@@ -1,0 +1,28 @@
+{
+  "url": "https://v.douyin.com/8pGobUZIy84/",
+  "at": "2026-11-05 15:09:55",
+  "page": {
+    "title": "便宜又普通的鸡蛋，是世界上最全面，最优质的顶级营养品！ #科普 #科普一下 #涨知识 #抖音精选 #知识分享 - 抖音",
+    "url": "https://www.douyin.com/video/7620733931394059562",
+    "videos": 1,
+    "readyState": 4,
+    "duration": 191,
+    "paused": false,
+    "src": "blob:https://www.douyin.com/9fd32435-96cd-4283-976b-7bf4deb12ae0"
+  },
+  "hover": "ok",
+  "panel_before": "{\"cls\":\"vr-vob vr-on\",\"on\":true,\"main\":true,\"w\":44,\"h\":40,\"pct\":\"\",\"title\":\"钓鱼竿：下载这个视频（最高清）\"}",
+  "netSniff": "{\"scans\":188,\"hits\":2239,\"posts\":8}",
+  "menu_items": "[]",
+  "click": "clicked",
+  "panel_after": "{\"cls\":\"vr-vob vr-on vr-busy\",\"on\":true,\"main\":true,\"w\":44,\"h\":40,\"pct\":\"0%\",\"title\":\"钓鱼竿：下载这个视频（最高清）\"}",
+  "lastVideoDown": "null",
+  "recentDownloads": {
+    "__err": "SyntaxError: missing ) after argument list"
+  },
+  "targetTabs": "[]",
+  "sniffCache": "__timeout",
+  "tabItems": "__timeout",
+  "recentFiles": [],
+  "shot": "deliverables/assets/live-probe.png"
+}
