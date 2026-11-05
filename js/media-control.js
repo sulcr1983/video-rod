@@ -153,7 +153,8 @@
 
     // ========== 事件监听 ==========
     // 点击其他标签页时切换
-    $("#otherTab").click(() => {
+    const _otherTabEl = $("#otherTab");
+    if (_otherTabEl) _otherTabEl.click(() => {
 
         // 初始化
         updateVideoTagOptions();

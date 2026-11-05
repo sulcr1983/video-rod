@@ -31,6 +31,7 @@
     var S = { list: [], idx: 0, info: true, auto: true, rate: 1 };
     var el = {};
     var videoEl = null;
+    var animCtl = null;
 
     function cache() {
         ['preview', 'pvCrumb', 'pvCount', 'pvTitle', 'pvPlat', 'pvType', 'pvMedia',
@@ -89,6 +90,43 @@
             v.play().catch(function () { });
             setTxt('st1v', '—');
             setTxt('vDur', f.dur || '—');
+        } else if (kind === 'anim' && root.VRAnim && root.VRAnim.supported()) {
+            /* F6 动图逐帧：原生 ImageDecoder 解码到 canvas，可暂停/逐帧/循环/倍速 */
+            var holder = document.createElement('div');
+            holder.className = 'anim-holder';
+            stage.appendChild(holder);
+            setTxt('st1v', '—');
+            root.VRAnim.attach({
+                url: url,
+                ext: f.ext,
+                rate: S.rate,
+                onFrame: function (n, total) {
+                    setTxt('gNo', n);
+                    setTxt('gTotal', total);
+                },
+                onReady: function (total) { setTxt('gTotal', total); setTxt('gNo', 1); },
+                onError: function () {
+                    /* 解码失败退回静态图，不让预览空白 */
+                    var img0 = document.createElement('img');
+                    img0.alt = f.title; img0.src = url;
+                    holder.innerHTML = '';
+                    holder.appendChild(img0);
+                    var bar = document.getElementById('gifBar');
+                    if (bar) { bar.classList.add('hidden'); }
+                }
+            }).then(function (ctl) {
+                if (!ctl) { return; }
+                animCtl = ctl;
+                holder.innerHTML = '';
+                holder.appendChild(ctl.canvas);
+                var bar = document.getElementById('gifBar');
+                if (bar) { bar.classList.remove('hidden'); }
+                setTxt('gFmt', f.ext || 'GIF');
+                setTxt('gTotal', ctl.total());
+                setTxt('gNo', 1);
+                var pb = document.querySelector('#gPause use');
+                if (pb) { pb.setAttribute('href', '#i-pause'); }
+            });
         } else if (kind === 'image' || kind === 'anim') {
             var img = document.createElement('img');
             img.alt = f.title; img.draggable = false;
@@ -216,6 +254,8 @@
         document.body.style.overflow = '';
         var stage = $('#pvMedia'); if (stage) { stage.innerHTML = ''; }
         videoEl = null;
+        try { if (animCtl) { animCtl.destroy(); } } catch (e) { /* ignore */ }
+        animCtl = null;
     }
 
     function step(d) {
@@ -263,6 +303,41 @@
                 buildRates();
             });
         }
+        /* ---- F6 动图控件条 ---- */
+        var gPause = document.getElementById('gPause');
+        if (gPause) {
+            gPause.addEventListener('click', function () {
+                if (!animCtl) { return; }
+                animCtl.toggle();
+                var u = gPause.querySelector('use');
+                if (u) { u.setAttribute('href', animCtl.isPlaying() ? '#i-pause' : '#i-play'); }
+            });
+        }
+        var gLoop = document.getElementById('gLoop');
+        if (gLoop) {
+            var LOOP_TXT = { infinite: '⟳ 无限', once: '→ 一次', pingpong: '⇄ 往返' };
+            var LOOP_SEQ = ['infinite', 'once', 'pingpong'];
+            var loopIdx = 0;
+            gLoop.addEventListener('click', function () {
+                loopIdx = (loopIdx + 1) % LOOP_SEQ.length;
+                var m = LOOP_SEQ[loopIdx];
+                if (animCtl) { animCtl.setLoop(m); }
+                gLoop.textContent = LOOP_TXT[m];
+            });
+        }
+        var gRate = document.getElementById('gRate');
+        if (gRate) {
+            var RATES = [1, 0.5, 0.25, 2];
+            var rateIdx = 0;
+            gRate.addEventListener('click', function () {
+                rateIdx = (rateIdx + 1) % RATES.length;
+                var r = RATES[rateIdx];
+                S.rate = r;
+                if (animCtl) { animCtl.setRate(r); }
+                gRate.textContent = r + '×';
+            });
+        }
+
         if (el.pvPrev) { el.pvPrev.addEventListener('click', function () { step(-1); }); }
         if (el.pvNext) { el.pvNext.addEventListener('click', function () { step(1); }); }
         if (el.pvClose) { el.pvClose.addEventListener('click', close); }
