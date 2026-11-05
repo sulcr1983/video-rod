@@ -432,9 +432,67 @@
                 var s = (o && o.vrLibSettings) || {};
                 var base = s.mode === 'custom' ? s.customRoot
                     : (s.detectedRoot ? s.detectedRoot + '\\' + (s.subdir || 'video-rod') : '');
-                if (base) { pathEl.textContent = base; pathEl.title = base; }
+                if (base) {
+                    base = String(base).replace(/\//g, '\\');   // 统一成 Windows 反斜杠，别显示成 …/Downloads\video-rod
+                    pathEl.textContent = base;
+                    pathEl.title = base;
+                }
             });
         } catch (e) { /* 非扩展环境 */ }
+    }
+
+    /* ---------- 根目录自动探测（P2 前置） ----------
+       根目录从来没被探测过时（vrLibSettings 只有 subdir），库页会一直显示「未探测」，
+       索引也没有基准路径 → 容易把整个「下载」目录当成库。这里用最近的下载记录反推
+       下载根目录，锁定到 <下载根>/<subdir>，和「校验落盘」算出来的口径一致。
+       只写 detectedRoot，不动 mode/customRoot，用户显式设过自定义目录就不插手。 */
+    function guessBaseFromDownloads(list, subdir) {
+        var want = '/' + String(subdir || 'video-rod') + '/';
+        var i;
+        for (i = 0; i < list.length; i++) {
+            var f = String((list[i] || {}).filename || '').replace(/\\/g, '/');
+            var k = f.indexOf(want);
+            if (k > 0) { return f.slice(0, k); }       // …/Downloads/video-rod/x → …/Downloads
+        }
+        // 还没有落在 subdir 里的历史下载：拿最近一条的父目录当下载根
+        for (i = 0; i < list.length; i++) {
+            var g = String((list[i] || {}).filename || '').replace(/\\/g, '/');
+            var dir = g.slice(0, g.lastIndexOf('/'));
+            if (dir) { return dir; }
+        }
+        return '';
+    }
+
+    function readLibSettings() {
+        return new Promise(function (resolve) {
+            try {
+                chrome.storage.local.get('vrLibSettings', function (o) {
+                    resolve((o && o.vrLibSettings) || {});
+                });
+            } catch (e) { resolve({}); }
+        });
+    }
+
+    async function ensureRoot() {
+        var s = await readLibSettings();
+        if ((s.mode || 'system') === 'custom' && s.customRoot) { return s; }
+        if (s.detectedRoot) { return s; }
+        var list = await new Promise(function (resolve) {
+            try {
+                chrome.downloads.search({ limit: 50, orderBy: ['-startTime'] }, function (l) {
+                    void chrome.runtime.lastError;
+                    resolve(l || []);
+                });
+            } catch (e) { resolve([]); }
+        });
+        var base = guessBaseFromDownloads(list, s.subdir || 'video-rod');
+        if (!base) { return s; }
+        var next = Object.assign({}, s, { detectedRoot: base });
+        await new Promise(function (resolve) {
+            try { chrome.storage.local.set({ vrLibSettings: next }, function () { resolve(); }); }
+            catch (e) { resolve(); }
+        });
+        return next;
     }
 
     /* ---------- 首次自动索引 ---------- */
@@ -772,6 +830,7 @@
     async function boot() {
         bind();
         await loadFavs();
+        await ensureRoot();     // 先把库根锁到 <下载根>/video-rod，避免把整个下载目录当库
         await load();
         if (!FILES.length) {
             var built = await autoIndex();
