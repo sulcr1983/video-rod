@@ -164,7 +164,7 @@ def main():
     ck("树节点 8（10 条按 平台/作者 聚合）", c.ev("document.querySelectorAll('#tree .tree-node').length", sid), 8)
     ck("页签计数自洽", c.ev("""(()=>{
       const t = {}; [...document.querySelectorAll('#typeTabs button')].forEach(b => t[b.dataset.type] = +b.querySelector('b').textContent);
-      return t.all === 10 && t.video === 5 && t.image === 3 && t.anim === 1 && t.audio === 1;
+      return t.all === 10 && t.video === 5 && t.image === 4 && t.anim === 0 && t.audio === 1;
     })()""", sid), True)
 
     print("\n---- B1 关键交互（点前 vs 点后）----")
@@ -179,7 +179,7 @@ def main():
     # 2 类型页签
     c.ev("""(()=>{const b=[...document.querySelectorAll('#typeTabs button')].find(x=>x.dataset.type==='image'); b.click(); return 1})()""", sid)
     time.sleep(0.8)
-    ck("点「图片」只剩 3 条（webp 归动图）", c.ev("document.querySelectorAll('#grid .card').length", sid), 3)
+    ck("点「图片」有 4 条（webp 归图片，不再是动图）", c.ev("document.querySelectorAll('#grid .card').length", sid), 4)
     c.ev("""(()=>{const b=[...document.querySelectorAll('#typeTabs button')].find(x=>x.dataset.type==='all'); b.click(); return 1})()""", sid)
     time.sleep(0.8)
 
