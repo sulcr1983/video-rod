@@ -93,6 +93,9 @@
             id: rel,
             relPath: rel,
             absPath: e.absPath || '',
+            /* 保留 downloads 记录 ID：详情页「定位」要靠它打开系统文件夹，
+             * 而不是在浏览器里打开 file:// 目录。 */
+            downloadId: (e.downloadId != null ? e.downloadId : null),
             plat: (e.platform || parsed.platform || 'web'),
             author: author,
             authorId: authorId,
@@ -1070,9 +1073,27 @@
         });
         on('pvReveal', function () {
             var f = curPreview(); if (!f) { return; }
-            var abs = f.absPath || f.relPath;
-            try { if (navigator.clipboard) { navigator.clipboard.writeText(abs).catch(function () { }); } } catch (e) { /* 忽略 */ }
-            toast('完整路径已复制：' + abs);
+            var abs = String(f.absPath || '').trim();
+            if (!abs) { toast('这条没有本地路径，无法定位'); return; }
+            /* 「定位」是打开路径，不是复制。优先用 downloads 记录让系统打开
+             * 所在文件夹；FSA 下载没有 downloadId，就打开 file:// 文件夹。 */
+            if (f.downloadId != null && chrome.downloads && chrome.downloads.show) {
+                try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
+            }
+            var folder = abs.replace(/[\\/][^\\/]+$/, '');
+            var url = '';
+            try {
+                url = root.VRPath && root.VRPath.toFileUrl ? root.VRPath.toFileUrl(folder) : ('file:///' + folder.replace(/\\/g, '/'));
+                if (url.charAt(url.length - 1) !== '/') { url += '/'; }
+            } catch (e) { toast('路径无法打开：' + ((e && e.message) || '未知')); return; }
+            try {
+                if (chrome.tabs && chrome.tabs.create) {
+                    chrome.tabs.create({ url: url }, function () {
+                        if (chrome.runtime.lastError) { window.open(url, '_blank'); }
+                    });
+                } else { window.open(url, '_blank'); }
+                toast('已打开所在文件夹');
+            } catch (e) { toast('打开路径失败：' + ((e && e.message) || '未知')); }
         });
         on('pvMove', function () {
             var f = curPreview(); if (!f) { return; }
