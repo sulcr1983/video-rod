@@ -993,9 +993,18 @@
             toast('完整路径已复制：' + abs);
         });
         on('pvMove', function () {
-            // 移动要写盘，必须先有目录授权；直接带到设置里，别做成点了没反应的假按钮
-            toast('移动素材要先在设置里授权目录');
-            openOptions();
+            var f = curPreview(); if (!f) { return; }
+            var b = byId('batchMove');
+            if (b && !b.disabled) {
+                /* 单条移动复用批量移动的真实实现：只选中当前项，再触发 batchMove。
+                 * 这样不会出现「批量能移、单条只能跳设置」的两套逻辑。 */
+                S.sel = new Set([f.id]);
+                S.select = true;
+                b.click();
+            } else {
+                toast('移动素材要先授权素材目录');
+                openOptions();
+            }
         });
         var permAuth = byId('permAuth');
         if (permAuth) {

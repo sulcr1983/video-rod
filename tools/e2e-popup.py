@@ -215,7 +215,13 @@ def main():
         print("   !", e.replace("\n", " ")[:200])
     ck("popup 全量按钮 0 异常", len(c.errs) - n0, 0)
 
-    ss = c.send("Page.captureScreenshot", {"format": "png"}, sid_pop)
+    # 截图是证据，不是产品断言：弹层关闭/目标切走后截图可能超时，
+    # 不能因为截图失败把整条 popup 套件判 FAIL。
+    try:
+        ss = c.send("Page.captureScreenshot", {"format": "png"}, sid_pop)
+    except Exception as e:
+        ss = {}
+        print("截图失败（不影响断言）：%s" % e)
     if ss.get("data"):
         d = os.path.dirname(a.shot)
         if d:
