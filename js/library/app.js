@@ -18,6 +18,7 @@
         youtube: { name: 'YouTube', dot: '#FF0000', label: 'YouTube' },
         instagram: { name: 'Instagram', dot: '#C13584', label: 'Instagram' },
         bilibili: { name: 'B站', dot: '#FB7299', label: 'B站' },
+        tiktok: { name: 'TikTok', dot: '#25F4EE', label: 'TikTok' },
         web: { name: '网页', dot: '#8B93A1', label: '网页' }
     };
 

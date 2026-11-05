@@ -23,7 +23,8 @@
         x: { label: 'X', dot: '#8FA0B8' }, xiaohongshu: { label: '小红书', dot: '#FF2442' },
         douyin: { label: '抖音', dot: '#25C8D4' }, weibo: { label: '微博', dot: '#E6506D' },
         youtube: { label: 'YouTube', dot: '#FF0000' }, instagram: { label: 'Instagram', dot: '#C13584' },
-        bilibili: { label: 'B站', dot: '#FB7299' }, web: { label: '网页', dot: '#8B93A1' }
+        bilibili: { label: 'B站', dot: '#FB7299' }, tiktok: { label: 'TikTok', dot: '#25F4EE' },
+        web: { label: '网页', dot: '#8B93A1' }
     };
     var KIND_LABEL = { video: '视频', image: '图片', anim: '动图', audio: '音频', other: '其他' };
 
