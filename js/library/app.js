@@ -238,14 +238,14 @@
         var icon = isV ? 'i-film' : (isA ? 'i-repeat-1' : (isAu ? 'i-volume-2' : 'i-image'));
         var tags = (f.tags || []).map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
         return '<article class="card' + (S.sel.has(f.id) ? ' selected' : '') + '" data-id="' + esc(f.id) + '" tabindex="0">' +
-            '<div class="thumb' + (isV ? ' is-video' : '') + (isA ? ' is-anim' : '') + '">' +
+            '<div class="thumb' + (isV ? ' is-video' : '') + (isA ? ' is-anim' : '') + (isAu ? ' is-audio' : '') + '">' +
             '<div class="cover" style="--h:' + f.h + '"><span class="fig"><svg class="i"><use href="#' + icon + '"/></svg></span></div>' +
             '<img alt="" loading="lazy" data-thumb="' + esc(f.relPath) + '">' +
             '<span class="badge"><span class="dot" style="--pc:' + p.dot + '"></span>' + p.label + '</span>' +
             (corner ? '<span class="duration' + (isA ? ' anim' : '') + '">' + esc(corner) + '</span>' : '') +
             (f.state === 'missing' ? '<span class="missing-tag">文件缺失</span>' : '') +
             (f.isRef ? '<span class="ref-tag" title="内容与另一条素材相同，物理文件只存一份">引用</span>' : '') +
-            '<div class="playbtn"><span><svg class="i"><use href="#i-' + (isV || isA ? 'play' : 'maximize') + '"/></svg></span></div>' +
+            '<div class="playbtn"><span><svg class="i"><use href="#i-' + (isV || isA || isAu ? 'play' : 'maximize') + '"/></svg></span></div>' +
             '</div>' +
             '<div class="body">' +
             '<div class="title">' + esc(f._title || f.title) + '</div>' +
@@ -753,9 +753,19 @@
         } catch (e) { fileAccess = true; }
 
         var issues = [];
+        /* 旧版本可能留下“能读但指向错误目录”的句柄（例如句柄名 download、
+         * 实际素材库却是 video-rod）。只查 queryPermission 会误判为可写，
+         * 移动/删除必然在文件系统层失败，因此再核一次目录名。 */
+        var rootInvalid = false;
+        if (handle && writable && rr && rr.absRoot) {
+            var expectedName = String(rr.absRoot).replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop();
+            if (expectedName && handle.name !== expectedName) { rootInvalid = true; writable = false; }
+        }
         if (!writable) {
-            issues.push(handle ? '素材目录授权已过期/不可写：当前为只读模式；移动、删除需要重新授权。'
-                              : '当前为只读模式：浏览/预览可用；移动、删除需要先授权素材目录。');
+            issues.push(rootInvalid
+                ? '素材目录句柄与当前素材库路径不一致：请重新授权「' + ((rr && rr.absRoot) || '') + '」。'
+                : (handle ? '素材目录授权已过期/不可写：当前为只读模式；移动、删除需要重新授权。'
+                          : '当前为只读模式：浏览/预览可用；移动、删除需要先授权素材目录。'));
         }
         if (!fileAccess) {
             issues.push('浏览器未允许访问本地文件，缩略图/预览可能失败；请在扩展详情打开「允许访问文件网址」。');
@@ -1089,6 +1099,13 @@
                      * 选择素材库根目录（video-rod），再写回 handle/absRoot/prefix。 */
                     var h = await root.showDirectoryPicker({ mode: 'readwrite' });
                     var rr = await root.VRIndex.resolveRoot();
+                    var expected = rr.absRoot
+                        ? String(rr.absRoot).replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()
+                        : String(rr.prefix || '');
+                    if (!expected || h.name !== expected) {
+                        toast('请选择素材库根目录「' + (expected || rr.prefix || 'video-rod') + '」，当前选的是「' + h.name + '」');
+                        return;
+                    }
                     await root.VRIndex.setRoot(h, rr.absRoot, rr.prefix);
                     toast('已授权素材目录');
                     await refreshPermState();

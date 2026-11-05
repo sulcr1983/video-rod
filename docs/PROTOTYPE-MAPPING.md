@@ -124,7 +124,7 @@ bilibili → B站 ｜ xiaohongshu → 小红书 ｜ x → X ｜ youtube → YouT
 | `type=video` | `video` | 直接 |
 | `type=image` 且扩展名 ∈ {gif, webp, apng} | `anim` | 原型动图页签 + 动图控件 |
 | `type=image` 其余 | `image` | 直接 |
-| `type=audio` | **`audio`（原型需补页签）** | 原型无音频页签，要么补，要么归「其他」 |
+| `type=audio` | **`audio`（原型已补页签 + 播放器面板）** | 2026-11-06 已补音频 tab 与 `.pv-audio` 面板；真实库复用通用管理链路 |
 | `type=other` | **`other`（原型需补）** | 同上 |
 
 > **决策**：原型只画了三个页签，但真实库有音频文件。按 ADR-052"不留功能"原则，页签补为 **全部 / 图片 / 动图 / 视频 / 音频**（音频用 `i-volume-2` 图标），不把音频藏起来。

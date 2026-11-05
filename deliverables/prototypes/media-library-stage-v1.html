@@ -521,12 +521,28 @@ html[data-theme="dark"] .cover{filter:saturate(.6) contrast(1.02) brightness(.8)
 }
 /* 视频 / GIF 铺满舞台，控件浮在画面上——和真实播放器一致 */
 .pv-stage.is-video,
-.pv-stage.is-gif{padding:0}
+.pv-stage.is-gif,
+.pv-stage.is-audio{padding:0}
 .pv-stage.is-video .fakeMedia,
-.pv-stage.is-gif .fakeMedia{
+.pv-stage.is-gif .fakeMedia,
+.pv-stage.is-audio .fakeMedia{
   position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;
   border-radius:inherit;box-shadow:none;
 }
+/* 音频：独立播放器面板，不和视频抢 16:9 画面比例 */
+.pv-audio{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:8px;padding:30px;background:linear-gradient(145deg,#2a251d,#14120f);color:#F5F1E8;text-align:center;
+}
+.pv-audio[hidden]{display:none}
+.pv-audio .pa-ico{
+  width:64px;height:64px;border-radius:50%;display:grid;place-items:center;margin-bottom:8px;
+  color:#E8B04B;background:rgba(232,176,75,.16);border:1px solid rgba(232,176,75,.38);
+}
+.pv-audio .pa-ico .i{width:26px;height:26px;stroke:currentColor;fill:none}
+.pv-audio .pa-title{font-size:16px;font-weight:650;max-width:86%;overflow-wrap:anywhere}
+.pv-audio .pa-sub{font-size:11.5px;color:rgba(245,241,232,.55)}
+.pv-audio audio{width:min(680px,86%);margin-top:16px}
 .pv-stage .fakeMedia .cover{position:absolute;inset:0}
 .pv-stage .bigplay{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
@@ -2252,6 +2268,7 @@ html[data-theme="dark"] ::selection{background:rgba(232,176,75,.35)}
         <button data-type="image">图片 <b>18</b></button>
         <button data-type="anim">动图 <b>3</b></button>
         <button data-type="video">视频 <b>9</b></button>
+        <button data-type="audio">音频 <b>0</b></button>
       </div>
       <div class="chips" id="chips">
         <button class="chip active" data-plat="all">全部平台</button>
@@ -2337,6 +2354,12 @@ html[data-theme="dark"] ::selection{background:rgba(232,176,75,.35)}
       <div class="fakeMedia" id="pvMedia">
         <div class="cover" id="pvCover"></div>
         <div class="bigplay" id="pvBigPlay"><svg class="i"><use href="#i-play"/></svg></div>
+        <div class="pv-audio" id="pvAudio" hidden>
+          <div class="pa-ico"><svg class="i"><use href="#i-volume-2"/></svg></div>
+          <div class="pa-title" id="pvAudioTitle"></div>
+          <div class="pa-sub">音频 · 本地文件</div>
+          <audio controls preload="metadata" id="pvAudioEl"></audio>
+        </div>
       </div>
 
       <!-- 视频控件条：布局对应 Media Chrome 的 control-bar -->
@@ -2832,6 +2855,7 @@ function filtered(){
     if(S.type==='image' && f.kind!=='image') return false;
     if(S.type==='video' && f.kind!=='video') return false;
     if(S.type==='anim' && f.kind!=='anim') return false;
+    if(S.type==='audio' && f.kind!=='audio') return false;
     if(S.plat!=='all' && f.plat!==S.plat) return false;
     if(S.q){
       /* booru 式语法：词1 词2 = 交集都要含；-词 = 排除（同行调研 LIBRARY-BENCHMARK §B-P1） */
@@ -2899,6 +2923,7 @@ function render(){
     const n = t === 'all' ? FILES.length
       : t === 'image' ? FILES.filter(f=>f.kind==='image').length
       : t === 'anim' ? FILES.filter(f=>f.kind==='anim').length
+      : t === 'audio' ? FILES.filter(f=>f.kind==='audio').length
       : FILES.filter(f=>f.kind==='video').length;
     const badge = b.querySelector('b'); if (badge) badge.textContent = n;
   });
@@ -3163,10 +3188,12 @@ function paintPreview(){
   if(!f) return;
   const p = PLAT[f.plat];
   $('#pvCount').textContent = (S.idx+1)+' / '+S.list.length;
-  const isV = f.kind === 'video', isA = f.kind === 'anim', isI = f.kind === 'image';
-  $('#pvStageEl').className = 'pv-stage' + (isV ? ' is-video' : (isA ? ' is-gif' : ' is-image'));
-  $('#pvType').textContent = isA ? (f.fmt || 'GIF') : (isV ? 'VIDEO' : 'IMAGE');
+  const isV = f.kind === 'video', isA = f.kind === 'anim', isI = f.kind === 'image', isAu = f.kind === 'audio';
+  $('#pvStageEl').className = 'pv-stage' + (isV ? ' is-video' : (isA ? ' is-gif' : (isAu ? ' is-audio' : ' is-image')));
+  $('#pvType').textContent = isAu ? 'AUDIO' : (isA ? (f.fmt || 'GIF') : (isV ? 'VIDEO' : 'IMAGE'));
   $('#pvMedia').querySelector('.bigplay').style.display = isV ? 'grid' : 'none';
+  $('#pvAudio').hidden = !isAu;
+  $('#pvAudioTitle').textContent = f.title || '';
   /* 三种媒体各自的控件层（视频 → Media Chrome 布局；图片 → 缩放工具栏；GIF → 帧控条） */
   $('#vCtl').classList.toggle('hidden', !isV);
   $('#imgBar').classList.toggle('hidden', !isI);
@@ -3190,12 +3217,12 @@ function paintPreview(){
   if (isI) { $('#iZoom').textContent = '100%'; }
   if (isA) { $('#gTotal').textContent = f.frames || 60; }
   $('#pvCover').style.setProperty('--h',f.h);
-  const kindLabel = isV ? '视频' : (isA ? '动图' : '图片');
+  const kindLabel = isAu ? '音频' : (isV ? '视频' : (isA ? '动图' : '图片'));
   $('#pvPlat').innerHTML = `<i class="dot" style="--pc:${p.dot}"></i>${p.label} · ${kindLabel}`;
   $('#pvTitle').textContent = f.title;
   $('#pvAvatar').textContent = (f.author||'?').slice(0,1);
   paintSrc(f);
-  $('#pvCrumb').innerHTML = `<b>${p.label}</b> / ${esc(f.author)} / ${f.kind==='video'?'videos':'images'}`;
+  $('#pvCrumb').innerHTML = `<b>${p.label}</b> / ${esc(f.author)} / ${isAu?'audio':(f.kind==='video'?'videos':'images')}`;
   /* 一眼要看的三个值：分辨率 / 大小 / 时长（图片则是保存日期） */
   const resBig = isV ? '3840 × 2160' : '2400 × 3200';
   $('#st1v').textContent = resBig;
