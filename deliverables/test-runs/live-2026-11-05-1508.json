@@ -1,0 +1,28 @@
+{
+  "url": "https://www.tiktok.com/@leon.111219/video/7683132722407050509?is_from_webapp=1&sender_device=pc",
+  "at": "2026-11-05 15:08:24",
+  "page": {
+    "title": "www.tiktok.com",
+    "url": "chrome-error://chromewebdata/",
+    "videos": 0,
+    "readyState": -1,
+    "duration": -1,
+    "paused": null,
+    "src": ""
+  },
+  "hover": "no-video",
+  "panel_before": "no-panel",
+  "netSniff": "null",
+  "menu_items": "[]",
+  "click": "no-panel",
+  "panel_after": "no-panel",
+  "lastVideoDown": "null",
+  "recentDownloads": {
+    "__err": "SyntaxError: missing ) after argument list"
+  },
+  "targetTabs": "[{\"id\":2053306267,\"u\":\"https://www.tiktok.com/@leon.111219/video/7683132722407050509?is_from_webapp=1&s\"}]",
+  "sniffCache": "__timeout",
+  "tabItems": "__timeout",
+  "recentFiles": [],
+  "shot": "deliverables/assets/live-probe.png"
+}

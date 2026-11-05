@@ -457,23 +457,24 @@ function vrMergeNotify(msg) {
 
 function vrMergeEnsureOffscreen() {
     return new Promise(function (resolve) {
+        var p = null;
         try {
-            chrome.offscreen.createDocument({
+            // ⚠️ chrome.offscreen.createDocument 只有 Promise 形态，**不接受 callback**。
+            //    以前按 callback 写，resolve 永不触发 → 调用方永久挂起（2026-11-05 实测踩到）。
+            p = chrome.offscreen.createDocument({
                 url: 'offscreen.html',
                 reasons: ['BLOBS'],
-                justification: 'M11 多段合并：解析/下载/解密/转码需要稳定的 blob 上下文'
-            }, function () {
-                // 已存在（Only one offscreen document allowed）也算就绪
-                resolve();
+                justification: 'M11 多段合并 / 防盗链直连：解析、下载、解密、转码需要稳定的 blob 上下文'
             });
         } catch (e) {
-            try {
-                chrome.offscreen.createDocument({
-                    url: 'offscreen.html',
-                    reasons: ['BLOBS'],
-                    justification: 'M11 多段合并'
-                }).then(resolve, function () { resolve(); });
-            } catch (e2) { resolve(); }
+            resolve();      // 老版本同步抛错：当作已就绪
+            return;
+        }
+        if (p && typeof p.then === 'function') {
+            // 已存在（Only a single offscreen document may be created）也视为就绪
+            p.then(function () { resolve(); }, function () { resolve(); });
+        } else {
+            resolve();
         }
     });
 }
@@ -519,6 +520,35 @@ function vrMergeStart(taskId, urls) {
             delete vrMergeTasks[taskId];
             vrMergeNotify({ Message: 'vrMergeError', taskId: taskId, error: '离屏文档没响应' });
         }
+    });
+}
+
+/** 离屏文档直连下载（防盗链站点的最后一条路）。
+ *  扩展上下文 fetch：有 host_permissions 不受 CORS 限制，DNR 补的 Referer 对 fetch 生效；
+ *  拿到 blob 再交下载器落盘。抖音实测只有这条路能过 403（2026-11-05）。 */
+function vrOffscreenDownload(url, filename) {
+    return vrMergeEnsureOffscreen().then(function () {
+        return new Promise(function (resolve) {
+            var done = false;
+            var finish = function (r) { if (!done) { done = true; resolve(r); } };
+            // 离屏文档没响应时不能把整个下载流程拖死：到点当失败处理，交给上层报错。
+            var timer = setTimeout(function () { finish({ ok: false, reason: 'offscreen-timeout' }); }, 25000);
+            try {
+                chrome.runtime.sendMessage(
+                    { Message: 'vrOffscreenDownload', url: url, filename: filename },
+                    function (res) {
+                        clearTimeout(timer);
+                        void chrome.runtime.lastError;
+                        // 离屏文档自己用 <a download> 落盘（文件名能保住），这里只收结果
+                        finish(res || { ok: false, reason: 'no-response' });
+                    });
+            } catch (e) {
+                clearTimeout(timer);
+                finish({ ok: false, reason: String(e).slice(0, 120) });
+            }
+        });
+    }).catch(function (e) {
+        return { ok: false, reason: String(e).slice(0, 120) };
     });
 }
 
@@ -3043,6 +3073,19 @@ try {
 } catch (e) { /* ignore */ }
 
 /** 页内按钮：查询这个标签页能下哪些清晰度 */
+/** 给可能卡死的异步步骤加硬超时。
+ *  2026-11-05 实测：抖音详情接口偶发不返回，executeScript 会一直 pending，
+ *  面板就永远停在「正在问这个网站能下哪些清晰度…」，用户只能看着转圈。
+ *  超时后抛错 → 上层 catch 落到下一个分支（最差也有嗅探缓存可用）。 */
+function vrWithTimeout(promise, ms, label) {
+    return Promise.race([
+        promise,
+        new Promise(function (_, reject) {
+            setTimeout(function () { reject(new Error('timeout:' + label + ':' + ms)); }, ms);
+        })
+    ]);
+}
+
 async function vrVideoOptions(tabId) {
     const out = { site: 'generic', options: [] };
 
@@ -3052,10 +3095,10 @@ async function vrVideoOptions(tabId) {
         const tab = await chrome.tabs.get(tabId);
         const awemeId = self.VR_DOUYIN.parseAwemeId((tab && tab.url) || '');
         if (awemeId) {
-            const r = await chrome.scripting.executeScript({
+            const r = await vrWithTimeout(chrome.scripting.executeScript({
                 target: { tabId: tabId }, world: 'MAIN',
                 args: [awemeId], func: self.VR_DOUYIN.probeFunc
-            });
+            }), 8000, 'douyin-detail');
             const info = r && r[0] && r[0].result;
             const rows = self.VR_DOUYIN.normalize(info);
             if (info && rows.length) {
@@ -3075,9 +3118,9 @@ async function vrVideoOptions(tabId) {
 
     // B站优先：主动向 playurl 要，两条路都探，不依赖嗅探缓存
     try {
-        const r = await chrome.scripting.executeScript({
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
             target: { tabId: tabId }, world: 'MAIN', func: self.VR_BILI.probeFunc
-        });
+        }), 8000, 'bili-probe');
         const info = r && r[0] && r[0].result;
         if (info && (info.hasDurl || info.hasDash)) {
             out.site = 'bili';
@@ -3105,7 +3148,7 @@ async function vrVideoOptions(tabId) {
     // 多视频页面（信息流/推荐位）里「体积最大」不等于「你正在看的」。
     let playing = '';
     try {
-        const pr = await chrome.scripting.executeScript({
+        const pr = await vrWithTimeout(chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: function () {
                 const vs = Array.from(document.querySelectorAll('video'));
@@ -3113,7 +3156,7 @@ async function vrVideoOptions(tabId) {
                     || vs.filter(function (x) { return x.currentSrc; })[0];
                 return v ? v.currentSrc : '';
             }
-        });
+        }), 4000, 'playing-probe');
         playing = (pr && pr[0] && pr[0].result) || '';
     } catch (e) { /* 受限页面，退回体积排序 */ }
 
@@ -3192,15 +3235,15 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
     };
 
     // ---- 抖音：详情接口已经给了作者/抖音号/描述，命名直接用 override ----
+    // 注意（2026-11-05 实测）：抖音 CDN 对 downloads 直连回 SERVER_FORBIDDEN，
+    // 且会落一个 0 字节 .htm 残件。这里不再单独走 downloads，交给下面通用分支的
+    // 「downloads → 2.5s 内被拒则撤账清残件 → 页面主世界 fetch」两段式，
+    // 页面 fetch 天然带 Referer/Cookie 才能过。
+    let metaOverride = null;
     if (opt.site === 'douyin') {
-        // 抖音 CDN 要 Referer；用 DNR 会话规则补上（抄 CocoCut，ADR-031）
+        metaOverride = opt.meta || null;
         const tab = await chrome.tabs.get(tabId);
         await vrSetMediaHeaders('douyinvod.com', (tab && tab.url) || 'https://www.douyin.com/');
-        const filename = await vrNameInTab(tabId, 'mp4', opt.meta);
-        const id = await vrDownloadWithName(pick.url, filename);
-        if (id === null) { return { ok: false, reason: 'download-failed' }; }
-        vrMarkDownloaded(filename);
-        return finish({ ok: true, kind: 'url', filename: filename });
     }
 
     // ---- 通用站点：直链交给既有的自定义文件名下载（M8） ----
@@ -3212,7 +3255,7 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         } catch (e) { /* ignore */ }
         const ext = (pick.url.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
         // 微博等站点：页面 $render_data 里有作者/正文，优先用它命名
-        const meta = await vrPageMetaInTab(tabId);
+        const meta = metaOverride || await vrPageMetaInTab(tabId);
         const filename = await vrNameInTab(tabId, VR_VIDEO_EXT.test(ext) ? ext : 'mp4', meta || null);
 
         // F2 溯源：把「原帖地址/作者/作品ID/直链」一起预登记进库，
@@ -3256,7 +3299,17 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
             vrMarkDownloaded(saved);
             return finish({ ok: true, kind: 'page-blob', filename: saved, bytes: pageDl.bytes || 0 });
         }
-        return { ok: false, reason: 'download-failed', page: pageDl || null };
+
+        // 路线 3（最后兜底）：离屏文档直连。
+        // 抖音 CDN 只认 Referer，而 downloads 请求带不上、页面 fetch 被 CORS 拦，
+        // 只有扩展上下文的 fetch 能同时满足「带 Referer + 不被 CORS 拦」。
+        const savedName = filename.split('/').pop();
+        const off = await vrOffscreenDownload(pick.url, savedName);
+        if (off && off.ok) {
+            vrMarkDownloaded(savedName);
+            return finish({ ok: true, kind: 'offscreen', filename: savedName, bytes: off.bytes || 0 });
+        }
+        return { ok: false, reason: 'download-failed', page: pageDl || null, offscreen: off || null };
     }
 
     // ---- B站：走页面主世界 ----

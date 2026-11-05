@@ -38,11 +38,11 @@ X ✅ ｜ 小红书 ✅ ｜ 微博 ✅ ｜ 抖音 ✅ ｜ B站 ✅ ｜ YouTube�
 | A3 | YouTube | https://www.youtube.com/shorts/_XS4l8VivP4 | 单视频下载（Shorts 形态；nsig 解密本机首次真机确认） | **V3/B-13** | ⬜ 待验 |
 | A4 | X | https://x.com/NASA | **批量下载 10 个视频和图片**（主页混合媒体批量） | V4/B-16 | ⬜ 待验 |
 | A5 | 花瓣网 | https://huaban.com/pins/6293511672?from=similarMaterial | **通用通道验收料**（苏哥定口径 2026-11-05：不做单站适配——有图能单张/批量下载是通用底线能力，花瓣只测这条通道） | 新任务 **V9 通用图/视频通道**（见 BUILD-PLAN-STAGE）；B-19 撤销 | ⬜ 待验 |
-| A6 | 抖音 | https://v.douyin.com/8pGobUZIy84/ | 单视频下载（分享短链解析） | V4/B-16 回归 | ⬜ 待验 |
+| A6 | 抖音 | https://v.douyin.com/8pGobUZIy84/ | 单视频下载（分享短链解析） | V4/B-16 回归 | ✅ 2026-11-05 通（ADR-053 离屏直连路线③；实测 1440P 四档可选、18.5MB 落盘、文件名正确。残项：落 Downloads 根目录未进归档） |
 | A7 | 微博 | https://weibo.com/u/5750600479 | **批量下载 10 个图片和视频**（博主主页九宫格+视频混排） | V4/B-16 | ⬜ 待验 |
 | A8 | B站 | https://www.bilibili.com/video/BV17Rxm6wEud/?spm_id_from=333.40138.feed-card.all.click | 视频下载（登录态 1080P/多P 场景回归） | V4/B-16 回归 | ⬜ 待验 |
 | A9 | Instagram | https://www.instagram.com/neuronvisuals/reel/DeZjO87xrHl/ | reel 视频下载，**无登录态**（苏哥 2026-11-05 提供；B-03 首次可试。IG 未登录有登录墙风险，结果如实记录：能嗅=关闭 B-03 主场景，被墙=记录拦截证据继续挂账号需求） | **V5/B-03**（从"待账号"转为"可试"） | ⬜ 待验 |
-| A10 | TikTok | https://www.tiktok.com/@leon.111219/video/7683132722407050509?is_from_webapp=1&sender_device=pc | **通用性验收料**：页面不自动播放（blob/MSE），通用通道靠「悬停静音播放触发嗅探」拿到 mp4 直链（苏哥 2026-11-05 提供，原下不了） | 新任务 **V10 通用视频通道（含不自动播放页）** | ⬜ 待验 |
+| A10 | TikTok | https://www.tiktok.com/@leon.111219/video/7683132722407050509?is_from_webapp=1&sender_device=pc | **通用性验收料**：页面不自动播放（blob/MSE），通用通道靠「悬停静音播放触发嗅探」拿到 mp4 直链（苏哥 2026-11-05 提供，原下不了） | 新任务 **V10 通用视频通道（含不自动播放页）** | ⚠️ 环境阻塞 2026-11-05：测试实例直连 tiktok.com 回 403（curl 直连 000、走 Clash 7897 才 200），页面根本没加载，下载链路未验证。需先给测试实例配代理再测 |
 
 
 **缺口**：V1（AES-128 加密 HLS）未给地址——按 ADR-050 由设计线找公开测试流（Wowza/Netflix test stream 类）登记至此。

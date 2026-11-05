@@ -37,6 +37,7 @@ PASS_RE = re.compile(r"(\d+)\s*/\s*(\d+)\s*PASS")
 
 # name, 命令模板({port}/{ext} 占位), 是否真实站点, 说明
 SUITES = [
+    ("e2e-sw",       [sys.executable, "tools/e2e-sw.py"],                   False, "后台 SW 存活（护栏：静默失效）"),
     ("dedup",        ["node", "tools/dedup-test.mjs"],                     False, "去重指纹单测（纯 Node）"),
     ("stage-rewrite",[sys.executable, "tools/stage-rewrite-test.py"],       False, "舞台皮肤回归（库页 DOM/样式）"),
     ("skin",         [sys.executable, "tools/skin-test.py"],                False, "换皮一致性（popup/options）"),
