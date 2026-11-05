@@ -132,6 +132,32 @@ def main():
     time.sleep(2)
     install_ok = c.ev("getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()", sid)
     check("安装页主色为舞台金", str(install_ok).lower(), "#e8b04b")
+
+    # 可读性护栏（2026-11-05 苏哥截图反馈「界面看不清」）：
+    # 当时 --content-bg 还是 #f8f9fa 白底，配上暖白正文 #EFEAE0，等于白底白字。
+    box_bg = c.ev("getComputedStyle(document.querySelector('.content-box')).backgroundColor", sid)
+    check("安装页内容卡不再是白底", box_bg, "rgb(31, 28, 24)")
+    ink = c.ev("getComputedStyle(document.querySelector('.content-box p')).color", sid)
+    check("安装页正文为暖白", ink, "rgb(239, 234, 224)")
+
+    # 正文/底色对比度 ≥ 7（WCAG AAA 正文标准）
+    ratio = c.ev("""(()=>{
+      const lum = (c)=>{const [r,g,b]=c.match(/\\d+/g).map(Number).map(v=>{
+        v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4);});
+        return 0.2126*r+0.7152*g+0.0722*b;};
+      const box = document.querySelector('.content-box');
+      const p = box.querySelector('p');
+      const L1 = lum(getComputedStyle(box).backgroundColor);
+      const L2 = lum(getComputedStyle(p).color);
+      const hi = Math.max(L1,L2), lo = Math.min(L1,L2);
+      return Math.round(((hi+0.05)/(lo+0.05))*10)/10;
+    })()""", sid)
+    check("安装页正文对比度 ≥ 7", (ratio if isinstance(ratio, (int, float)) else 0) >= 7, True)
+
+    # 问题提交必须是自己的仓库，不能是上游猫抓的站点
+    issue_href = c.ev("(document.querySelector('.content-box a')||{}).href || ''", sid)
+    check("问题提交指向本仓库 issues", "github.com/sulcr1983/video-rod/issues" in str(issue_href), True)
+
     c.send("Target.closeTarget", {"targetId": tid})
 
     c.close()
