@@ -1646,3 +1646,7 @@ h1,html[data-theme="dark"] .page-title{letter-spacing:.02em}
 html{background:var(--bg)}
 body.library-page{background:var(--bg);color:var(--ink);min-height:100vh}
 #app{background:var(--bg);min-height:100vh}
+
+/* 来源徽标三态（完整/部分/未记录） */
+.pi-badge.warn{background:#2A2116;color:#E0B062}
+.pi-badge.none{background:var(--surface-3);color:var(--faint)}

@@ -111,7 +111,11 @@
             savedAt: fmtDate(e.mtime),
             dlAt: fmtDate(e.mtime),
             workId: e.workId || '',
-            pageUrl: e.pageUrl || ''
+            pageUrl: e.pageUrl || '',
+            mediaUrl: e.mediaUrl || e.sourceUrl || '',
+            authorUid: e.authorUid || '',
+            authorHandle: e.authorHandle || '',
+            authorState: e.authorState || (author ? 'ok' : 'unsupported')
         };
     }
 

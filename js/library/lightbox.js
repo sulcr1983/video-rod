@@ -146,15 +146,29 @@
         setTxt('pvState', f.state === 'missing' ? '文件缺失' : '正常');
 
         var hasPage = !!f.pageUrl;
-        show('pvSrcMiss', !hasPage);
+        var hasMedia = !!f.mediaUrl;
+        show('pvSrcMiss', !hasPage && !hasMedia);
         if (el.pvPageRow) {
             el.pvPageRow.classList.toggle('hidden', !hasPage);
             if (hasPage) { el.pvPageRow.href = f.pageUrl; setTxt('pvPageVal', f.pageUrl); }
         }
+        /* 直链：CDN 地址带签名会过期，UI 上明确提示，回溯请用原帖 */
+        if (el.pvMediaRow) {
+            el.pvMediaRow.classList.toggle('hidden', !hasMedia);
+            if (hasMedia) { setTxt('pvMediaVal', f.mediaUrl); }
+        }
+        var copyBtn = document.getElementById('pvCopyBtn');
+        if (copyBtn) { copyBtn.classList.toggle('hidden', !hasMedia); }
+        var warn = document.getElementById('pvExpireWarn');
+        if (warn) { warn.classList.toggle('hidden', !hasMedia); }
         if (el.pvSrcBadge) {
-            el.pvSrcBadge.innerHTML = hasPage
-                ? '<svg class="i"><use href="#i-circle-check"/></svg>已记录'
-                : '未记录';
+            /* 四态徽标：完整 / 部分 / 未记录。
+               不能把「有直链没原帖」显示成已记录——直链会过期，回溯靠原帖。 */
+            var state = (hasPage && hasMedia) ? 'full' : (hasPage || hasMedia) ? 'part' : 'none';
+            var txt = state === 'full' ? '已记录' : (state === 'part' ? '部分记录' : '未记录');
+            el.pvSrcBadge.className = 'pi-badge' + (state === 'part' ? ' warn' : (state === 'none' ? ' none' : ''));
+            el.pvSrcBadge.innerHTML = (state === 'full'
+                ? '<svg class="i"><use href="#i-circle-check"/></svg>' : '') + txt;
         }
         setTxt('pvWorkId', f.workId || '—');
 
@@ -280,6 +294,18 @@
                 });
             });
         }
+
+        /* ---- F2 溯源：复制直链（CDN 直链带签名会过期，UI 已标注） ---- */
+        var copyMedia = document.getElementById('pvCopyBtn');
+        if (copyMedia) {
+            copyMedia.addEventListener('click', function () {
+                var f = curFile0(); if (!f || !f.mediaUrl) { return; }
+                navigator.clipboard.writeText(f.mediaUrl).then(function () {
+                    if (root.VRApp) { root.VRApp.toast('直链已复制（可能已过期）'); }
+                });
+            });
+        }
+        function curFile0() { return S.list[S.idx]; }
 
         /* ---- 标签（F3）：写回 VRDB 条目，重建索引由 mergeEntry 保住 ---- */
         function curFile() { return S.list[S.idx]; }

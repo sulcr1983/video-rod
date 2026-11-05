@@ -257,6 +257,11 @@
         if (!out.type && old.type) { out.type = old.type; }
         if (!out.mime && old.mime) { out.mime = old.mime; }
         if (!out.sourceUrl && old.sourceUrl) { out.sourceUrl = old.sourceUrl; }
+        /* F2 溯源：重建索引时保住「原帖/直链/作者ID/作品ID」，
+           否则重建一次索引，来源就全变「未记录」了（ADR-052 铁律） */
+        ['pageUrl', 'mediaUrl', 'authorUid', 'authorHandle', 'authorState', 'workId', 'dlAt'].forEach(function (k) {
+            if (!out[k] && old[k]) { out[k] = old[k]; }
+        });
         if (out.downloadId === null && old.downloadId !== undefined) { out.downloadId = old.downloadId; }
         out.state = 'ok';
         return out;
