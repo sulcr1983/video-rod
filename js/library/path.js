@@ -22,6 +22,7 @@
         douyin: '抖音',
         weibo: '微博',
         instagram: 'Instagram',
+        tiktok: 'TikTok',
         web: '其他网页'
     };
 
@@ -39,12 +40,13 @@
      */
     var PLATFORM_ALIAS = {
         instagram: 'instagram', ig: 'instagram',
-        douyin: 'douyin', tiktok: 'douyin',
+        douyin: 'douyin',
         weibo: 'weibo',
         bilibili: 'bilibili', b站: 'bilibili',
         xiaohongshu: 'xiaohongshu', xhs: 'xiaohongshu',
         youtube: 'youtube', yt: 'youtube',
         x: 'x', twitter: 'x',
+        tiktok: 'tiktok',
         web: 'web'
     };
 
@@ -116,6 +118,7 @@
         if (/(^|\.)douyin\.com$/.test(host) || /(^|\.)iesdouyin\.com$/.test(host)) { return 'douyin'; }
         if (/(^|\.)weibo\.com$/.test(host) || /(^|\.)weibo\.cn$/.test(host)) { return 'weibo'; }
         if (/(^|\.)instagram\.com$/.test(host)) { return 'instagram'; }
+        if (/(^|\.)tiktok\.com$/.test(host)) { return 'tiktok'; }
         return 'web';
     }
 

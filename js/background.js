@@ -2396,6 +2396,14 @@ async function vrNameInTab(tabId, ext, override) {
 
 const VR_VIDEO_EXT = /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i;
 
+/**
+ * 静态资源排除：有些站点把登录页背景图、占位动画也用 .mp4 命名（实测 TikTok 的
+ * ttwstatic.com/tiktok_web_login_static/*.mp4 是 webp 静态图）。
+ * 这些不是视频，混进「按体积选最大」会把用户带到错的素材上。
+ * 判据：路径里带明显的静态资源目录/文件名标记 → 排除。
+ */
+const VR_STATIC_ASSET = /(web_login_static|\/static\/|\/assets\/|\/images?\/|\/icons?\/|\/sprites?\/|\.gif$|\.png$|\.jpe?g$|\.webp$|\.svg$)/i;
+
 /* ---------- 媒体 CDN 的 Referer 保护 ----------
  * 抖音直链不带 Referer 会 403（实测：无 Referer 403 text/html，带 Referer 206 video/mp4）。
  * CocoCut 的做法是下载前用 declarativeNetRequest 临时给媒体请求 set Referer/Origin。
@@ -3009,7 +3017,7 @@ async function vrVideoOptions(tabId) {
     } catch (e) { /* 受限页面，退回体积排序 */ }
 
     const list = (cacheData[tabId] || []).filter(function (m) {
-        return m && m.url && VR_VIDEO_EXT.test(m.ext || '');
+        return m && m.url && VR_VIDEO_EXT.test(m.ext || '') && !VR_STATIC_ASSET.test(m.url || '');
     }).slice().sort(function (a, b) {
         // 正在播的那条永远排第一；其余才按体积（单视频页面的老规则）
         const ap = (playing && a.url === playing) ? 0 : 1;

@@ -141,6 +141,16 @@
         clearTimeout(hideTimer);
         activeVideo = v;
         place();
+        // 通用能力：页面不自动播放时，悬停即静音播放触发嗅探。
+        // 这不是为了某个站点写特例——任何靠用户点击才发媒体请求的页面
+        // （TikTok/某些信息流）都因此能被通用通道嗅到。
+        if (v.paused) {
+            try {
+                v.muted = true;
+                var pr = v.play();
+                if (pr && pr.catch) { pr.catch(function () { /* 用户手势不足，静默 */ }); }
+            } catch (e) { /* 忽略 */ }
+        }
         if (!rafId) { rafId = requestAnimationFrame(loop); }
     }
 
