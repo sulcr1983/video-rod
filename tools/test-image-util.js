@@ -210,8 +210,8 @@ arr('扫描 limit 生效', U.scanImages(doc, { limit: 1 }).map(x => x.url),
 arr('扫描 无 doc', U.scanImages(null, {}), []);
 arr('扫描 空文档', U.scanImages(makeDoc([]), {}), []);
 
-/* ---------------- 600×600 门槛（用户明确要求） ---------------- */
-// 判「显示尺寸」：宽和高都必须 ≥600 才出下载按钮
+/* ---------------- 500 长边门槛 + 200 短边底线 ---------------- */
+// 判「显示尺寸」：长边 ≥500 且短边 ≥200 才出下载按钮（2026-11-05 用户反馈横图被 600 门槛全挡后调整）
 function withBox(nw, nh, sw, sh) {
     const e = makeImg({ src: '/media/t.png', nw: nw, nh: nh });
     e.getBoundingClientRect = () => ({ width: sw, height: sh, x: 0, y: 0, right: sw, bottom: sh });
@@ -219,13 +219,13 @@ function withBox(nw, nh, sw, sh) {
     e.clientHeight = sh;
     return e;
 }
-eq('门槛 MIN_SHOW = 600', U.MIN_SHOW, 600);
-ok('600x600 刚好通过', U.isWorthDownloading(withBox(600, 600, 600, 600), {}));
+eq('门槛 MIN_SHOW = 500', U.MIN_SHOW, 500);
+ok('500x500 刚好通过', U.isWorthDownloading(withBox(500, 500, 500, 500), {}));
 ok('800x600 通过', U.isWorthDownloading(withBox(800, 600, 800, 600), {}));
-ok('599x600 不通过（宽不够）', !U.isWorthDownloading(withBox(599, 600, 599, 600), {}));
-ok('600x599 不通过（高不够）', !U.isWorthDownloading(withBox(600, 599, 600, 599), {}));
-ok('500x500 显示不通过（哪怕原图 3000x3000）',
-   !U.isWorthDownloading(withBox(3000, 3000, 500, 500), {}));
+ok('499x499 不通过（长边不够）', !U.isWorthDownloading(withBox(499, 499, 499, 499), {}));
+ok('600x199 不通过（短边不够）', !U.isWorthDownloading(withBox(600, 199, 600, 199), {}));
+ok('500x500 显示通过（原图 3000x3000）',
+   U.isWorthDownloading(withBox(3000, 3000, 500, 500), {}));
 ok('16x16 图标不通过', !U.isWorthDownloading(withBox(640, 480, 16, 16), {}));
 ok('1200x150 横幅不通过（长宽比 8:1）',
    !U.isWorthDownloading(withBox(1200, 150, 1200, 150), {}));

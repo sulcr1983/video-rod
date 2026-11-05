@@ -2738,30 +2738,33 @@ function vrXhsScanInPage(noteId) {
             const e = (String(u).split('#')[0].split('?')[0].split('!')[0].split('.').pop() || '').toLowerCase();
             return /^(jpg|jpeg|png|webp|gif|heic)$/.test(e) ? (e === 'jpeg' ? 'jpg' : e) : 'webp';
         }
+        function xhsHttps(u) {
+            return String(u || '').replace(/^http:\/\//i, 'https://');
+        }
         (note.imageList || []).forEach(function (im, i) {
-            let url = im.url || '';
-            if (!url && im.infoList) {
-                const dft = im.infoList.find(function (x) { return x.imageScene === 'WB_DFT'; });
-                const any = im.infoList.find(function (x) { return x.url; });
-                url = (dft && dft.url) || (any && any.url) || '';
-            }
-            url = url || im.urlDefault || im.urlPre || '';
-            if (!url) { return; }
-            // 原图尝试：小红书 CDN 图上常带尺寸/格式预设后缀（`!nd_dft_...` / `!nc_n_...` 或 `?imageView2/...`），
-            // 去掉后缀通常能拿到更大版本。若这个地址下不动，下载侧会用 urlFallback 自动回退到原始地址（不劣于现状）。
-            const bare = String(url).split('#')[0].split('?')[0].split('!')[0];
-            const best = (bare && bare !== url) ? bare : url;
-            const item = { kind: 'image', url: best, ext: xhsImgExt(best), index: i };
-            if (best !== url) {
-                item.urlFallback = url;
-                item.extFallback = xhsImgExt(url);
+            /* 2026-11-06 实测：imageList.url 常为空；infoList 的 WB_DFT 才带
+             * CDN 必需的 `!nd_dft_...` 后缀。旧代码把它当「尺寸后缀」剥掉，
+             * 得到裸地址直接 403（A2 五张图全失败）。这里保留完整后缀并升级
+             * 到 HTTPS；裸地址只作为最后回退，不再优先。 */
+            const info = im.infoList || [];
+            const dft = info.find(function (x) { return x.imageScene === 'WB_DFT' && x.url; });
+            const any = info.find(function (x) { return x.url; });
+            const raw = (dft && dft.url) || (any && any.url) ||
+                im.urlDefault || im.url || im.urlPre || '';
+            if (!raw) { return; }
+            const url = xhsHttps(raw);
+            const item = { kind: 'image', url: url, ext: xhsImgExt(url), index: i };
+            const fallback = xhsHttps(im.urlPre || im.url || '');
+            if (fallback && fallback !== url) {
+                item.urlFallback = fallback;
+                item.extFallback = xhsImgExt(fallback);
             }
             items.push(item);
         });
 
         const vids = new Map();
         function addVideo(v, idx) {
-            const url = (v && (v.master_url || v.masterUrl || v.url)) || '';
+            const url = xhsHttps((v && (v.master_url || v.masterUrl || v.url)) || '');
             if (!url || vids.has(url)) { return; }
             vids.set(url, {
                 kind: 'video', url: url, ext: 'mp4', index: idx || 0,
@@ -2954,6 +2957,99 @@ function vrMediaPath(item, name) {
     return 'video-rod/' + site + '/' + folder + '/' + kind + '/' + name;
 }
 
+/** 批量条目的资源库元数据。必须显式写全：FSA 直写不会产生下载事件，
+ *  仅靠路径反解在自定义目录或作者缺失时会得到空 platform/type。 */
+function vrBulkMeta(item, relPath) {
+    const i = item || {};
+    const author = String(i.author || '').trim();
+    const id = String(i.authorId || '').trim();
+    const creatorFull = author ? (id ? author + '(@' + id + ')' : author) : '';
+    const site = String(i.site || '');
+    const platform = site === 'x' ? 'x'
+        : site === 'weibo' ? 'weibo'
+            : site === 'xhs' ? 'xiaohongshu' : (site || 'other');
+    const platformName = site === 'x' ? 'X'
+        : site === 'weibo' ? '微博'
+            : site === 'xhs' ? '小红书' : '';
+    return {
+        relPath: relPath,
+        platform: platform,
+        platformName: platformName,
+        creatorFull: creatorFull,
+        creatorId: id,
+        type: i.kind === 'video' ? 'video' : (i.kind === 'audio' ? 'audio' : 'image'),
+        title: String(i.title || ''),
+        pageUrl: String(i.pageUrl || ''),
+        sourceUrl: String(i.url || '')
+    };
+}
+
+/** 微博等防盗链站点：下载器直连 403 时，改由离屏文档用扩展 fetch 取字节，
+ *  再交回统一入口落盘。离屏只负责取流，绝不在页面里用 <a download>。 */
+async function vrBulkOffscreenSave(item, relPath, meta) {
+    const it = item || {};
+    const off = await vrOffscreenDownload(it.url, String(relPath).split('/').pop());
+    if (!off || !off.ok || !off.blobUrl) {
+        return { ok: false, reason: (off && off.reason) || 'offscreen-fetch-failed', path: relPath };
+    }
+    let id = null;
+    try {
+        id = await vrDownloadWithName(off.blobUrl, relPath, { meta: meta });
+    } catch (e) {
+        return { ok: false, reason: String(e).slice(0, 120), path: relPath };
+    }
+    if (id && typeof id === 'object' && id.__fsa) {
+        return { ok: true, fsa: true, path: id.path || relPath, via: 'offscreen' };
+    }
+    if (id === null || id === undefined) {
+        return { ok: false, reason: 'offscreen-download-start-failed', path: relPath };
+    }
+    const outcome = await vrWaitDownload(id, 20000);
+    if (outcome && outcome.state === 'interrupted') {
+        try { vrDropDownload(id); } catch (e) { /* ignore */ }
+        return { ok: false, reason: outcome.error || 'interrupted', id: id, path: relPath };
+    }
+    return { ok: true, id: id, path: relPath, via: 'offscreen' };
+}
+
+/** 批量单条落盘：优先 FSA/带 filename 的下载器直写，绝不再用 <a download>。
+ *  <a download> 不认目录，微博批量曾因此只把第 1 条落到 Downloads 根目录，
+ *  文件名被压成 video-rod_weibo_…，入库 platform/type 全空（2026-11-05 实测）。
+ *  返回 {ok, fsa?, path?, id?, reason?}，调用方只按真实终态计数。 */
+async function vrBulkSaveItem(item, name, timeoutMs) {
+    const it = item || {};
+    const relPath = vrMediaPath(it, name);
+    if (!it.url || !/^https?:/i.test(it.url)) {
+        return { ok: false, reason: 'bad-url', path: relPath };
+    }
+    // 微博/小红书 CDN 认 Referer、拒绝扩展 Origin；DNR 对下载器与 SW fetch 都生效。
+    const referer = String(it.pageUrl || '');
+    if (referer) {
+        try { await vrSetMediaHeadersFor(it.url, referer); } catch (e) { /* 头规则失败仍可试下载 */ }
+    }
+    const meta = vrBulkMeta(it, relPath);
+    let id = null;
+    try {
+        id = await vrDownloadWithName(it.url, relPath, { meta: meta });
+    } catch (e) {
+        return { ok: false, reason: String(e).slice(0, 120), path: relPath };
+    }
+    if (id && typeof id === 'object' && id.__fsa) {
+        return { ok: true, fsa: true, path: id.path || relPath };
+    }
+    if (id === null || id === undefined) {
+        return { ok: false, reason: 'download-start-failed', path: relPath };
+    }
+    // 只等 4 秒判快速 403；大文件仍在下载时 outcome=null，不能当失败重下。
+    const outcome = await vrWaitDownload(id, Math.min(4000, timeoutMs || 20000));
+    if (outcome && outcome.state === 'interrupted') {
+        try { vrDropDownload(id); } catch (e) { /* ignore */ }
+        // 微博 sinaimg 对下载器请求返回 403（DNR 也补不上），页面/离屏 fetch 才 200。
+        return await vrBulkOffscreenSave(it, relPath, meta);
+    }
+    return { ok: true, id: id, path: relPath };
+}
+
 /** 去重标识：不依赖 URL 的签名/token 参数。同作品同媒体视为重复。
  *  statusId/noteId/awemeId/mediaId 优先，URL 只保留 origin+pathname。 */
 function vrMediaIdentity(it) {
@@ -3045,31 +3141,27 @@ async function vrBulkDownload(items, tabId) {
                     }
                 }
             } else if (it.site === 'xhs') {
-                // 小红书页面 fetch 被 CORS 拒绝，只能 downloads；统一进媒体库目录。
+                // 小红书页面 fetch 被 CORS 拒绝，走后台下载；统一进媒体库目录。
                 // 图片优先试「去后缀原图」，失败自动回退带后缀的原始地址。
                 const attempt = async function (u, ext) {
-                    const saved = it.ext;
+                    const savedUrl = it.url;
+                    const savedExt = it.ext;
+                    if (u) { it.url = u; }
                     if (ext) { it.ext = ext; }
                     const nm = vrBulkName(it, i);
-                    it.ext = saved;
-                    const id = await vrDownloadWithName(u, vrMediaPath(it, nm));
-                    if (id === null) { return false; }
-                    const outcome = await vrWaitDownload(id, 20000);
-                    if (outcome && outcome.state === 'interrupted') {
-                        try { vrDropDownload(id); } catch (e) { /* ignore */ }
-                        return false;
-                    }
-                    return true;
+                    const r = await vrBulkSaveItem(it, nm, 20000);
+                    it.url = savedUrl;
+                    it.ext = savedExt;
+                    return !!(r && r.ok);
                 };
                 ok = await attempt(it.url, it.ext);
                 if (!ok && it.urlFallback) { ok = await attempt(it.urlFallback, it.extFallback); }
-            } else if (tabId != null) {
-                const r = await vrTryPageDownload(tabId, it.url, vrMediaPath(it, name));
+            } else {
+                // 微博等主页批量：不能走页面 <a download>（不认目录、多次点击会被
+                // 浏览器拦截，实测只剩第 1 条落到 Downloads 根目录）。这里统一走
+                // 带 filename + 预登记 meta 的下载器/FSA 通道。
+                const r = await vrBulkSaveItem(it, name, 20000);
                 ok = !!(r && r.ok);
-                if (!ok) {
-                    const id = await vrDownloadWithName(it.url, vrMediaPath(it, name));
-                    ok = id !== null;
-                }
             }
             if (ok === true) {
                 done++;
