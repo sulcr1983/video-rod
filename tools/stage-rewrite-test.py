@@ -92,7 +92,8 @@ def main():
         print(("PASS  " if ok else "FAIL  ") + name + ("" if ok else "  got=%r expect=%r" % (got, expect)))
 
     check("卡片数=8", ev("document.querySelectorAll('#grid .card').length", sid), 8)
-    check("侧栏 264px", ev("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)", sid), 264)
+    # 原型 media-library-stage-v1.html 实测侧栏 268px（纠偏时由 264 对齐）
+    check("侧栏 268px", ev("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)", sid), 268)
     check("树根编号 00", ev("document.querySelector('#tree .ix') && document.querySelector('#tree .ix').textContent", sid), "00")
     check("平台 chips=10（含 B站）", ev("document.querySelectorAll('#chips .chip').length", sid), 10)
     check("页签计数", ev("[...document.querySelectorAll('#typeTabs button')].map(b=>b.dataset.type+':'+b.querySelector('b').textContent).join(',')", sid),

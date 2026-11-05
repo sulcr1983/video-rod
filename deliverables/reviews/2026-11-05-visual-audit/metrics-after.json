@@ -1,0 +1,121 @@
+{
+ "actual-library": {
+  "bodyBg": "rgb(16, 15, 14)",
+  "bodySize": "13px",
+  "sidebar": [
+   0,
+   0,
+   268,
+   900
+  ],
+  "mainPad": "26px 28px 48px",
+  "h1": {
+   "text": "全部素材",
+   "font": "32px",
+   "family": "\"Noto Serif SC\", Georgia, \"Songti SC\", \"Sourc",
+   "weight": "600",
+   "box": [
+    296,
+    68,
+    129,
+    39
+   ]
+  },
+  "toolbar": [
+   296,
+   130,
+   1106,
+   97
+  ],
+  "gridGap": "18px 16px",
+  "gridCols": "264.5px 264.5px 264.5px 264.5px",
+  "card": {
+   "box": [
+    296,
+    243,
+    265,
+    282
+   ],
+   "radius": "12px",
+   "bg": "rgb(28, 26, 23)"
+  },
+  "cards": 15,
+  "film": 0
+ },
+ "actual-popup": {
+  "viewport": [
+   380,
+   560
+  ],
+  "scroll": [
+   380,
+   380
+  ],
+  "bodyBg": "rgb(11, 10, 9)",
+  "bodySize": "13px",
+  "bodyBox": 380,
+  "head": 380,
+  "overview": true,
+  "tabs": true,
+  "ignore": true,
+  "site": "本地扩展页",
+  "texts": [
+   "苏哥的钓鱼竿",
+   "v2.7.2.1",
+   "本地扩展页",
+   "苏哥的钓鱼竿 video-rod",
+   "0",
+   "0",
+   "0",
+   "0",
+   "video-rod",
+   "画质 最高",
+   "寻找到疑似密钥",
+   "0",
+   "0",
+   "0",
+   "0",
+   "抓图"
+  ]
+ },
+ "actual-settings": {
+  "bodyBg": "rgb(16, 15, 14)",
+  "h1": {
+   "text": "保存位置",
+   "font": "24px",
+   "family": "\"Noto Serif SC\", Georgia, \"Songti SC\", \"Sourc",
+   "box": [
+    246,
+    76,
+    760,
+    37
+   ]
+  },
+  "top": [
+   0,
+   0,
+   1440,
+   54
+  ],
+  "side": [
+   0,
+   54,
+   216,
+   846
+  ],
+  "navBtns": [
+   "保存位置1",
+   "文件命名3",
+   "画质与合并2",
+   "索引与扫描1",
+   "查看与连播2",
+   "外观2",
+   "快捷键3",
+   "高级工具5"
+  ],
+  "visibleSections": [
+   "anchorLibrary"
+  ],
+  "totalSections": 19
+ }
+}

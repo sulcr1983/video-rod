@@ -7,6 +7,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" type="text/css" href="css/public.css" media="all" />
   <link rel="stylesheet" type="text/css" href="css/library.css" media="all" />
+  <!-- 成熟开源播放器 Plyr 3.8.3（MIT），本地 vendored，离线可用、无外部请求 -->
+  <link rel="stylesheet" type="text/css" href="lib/plyr/plyr.css" media="all" />
+  <script src="lib/plyr/plyr.min.js" defer></script>
   <script src="js/library/path.js" defer></script>
   <script src="js/library/db.js" defer></script>
   <script src="js/library/thumbs.js" defer></script>
@@ -244,7 +247,7 @@
     <div class="pv-crumb" id="pvCrumb"><b>X</b> / NASA / videos</div>
     <div class="pv-tools">
       <span class="pv-count" id="pvCount">1 / 27</span>
-      <button class="iconbtn on" id="autoBtn" title="连播：播完自动下一个（滚轮可切换）" aria-pressed="true"><svg class="i i-sm"><use href="#i-repeat-1"/></svg></button>
+      <button class="iconbtn on" id="autoBtn" title="连播：播完自动下一个（上下滚轮切换素材）" aria-pressed="true"><svg class="i i-sm"><use href="#i-repeat-1"/></svg></button>
       <button class="iconbtn on" id="pvInfoBtn" title="信息 I"><svg class="i i-sm"><use href="#i-info"/></svg></button>
       <button class="iconbtn" id="pvFullBtn" title="全屏 F"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
       <button class="iconbtn" id="pvHelpBtn" title="快捷键"><svg class="i i-sm"><use href="#i-keyboard"/></svg></button>
@@ -347,7 +350,7 @@
         </details>
       </section>
 
-      <section class="pi-group" style="--grp:#F0C878">
+      <section class="pi-group" id="pvSrcGroup" style="--grp:#F0C878">
         <h3 class="pi-label">来源 <span class="pi-badge" id="pvSrcBadge"><svg class="i"><use href="#i-circle-check"/></svg>已记录</span></h3>
         <dl class="pi-list">
           <a class="pi-item" id="pvPageRow" href="#" target="_blank" rel="noopener">
@@ -400,7 +403,8 @@
     <div class="ks-grid">
       <div class="ks-sec">
         <h4>通用</h4>
-        <div class="ks-row"><span>上一个 / 下一个</span><span><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></span></div>
+        <div class="ks-row"><span>上一个 / 下一个</span><span><kbd>↑</kbd><kbd>↓</kbd> · 滚轮上下</span></div>
+        <div class="ks-row"><span>进度 ±5 秒</span><span><kbd>←</kbd><kbd>→</kbd> · 滚轮左右</span></div>
         <div class="ks-row"><span>快速预览（列表中）</span><span><kbd>Space</kbd></span></div>
         <div class="ks-row"><span>关闭预览</span><span><kbd>Esc</kbd></span></div>
         <div class="ks-row"><span>信息栏开合</span><span><kbd>I</kbd></span></div>
