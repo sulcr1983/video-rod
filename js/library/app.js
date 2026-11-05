@@ -520,13 +520,15 @@
     /* ---------- 首次自动索引 ---------- */
     async function autoIndex() {
         if (!root.VRIndex) { return false; }
-        try {
-            await root.VRIndex.build({ mode: 'full' });
-            return true;
-        } catch (e) {
-            try { await root.VRIndex.build({ mode: 'snapshot' }); return true; }
-            catch (e2) { return false; }
-        }
+        // ① 下载记录模式：**不需要目录授权**，能立刻把已下载的文件收进库。
+        //    2026-11-05 事故：这里原来只试 full/snapshot，两者都要 FSA 授权，
+        //    没授权就整个失败 → 资源库永远空白，用户看到「管理器里什么都没有」。
+        try { await root.VRIndex.build({ mode: 'downloads' }); return true; } catch (e) { /* 落到下一档 */ }
+        // ② 全量扫描：需要一次目录授权，好处是能发现「文件已被删」
+        try { await root.VRIndex.build({ mode: 'full' }); return true; } catch (e) { /* 落到下一档 */ }
+        // ③ 快照：同样是授权后的兜底
+        try { await root.VRIndex.build({ mode: 'snapshot' }); return true; }
+        catch (e2) { return false; }
     }
 
     /* ---------- 事件 ---------- */
@@ -1037,8 +1039,14 @@
         var rebuildBtn = $('#sdRebuildBtn');
         if (rebuildBtn) { rebuildBtn.addEventListener('click', async function () {
             toast('正在重建索引…');
-            try { await root.VRIndex.build({ mode: 'full' }); await load(); toast('索引重建完成'); }
-            catch (e) { toast('重建失败：' + (e && e.message || '未知')); }
+            // 先走不需要授权的下载记录模式，别一上来就要目录权限（2026-11-05 修复）
+            var done = false;
+            try { await root.VRIndex.build({ mode: 'downloads' }); done = true; } catch (e) { /* 下一档 */ }
+            if (!done) {
+                try { await root.VRIndex.build({ mode: 'full' }); done = true; }
+                catch (e) { toast('重建失败：' + (e && e.message || '未知')); }
+            }
+            if (done) { await load(); toast('索引重建完成'); }
             await refreshDrawer();
         }); }
         var trashBtn = $('#sdTrashBtn');
