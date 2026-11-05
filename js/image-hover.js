@@ -602,8 +602,33 @@
         try { console.info('[video-rod] ' + msg); } catch (e) { /* 忽略 */ }
     }
 
+    /** 页面标题：document.title 在部分 SPA 上会是空的（X 实测为 ""），
+     *  这样文件名就退化成「图片」。按 og:title → h1 → URL 末段 逐层兜底。 */
     function pageTitle() {
-        return String(document.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        var t = String(document.title || '').replace(/\s+/g, ' ').trim();
+        if (!t) {
+            try {
+                var og = document.querySelector('meta[property="og:title"],meta[name="og:title"]');
+                if (og && og.content) { t = og.content; }
+            } catch (e) { /* ignore */ }
+        }
+        if (!t) {
+            // 先试 URL 末段（X 是 /NASA，稳），比 h1 可靠 ——
+            // X 的 h1 里是隐藏的快捷键提示浮层，会得到「To view keyboard shortcuts…」
+            try {
+                var seg = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+                if (seg && seg.length <= 40 && !/^\d+$/.test(seg)) { t = seg.replace(/^@/, ''); }
+            } catch (e) { /* ignore */ }
+        }
+        if (!t) {
+            try {
+                var h = document.querySelector('h1,h2');
+                var vis = h && h.getBoundingClientRect().width > 0;
+                var txt = vis ? String(h.textContent || '').replace(/\s+/g, ' ').trim() : '';
+                if (txt && txt.length <= 60) { t = txt; }
+            } catch (e) { /* ignore */ }
+        }
+        return String(t || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     }
 
     function flashFail(code) {
