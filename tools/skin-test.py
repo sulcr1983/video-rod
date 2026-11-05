@@ -18,7 +18,9 @@ from websocket import create_connection
 # 已知扩展 ID（同一路径加载的 unpacked 扩展 ID 固定）
 KNOWN_EXT = "ceogmckiinjolbbdkjfelmfcfepccabp"
 
-STAGE_BG = "rgb(16, 15, 14)"        # #100F0E
+STAGE_BG = "rgb(16, 15, 14)"        # #100F0E（库页 / 设置页）
+# popup 面板按原型 popup-stage-v1.html 用更深一档的底色（纠偏时对齐设计真源）
+POPUP_BG = "rgb(11, 10, 9)"         # #0B0A09
 STAGE_INK = "rgb(239, 234, 224)"    # #EFEAE0
 STAGE_GOLD = "rgb(232, 176, 75)"    # #E8B04B
 
@@ -93,7 +95,7 @@ def main():
     time.sleep(3)
     check("popup 标题", c.ev("document.title", sid), "苏哥的钓鱼竿 video-rod")
     check("popup 外壳存在", c.ev("!!document.getElementById('vrShell')", sid), True)
-    check("popup 底色", c.ev("getComputedStyle(document.body).backgroundColor", sid), STAGE_BG)
+    check("popup 底色", c.ev("getComputedStyle(document.body).backgroundColor", sid), POPUP_BG)
     check("popup 标题文字色",
           c.ev("(()=>{const e=document.querySelector('.pop-title');return e?getComputedStyle(e).color:'no'})()", sid),
           STAGE_INK)

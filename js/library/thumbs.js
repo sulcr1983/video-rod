@@ -12,6 +12,10 @@
     var MAX_EDGE = 400;   /* F8：卡片最宽 268px，400 已够 1.5x，5 万张约省 30-40% */
     var QUALITY = 0.66;
     var TIMEOUT = 8000;
+    /* 视频文件比图片大得多，moov atom 在尾部的 MP4 要读到文件末尾才有 metadata。
+     * 实测 93MB / 18.5MB 两个真机下载文件 10s 内连 loadedmetadata 都不触发，
+     * 8s 超时必然失败 → 单独给视频 30s，图片仍用 8s。 */
+    var VIDEO_TIMEOUT = 30000;
 
     var queue = [];
     var running = 0;
@@ -37,7 +41,7 @@
     }
 
     function loadVideoFrame(url) {
-        return Promise.race([timeout(TIMEOUT), new Promise(function (resolve, reject) {
+        return Promise.race([timeout(VIDEO_TIMEOUT), new Promise(function (resolve, reject) {
             var v = document.createElement('video');
             var settled = false;
 
@@ -55,17 +59,25 @@
             function draw() {
                 if (settled) { return; }
                 settled = true;
-                cleanup();
+                /* 必须先把解码好的这一帧交给调用方画进 canvas，再清 src。
+                 * 原实现先 cleanup()（removeAttribute('src') + load()），
+                 * generate() 拿到 video 时帧已被清掉 → 画出来是空白，
+                 * 表现就是「视频卡片永远没有预览图」。
+                 * resolve 后的 await 是微任务，setTimeout(0) 是宏任务，顺序安全。 */
                 resolve(v);
+                setTimeout(cleanup, 0);
             }
 
             v.muted = true;
-            v.preload = 'metadata';
+            v.preload = 'auto';
             v.onerror = fail;
             v.onloadeddata = function () {
                 try {
                     var t = Math.min(1, Math.max(0, (v.duration || 2) / 3));
                     v.currentTime = t;
+                    /* 大文件 seek 可能迟迟不回 onseeked：3 秒后用当前帧兜底，
+                     * 有画面总比一直空着强（draw 内部有 settled 去重）。 */
+                    setTimeout(draw, 3000);
                 } catch (e) {
                     draw();
                 }

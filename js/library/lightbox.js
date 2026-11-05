@@ -33,6 +33,57 @@
     var videoEl = null;
     var animCtl = null;
 
+    /* 成熟播放器（Plyr 3.8.3）实例与布局状态 */
+    var plyr = null;
+    var playerBox = null;
+    var playerRatio = 0;
+    var posterUrl = '';
+
+    function destroyPlayer() {
+        if (plyr) { try { plyr.destroy(); } catch (e) { /* ignore */ } }
+        plyr = null;
+        if (posterUrl) { try { URL.revokeObjectURL(posterUrl); } catch (e) { /* ignore */ } }
+        posterUrl = '';
+        playerBox = null;
+        playerRatio = 0;
+    }
+
+    /** 按视频真实宽高比给播放器外壳定尺寸，不再一律塞进 16:9 的默认框 */
+    function fitPlayer() {
+        if (!playerBox || !playerRatio) { return; }
+        var stage = $('#pvMedia');
+        if (!stage) { return; }
+        var r = stage.getBoundingClientRect();
+        if (!r.width || !r.height) { return; }
+        var availW = Math.max(120, r.width);
+        var availH = Math.max(100, r.height);
+        var w = availW, h = w / playerRatio;
+        if (h > availH) { h = availH; w = h * playerRatio; }
+        var shell = playerBox.querySelector('.plyr') || playerBox;
+        shell.style.width = Math.round(w) + 'px';
+        shell.style.height = Math.round(h) + 'px';
+    }
+
+    /** 预览图：复用资源库的视频抽帧缓存（WebP blob），作为播放器 poster */
+    function setPoster(f, v) {
+        if (!f || !f.relPath || !root.VRDB || !root.VRDB.getThumb) { return; }
+        try {
+            root.VRDB.getThumb('t:' + f.relPath).then(function (t) {
+                if (!t || !t.blob || !v.isConnected) { return; }
+                var u = URL.createObjectURL(t.blob);
+                posterUrl = u;
+                try { v.poster = u; } catch (e) { /* ignore */ }
+                if (plyr) { try { plyr.poster = u; } catch (e) { /* ignore */ } }
+            }).catch(function () { /* 没缓存就保持黑底，不阻断播放 */ });
+        } catch (e) { /* ignore */ }
+    }
+
+    function seekBy(d) {
+        if (!videoEl || !isFinite(videoEl.duration)) { return; }
+        var t = videoEl.currentTime + d;
+        videoEl.currentTime = Math.max(0, Math.min(videoEl.duration || 0, t));
+    }
+
     function cache() {
         ['preview', 'pvCrumb', 'pvCount', 'pvTitle', 'pvPlat', 'pvType', 'pvMedia',
             'pvPrev', 'pvNext', 'pvClose', 'pvBack', 'pvInfoBtn', 'pvFullBtn', 'pvFilm',
@@ -40,6 +91,8 @@
             'st1v', 'st2v', 'st3v', 'pvThirdRow', 'pvThirdK', 'pvThirdV',
             'pvSaved', 'pvPath', 'pvPathCopy', 'pvSrcBadge', 'pvPageRow', 'pvPageVal',
             'pvSrcMiss', 'pvWorkId', 'pvTags',
+            /* 这几项原先没进 cache：直链行因此永远显示默认「—」，同作者永远 0 项 */
+            'pvStageEl', 'pvMediaRow', 'pvMediaVal', 'pvMoreCount', 'pvMoreGrid',
             'vCtl', 'vPlay', 'vCur', 'vDur', 'vProg', 'vFill', 'vRate', 'ratePop', 'rpGrid',
             'imgBar', 'gifBar'].forEach(function (id) { el[id] = document.getElementById(id); });
     }
@@ -59,12 +112,23 @@
     function renderStage(f) {
         var stage = $('#pvMedia');
         if (!stage) { return; }
+        destroyPlayer();
         stage.innerHTML = '';
         videoEl = null;
         var url = urlOf(f);
         var kind = f.kind;
 
-        show('vCtl', kind === 'video');
+        /* CSS 里 .pv-stage.is-video .fakeMedia 才铺满舞台。
+         * 这个 class 之前从来没人加过 → 视频一直被锁在 62% 宽的 16:9 小框里，
+         * 四周留大片空白（用户 2026-11-05 截图反馈）。 */
+        var stageOuter = el.pvStageEl || document.getElementById('pvStageEl');
+        if (stageOuter) {
+            stageOuter.classList.toggle('is-video', kind === 'video');
+            stageOuter.classList.toggle('is-gif', kind === 'anim');
+        }
+
+        /* 有成熟播放器时让自绘控件条让位；Plyr 没加载成功则保留原控件条降级 */
+        show('vCtl', kind === 'video' && !root.Plyr);
         show('imgBar', kind === 'image');
         show('gifBar', kind === 'anim');
 
@@ -73,11 +137,23 @@
             return;
         }
         if (kind === 'video') {
+            var box = document.createElement('div');
+            box.className = 'vr-player';
             var v = document.createElement('video');
             v.src = url; v.preload = 'metadata'; v.playsInline = true; v.controls = false;
+            box.appendChild(v);
+            stage.appendChild(box);
+            playerBox = box;
+            playerRatio = 0;
+            videoEl = v;
+
             v.addEventListener('loadedmetadata', function () {
                 setTxt('st1v', v.videoWidth + '×' + v.videoHeight);
                 setTxt('vDur', fmtDur(v.duration));
+                if (v.videoWidth && v.videoHeight) {
+                    playerRatio = v.videoWidth / v.videoHeight;
+                    fitPlayer();
+                }
             });
             v.addEventListener('timeupdate', function () {
                 setTxt('vCur', fmtDur(v.currentTime));
@@ -85,8 +161,32 @@
             });
             v.addEventListener('ended', function () { if (S.auto) { step(1); } });
             v.playbackRate = S.rate;
-            stage.appendChild(v);
-            videoEl = v;
+
+            /* 采用成熟开源播放器：控件、倍速、全屏、画中画、无障碍全由 Plyr 负责，
+             * 这里只负责把本地文件交给它、按真实比例布局、以及队列/滚轮语义。 */
+            if (root.Plyr) {
+                try {
+                    var iconUrl = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL)
+                        ? chrome.runtime.getURL('lib/plyr/plyr.svg') : 'lib/plyr/plyr.svg';
+                    plyr = new root.Plyr(v, {
+                        controls: ['play-large', 'play', 'progress', 'current-time',
+                                   'mute', 'volume', 'settings', 'pip', 'fullscreen'],
+                        settings: ['speed'],
+                        speed: { selected: S.rate, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+                        iconUrl: iconUrl,
+                        /* 键盘语义由本模块统一定义（↑↓ 切素材、←→ 调进度），
+                           不让播放器自带的 ↑↓ 调音量抢走按键 */
+                        keyboard: { focused: false, global: false },
+                        hideControls: true,
+                        tooltips: { controls: true, seek: true }
+                    });
+                    plyr.on('ratechange', function () {
+                        if (plyr && plyr.speed) { S.rate = plyr.speed; }
+                    });
+                    fitPlayer();
+                } catch (e) { plyr = null; }
+            }
+            setPoster(f, v);
             v.play().catch(function () { });
             setTxt('st1v', '—');
             setTxt('vDur', f.dur || '—');
@@ -184,7 +284,13 @@
         setTxt('pvState', f.state === 'missing' ? '文件缺失' : '正常');
 
         var hasPage = !!f.pageUrl;
-        var hasMedia = !!f.mediaUrl;
+        /* 下载记录入库时只写 sourceUrl（直链），预览层原本只认 mediaUrl，
+         * 于是「直链」永远空着。这里做字段兜底，不改数据层。 */
+        var mediaUrl = f.mediaUrl || f.sourceUrl || '';
+        /* 离屏下载落盘的是 blob: URL，不是可回溯的网页直链，
+         * 显示出来只会是一串没意义的乱码。 */
+        if (/^(blob:|data:|file:)/i.test(mediaUrl)) { mediaUrl = ''; }
+        var hasMedia = !!mediaUrl;
         show('pvSrcMiss', !hasPage && !hasMedia);
         if (el.pvPageRow) {
             el.pvPageRow.classList.toggle('hidden', !hasPage);
@@ -193,7 +299,7 @@
         /* 直链：CDN 地址带签名会过期，UI 上明确提示，回溯请用原帖 */
         if (el.pvMediaRow) {
             el.pvMediaRow.classList.toggle('hidden', !hasMedia);
-            if (hasMedia) { setTxt('pvMediaVal', f.mediaUrl); }
+            if (hasMedia) { setTxt('pvMediaVal', mediaUrl); }
         }
         var copyBtn = document.getElementById('pvCopyBtn');
         if (copyBtn) { copyBtn.classList.toggle('hidden', !hasMedia); }
@@ -216,18 +322,66 @@
                     return '<span class="pv-tag">' + esc(t) +
                         '<button data-ti="' + i + '" aria-label="移除标签"><svg class="i" style="width:10px;height:10px"><use href="#i-x"/></svg></button></span>';
                 }).join('')
-                : '<span class="pv-tag empty">还没有标签</span>';
+                : '';   /* 空态不写「还没有标签」，+ 添加 按钮本身就是入口 */
         }
+        hideEmptyFields(!hasPage && !hasMedia);
     }
 
+    /** 右栏只显示真实有值的字段：空 / — / - 一律收起，避免整片「没记录」占位 */
+    function hideEmptyFields(noSource) {
+        var info = document.querySelector('.pv-info');
+        if (!info) { return; }
+        info.querySelectorAll('.pi-item').forEach(function (row) {
+            /* 状态行由 paintInfo 按 missing 判定，别在这里按文本覆盖回来 */
+            if (row.id === 'pvStateRow') { return; }
+            var dd = row.querySelector('dd');
+            if (!dd) { return; }
+            var t = String(dd.textContent || '').trim();
+            row.classList.toggle('hidden', !t || t === '—' || t === '-');
+        });
+        var more = info.querySelector('.pi-more');
+        if (more) {
+            var n = Number(String((el.pvMoreCount || {}).textContent || '0').replace(/\D/g, '')) || 0;
+            more.classList.toggle('hidden', n <= 0);
+        }
+        /* 折叠区里一行有效数据都没有，就别留一个空入口 */
+        info.querySelectorAll('.pi-fold').forEach(function (fold) {
+            var rows = fold.querySelectorAll('.pi-item');
+            var visible = 0;
+            rows.forEach(function (r) { if (!r.classList.contains('hidden')) { visible++; } });
+            fold.classList.toggle('hidden', visible === 0);
+        });
+        /* 顶部已有「? 快捷键」按钮，底部这行是重复提示 */
+        var foot = info.querySelector('.pi-foot');
+        if (foot) { foot.classList.add('hidden'); }
+        /* 原帖和直链都没有有效记录时，整组「来源」收起，
+         * 不再留「未记录 / 历史素材」这类空占位 */
+        var srcGroup = document.getElementById('pvSrcGroup');
+        if (srcGroup) { srcGroup.classList.toggle('hidden', !!noSource); }
+        if (noSource && el.pvSrcMiss) { el.pvSrcMiss.classList.add('hidden'); }
+    }
+
+    var filmUrls = [];
     function paintFilm() {
         if (!el.pvFilm) { return; }
-        // 原型（media-library-stage-v1.html 3226 行）：胶片条是 96×66 的编号缩略图按钮，
-        // 文字放 .fno 角标。原先塞 16 字文件名会把一排按钮挤糊，违反设计真源。
+        filmUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } });
+        filmUrls = [];
+        // 原型（media-library-stage-v1.html 3226 行）：96×66 的编号缩略图按钮。
+        // cover 显示真实抽帧缓存，fno 只留编号角标；原来是「一排只有数字的空按钮」。
         el.pvFilm.innerHTML = S.list.map(function (f, i) {
             return '<button class="film' + (i === S.idx ? ' on' : '') + '" data-i="' + i + '" title="' + esc(f.title) + '">' +
+                '<span class="cover" data-rel="' + esc(f.relPath) + '"></span>' +
                 '<span class="fno">' + (i + 1) + '</span></button>';
         }).join('');
+        if (!root.VRDB || !root.VRDB.getThumb) { return; }
+        el.pvFilm.querySelectorAll('.cover[data-rel]').forEach(function (node) {
+            root.VRDB.getThumb('t:' + node.getAttribute('data-rel')).then(function (t) {
+                if (!t || !t.blob || !node.isConnected) { return; }
+                var u = URL.createObjectURL(t.blob);
+                filmUrls.push(u);
+                node.style.backgroundImage = 'url(' + u + ')';
+            }).catch(function () { /* 无缓存保留渐变底 */ });
+        });
     }
 
     function open(f, list) {
@@ -254,6 +408,7 @@
     function close() {
         if (el.preview) { el.preview.classList.add('hidden'); }
         document.body.style.overflow = '';
+        destroyPlayer();
         var stage = $('#pvMedia'); if (stage) { stage.innerHTML = ''; }
         videoEl = null;
         try { if (animCtl) { animCtl.destroy(); } } catch (e) { /* ignore */ }
@@ -439,11 +594,38 @@
             var tag = (document.activeElement && document.activeElement.tagName) || '';
             if (tag === 'INPUT' || tag === 'TEXTAREA') { return; }
             if (e.key === 'Escape') { close(); }
-            else if (e.key === 'ArrowLeft') { step(-1); }
-            else if (e.key === 'ArrowRight') { step(1); }
+            /* 上下 = 上一个/下一个素材；左右 = 进度 ±5 秒（用户 2026-11-05 拍板） */
+            else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); step(1); }
+            else if (e.key === 'ArrowLeft') { if (videoEl) { e.preventDefault(); seekBy(-5); } }
+            else if (e.key === 'ArrowRight') { if (videoEl) { e.preventDefault(); seekBy(5); } }
             else if (e.key === 'i' || e.key === 'I') { if (el.pvInfoBtn) { el.pvInfoBtn.click(); } }
             else if (e.key === ' ' && videoEl) { e.preventDefault(); if (videoEl.paused) { videoEl.play(); } else { videoEl.pause(); } }
         });
+
+        /* 滚轮：上下切上一个/下一个，左右（或 Shift+滚轮）调进度。
+         * 原实现根本没绑预览层的 wheel，autoBtn 却写着「滚轮可切换」；
+         * 这里与原型 3371 行的 deltaY→goNext/goPrev 语义一致并补齐横向。 */
+        var wheelLock = 0;
+        if (el.preview) {
+            el.preview.addEventListener('wheel', function (e) {
+                if (el.preview.classList.contains('hidden')) { return; }
+                var horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey;
+                if (horizontal) {
+                    if (!videoEl || !isFinite(videoEl.duration)) { return; }
+                    e.preventDefault();
+                    seekBy((e.deltaX || e.deltaY) > 0 ? 5 : -5);
+                    return;
+                }
+                if (!e.deltaY) { return; }
+                e.preventDefault();
+                var now = Date.now();
+                if (now < wheelLock) { return; }
+                wheelLock = now + 350;
+                step(e.deltaY > 0 ? 1 : -1);
+            }, { passive: false });
+        }
+        window.addEventListener('resize', fitPlayer);
     }
 
     function init() {
