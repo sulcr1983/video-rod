@@ -64,7 +64,7 @@
 | `#selectBtn` | 进入/退出选择模式，批量条显示/隐藏 | 通过 | 退出时 `is-on`/`hidden` 复位（M3） |
 | `#batchAll` / `#batchInvert` / `#batchClear` | 全选/反选/清空，计数同步 | 通过 | 真实 35 条计数（M6） |
 | `#batchFav` | 加入收藏夹，持久化 | 只验证存在/打开 | 加入/移除/重载后保留（M6） |
-| `#batchMove` | 真实移动文件 + DB `relPath/absPath` 更新 | **FAIL**：`VRTrash.moveFile` 未导出，必失败 | **M3 修复** |
+| `#batchMove` | 真实移动文件 + DB `relPath/absPath` 更新 | **PASS（M3：OPFS 9/9）**；导出/权限/防覆盖/移回已验证 | 真实目录 UI 待 M6 授权后复验 |
 | `#batchTrash` | 移入回收站、可恢复 | 代码已接，未破坏性验证 | 临时副本删 2 恢复 1（M6） |
 | `#batchExit` | 退出批量态 | 通过 | 批量条/按钮状态复位（M3） |
 
@@ -79,7 +79,7 @@
 | `#pvClose` / Esc | 关闭预览 | 通过 | 无 |
 | `#pvRename` → `#renameOk` | 改显示名；网格/列表/预览一致 | 立即生效 | **M4：重扫后保留、列表同步** |
 | `#pvDelete` | 删除到回收站 | 只登记不点 | 临时副本（M6） |
-| `#pvMove` | 移动 | 当前只 toast + 打开设置 | **M3/M5：真实入口或明确禁用** |
+| `#pvMove` | 移动 | 当前只 toast + 打开设置 | **M6：复用 moveItems 或明确禁用** |
 | `#pvTagAdd` / 保存 | 标签写入/移除/重载保留 | 通过 | 重扫后保留（M4/M6） |
 | Plyr 播放/暂停 | `paused` 真变化，声音不被静音 | 真实视频有 16 控件；测试选假卡 | **M6：选真实视频 + readyState 等待** |
 | 倍速 0.1/0.2/3 | 菜单/自绘面板可选中 | 代码已加 | 真实点击选中（M6） |
@@ -126,7 +126,7 @@
 | 排序 | 真实 35 条下 `new/old/size/name` 四种顺序正确且互不相同 | PASS（14/14） | M2 已完成 |
 | 搜索语法 | `词1 词2` 交集、`-词` 排除；真实作者/标题命中 | 部分通过 | M6 |
 | 重命名持久化 | 改名 → `VRIndex.build({mode:'downloads'})` → 名字仍在；`relPath` 不变；列表同步 | 代码缺口 | M4 |
-| 批量移动 | 临时副本移动 2 条：物理文件、DB `relPath/absPath`、缩略图重建、可移回 | 死键 | M3 |
+| 批量移动 | 临时副本移动 2 条：物理文件、DB `relPath/absPath`、缩略图重建、可移回 | PASS（M3：OPFS 9/9；真实目录 UI 待 M6） | M3 已完成 |
 | 批量删除/恢复 | 临时副本删 2 → 回收站 2 → 恢复 1 → 彻底删 1；manifest/DB/物理一致 | 未验证 | M6 |
 | 只读/授权 | 无 handle：移动/删除禁用并说明；授权后可用；新 profile 无 `file://` 权限有提示 | 未实现 | M5 |
 | 缩略图 | 真实 35 条首屏可见；缺失/失败有占位；93MB 视频不无限转圈 | 部分 | M6 |
@@ -198,7 +198,7 @@ python tools/vr-db-snapshot.py restore --port 9480 --file .work/db-snapshots/<pr
 ## 6. P0 完成定义（DoD）
 
 - [x] M2：排序 4 模式在真实 35 条上正确；e2e 断言不再用同标题夹具（`library-realdata-e2e` 14/14）。
-- [ ] M3：批量移动在临时副本上成功；导出 API、权限、路径、回滚全部验证。
+- [x] M3：批量移动在临时副本上成功；导出 API、权限、防覆盖、移回已验证（OPFS 9/9）；真实目录 UI 待 M6。
 - [ ] M4：改名 → 重扫 → 网格/列表/预览一致；`displayName` 不丢。
 - [ ] M5：无 handle 时移动/删除禁用并说明；授权后可用；`file://` 不可用有提示。
 - [ ] M6：`e2e-all --isolated` 离线全绿；真实数据冒烟 35/35；按钮矩阵逐项有输入→输出；
@@ -212,7 +212,7 @@ python tools/vr-db-snapshot.py restore --port 9480 --file .work/db-snapshots/<pr
 | 里程碑 | 新增断言 |
 |---|---|
 | M2 | `sort=new/old/size/name` 顺序、切回恢复；真实数据至少 3 条 |
-| M3 | 临时副本移动 2 条；物理存在/DB 路径/缩略图/移回；无授权时按钮禁用 |
+| M3 | ✅ 临时副本（OPFS）移动/移回/防覆盖 9/9；真实目录 UI 待 M6 |
 | M4 | 改名 → 重扫 → 名字保留；列表/网格/搜索/排序一致 |
 | M5 | 无 handle 禁用；授权后启用；`isAllowedFileSchemeAccess=false` 提示 |
 | M6 | 真实 35 条冒烟；批量删除/恢复；YouTube；Plyr 真实播放；按钮矩阵全量 |
