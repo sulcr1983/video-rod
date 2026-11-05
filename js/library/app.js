@@ -973,6 +973,75 @@
         function curPreview() {
             return (root.VRPreview && root.VRPreview.current) ? root.VRPreview.current() : null;
         }
+
+        /* ---- 键盘矩阵：列表卡片 Space/Enter、F2、Del、?、Ctrl/Cmd+A ---- */
+        function focusedCard() {
+            var el = document.activeElement;
+            if (!el || !el.closest) { return null; }
+            var card = el.closest('#grid .card');
+            if (!card) { return null; }
+            var id = card.getAttribute('data-id');
+            for (var i = 0; i < FILES.length; i++) {
+                if (FILES[i].id === id) { return FILES[i]; }
+            }
+            return null;
+        }
+        document.addEventListener('keydown', function (e) {
+            var el = document.activeElement;
+            var tag = el ? el.tagName : '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el && el.isContentEditable)) { return; }
+            var preview = document.getElementById('preview');
+            var previewOpen = !!(preview && !preview.classList.contains('hidden'));
+
+            if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                var ks = byId('keysheet');
+                if (ks) { ks.classList.toggle('show'); e.preventDefault(); }
+                return;
+            }
+            if (e.key === 'Escape') {
+                var k = byId('keysheet'); if (k) { k.classList.remove('show'); }
+                var cm = byId('confirmMask'); if (cm) { cm.classList.remove('show'); }
+                closeRename();
+                return;
+            }
+            if ((e.key === ' ' || e.key === 'Enter') && tag !== 'BUTTON' && tag !== 'A') {
+                if (previewOpen) { return; }
+                var f = focusedCard();
+                if (f) { e.preventDefault(); openPreview(f); }
+                return;
+            }
+            if (e.key === 'F2') {
+                var rf = focusedCard() || (previewOpen ? curPreview() : null);
+                if (rf) { e.preventDefault(); openRename(rf); }
+                return;
+            }
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                var df = focusedCard();
+                if (!df) { return; }
+                e.preventDefault();
+                if (!window.__vrPerm || !window.__vrPerm.writable) {
+                    toast('删除素材要先授权素材目录');
+                    return;
+                }
+                ask('把「' + (df.title || df.fileName) + '」移入回收站？文件还能恢复。', async function () {
+                    try {
+                        await root.VRTrash.remove([df.relPath]);
+                        await load();
+                        toast('已移入回收站');
+                    } catch (err) { toast('删除失败：' + ((err && err.message) || '未知')); }
+                });
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A') && !previewOpen) {
+                e.preventDefault();
+                S.select = true;
+                S.sel = new Set((S.list || FILES).map(function (f) { return f.id; }));
+                var sb = byId('selectBtn'); if (sb) { sb.classList.add('is-on'); }
+                var bb = byId('batchbar'); if (bb) { bb.classList.remove('hidden'); }
+                render();
+            }
+        }, true);
+
         on('pvRename', function () { openRename(curPreview()); });
         on('pvDelete', function () {
             var f = curPreview(); if (!f) { return; }

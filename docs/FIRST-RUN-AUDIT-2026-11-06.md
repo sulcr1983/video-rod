@@ -98,6 +98,13 @@
 - 新建收藏夹、批量加入、重载保留、侧栏显示、重命名、当前筛选存为智能夹（35 条）、删除、重载后删除仍生效，**11/11 PASS**。
 - 操作只改 `vrFavs` 设置，不动物理文件；测试后原 30 个收藏夹完全恢复（pre/post 快照相等）。
 
+### 2.7 键盘矩阵
+
+- 列表：Space/Enter 预览、↑/↓ 上一个/下一个、F2 重命名、Del（无授权只提示）、Esc 关闭、Ctrl/Cmd+A 全选、`?` 快捷键面板、`/` 聚焦搜索。
+- 视频：K 播放/暂停、M 静音、`>` 提倍速、数字 5 跳到约 50%。
+- 键盘回归 **17/17 PASS**；真实库未被删除/改名。
+- 仍未实现/未验证：图片 `+/-/0/1/R` 和 GIF 的 `, . L 0` 等帮助文案中的键位；下一步单独做图片工具栏/GIF 键位。
+
 ---
 
 ## 3. 这次抓到的真实问题
@@ -164,6 +171,7 @@
 | 首次使用黑盒结果 | `deliverables/test-runs/first-run-audit.json`（48 条） |
 | 首次使用脚本 | `tools/first-run-audit.py` |
 | 收藏夹回归 | `tools/library-favorites-e2e.py`（11/11） |
+| 键盘回归 | `tools/library-keyboard-e2e.py`（17/17） |
 | 回收站修复 | `js/library/trash.js` |
 | P0 回归矩阵 | `docs/TEST-MATRIX-P0.md` |
 | 真实库基线 | `.work/db-snapshots/vr-library-pre-audit.json`（35 条） |
