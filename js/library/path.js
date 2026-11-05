@@ -19,6 +19,9 @@
         xiaohongshu: '小红书',
         x: 'X',
         youtube: 'YouTube',
+        douyin: '抖音',
+        weibo: '微博',
+        instagram: 'Instagram',
         web: '其他网页'
     };
 
@@ -28,6 +31,27 @@
         image: '图片',
         audio: '音频',
         other: '其他'
+    };
+
+    /**
+     * 兼容早期/特例落盘的英文目录段（IG 走 background.js 硬编码 'instagram/videos'）。
+     * 只用于「反解识别」，不改写入规则——老文件认得出、新文件仍走中文字典。
+     */
+    var PLATFORM_ALIAS = {
+        instagram: 'instagram', ig: 'instagram',
+        douyin: 'douyin', tiktok: 'douyin',
+        weibo: 'weibo',
+        bilibili: 'bilibili', b站: 'bilibili',
+        xiaohongshu: 'xiaohongshu', xhs: 'xiaohongshu',
+        youtube: 'youtube', yt: 'youtube',
+        x: 'x', twitter: 'x',
+        web: 'web'
+    };
+
+    var TYPE_ALIAS = {
+        videos: 'video', video: 'video',
+        images: 'image', image: 'image', photos: 'image',
+        audios: 'audio', audio: 'audio', music: 'audio'
     };
 
     /** 扩展名 → 类型 */
@@ -89,6 +113,9 @@
         if (/(^|\.)xiaohongshu\.com$/.test(host) || /(^|\.)xhslink\.com$/.test(host)) { return 'xiaohongshu'; }
         if (host === 'x.com' || /(^|\.)twitter\.com$/.test(host)) { return 'x'; }
         if (/(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)) { return 'youtube'; }
+        if (/(^|\.)douyin\.com$/.test(host) || /(^|\.)iesdouyin\.com$/.test(host)) { return 'douyin'; }
+        if (/(^|\.)weibo\.com$/.test(host) || /(^|\.)weibo\.cn$/.test(host)) { return 'weibo'; }
+        if (/(^|\.)instagram\.com$/.test(host)) { return 'instagram'; }
         return 'web';
     }
 
@@ -238,18 +265,29 @@
         };
         var pIdx = -1, k, i, t;
         for (i = 1; i < segs.length && pIdx < 0; i++) {
+            /* ① 先按中文目录名（现行写入规则） */
             for (k in PLATFORM_DIR) {
                 if (PLATFORM_DIR[k] === segs[i]) { out.platform = k; out.platformName = segs[i]; pIdx = i; break; }
+            }
+            /* ② 再兼容英文/别名目录（早期特例：instagram/videos、douyin、weibo…） */
+            if (pIdx < 0) {
+                var alias = PLATFORM_ALIAS[String(segs[i]).toLowerCase()];
+                if (alias) {
+                    out.platform = alias;
+                    out.platformName = PLATFORM_DIR[alias] || segs[i];
+                    pIdx = i;
+                }
             }
         }
         if (pIdx > 0) {
             out.creatorFull = segs[pIdx + 1] || '';
             var m = out.creatorFull.match(/\(@([^)]+)\)/);
             if (m) { out.creatorId = m[1]; }
-            var tSeg = segs[pIdx + 2] || '';
+            var tSeg = String(segs[pIdx + 2] || '').toLowerCase();
             for (t in TYPE_DIR) {
-                if (TYPE_DIR[t] === tSeg) { out.type = t; break; }
+                if (TYPE_DIR[t] === segs[pIdx + 2]) { out.type = t; break; }
             }
+            if (!out.type && TYPE_ALIAS[tSeg]) { out.type = TYPE_ALIAS[tSeg]; }
         }
         return out;
     }
@@ -264,6 +302,8 @@
     root.VRPath = {
         PLATFORM_DIR: PLATFORM_DIR,
         TYPE_DIR: TYPE_DIR,
+        PLATFORM_ALIAS: PLATFORM_ALIAS,
+        TYPE_ALIAS: TYPE_ALIAS,
         MAX_REL_LEN: MAX_REL_LEN,
         detectPlatform: detectPlatform,
         typeOf: typeOf,

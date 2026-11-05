@@ -1,402 +1,299 @@
 /* ==========================================================
- * VRViewer —— 资源库全屏查看器（S4）
- *
- * 能力：队列翻页、图片缩放/拖拽、信息面板、缩略图带、
- *       视频自绘控件（交给 VRVideo）、键盘（交给 VRKeys）。
- * 依赖：VRVideo、VRKeys、VRThumbs（可选）；挂 self.VRViewer。
+ * VR Preview —— 原型 .preview 复刻（R5）
+ * 真源：media-library-stage-v1.html 的 openPreview / paintInfo / 控件
+ * 数据：真实 file:// URL（VRPath.toFileUrl），缺 absPath 时提示
  * ========================================================== */
-(function (root) {
+(function () {
     'use strict';
-
-    var cb = {};
-    var list = [];
-    var idx = -1;
-    var cur = null;
-    var infoOpen = true;
-    var bound = false;
-
-    var scale = 1;
-    var tx = 0;
-    var ty = 0;
-    var drag = null;
-
-    var el = {};
-    var imgEl = null;
-
-    function $(id) { return document.getElementById(id); }
-
-    function esc(s) {
-        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    var root = window;
+    var $ = function (s) { return document.querySelector(s); };
+    var esc = function (s) {
+        return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
         });
+    };
+    function fmt(mb) {
+        var n = Number(mb) || 0;
+        if (n >= 1024) { return (n / 1024).toFixed(1) + ' GB'; }
+        if (n >= 1) { return n.toFixed(1) + ' MB'; }
+        return Math.round(n * 1024) + ' KB';
     }
+
+    var PLAT = {
+        x: { label: 'X', dot: '#8FA0B8' }, xiaohongshu: { label: '小红书', dot: '#FF2442' },
+        douyin: { label: '抖音', dot: '#25C8D4' }, weibo: { label: '微博', dot: '#E6506D' },
+        youtube: { label: 'YouTube', dot: '#FF0000' }, instagram: { label: 'Instagram', dot: '#C13584' },
+        bilibili: { label: 'B站', dot: '#FB7299' }, web: { label: '网页', dot: '#8B93A1' }
+    };
+    var KIND_LABEL = { video: '视频', image: '图片', anim: '动图', audio: '音频', other: '其他' };
+
+    var S = { list: [], idx: 0, info: true, auto: true, rate: 1 };
+    var el = {};
+    var videoEl = null;
 
     function cache() {
-        el.viewer = $('libViewer');
-        el.stage = $('libViewerStage');
-        el.title = $('libViewerTitle');
-        el.meta = $('libViewerMeta');
-        el.count = $('libViewerCount');
-        el.facts = $('libViewerFacts');
-        el.panel = $('libViewerInfo');
-        el.strip = $('libViewerStrip');
-        el.imgCtl = $('libImageCtl');
-        el.videoCtl = $('libVideoCtl');
-        el.zoomVal = $('libViewerZoomVal');
-        el.prev = $('libViewerPrev');
-        el.next = $('libViewerNext');
+        ['preview', 'pvCrumb', 'pvCount', 'pvTitle', 'pvPlat', 'pvType', 'pvMedia',
+            'pvPrev', 'pvNext', 'pvClose', 'pvBack', 'pvInfoBtn', 'pvFullBtn', 'pvFilm',
+            'pvAuthorRow', 'pvAvatar', 'pvAuthor', 'pvOpenTop', 'pvStateRow', 'pvState',
+            'st1v', 'st2v', 'st3v', 'pvThirdRow', 'pvThirdK', 'pvThirdV',
+            'pvSaved', 'pvPath', 'pvPathCopy', 'pvSrcBadge', 'pvPageRow', 'pvPageVal',
+            'pvSrcMiss', 'pvWorkId', 'pvTags',
+            'vCtl', 'vPlay', 'vCur', 'vDur', 'vProg', 'vFill', 'vRate', 'ratePop', 'rpGrid',
+            'imgBar', 'gifBar'].forEach(function (id) { el[id] = document.getElementById(id); });
     }
 
-    function init(options) {
-        cb = options || {};
-        cache();
-        bind();
+    function urlOf(f) {
+        if (!f || !f.absPath || !root.VRPath) { return ''; }
+        try { return root.VRPath.toFileUrl(f.absPath); } catch (e) { return ''; }
+    }
+    function fmtDur(sec) {
+        var s = Math.round(Number(sec) || 0);
+        var m = Math.floor(s / 60), r = s % 60;
+        return (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
+    }
+    function setTxt(id, v) { var e = document.getElementById(id); if (e) { e.textContent = v; } }
+    function show(id, on) { var e = document.getElementById(id); if (e) { e.classList.toggle('hidden', !on); } }
+
+    function renderStage(f) {
+        var stage = $('#pvMedia');
+        if (!stage) { return; }
+        stage.innerHTML = '';
+        videoEl = null;
+        var url = urlOf(f);
+        var kind = f.kind;
+
+        show('vCtl', kind === 'video');
+        show('imgBar', kind === 'image');
+        show('gifBar', kind === 'anim');
+
+        if (!url) {
+            stage.innerHTML = '<div class="viewer-missing">没有本地路径，无法预览（文件可能已移动）</div>';
+            return;
+        }
+        if (kind === 'video') {
+            var v = document.createElement('video');
+            v.src = url; v.preload = 'metadata'; v.playsInline = true; v.controls = false;
+            v.addEventListener('loadedmetadata', function () {
+                setTxt('st1v', v.videoWidth + '×' + v.videoHeight);
+                setTxt('vDur', fmtDur(v.duration));
+            });
+            v.addEventListener('timeupdate', function () {
+                setTxt('vCur', fmtDur(v.currentTime));
+                if (el.vFill && v.duration) { el.vFill.style.width = (v.currentTime / v.duration * 100) + '%'; }
+            });
+            v.addEventListener('ended', function () { if (S.auto) { step(1); } });
+            v.playbackRate = S.rate;
+            stage.appendChild(v);
+            videoEl = v;
+            v.play().catch(function () { });
+            setTxt('st1v', '—');
+            setTxt('vDur', f.dur || '—');
+        } else if (kind === 'image' || kind === 'anim') {
+            var img = document.createElement('img');
+            img.alt = f.title; img.draggable = false;
+            img.addEventListener('load', function () { setTxt('st1v', img.naturalWidth + '×' + img.naturalHeight); });
+            img.src = url;
+            stage.appendChild(img);
+            setTxt('st1v', '—');
+        } else {
+            var a = document.createElement('audio');
+            a.src = url; a.controls = true;
+            stage.appendChild(a);
+            a.play().catch(function () { });
+            setTxt('st1v', '—');
+        }
     }
 
-    function bind() {
-        if (bound || !el.viewer) { return; }
-        bound = true;
+    function paintInfo(f) {
+        var p = PLAT[f.plat] || PLAT.web;
+        if (el.pvCrumb) { el.pvCrumb.innerHTML = '<b>' + esc(p.label) + '</b> / ' + esc(f.author || '未分类'); }
+        setTxt('pvCount', (S.idx + 1) + ' / ' + S.list.length);
+        setTxt('pvType', (KIND_LABEL[f.kind] || '媒体').toUpperCase());
+        setTxt('pvTitle', f.title);
 
-        $('libViewerClose').addEventListener('click', close);
-        el.prev.addEventListener('click', function () { step(-1); });
-        el.next.addEventListener('click', function () { step(1); });
-        $('libViewerInfoBtn').addEventListener('click', toggleInfo);
-        $('libViewerOpen').addEventListener('click', openInFile);
-        $('libViewerOpen2').addEventListener('click', openInFile);
-        $('libViewerCopyPath').addEventListener('click', copyPath);
-
-        $('libViewerZoomIn').addEventListener('click', function () { zoomAt(0, 0, 1.25); });
-        $('libViewerZoomOut').addEventListener('click', function () { zoomAt(0, 0, 0.8); });
-        $('libViewerZoomReset').addEventListener('click', resetZoom);
-
-        el.viewer.addEventListener('click', function (ev) {
-            if (ev.target === el.viewer) { close(); }
-        });
-
-        el.stage.addEventListener('click', function (ev) {
-            if (ev.target === el.stage && !drag) { close(); }
-        });
-
-        el.stage.addEventListener('wheel', function (ev) {
-            if (!imgEl || ev.target !== imgEl) { return; }
-            ev.preventDefault();
-            var r = el.stage.getBoundingClientRect();
-            var cx = ev.clientX - r.left - r.width / 2;
-            var cy = ev.clientY - r.top - r.height / 2;
-            zoomAt(cx, cy, ev.deltaY < 0 ? 1.12 : 0.89);
-        }, { passive: false });
-
-        el.stage.addEventListener('pointerdown', function (ev) {
-            if (!imgEl || scale <= 1) { return; }
-            drag = {
-                x: ev.clientX - tx,
-                y: ev.clientY - ty,
-                moved: 0,
-                startX: ev.clientX,
-                startY: ev.clientY
-            };
-            imgEl.classList.add('dragging');
-            try { el.stage.setPointerCapture(ev.pointerId); } catch (e) { /* 忽略 */ }
-        });
-
-        el.stage.addEventListener('pointermove', function (ev) {
-            if (!drag) { return; }
-            drag.moved = Math.max(drag.moved,
-                Math.abs(ev.clientX - drag.startX) + Math.abs(ev.clientY - drag.startY));
-            tx = ev.clientX - drag.x;
-            ty = ev.clientY - drag.y;
-            applyZoom();
-        });
-
-        function endDrag() {
-            if (!drag) { return; }
-            var moved = drag.moved;
-            drag = null;
-            if (imgEl) { imgEl.classList.remove('dragging'); }
-            // 拖拽结束后的 click 不应关闭查看器
-            if (moved > 3) {
-                var stop = function (ev) { ev.stopPropagation(); };
-                el.stage.addEventListener('click', stop, { once: true });
+        if (el.pvPlat) {
+            el.pvPlat.innerHTML = '<i class="dot" style="--pc:' + p.dot + '"></i>' + esc(p.label) + ' · ' + (KIND_LABEL[f.kind] || '');
+        }
+        if (el.pvAuthorRow) {
+            var hasAuthor = !!f.author;
+            el.pvAuthorRow.style.display = hasAuthor ? '' : 'none';
+            if (hasAuthor) {
+                setTxt('pvAvatar', f.author.slice(0, 1));
+                el.pvAuthor.innerHTML = esc(f.author) + (f.authorId ? ' <em>@' + esc(f.authorId) + '</em>' : '');
+                el.pvAuthorRow.href = f.pageUrl || '#';
             }
         }
-
-        el.stage.addEventListener('pointerup', endDrag);
-        el.stage.addEventListener('pointercancel', endDrag);
-        el.stage.addEventListener('dblclick', function () { resetZoom(); });
-
-        el.strip.addEventListener('click', function (ev) {
-            var b = ev.target.closest('[data-rel]');
-            if (b) { open(b.dataset.rel); }
-        });
-
-        if (root.VRKeys) { root.VRKeys.on(onKey); }
-    }
-
-    /* ---------------- 开关与队列 ---------------- */
-
-    function isOpen() {
-        return !!(el.viewer && !el.viewer.hidden);
-    }
-
-    function open(relPath) {
-        list = (cb.getList && cb.getList()) || [];
-        if (!list.length) { return; }
-        var i = -1;
-        for (var k = 0; k < list.length; k++) {
-            if (list[k].relPath === relPath) { i = k; break; }
-        }
-        if (i < 0) { return; }
-        idx = i;
-        el.viewer.hidden = false;
-        document.body.classList.add('viewer-open');
-        paint();
-    }
-
-    function close() {
-        if (!el.viewer) { return; }
-        root.VRVideo.destroy();
-        el.stage.innerHTML = '';
-        el.strip.innerHTML = '';
-        el.viewer.hidden = true;
-        document.body.classList.remove('viewer-open');
-        cur = null;
-        imgEl = null;
-        idx = -1;
-        resetZoom();
-    }
-
-    function step(n) {
-        if (list.length < 2) { return; }
-        idx = (idx + n + list.length) % list.length;
-        paint();
-    }
-
-    function paint() {
-        cur = list[idx];
-        if (!cur) { return; }
-
-        el.title.textContent = cb.fileName ? cb.fileName(cur) : cur.fileName;
-        el.meta.textContent = [
-            cb.platformName ? cb.platformName(cur) : cur.platformName,
-            cb.creatorName ? cb.creatorName(cur) : cur.creatorFull,
-            cb.formatBytes ? cb.formatBytes(cur.size) : ''
-        ].filter(Boolean).join(' · ');
-        el.count.textContent = (idx + 1) + ' / ' + list.length;
-        el.prev.disabled = list.length < 2;
-        el.next.disabled = list.length < 2;
-
-        paintFacts();
-        paintStrip();
-
-        root.VRVideo.destroy();
-        el.stage.innerHTML = '';
-        imgEl = null;
-        resetZoom();
-        el.imgCtl.hidden = true;
-
-        var url = (cur.absPath && cb.getUrl) ? cb.getUrl(cur) : '';
-        if (cur.state === 'missing' || !url) {
-            el.stage.innerHTML = '<div class="viewer-missing">文件已不在原位置，可用「在文件中打开」重新定位</div>';
-            return;
+        if (el.pvOpenTop) {
+            if (f.pageUrl) { el.pvOpenTop.href = f.pageUrl; el.pvOpenTop.classList.remove('hidden'); }
+            else { el.pvOpenTop.classList.add('hidden'); }
         }
 
-        if (cur.type === 'image') {
-            var img = document.createElement('img');
-            img.alt = cb.fileName ? cb.fileName(cur) : '';
-            img.draggable = false;
-            img.addEventListener('load', function () {
-                setFact('dim', img.naturalWidth + ' × ' + img.naturalHeight);
-            });
-            img.src = url;
-            el.stage.appendChild(img);
-            imgEl = img;
-            el.imgCtl.hidden = false;
-            return;
+        setTxt('st2v', fmt(f.size));
+        setTxt('st3v', f.savedAt || '—');
+        if (el.pvThirdRow) {
+            var showThird = (f.kind === 'video' || f.kind === 'anim');
+            el.pvThirdRow.classList.toggle('hidden', !showThird);
+            if (showThird) {
+                el.pvThirdK.innerHTML = '<svg class="k-ico"><use href="#i-clock"/></svg>' + (f.kind === 'video' ? '时长' : '帧数');
+                setTxt('pvThirdV', f.kind === 'video' ? (f.dur || '—') : (f.frames ? f.frames + ' 帧' : '—'));
+            }
         }
+        setTxt('pvSaved', f.savedAt || '—');
+        setTxt('pvPath', f.relPath);
+        show('pvStateRow', f.state === 'missing');
+        setTxt('pvState', f.state === 'missing' ? '文件缺失' : '正常');
 
-        if (cur.type === 'video') {
-            var v = document.createElement('video');
-            v.src = url;
-            v.preload = 'metadata';
-            v.playsInline = true;
-            v.addEventListener('loadedmetadata', function () {
-                setFact('dim', v.videoWidth + ' × ' + v.videoHeight);
-                setFact('duration', fmt(v.duration));
-            });
-            el.stage.appendChild(v);
-            root.VRVideo.attach(v, {
-                onEnded: function () {
-                    if (idx < list.length - 1) { step(1); }
-                }
-            });
-            var p = v.play();
-            if (p && p.catch) { p.catch(function () { /* 无用户手势时保持暂停 */ }); }
-            return;
+        var hasPage = !!f.pageUrl;
+        show('pvSrcMiss', !hasPage);
+        if (el.pvPageRow) {
+            el.pvPageRow.classList.toggle('hidden', !hasPage);
+            if (hasPage) { el.pvPageRow.href = f.pageUrl; setTxt('pvPageVal', f.pageUrl); }
         }
+        if (el.pvSrcBadge) {
+            el.pvSrcBadge.innerHTML = hasPage
+                ? '<svg class="i"><use href="#i-circle-check"/></svg>已记录'
+                : '未记录';
+        }
+        setTxt('pvWorkId', f.workId || '—');
 
-        el.stage.innerHTML = '<div class="viewer-missing">该类型暂不支持预览，可用「在文件中打开」</div>';
+        if (el.pvTags) {
+            el.pvTags.innerHTML = (f.tags && f.tags.length)
+                ? f.tags.map(function (t) { return '<span class="pv-tag">' + esc(t) + '</span>'; }).join('')
+                : '<span class="pv-tag empty">还没有标签</span>';
+        }
     }
 
-    /* ---------------- 信息面板 ---------------- */
-
-    function setFact(key, value) {
-        if (!el.facts) { return; }
-        var dd = el.facts.querySelector('[data-k="' + key + '"] dd');
-        if (dd) { dd.textContent = value; }
-    }
-
-    function paintFacts() {
-        var rows = [
-            ['platform', '平台', cb.platformName ? cb.platformName(cur) : ''],
-            ['creator', '博主', cb.creatorName ? cb.creatorName(cur) : ''],
-            ['title', '标题', cur.title || ''],
-            ['file', '文件名', cb.fileName ? cb.fileName(cur) : ''],
-            ['type', '类型', cb.typeLabel ? cb.typeLabel(cur.type) : cur.type],
-            ['size', '大小', cb.formatBytes ? cb.formatBytes(cur.size) : ''],
-            ['dim', '尺寸', '—'],
-            ['duration', '时长', cur.duration ? fmt(cur.duration) : '—'],
-            ['path', '相对路径', cur.relPath],
-            ['url', '原始地址', cur.sourceUrl || '—'],
-            ['date', '下载时间', cb.formatDate ? (cb.formatDate(cur.mtime, true) || '—') : '—'],
-            ['state', '状态', cur.state === 'missing' ? '文件缺失' : '正常']
-        ];
-
-        el.facts.innerHTML = rows.filter(function (r) { return r[2] !== ''; }).map(function (r) {
-            return '<div class="fact" data-k="' + r[0] + '"><dt>' + esc(r[1]) + '</dt><dd>' +
-                esc(r[2]) + '</dd></div>';
+    function paintFilm() {
+        if (!el.pvFilm) { return; }
+        el.pvFilm.innerHTML = S.list.map(function (f, i) {
+            return '<button class="film' + (i === S.idx ? ' on' : '') + '" data-i="' + i + '" title="' + esc(f.title) + '">' +
+                esc(String(f.title).slice(0, 16)) + '</button>';
         }).join('');
     }
 
-    function toggleInfo() {
-        infoOpen = !infoOpen;
-        el.viewer.classList.toggle('no-info', !infoOpen);
-        var btn = $('libViewerInfoBtn');
-        if (btn) { btn.setAttribute('aria-pressed', String(infoOpen)); }
+    function open(f, list) {
+        if (!f) { return; }
+        var arr = (list && list.length) ? list : [f];
+        var i = -1;
+        for (var k = 0; k < arr.length; k++) { if (arr[k].id === f.id) { i = k; break; } }
+        S.list = arr; S.idx = i < 0 ? 0 : i;
+        cache();
+        if (!el.preview) { return; }
+        el.preview.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        render();
     }
 
-    function openInFile() {
-        if (!cur || !cb.getUrl) { return; }
-        try { chrome.tabs.create({ url: cb.getUrl(cur) }); } catch (e) { /* 忽略 */ }
+    function render() {
+        var f = S.list[S.idx];
+        if (!f) { return; }
+        renderStage(f);
+        paintInfo(f);
+        paintFilm();
     }
 
-    function copyPath() {
-        if (!cur) { return; }
-        var text = cur.absPath || cur.relPath;
-        var btn = $('libViewerCopyPath');
-        function done() {
-            if (!btn) { return; }
-            var old = btn.textContent;
-            btn.textContent = '已复制';
-            setTimeout(function () { btn.textContent = old; }, 1200);
+    function close() {
+        if (el.preview) { el.preview.classList.add('hidden'); }
+        document.body.style.overflow = '';
+        var stage = $('#pvMedia'); if (stage) { stage.innerHTML = ''; }
+        videoEl = null;
+    }
+
+    function step(d) {
+        if (!S.list.length) { return; }
+        S.idx = (S.idx + d + S.list.length) % S.list.length;
+        render();
+    }
+
+    function bind() {
+        if (el.vPlay) {
+            el.vPlay.addEventListener('click', function () {
+                if (!videoEl) { return; }
+                if (videoEl.paused) { videoEl.play().catch(function () { }); } else { videoEl.pause(); }
+            });
         }
-        try {
-            navigator.clipboard.writeText(text).then(done, done);
-        } catch (e) { done(); }
-    }
-
-    /* ---------------- 缩略图带 ---------------- */
-
-    function paintStrip() {
-        if (!el.strip) { return; }
-        var start = Math.max(0, idx - 12);
-        var end = Math.min(list.length, idx + 13);
-        var html = '';
-
-        for (var i = start; i < end; i++) {
-            var e = list[i];
-            var label = cb.typeLabel ? cb.typeLabel(e.type) : '';
-            html += '<button type="button" class="strip-item' + (i === idx ? ' on' : '') + '" ' +
-                'data-rel="' + esc(e.relPath) + '" title="' +
-                esc(cb.fileName ? cb.fileName(e) : e.fileName) + '">' +
-                '<span class="strip-ph">' + esc(label) + '</span>' +
-                '<img alt="" data-thumb="' + esc(e.relPath) + '">' +
-                (e.duration ? '<i class="sd">' + fmt(e.duration) + '</i>' : '') +
-                '</button>';
-            if (root.VRThumbs) { root.VRThumbs.enqueue(e); }
+        if (el.vProg) {
+            el.vProg.addEventListener('click', function (e) {
+                if (!videoEl || !videoEl.duration) { return; }
+                var r = el.vProg.getBoundingClientRect();
+                var p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+                videoEl.currentTime = p * videoEl.duration;
+            });
         }
-        el.strip.innerHTML = html;
-
-        var active = el.strip.querySelector('.strip-item.on');
-        if (active && active.scrollIntoView) {
-            active.scrollIntoView({ block: 'nearest', inline: 'center' });
+        if (el.vRate) {
+            el.vRate.addEventListener('click', function () {
+                if (!el.ratePop) { return; }
+                el.ratePop.classList.toggle('on');
+                buildRates();
+            });
         }
-    }
-
-    /* ---------------- 缩放 ---------------- */
-
-    function applyZoom() {
-        if (!imgEl) { return; }
-        imgEl.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
-        if (el.zoomVal) { el.zoomVal.textContent = Math.round(scale * 100) + '%'; }
-    }
-
-    function zoomAt(cx, cy, factor) {
-        if (!imgEl) { return; }
-        var next = Math.min(5, Math.max(1, scale * factor));
-        if (Math.abs(next - scale) < 0.001) { return; }
-        var k = next / scale;
-        tx = cx - (cx - tx) * k;
-        ty = cy - (cy - ty) * k;
-        scale = next;
-        if (scale === 1) { tx = 0; ty = 0; }
-        applyZoom();
-    }
-
-    function resetZoom() {
-        scale = 1;
-        tx = 0;
-        ty = 0;
-        if (imgEl) { applyZoom(); }
-        if (el.zoomVal) { el.zoomVal.textContent = '100%'; }
-    }
-
-    function fmt(sec) {
-        sec = Math.max(0, Math.floor(Number(sec) || 0));
-        var h = Math.floor(sec / 3600);
-        var m = Math.floor((sec % 3600) / 60);
-        var s = sec % 60;
-        if (h) { return h + ':' + ('0' + m).slice(-2) + ':' + ('0' + s).slice(-2); }
-        return m + ':' + ('0' + s).slice(-2);
-    }
-
-    /* ---------------- 键盘 ---------------- */
-
-    function onKey(ev) {
-        if (!isOpen() || !cur) { return false; }
-
-        if (ev.key === 'Escape') { close(); return true; }
-        if (ev.key === 'i' || ev.key === 'I') { toggleInfo(); return true; }
-
-        var isVideo = cur.type === 'video';
-
-        if (isVideo) {
-            if (ev.code === 'Space' || ev.key === ' ') { root.VRVideo.toggle(); return true; }
-            if (ev.key === 'ArrowLeft') { root.VRVideo.seekBy(ev.shiftKey ? -30 : -5); return true; }
-            if (ev.key === 'ArrowRight') { root.VRVideo.seekBy(ev.shiftKey ? 30 : 5); return true; }
-            if (ev.key === 'ArrowUp') { step(-1); return true; }
-            if (ev.key === 'ArrowDown') { step(1); return true; }
-            return false;
+        function buildRates() {
+            if (!el.rpGrid) { return; }
+            var rates = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+            el.rpGrid.innerHTML = rates.map(function (r) {
+                return '<button data-r="' + r + '" class="' + (Math.abs(r - S.rate) < 0.001 ? 'on' : '') + '">' + r + '×</button>';
+            }).join('');
+        }
+        if (el.rpGrid) {
+            el.rpGrid.addEventListener('click', function (e) {
+                var b = e.target.closest('button'); if (!b) { return; }
+                S.rate = Number(b.dataset.r) || 1;
+                if (videoEl) { videoEl.playbackRate = S.rate; }
+                setTxt('vRate', S.rate + '×');
+                if (el.ratePop) { el.ratePop.classList.remove('on'); }
+                buildRates();
+            });
+        }
+        if (el.pvPrev) { el.pvPrev.addEventListener('click', function () { step(-1); }); }
+        if (el.pvNext) { el.pvNext.addEventListener('click', function () { step(1); }); }
+        if (el.pvClose) { el.pvClose.addEventListener('click', close); }
+        if (el.pvBack) { el.pvBack.addEventListener('click', close); }
+        if (el.pvInfoBtn) {
+            el.pvInfoBtn.addEventListener('click', function () {
+                S.info = !S.info;
+                el.preview.classList.toggle('no-info', !S.info);
+                el.pvInfoBtn.classList.toggle('on', S.info);
+            });
+        }
+        if (el.pvFullBtn) {
+            el.pvFullBtn.addEventListener('click', function () {
+                if (!document.fullscreenElement) { if (el.preview.requestFullscreen) { el.preview.requestFullscreen(); } }
+                else if (document.exitFullscreen) { document.exitFullscreen(); }
+            });
+        }
+        if (el.pvFilm) {
+            el.pvFilm.addEventListener('click', function (e) {
+                var b = e.target.closest('.film'); if (!b) { return; }
+                S.idx = Number(b.dataset.i) || 0; render();
+            });
+        }
+        if (el.pvPathCopy) {
+            el.pvPathCopy.addEventListener('click', function () {
+                var f = S.list[S.idx]; if (!f) { return; }
+                navigator.clipboard.writeText(f.relPath).then(function () {
+                    if (root.VRApp) { root.VRApp.toast('路径已复制'); }
+                });
+            });
         }
 
-        if (cur.type === 'image') {
-            if (ev.key === 'ArrowLeft') { step(-1); return true; }
-            if (ev.key === 'ArrowRight') { step(1); return true; }
-            if (ev.key === '+' || ev.key === '=') { zoomAt(0, 0, 1.25); return true; }
-            if (ev.key === '-') { zoomAt(0, 0, 0.8); return true; }
-            if (ev.key === '0') { resetZoom(); return true; }
-        }
-        return false;
+        document.addEventListener('keydown', function (e) {
+            if (!el.preview || el.preview.classList.contains('hidden')) { return; }
+            var tag = (document.activeElement && document.activeElement.tagName) || '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA') { return; }
+            if (e.key === 'Escape') { close(); }
+            else if (e.key === 'ArrowLeft') { step(-1); }
+            else if (e.key === 'ArrowRight') { step(1); }
+            else if (e.key === 'i' || e.key === 'I') { if (el.pvInfoBtn) { el.pvInfoBtn.click(); } }
+            else if (e.key === ' ' && videoEl) { e.preventDefault(); if (videoEl.paused) { videoEl.play(); } else { videoEl.pause(); } }
+        });
     }
 
-    root.VRViewer = {
-        init: init,
-        open: open,
-        close: close,
-        step: step,
-        isOpen: isOpen,
-        toggleInfo: toggleInfo,
-        current: function () { return cur; },
-        _resetZoom: resetZoom,
-        _zoom: function () { return scale; }
-    };
-})(typeof self !== 'undefined' ? self : this);
+    function init() {
+        cache();
+        if (!el.preview) { return; }
+        bind();
+    }
+    if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
+
+    root.VRPreview = { open: open, close: close };
+})();
