@@ -222,9 +222,11 @@
 
     function paintFilm() {
         if (!el.pvFilm) { return; }
+        // 原型（media-library-stage-v1.html 3226 行）：胶片条是 96×66 的编号缩略图按钮，
+        // 文字放 .fno 角标。原先塞 16 字文件名会把一排按钮挤糊，违反设计真源。
         el.pvFilm.innerHTML = S.list.map(function (f, i) {
             return '<button class="film' + (i === S.idx ? ' on' : '') + '" data-i="' + i + '" title="' + esc(f.title) + '">' +
-                esc(String(f.title).slice(0, 16)) + '</button>';
+                '<span class="fno">' + (i + 1) + '</span></button>';
         }).join('');
     }
 

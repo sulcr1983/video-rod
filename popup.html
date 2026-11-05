@@ -40,7 +40,7 @@
         <path d="M20.4 43 L25 41.2 L25 44.8 Z" fill="#C98F2E" />
         <circle cx="13.6" cy="42.6" r=".9" fill="#17130D" />
       </svg>
-      <div class="pop-title">苏哥的钓鱼竿<small>video-rod</small></div>
+      <div class="pop-title">苏哥的钓鱼竿</div>
       <span class="ver" id="vrVer">v1.0</span>
       <button class="iconbtn" id="btnSettings" title="设置">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -65,11 +65,28 @@
       </button>
     </div>
 
-    <!-- ============ 两行式头部 ①：站点 · 标题 · 数量 + 页签（文字，靠右） ============ -->
+    <!-- ============ 头部 ①：站点 · 标题 · 数量 ============ -->
     <div class="sitebar">
       <span class="site" id="vrSite">—</span>
       <span class="ptitle" id="vrPageTitle"></span>
       <span class="count">嗅探到 <b id="vrCount">0</b> 个</span>
+    </div>
+
+    <!-- ============ 头部 ②：本页概览（类型 / 存到哪 / 默认画质） ============ -->
+    <div class="overview" id="vrOverview">
+      <div class="ov-types">
+        <button class="ovt" data-ot="video" title="只看视频"><b id="vrOvVideo">0</b> 视频</button>
+        <button class="ovt" data-ot="img" title="只看图片"><b id="vrOvImg">0</b> 图片</button>
+        <button class="ovt" data-ot="stream" title="只看流媒体"><b id="vrOvStream">0</b> 流</button>
+      </div>
+      <button class="ov-save" id="vrOvSave" title="默认下载目录，点开可改">
+        <span class="dir" id="vrOvDir">video-rod</span>
+      </button>
+      <button class="ov-q" id="vrOvQ" title="默认最高画质，点开可切换">画质 最高</button>
+    </div>
+
+    <!-- ============ 头部 ③：页签（猫抓原生 .Tabs 结构不动，只挪到独立行） ============ -->
+    <div class="tabs">
       <div class="Tabs vr-tabs">
         <div id="currentTab" class="TabButton Active" title="Current Page">
           <span data-i18n-outer="currentPage"></span>
@@ -83,9 +100,10 @@
           <span data-i18n-outer="possibleKey"></span>
         </div>
       </div>
+      <label class="tab-ignore"><input type="checkbox" id="vrIgnoreDone" checked> 忽略已下载</label>
     </div>
 
-    <!-- ============ 两行式头部 ②：类型筛选（文字，选中下划线） ============ -->
+    <!-- ============ 头部 ④：类型筛选（文字，选中下划线） ============ -->
     <div class="filters" id="vrFilters">
       <button class="fchip on" data-f="all">全部 <b>0</b></button>
       <button class="fchip" data-f="video">视频 <b>0</b></button>

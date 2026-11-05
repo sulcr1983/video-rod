@@ -43,16 +43,17 @@
 
 /* ---------- 外壳 ---------- */
 html {
-    background: var(--vr-bg);
+    background: var(--vr-bg-deep);
 }
 
 body.popupBody {
-    width: 400px;
-    min-width: 400px;
-    max-width: 400px;
+    /* 原型 popup 固定 380×560；400 会让 .filters 右缘「抓图」被裁掉 20px */
+    width: 380px;
+    min-width: 380px;
+    max-width: 380px;
     font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    font-size: 12px;
-    background: var(--vr-bg);
+    font-size: 13px;
+    background: var(--vr-bg-deep);
     color: var(--vr-text);
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
@@ -62,7 +63,7 @@ body.popupBody {
     display: flex;
     flex-direction: column;
     max-height: 600px;
-    background: var(--vr-bg);
+    background: var(--vr-bg-deep);
 }
 
 #vrShell :focus-visible {
@@ -1791,3 +1792,65 @@ body.popupBody {
     line-height: 1.8;
     margin-top: 12px;
 }
+
+/* ==========================================================
+ * 原型对齐补充（2026-11-05 纠偏；真源 popup-stage-v1.html 下半部面板）
+ * 补原型有、当前缺的两行：本页概览条 + 独立页签行。
+ * 猫抓原生 #currentTab/#allTab/#quantity 结构完全不动，只挪位置。
+ * ========================================================== */
+.overview {
+    display: flex; align-items: center; gap: 8px; flex: none;
+    padding: 8px 13px; background: var(--vr-card);
+    border-bottom: 1px solid var(--vr-line-2);
+}
+.ov-types { display: flex; gap: 4px; }
+.ovt {
+    display: inline-flex; align-items: center; gap: 4px; height: 26px;
+    padding: 0 9px; border-radius: 7px; border: none;
+    background: var(--vr-card-hi); color: var(--vr-text-dim);
+    font-size: 11px; font-family: inherit; cursor: pointer;
+}
+.ovt:hover { background: var(--vr-hover); }
+.ovt b { font-weight: 700; color: var(--vr-accent); font-variant-numeric: tabular-nums; }
+.ov-save {
+    display: inline-flex; align-items: center; gap: 5px; height: 26px;
+    padding: 0 9px; border-radius: 7px; border: none; background: none;
+    color: var(--vr-text-dim); font-size: 11px; font-family: inherit;
+    margin-left: auto; cursor: pointer; max-width: 116px;
+}
+.ov-save:hover { background: var(--vr-hover); }
+.ov-save .dir { color: var(--vr-text-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-q {
+    height: 26px; padding: 0 9px; border-radius: 7px; border: none;
+    font-size: 11px; font-family: inherit; cursor: pointer;
+    color: var(--vr-green); background: #132A21;
+}
+.ov-q.off { color: var(--vr-text-mute); background: var(--vr-card-hi); }
+
+.tabs {
+    display: flex; align-items: center; flex: none;
+    padding: 0 10px; background: var(--vr-card);
+    border-bottom: 1px solid var(--vr-line);
+}
+.tabs .vr-tabs { margin-left: 0; gap: 2px; }
+.tabs .vr-tabs .TabButton {
+    height: 34px; padding: 0 12px; font-size: 12px;
+    border-bottom: 2px solid transparent; position: relative;
+}
+.tabs .vr-tabs .TabButton.Active { border-bottom-color: var(--vr-accent); }
+.tab-ignore {
+    margin-left: auto; display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--vr-text-mute); cursor: pointer; height: 34px;
+    white-space: nowrap;
+}
+.tab-ignore input { width: 14px; height: 14px; accent-color: var(--vr-accent); margin: 0; }
+
+/* 「媒体控制」旧标题文本残留不进产品 UI（容器与控件保留，功能不受影响） */
+#otherOptions .otherTips { display: none; }
+
+/* 忽略已下载：只隐藏，不删卡片、不动记账 */
+.panel.vr-ignore-hidden { display: none !important; }
+
+/* popup 固定 380×560：壳撑满 560，底栏靠 auto 贴底（不用 vh，遵守 popup 铁律） */
+#vrShell { min-height: 560px; }
+#down { margin-top: auto; }
