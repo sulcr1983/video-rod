@@ -409,10 +409,31 @@
     window.toast = toast;
 
     /* ---------- 数据加载 ---------- */
-    async function load() {
+    async function load(retry, recheck) {
         if (!root.VRDB) { return; }
         var list = [];
-        try { list = await root.VRDB.getAllFiles(); } catch (e) { list = []; }
+        try {
+            list = await root.VRDB.getAllFiles();
+            /* 首屏可能撞上另一个标签正在重建索引：那一刻读到空表，
+             * 之后数据回来了却没人再渲染 → 页面永远空白，只能手动重扫。
+             * 读空时延迟复查一次，有数据就重新渲染（最多两级，不递归）。 */
+            if (!list.length && !recheck) {
+                setTimeout(function () {
+                    try {
+                        root.VRDB.getAllFiles().then(function (again) {
+                            if (again && again.length) { load(0, true); }
+                        }, function () { /* 仍失败就保持空态 */ });
+                    } catch (e2) { /* 忽略 */ }
+                }, 900);
+            }
+        } catch (e) {
+            /* 别把读取失败当成「库里没有东西」：一次失败就永久空白，
+             * 用户只能手动点重扫才看得到（2026-11-05 实测：4 个标签里 3 个空）。
+             * 退避重试 3 次，仍失败才按空库处理。 */
+            var n = Number(retry) || 0;
+            if (n < 3) { setTimeout(function () { load(n + 1); }, 400 * (n + 1)); return; }
+            list = [];
+        }
         RAW = {};
         list.forEach(function (e) { RAW[e.relPath] = e; });
         FILES = list.map(toCardModel);
@@ -546,7 +567,11 @@
             chips.addEventListener('click', function (e) {
                 var c = e.target.closest('.chip'); if (!c) { return; }
                 $$('.chip').forEach(function (x) { x.classList.remove('active'); });
-                c.classList.add('active'); S.plat = c.dataset.plat; render();
+                c.classList.add('active'); S.plat = c.dataset.plat;
+                /* 平台 chip 是维度切换，不是叠加：残留的搜索关键词会让它变空，
+                 * 用户看到的就是「X 明明有 4 条，点 X 却没内容」。 */
+                if (S.q) { S.q = ''; if ($('#search')) { $('#search').value = ''; } }
+                render();
             });
         }
         var vt = $('#viewToggle');
@@ -582,7 +607,23 @@
             $('#selectBtn').classList.remove('is-on');
             $('#batchbar').classList.add('hidden'); render();
         });
-        on('batchTrash', function () { toast('批量删除将在 R5 接入真实回收站'); });
+        on('batchTrash', function () {
+            /* 原实现是「批量删除将在 R5 接入真实回收站」的假按钮，但回收站（js/library/trash.js）
+             * 早就做完了 —— 单条删除走的是它，批量却只弹一句提示。这里直接接同一套 API。 */
+            var list = FILES.filter(function (f) { return S.sel.has(f.id); });
+            if (!list.length) { toast('先选素材'); return; }
+            ask('把选中的 ' + list.length + ' 项移入回收站？文件还能恢复。', async function () {
+                if (!root.VRTrash) { toast('回收站模块没加载'); return; }
+                try {
+                    await root.VRTrash.remove(list.map(function (f) { return f.relPath; }));
+                    S.sel.clear(); S.select = false;
+                    await load();
+                    toast('已移入回收站：' + list.length + ' 项');
+                } catch (e) {
+                    toast('批量删除失败：' + ((e && e.message) || '未知'));
+                }
+            });
+        });
 
         var grid = $('#grid');
         if (grid) {
@@ -601,6 +642,19 @@
         if (tree) {
             tree.addEventListener('click', function (e) {
                 var n = e.target.closest('.tree-node'); if (!n) { return; }
+                if (!n.dataset.plat && !n.dataset.author) {
+                    /* 根节点「全部素材」：之前只加 active 不重置筛选，点了等于没点 */
+                    S.q = ''; S.plat = 'all'; S.type = 'all';
+                    if ($('#search')) { $('#search').value = ''; }
+                    $$('#chips .chip').forEach(function (x) {
+                        x.classList.toggle('active', x.dataset.plat === 'all');
+                    });
+                    $$('#typeTabs button').forEach(function (x) {
+                        x.classList.toggle('active', x.dataset.type === 'all');
+                    });
+                    render();
+                    return;
+                }
                 if (n.dataset.plat) {
                     treeOpen[n.dataset.plat] = !treeOpen[n.dataset.plat];
                     renderTree(); return;
@@ -620,8 +674,14 @@
         on('rescanBtn', async function () {
             toast('正在扫描目录…');
             var ok = await autoIndex();
+            /* 重扫后必须把筛选条件清掉并重新渲染，否则旧关键词/平台还挂着，
+             * 用户以为「没导入」，其实刷新页面（筛选重置）才看得见。 */
+            S.q = ''; S.plat = 'all'; S.type = 'all';
+            if ($('#search')) { $('#search').value = ''; }
+            $$('#chips .chip').forEach(function (x) { x.classList.toggle('active', x.dataset.plat === 'all'); });
+            $$('#typeTabs button').forEach(function (x) { x.classList.toggle('active', x.dataset.type === 'all'); });
             await load();
-            toast(ok ? '扫描完成' : '扫描失败：未授权目录');
+            toast(ok ? '扫描完成：' + FILES.length + ' 项已刷新' : '扫描失败：未授权目录');
         });
         on('settingsBtn', function () { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.add('show'); } if (m) { m.classList.add('show'); } refreshDrawer(); });
         on('setClose', function () { closeSet(); });
@@ -804,7 +864,13 @@
             renRel = f.relPath;
             var m = byId('renameMask'); if (!m) { return; }
             var inp = byId('renameInput');
-            if (inp) { inp.value = f.fileName || f.title || ''; }
+            /* 输入框只放「名字本体」，扩展名单独显示并锁定（否则会改出打不开的文件） */
+            var ext = String(f.ext || '').toLowerCase();
+            var base = String(f.displayName || f.title || '');
+            if (ext && base.toLowerCase().endsWith('.' + ext)) { base = base.slice(0, -(ext.length + 1)); }
+            if (inp) { inp.value = base; }
+            var extEl = byId('renameExt');
+            if (extEl) { extEl.textContent = ext ? ('.' + ext) : ''; }
             var d = byId('renameDir');
             if (d) { d.textContent = String(f.relPath).split('/').slice(0, -1).join(' / '); }
             m.classList.add('show');
@@ -818,11 +884,17 @@
             var inp = byId('renameInput');
             var v = String((inp && inp.value) || '').trim();
             if (!v) { toast('文件名不能为空'); return; }
-            if (!root.VRRename) { toast('重命名模块没加载，请重新加载扩展'); return; }
+            /* ADR-050 R2 口径：重命名只改显示名（displayName），物理文件名不动。
+             * 原来的实现走 VRRename 做「复制→校验→删源」的物理改名，
+             * 没有目录授权时必然失败——用户点了只看到「重命名失败」，
+             * 等于这个功能没做。改成写 displayName：无需授权、可回退、不动磁盘。 */
+            if (!root.VRDB || !root.VRDB.patchFile) { toast('数据层没就绪，请重新加载扩展'); return; }
             try {
-                await root.VRRename.rename(renRel, v);
+                await root.VRDB.patchFile(renRel, { displayName: v });
                 closeRename();
-                toast('已重命名');
+                toast('已重命名（物理文件名不变，可在列表显示新名字）');
+                var h2 = document.querySelector('.pv-info h2');
+                if (h2 && !document.getElementById('preview').classList.contains('hidden')) { h2.textContent = v; }
                 await load();
             } catch (e) {
                 toast('重命名失败：' + ((e && e.message) || '未知'));
@@ -1026,6 +1098,53 @@
         var inp = $('#favNewInput');
         if (inp) { inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { createFav(); } }); }
 
+        var bmBtn = $('#batchMove');
+        if (bmBtn) { bmBtn.addEventListener('click', async function () {
+            /* 「移动到…」此前连 id 和 handler 都没有 —— 纯装饰按钮。
+             * 真移动必须写盘，需要素材目录授权（与单条「移动」同一前提）；
+             * 未授权时明确引导去授权，不装作成功。 */
+            var list = FILES.filter(function (f) { return S.sel.has(f.id); });
+            if (!list.length) { toast('先选素材'); return; }
+            var rr = null;
+            try {
+                if (root.VRTrash && root.VRTrash.resolveRoot) { rr = await root.VRTrash.resolveRoot(); }
+            } catch (e) { rr = null; }
+            if (!rr || !rr.handle) {
+                toast('移动到别的文件夹要先授权素材目录（设置 → 保存位置）');
+                var d = $('#setdrawer'), m = $('#setmask');
+                if (d) { d.classList.add('show'); }
+                if (m) { m.classList.add('show'); }
+                return;
+            }
+            var dest = window.prompt('移动到素材库下的哪个文件夹？\n（例：未分类、微博精选）', '未分类');
+            if (dest === null) { return; }
+            dest = String(dest).replace(/[\\/:*?"<>|]/g, '_').replace(/^\/+|\/+$/g, '').trim();
+            if (!dest) { toast('文件夹名不能为空'); return; }
+            var okN = 0, failN = 0;
+            for (var i = 0; i < list.length; i++) {
+                var f = list[i];
+                var name = String(f.relPath).split('/').pop();
+                var newRel = 'video-rod/' + dest + '/' + name;
+                try {
+                    await root.VRTrash.moveFile(rr.handle, f.relPath, newRel);
+                    var old = RAW[f.relPath] || {};
+                    if (root.VRDB && root.VRDB.putFiles) {
+                        await root.VRDB.deleteFiles([f.relPath]);
+                        var absRoot = String(rr.absRoot || '').replace(/[\\/]+$/, '');
+                        await root.VRDB.putFiles([Object.assign({}, old, {
+                            relPath: newRel,
+                            absPath: absRoot ? absRoot + '\\' + newRel.replace(/\//g, '\\') : (old.absPath || ''),
+                            thumbKey: null
+                        })]);
+                    }
+                    okN++;
+                } catch (e) { failN++; }
+            }
+            S.sel.clear(); S.select = false;
+            await load();
+            toast('移动完成：' + okN + ' 项' + (failN ? '，失败 ' + failN : ''));
+        }); }
+
         var bf = $('#batchFav');
         if (bf) { bf.addEventListener('click', function () { addToFav(Array.from(S.sel)); }); }
 
@@ -1099,15 +1218,17 @@
 
     /* ---------- 启动 ---------- */
     async function boot() {
+        try { window.__vrBoot = ['start']; } catch (e) { /* 忽略 */ }
         try { installGlobalErrorGuard(); } catch (e) { /* 忽略 */ }
-        bind();
-        try { bindMissing(); } catch (e) { /* 单个按钮接线失败不影响启动 */ }
-        await loadFavs();
-        await ensureRoot();     // 先把库根锁到 <下载根>/video-rod，避免把整个下载目录当库
-        await load();
+        try { bind(); window.__vrBoot.push('bind'); } catch (e) { window.__vrBoot.push('bind-ERR:' + e.message); throw e; }
+        try { bindMissing(); window.__vrBoot.push('bindMissing'); } catch (e) { window.__vrBoot.push('bindMissing-ERR'); }
+        try { await loadFavs(); window.__vrBoot.push('favs'); } catch (e) { window.__vrBoot.push('favs-ERR:' + e.message); }
+        try { await ensureRoot(); window.__vrBoot.push('root'); } catch (e) { window.__vrBoot.push('root-ERR:' + e.message); }
+        try { await load(); window.__vrBoot.push('load:' + FILES.length); } catch (e) { window.__vrBoot.push('load-ERR:' + e.message); }
         if (!FILES.length) {
-            var built = await autoIndex();
-            if (built) { await load(); }
+            /* 索引建完必须重新读一次库（不管 build 返回什么）： */
+            try { await autoIndex(); } catch (e) { /* 未授权等，落到空态 */ }
+            await load();
         }
     }
 

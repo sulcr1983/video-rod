@@ -173,7 +173,7 @@
         cfList = document.createElement('button');
         cfList.type = 'button';
         cfList.className = 'vr-btn2';
-        cfList.textContent = '先看清单';
+        cfList.textContent = '选择图片';
         const cfCancel = document.createElement('button');
         cfCancel.type = 'button';
         cfCancel.className = 'vr-btn2';
@@ -283,7 +283,7 @@
                 cfText.innerHTML = '本页找到 <b>' + found + '</b> 张图' +
                     (skipped ? '（已过滤 <b>' + skipped + '</b> 张小图）' : '') +
                     (found > max ? '，本次只下前 <b>' + max + '</b> 张' : '');
-                cfGo.textContent = '下载 ' + total + ' 张';
+                cfGo.textContent = '全部下载 ' + total + ' 张';
                 cfGo.disabled = false;
             });
         }
@@ -298,9 +298,16 @@
     }
 
     function onList() {
-        // I4 才做清单面板；本轮如实告知，不假装有
+        // 清单面板 I4 已经做完了（js/image-panel.js），这里原本还是「功能未完成」的占位 toast。
+        // 直接复用现成组件，不重造。用户可在清单里逐张勾选后再下载。
         closeConfirm();
-        toast('清单面板在 I4 版本上线，本次请用「下载 N 张」');
+        try {
+            if (self.VRImgPanel && typeof self.VRImgPanel.open === 'function') {
+                self.VRImgPanel.open(true);
+                return;
+            }
+        } catch (e) { /* 落到提示 */ }
+        toast('清单面板未就绪，请用「全部下载」或右下角浮标打开清单');
     }
 
     /* ---------------- 进度条 ---------------- */

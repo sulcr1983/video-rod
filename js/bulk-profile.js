@@ -113,25 +113,36 @@
     }
 
     function scanWeibo() {
-        document.querySelectorAll('.wb-item').forEach(function (item) {
-            const head = item.querySelector('header .m-text-box a[href*="/profile/"]');
-            const author = head ? text(head).replace(/^@/, '') : '';
-            const m = head ? (head.getAttribute('href') || '').match(/\/profile\/(\d+)/) : null;
-            const authorId = m ? m[1] : '';
-            const textEl = item.querySelector('article.weibo-main .weibo-text') ||
-                item.querySelector('.weibo-text');
-            let title = textEl ? text(textEl).replace(/^@[^:：]+[:：]\s*/, '') : '';
-            if (title.length > 100) { title = title.slice(0, 100); }
+        /* 新版微博 DOM 已无 .wb-item / article.weibo-main，旧选择器实测扫到 0 条，
+         * 表现就是「滚到底还是第一页」。改成通用扫描：所有 img 里挑 sinaimg 大图，
+         * 再向上找最近的内容卡片取正文与博主。任何页面结构变化都不会让它归零。 */
+        document.querySelectorAll('img').forEach(function (img) {
+            if (img.closest('.vr-bulk-panel, .vr-bulk-btn')) { return; }
+            if (img.closest('video, .card-video, .mwb-video, .video-player')) { return; }
+            const src = img.currentSrc || img.src || '';
+            if (!/sinaimg/i.test(src)) { return; }
+            if (/avatar|face\.|h5\.sinaimg|crop\./i.test(src)) { return; }
+            const rc = img.getBoundingClientRect();
+            if (Math.max(rc.width, rc.height) < 120) { return; }
 
-            item.querySelectorAll('article.weibo-main img, .weibo-media img').forEach(function (img) {
-                if (img.closest('.card-video, .mwb-video, .video-player')) { return; }
-                const src = img.currentSrc || img.src || '';
-                if (!/sinaimg/.test(src)) { return; }
-                if (/avatar|face\.t|h5\.sinaimg|crop\./.test(src)) { return; }
-                add({
-                    site: 'weibo', kind: 'image', url: bigImage(src), ext: 'jpg',
-                    title: title, author: author, authorId: authorId, pageUrl: location.href
-                });
+            let card = img.closest('article, [class*="Feed"], [class*="feed"], [class*="card"], [class*="wb"]') || img.parentElement;
+            let box = card;
+            for (let i = 0; i < 4 && box; i++, box = box.parentElement) {
+                const t = text(box);
+                if (t && t.length > 12) { card = box; break; }
+            }
+            let author = '', authorId = '';
+            const a = card && card.querySelector('a[href*="/u/"], a[href*="/profile/"]');
+            if (a) {
+                author = text(a).replace(/^@/, '').slice(0, 30);
+                const m = (a.getAttribute('href') || '').match(/\/(?:u|profile)\/(\d+)/);
+                authorId = m ? m[1] : '';
+            }
+            let title = text(card).replace(/^@[^:：\s]{1,20}[:：]?\s*/, '').replace(/\s+/g, ' ').trim();
+            if (title.length > 100) { title = title.slice(0, 100); }
+            add({
+                site: 'weibo', kind: 'image', url: bigImage(src), ext: 'jpg',
+                title: title, author: author, authorId: authorId, pageUrl: location.href
             });
         });
     }
@@ -191,10 +202,23 @@
             article.querySelectorAll('img[src*="pbs.twimg.com/media"]').forEach(function (img) {
                 const raw = img.src || '';
                 if (!raw || /profile_images|amplify_video_thumb/.test(raw)) { return; }
-                const u = raw.split('?')[0] + '?name=orig';
-                const ext = (u.split('?')[0].split('.').pop() || 'jpg').toLowerCase();
+                /* X 媒体 URL 有两种形态：
+                 *   .../HWSp9nzXsAAazfF?format=jpg&name=medium
+                 *   .../HWTE5NjXsAA5oDT.jpg
+                 * 之前一律 split('?')[0]+'?name=orig'，第一种丢掉 format → 404：
+                 * 缩略图全裂、下载全失败、还误报「风控」（2026-11-05 实测）。
+                 * 修法：有 format 参数就带回去；有 .jpg 后缀就保留后缀。 */
+                const stem = raw.split('?')[0];
+                const fmtRaw = ((raw.match(/[?&]format=(\w+)/) || [])[1] ||
+                    (/\.\w+$/.test(stem) ? stem.split('.').pop().toLowerCase() : 'jpg'));
+                const fmt = fmtRaw === 'jpeg' ? 'jpg' : fmtRaw;
+                const u = /\.\w+$/.test(stem)
+                    ? stem + '?name=orig'
+                    : stem + '?format=' + fmt + '&name=orig';
                 add(Object.assign({}, base, {
-                    key: u, kind: 'image', url: u, ext: ext,
+                    key: u, kind: 'image', url: u, ext: fmt,
+                    /* 面板缩略图用 name=small，不必为列表预览拉原图 */
+                    thumb: u.replace('name=orig', 'name=small'),
                     statusId: ref.statusId, mediaId: ''
                 }));
             });
@@ -280,7 +304,28 @@
             '.vr-bulk-status{margin-left:auto;color:#86909c;font-size:10.5px}',
             '.vr-bulk-opt{display:flex;align-items:center;gap:3px;color:#4e5969;font-size:10.5px}',
             '.vr-bulk-type{border:1px solid #d9dee8;border-radius:7px;padding:4px 6px;font-size:11px;background:#fff;color:#4e5969}',
-            '.vr-bulk-empty{padding:20px 12px;color:#86909c;line-height:1.7}'
+            '.vr-bulk-empty{padding:20px 12px;color:#86909c;line-height:1.7}',
+            /* ---- 舞台皮肤覆盖（与资源库同一套 token；原型是设计真源） ---- */
+            '.vr-bulk-btn{background:#2C2418!important;color:#E8B04B!important;',
+            'border:1px solid #4A3A1D;border-right:none;box-shadow:-4px 6px 22px rgba(0,0,0,.5)}',
+            '.vr-bulk-btn:hover{background:#3A2F1C!important;color:#F0C878!important}',
+            '.vr-bulk-panel{background:#100F0E!important;color:#EFEAE0!important;',
+            'border-left:1px solid #2B2620;box-shadow:-12px 0 40px rgba(0,0,0,.6);',
+            'font-family:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
+            '.vr-bulk-head{background:#191715!important;border-bottom:1px solid #2B2620!important;color:#EFEAE0!important}',
+            '.vr-bulk-close,.vr-bulk-close:hover{color:#8C8478!important}',
+            '.vr-bulk-row{border-bottom:1px solid #211E1A!important}',
+            '.vr-bulk-row:hover{background:#1F1C18!important}',
+            '.vr-bulk-row img,.vr-bulk-thumb{background:#241F19!important;color:#8C8478}',
+            '.vr-bulk-info b{color:#EFEAE0!important}',
+            '.vr-bulk-info span,.vr-bulk-status,.vr-bulk-empty,.vr-bulk-opt{color:#8C8478!important}',
+            '.vr-bulk-foot{background:#191715!important;border-top:1px solid #2B2620!important}',
+            '.vr-bulk-foot button{background:#1F1C18!important;border:1px solid #2B2620!important;color:#C8C0B2!important}',
+            '.vr-bulk-foot button:hover{border-color:#4A3A1D!important;color:#E8B04B!important}',
+            '.vr-bulk-foot button.vr-primary{background:#E8B04B!important;border-color:#E8B04B!important;color:#17130D!important}',
+            '.vr-bulk-foot button.vr-primary:hover{background:#F2C46E!important;color:#17130D!important}',
+            '.vr-bulk-type{background:#1F1C18!important;border:1px solid #2B2620!important;color:#C8C0B2!important}',
+            '.vr-bulk-list input[type=checkbox]{accent-color:#E8B04B}'
         ].join('');
         (document.head || document.documentElement).appendChild(style);
 
@@ -373,19 +418,8 @@
         statusEl.textContent = '';
         renderCount();
 
-        // 进入主页自动展开一次；关闭后保留右侧竖标签，随时再打开
-        if (SITE !== 'xhs') {
-            setTimeout(function () {
-                try {
-                    if (!sessionStorage.getItem('vrBulkSidebarAuto')) {
-                        sessionStorage.setItem('vrBulkSidebarAuto', '1');
-                        setBulkOpen(true);
-                    }
-                } catch (e) {
-                    setBulkOpen(true);
-                }
-            }, 700);
-        }
+        /* 苏哥 2026-11-05：进页面不许自动弹大窗，挡视线。
+         * 右侧竖标签常驻，用户想采集时自己点开（与 Fatkun「点图标才开面板」一致）。 */
     }
 
     function renderCount() {
@@ -412,7 +446,7 @@
             cb.type = 'checkbox'; cb.checked = true; cb.dataset.i = String(i);
             const thumb = document.createElement(
                 it.kind === 'image' || it.poster ? 'img' : 'div');
-            if (it.kind === 'image') { thumb.src = it.url; thumb.loading = 'lazy'; }
+            if (it.kind === 'image') { thumb.src = it.thumb || it.url; thumb.loading = 'lazy'; }
             else if (it.poster) { thumb.src = it.poster; thumb.loading = 'lazy'; }
             else { thumb.className = 'vr-bulk-thumb'; thumb.textContent = '🎬'; }
             const info = document.createElement('div');
@@ -580,8 +614,10 @@
         if (!msg || msg.Message !== 'vrBulkProgress') { return; }
         if (statusEl) {
             statusEl.textContent = msg.paused
-                ? '已暂停：连续失败（可能触发风控）'
-                : '下载中 ' + msg.done + '/' + msg.total + (msg.skipped ? '（已跳过重复 ' + msg.skipped + '）' : '');
+                ? (msg.reason || '已暂停（连续失败）')
+                : '下载中 ' + msg.done + '/' + msg.total +
+                  (msg.skipped ? '，跳过重复 ' + msg.skipped : '') +
+                  (msg.failed ? '，失败 ' + msg.failed : '');
         }
     });
 
