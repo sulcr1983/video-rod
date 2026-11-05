@@ -114,3 +114,10 @@ T0(done) → T0b(done) → R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 �
 | 2026-11-05 | F9 收尾核实 | ✅ 每行下载键(#download)/已下载 ✓ 徽标/去重跳过 均已在 popup-videorod | 无需新增代码 |
 | 2026-11-05 | **落盘链路实测** | ✅ 子目录+中文+空格+三级目录全部落对：`Downloads\video-rod\<平台>\<作者>\<类型>\<名>.mp4`，文件名逐字一致（download-path-test 10/10） | **根因**：`Downloads\video-rod` 原为指向 `F://download//video-rod` 的悬空软链（F 盘已不存在），Chrome 无法写入软链目录 → 下载永远 in_progress。已移除悬空软链、建真实目录后恢复正常 |
 | 2026-11-05 | 库根自动锁定 | ✅ 首次进库用最近下载记录反推下载根，写 `detectedRoot`，根目录显示 `…\Downloads\video-rod`（不再是「未探测」）；自定义目录不受影响 | 修「库把整个下载目录当库」的误解 |
+| 2026-11-05 | **全量按钮 E2E** | ✅ 新增 `tools/e2e-buttons.py`（27 断言）：资源库 21 项关键交互 + 60 个按钮逐个点 + 设置页 19 锚点/30 按钮 | 顺带修 3 个真 bug（见下） |
+| 2026-11-05 | **死键清零** | ✅ 资源库「有按钮没接线」23 个全部补齐：重命名/删除/确认框/收藏夹管理(建改删导出)/快捷键/连播/同作者/左栏回收站；设置页 4 个 Reset* 本就走 `[data-reset]` 委托，非死键 | 引入漏掉的 trash.js / rename.js |
+| 2026-11-05 | bugfix: closeSet | ✅ `sdTrashBtn` 调了 bind() 内局部函数 `closeSet` → `ReferenceError`，改内联关闭 | 真死按钮 |
+| 2026-11-05 | bugfix: 权限异常 | ✅ `trash.js`/`rename.js` 的 `queryPermission` 未接住「Permissions check failed」；页级加 unhandledrejection 兜底翻成可操作提示 | 陈旧 FSA 句柄触发 |
+| 2026-11-05 | bugfix: 剪贴板 | ✅ 库页 2 处 + popup 4 处 `clipboard.writeText` 无 catch，无焦点时抛未捕获异常 | — |
+| 2026-11-05 | 补 B站 chip | ✅ 平台筛选里**没有 B站**（最常用平台），已补 | chips 9 → 10 |
+| 2026-11-05 | popup E2E | ✅ 新增 `tools/e2e-popup.py`（内置本地媒体站）；外壳/页签/筛选/60 按钮 0 异常 5/5 | 标签页方式打开时 popup 认自己为当前页 → 列表断言需人工点图标验证 |
