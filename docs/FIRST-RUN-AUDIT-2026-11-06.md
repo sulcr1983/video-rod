@@ -93,6 +93,11 @@
 - 回滚已验证：revert 后 35 条 displayName 归零，非 displayName 字段 0 变化；随后已重新应用最终版。
 - 边界：本次只改 displayName；作者树里的 `待整理` 仍存在（按“不动物理文件/不改 creator”的安全边界，没有改作者字段）。
 
+### 2.6 收藏夹持久化（真实库）
+
+- 新建收藏夹、批量加入、重载保留、侧栏显示、重命名、当前筛选存为智能夹（35 条）、删除、重载后删除仍生效，**11/11 PASS**。
+- 操作只改 `vrFavs` 设置，不动物理文件；测试后原 30 个收藏夹完全恢复（pre/post 快照相等）。
+
 ---
 
 ## 3. 这次抓到的真实问题
@@ -158,6 +163,7 @@
 |---|---|
 | 首次使用黑盒结果 | `deliverables/test-runs/first-run-audit.json`（48 条） |
 | 首次使用脚本 | `tools/first-run-audit.py` |
+| 收藏夹回归 | `tools/library-favorites-e2e.py`（11/11） |
 | 回收站修复 | `js/library/trash.js` |
 | P0 回归矩阵 | `docs/TEST-MATRIX-P0.md` |
 | 真实库基线 | `.work/db-snapshots/vr-library-pre-audit.json`（35 条） |
