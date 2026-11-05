@@ -279,6 +279,8 @@
             var box = el(id);
             if (box) { box.checked = !!settings[toggles[id]]; }
         });
+        var ignoreBox = el('vrIgnoreDone');
+        if (ignoreBox) { ignoreBox.checked = !!settings.dedupe; }
         applyLibraryVisibility();
         // 侧边栏开关是猫抓底座设置（storage.sync 的 sidePanel 键，init.js 接管
         // setPanelBehavior），不走 vrSettings，单独异步读
@@ -332,6 +334,11 @@
                 if (toggles[id] === 'smartName') { applySmartNaming(true); }
                 if (toggles[id] === 'badge') { applyBadgeVisibility(); }
                 if (toggles[id] === 'libraryEnabled') { applyLibraryVisibility(); }
+                if (toggles[id] === 'dedupe') {
+                    var ig = el('vrIgnoreDone');
+                    if (ig) { ig.checked = this.checked; }
+                    applyIgnoreDone();
+                }
             });
         });
 
@@ -386,6 +393,11 @@
             chrome.tabs.get(tabId, function (tab) {
                 if (chrome.runtime.lastError || !tab) { return; }
                 var site = hostOf(tab.url || '');
+                // 扩展页上下文里 host 是扩展 ID，会当作站点名泄漏到 UI（审查 P1）。
+                // 原型这条显示的是站点名；扩展页就显示「本地扩展页」。
+                if (/^chrome-extension:/i.test(tab.url || '') || (site && site.indexOf('.') < 0)) {
+                    site = '本地扩展页';
+                }
                 var siteEl = el('vrSite');
                 var titleEl = el('vrPageTitle');
                 if (siteEl && site) { siteEl.textContent = site; siteEl.title = tab.url || ''; }
@@ -488,6 +500,19 @@
 
         var cnt = el('vrCount');
         if (cnt) { cnt.textContent = total; }
+        var ovMap = { video: 'vrOvVideo', img: 'vrOvImg', stream: 'vrOvStream' };
+        Object.keys(ovMap).forEach(function (k) {
+            var b = el(ovMap[k]);
+            if (b) { b.textContent = counts[k] || 0; }
+        });
+        var ovDir = el('vrOvDir');
+        if (ovDir) { ovDir.textContent = settings.defaultDir || 'video-rod'; }
+        var ovQ = el('vrOvQ');
+        if (ovQ) {
+            ovQ.textContent = settings.qualityAuto ? '画质 最高' : '画质 手动';
+            ovQ.classList.toggle('off', !settings.qualityAuto);
+        }
+        applyIgnoreDone();
         applyBadgeVisibility();
 
         // 底部计数
@@ -502,6 +527,56 @@
         if (selTxt) { selTxt.textContent = checked ? ('已选 ' + checked + '/' + total) : '全选'; }
         var chkAll = el('chkAll');
         if (chkAll) { chkAll.checked = checked > 0 && checked === total; }
+    }
+
+    /** 「忽略已下载」：复用 settings.dedupe（与设置抽屉同一个键），
+     *  只切显示态，不删数据也不重渲染，随时可切回来。 */
+    function applyIgnoreDone() {
+        document.querySelectorAll('.panel').forEach(function (p) {
+            p.classList.toggle('vr-ignore-hidden',
+                !!settings.dedupe && p.classList.contains('done'));
+        });
+    }
+
+    /** 概览条按钮：全部接到现有功能上，不做静态假 UI */
+    function bindOverview() {
+        document.querySelectorAll('.ovt').forEach(function (b) {
+            b.addEventListener('click', function () {
+                var f = b.getAttribute('data-ot');
+                var chip = document.querySelector('#vrFilters .fchip[data-f="' + f + '"]');
+                if (chip) { chip.click(); }
+            });
+        });
+        var save = el('vrOvSave');
+        if (save) {
+            save.addEventListener('click', function () {
+                var btn = el('btnSettings');
+                if (btn) { btn.click(); }
+                var grp = document.querySelector('.sgroup[data-group="path"]');
+                if (grp && grp.scrollIntoView) { grp.scrollIntoView({ block: 'nearest' }); }
+            });
+        }
+        var q = el('vrOvQ');
+        if (q) {
+            q.addEventListener('click', function () {
+                settings.qualityAuto = !settings.qualityAuto;
+                saveSettings();
+                var box = el('vrSetQuality');
+                if (box) { box.checked = settings.qualityAuto; }
+                updateCounts();
+                tip(settings.qualityAuto ? '默认取最高画质' : '画质改为手动选择');
+            });
+        }
+        var ig = el('vrIgnoreDone');
+        if (ig) {
+            ig.addEventListener('change', function () {
+                settings.dedupe = this.checked;
+                saveSettings();
+                var box = el('vrSetDedupe');
+                if (box) { box.checked = this.checked; }
+                applyIgnoreDone();
+            });
+        }
     }
 
     function bindFilters() {
@@ -1994,6 +2069,7 @@
             bindDrawers();
             bindSettingsInputs();
             bindFilters();
+            bindOverview();
             bindFoot();
             bindDirMenu();
             bindRenameModal();
