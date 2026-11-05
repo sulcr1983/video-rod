@@ -1908,7 +1908,26 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         const tabId = (sender && sender.tab && sender.tab.id != null)
             ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
         vrVideoDownload(tabId, Message.optionId, Message.wantBest !== false)
-            .then(function (r) { sendResponse(r); })
+            .then(function (r) {
+                // 诊断：把「有几个可选源 / 选了哪个 / 结果」记一条到 storage。
+                // 用户反馈「点了没反应」时，先看这条就知道是没源、还是下载被拒。
+                try {
+                    vrVideoOptions(tabId).then(function (o) {
+                        const opts = (o && o.options) || [];
+                        chrome.storage.local.set({
+                            vrLastVideoDown: {
+                                at: Date.now(),
+                                ok: !!(r && r.ok),
+                                reason: (r && r.reason) || '',
+                                site: (o && o.site) || '',
+                                options: opts.length,
+                                top: String((opts[0] && opts[0].url) || '').slice(0, 220)
+                            }
+                        });
+                    }).catch(function () { });
+                } catch (e) { /* 诊断失败不影响下载 */ }
+                sendResponse(r);
+            })
             .catch(function (e) {
                 sendResponse({ ok: false, reason: String(e).slice(0, 120) });
             });

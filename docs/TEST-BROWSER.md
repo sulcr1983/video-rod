@@ -1,6 +1,37 @@
-# 测试浏览器 · 登录态保全规则（TEST-BROWSER v1.0）
+# 测试浏览器 · 登录态保全规则（TEST-BROWSER v1.1）
 
 > 苏哥 2026-11-05 明确要求：**登录态要保住，测试很多次，不能每次新开无登录态**（反复登录会触发风控）。
+>
+> **v1.1 追加（同日，风控事故后）**：测试**不许反复开关浏览器**。一次开起来，所有套件跑完，实例留着继续用。违反此条会直接触发站点风控。
+
+## 零、风控铁律（EL 系列，优先级最高）
+
+| 编号 | 铁律 | 落地手段 |
+|---|---|---|
+| EL-01 | 同一时刻只允许**一个**测试实例（固定 profile + 固定端口 9480） | `vr-session.py` 端口探测，在线即复用 |
+| EL-02 | 两次**启动**之间强制冷却 240 秒 | `vr-session.py` 拒绝并提示剩余秒数 |
+| EL-03 | 每日启动上限 6 次 | 超限直接拒绝，要求合并批次 |
+| EL-04 | 每次启动记档（时间/原因）可审计 | `deliverables/test-runs/session-log.json` |
+| EL-05 | **跑完不关浏览器**，留着下一批复用 | `e2e-all.py` 默认不关，只有 `--close` 才关 |
+| EL-06 | 真实站点套件默认不跑，显式 `--live` 才跑；站点间强制 20-35s 随机间隔 | `e2e-all.py` 节流 |
+| EL-07 | 同一站点只访问一次；不在套件内反复刷新 | 套件内 URL 固定，禁止轮询刷新 |
+| EL-08 | 启动进程必须**脱离调用方的 job object**，否则实例会在命令结束后 30-60 秒被静默回收 | `vr-session.py` 用 WMI `Win32_Process.Create` 拉起，不用 `Popen` / `Start-Process` |
+
+**唯一正确姿势**（两条命令走完一天）：
+
+```bash
+python tools/e2e-all.py --reason "说明这次测什么"     # 一次开实例 → 跑完全部离线套件 → 实例留着
+python tools/e2e-all.py --live --reason "补真实站点"   # 复用同一实例，只多跑 live 套件
+```
+
+临时查状态 / 真要关：
+
+```bash
+python tools/vr-session.py status
+python tools/vr-session.py close      # 只在收工时用
+```
+
+`vr-session.py` 是最底层闸门，直接调 `test-browser.ps1` 会绕过冷却与配额，**不要用**。
 
 ## 一、固定 profile（唯一真源）
 
@@ -47,18 +78,20 @@ powershell -ExecutionPolicy Bypass -File tools\backup-login-profile.ps1
 - profile 体积约 668 MB
 - Cookies 文件存在
 
-## 五、自动化测试怎么用登录态
+## 五、自动化测试怎么用登录态（v1.1 改写）
+
+> 旧的「关掉→headless 起→跑一个脚本→关掉」流程**已废止**，那就是风控的元凶。
+
+**正确流程**：一个实例跑完全部套件，实例常驻。
 
 ```bash
-# 1) 先优雅关闭有头实例（Cookie 落盘）
-python tools/test-browser-close.py
-# 2) 用同一 profile 起 headless（带扩展）
-powershell -ExecutionPolicy Bypass -File tools\test-browser.ps1 -Headless
-# 3) 跑测试脚本
-python tools/stage-rewrite-test.py --port 9480
-# 4) 测完关掉，下次要用有头再起
-python tools/test-browser-close.py
+python tools/e2e-all.py --reason "全量回归"          # 首次：启动一次，跑完不关
+python tools/e2e-all.py --only e2e-buttons          # 补测单个：复用在线实例，0 次启动
+python tools/e2e-all.py --live --reason "真实站点验收"  # 真实站点：复用实例 + 站间节流
+python tools/vr-session.py status                   # 随时看：在线状态 / 今日启动次数 / 冷却剩余
 ```
+
+**为什么不用 headless**：有头实例能同时用于截图取证和人工核对；headless 与有头抢同一 profile 必须先关有头，等于多一次开关。日常回归统一走有头，实例留着。
 
 ## 归档目录前置检查（2026-11-05 新增）
 
@@ -74,3 +107,13 @@ python tools/test-browser-close.py
 3. 确认真实目录后再测
 
 跑法：`python tools/download-path-test.py --port <调试端口>`（10 条断言）
+
+## 故障档案：实例「起来又消失」（2026-11-05）
+
+**症状**：会话闸门显示"在线且稳定"，但 30-60 秒后端口变 `TimeWait`，后续套件全部 `ConnectionRefused`；已跑过的套件表现为页面白底、`VRDB is not defined`、`document.title` 返回 URL 等一串**假失败**。
+
+**根因**：命令执行环境把子进程收进 job object，父命令一结束就整组回收。`subprocess.Popen(DETACHED_PROCESS)` 与 `Start-Process` 两种拉起方式都在这个 job 内，撑不过命令边界。（以前的测试脚本没暴露这个问题，是因为它们一直在同一条命令内「起→测→杀」。）
+
+**修复**：改用 WMI `Win32_Process.Create`（父进程是 WmiPrvSE 服务，不在调用方 job 内），可跨命令常驻。实测 15:00 起实例，连续多批套件复用，全程 0 次重启。
+
+**判别顺序（重要）**：批次里出现 `VRDB is not defined` / 白底 / title 是 URL → **先查实例在线状态**，不要急着改代码。曾据此误判过一次，实际代码 19/19 全绿。

@@ -1,0 +1,101 @@
+{
+  "starts": [
+    {
+      "at": "2026-11-05T14:50:11",
+      "ts": 1793861411.4708407,
+      "reason": "风控治理后首批全量回归",
+      "headless": false
+    },
+    {
+      "at": "2026-11-05T14:54:35",
+      "ts": 1793861675.7153032,
+      "reason": "实例稳定性+资源库回归验证",
+      "headless": false
+    },
+    {
+      "at": "2026-11-05T14:58:49",
+      "ts": 1793861929.8401089,
+      "reason": "WMI 常驻启动方式验证",
+      "headless": false
+    }
+  ],
+  "closes": [],
+  "runs": [
+    {
+      "at": "2026-11-05T14:51:03",
+      "summary": "1/7 套件通过，用时 49.5s",
+      "report": "deliverables\\test-runs\\2026-11-05-1451-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": false
+        },
+        {
+          "n": "skin",
+          "ok": false
+        },
+        {
+          "n": "download-path",
+          "ok": false
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        },
+        {
+          "n": "e2e-popup",
+          "ok": false
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-05T14:55:06",
+      "summary": "1/1 套件通过，用时 18.6s",
+      "report": "deliverables\\test-runs\\2026-11-05-1455-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-05T15:02:22",
+      "summary": "5/5 套件通过，用时 125.4s",
+      "report": "deliverables\\test-runs\\2026-11-05-1502-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "skin",
+          "ok": true
+        },
+        {
+          "n": "download-path",
+          "ok": true
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}

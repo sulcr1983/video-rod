@@ -232,7 +232,7 @@
         });
     };
     window.addEventListener("message", (event) => {
-        const action = ["catCatchAddMedia", "catCatchAddKey", "catCatchFFmpeg", "catCatchFFmpegResult", "catCatchCloseScript"];
+        const action = ["catCatchAddMedia", "catCatchAddKey", "catCatchFFmpeg", "catCatchFFmpegResult", "catCatchCloseScript", "vrNetMedia"];
         if (!event.data || !event.data.action || event.origin !== window.location.origin || !action.includes(event.data.action)) { return; }
         event.stopPropagation();
         event.stopImmediatePropagation();
@@ -254,6 +254,23 @@
                 return;
             }
             sendAddMedia(event.data);
+        }
+        if (event.data.action == "vrNetMedia") {
+            /* 页面侧（MAIN world 的 net-sniff.js）从接口 JSON 里挖到的媒体地址。
+               抖音这类站的播放地址不在网络请求里，只在接口响应里，靠这一步才能拿到。
+               交给后台的 addMedia 通道：类型判定、去重、大小上限都在那边。 */
+            const urls = event.data.urls;
+            if (!urls || !urls.length) { return; }
+            for (let i = 0; i < urls.length; i++) {
+                const it = urls[i];
+                const u = String((it && it.u) || it || "");
+                const x = (it && it.x) || "";
+                if (!/^https?:/i.test(u)) { continue; }
+                // ext 必须一起带上：抖音的地址没有 .mp4 后缀，
+                // 不带 extraExt 后台会把 ext 判成空，悬浮键就列不出这个源。
+                sendAddMedia({ url: u, ext: x || undefined, href: location.href });
+            }
+            return;
         }
         if (event.data.action == "catCatchAddKey") {
             let key = event.data.key;
