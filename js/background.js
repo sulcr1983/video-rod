@@ -6,7 +6,7 @@
 if (typeof G === 'undefined') {
     importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js",
         "/js/bili-whole.js", "/js/douyin.js",
-        "/js/library/path.js", "/js/library/db.js", "/js/library/sw-library.js",
+        "/js/library/path.js", "/js/library/db.js", "/js/library/dedup.js", "/js/library/sw-library.js",
         "/js/lib-image-util.js");
 }
 // 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用

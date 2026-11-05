@@ -97,6 +97,7 @@
             author: author,
             authorId: authorId,
             title: title,
+            _title: (e.displayName || '').trim() || title,
             kind: kind,
             ext: String(ext).toUpperCase(),
             size: sizeMb,
@@ -108,6 +109,10 @@
             tags: Array.isArray(e.tags) ? e.tags : [],
             starred: !!e.starred,
             state: e.state || 'ok',
+            isRef: e.isRef ? 1 : 0,
+            refOf: e.refOf || '',
+            sha256: e.sha256 || '',
+            displayName: e.displayName || '',
             savedAt: fmtDate(e.mtime),
             dlAt: fmtDate(e.mtime),
             workId: e.workId || '',
@@ -230,10 +235,11 @@
             '<span class="badge"><span class="dot" style="--pc:' + p.dot + '"></span>' + p.label + '</span>' +
             (corner ? '<span class="duration' + (isA ? ' anim' : '') + '">' + esc(corner) + '</span>' : '') +
             (f.state === 'missing' ? '<span class="missing-tag">文件缺失</span>' : '') +
+            (f.isRef ? '<span class="ref-tag" title="内容与另一条素材相同，物理文件只存一份">引用</span>' : '') +
             '<div class="playbtn"><span><svg class="i"><use href="#i-' + (isV || isA ? 'play' : 'maximize') + '"/></svg></span></div>' +
             '</div>' +
             '<div class="body">' +
-            '<div class="title">' + esc(f.title) + '</div>' +
+            '<div class="title">' + esc(f._title || f.title) + '</div>' +
             '<div class="metarow">' +
             '<span class="authorline"><span class="avatar">' + esc((f.author || '?').slice(0, 1)) + '</span>' +
             '<span class="nm">' + esc(f.author || '未知来源') + '</span></span>' +
@@ -295,6 +301,7 @@
         setTxt('#sVid', c.video);
         setTxt('#fCount', rows.length);
         setTxt('#fSize', Math.round(rows.reduce(function (a, b) { return a + (b.size || 0); }, 0)) + ' MB');
+        renderDedupStat(rows);
         setTxt('#treeTotal', FILES.length);
         setTxt('#batchCount', '已选 ' + S.sel.size + ' 项');
 
@@ -304,6 +311,28 @@
             var badge = b.querySelector('b'); if (badge) { badge.textContent = n; }
         });
         renderFavs();
+    }
+
+    /* ---------- F5 去重统计：逻辑大小 vs 物理占用 ---------- */
+    function renderDedupStat(rows) {
+        var el = document.getElementById('fDedup');
+        if (!el) { return; }
+        var byHash = {};
+        var logical = 0, physical = 0, refs = 0;
+        rows.forEach(function (f) {
+            logical += f.size || 0;
+            if (f.sha256) {
+                if (!byHash[f.sha256]) { byHash[f.sha256] = { size: f.size || 0, n: 0 }; }
+                byHash[f.sha256].n++;
+                if (f.isRef) { refs++; }
+            } else {
+                physical += f.size || 0;
+            }
+        });
+        Object.keys(byHash).forEach(function (h) { physical += byHash[h].size; });
+        if (!refs) { el.classList.add('hidden'); return; }
+        el.classList.remove('hidden');
+        el.textContent = '逻辑 ' + Math.round(logical) + ' MB · 物理 ' + Math.round(physical) + ' MB（' + refs + ' 条引用）';
     }
 
     /* ---------- 缩略图懒加载 ---------- */
