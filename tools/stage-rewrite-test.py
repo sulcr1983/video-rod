@@ -97,7 +97,7 @@ def main():
     check("树根编号 00", ev("document.querySelector('#tree .ix') && document.querySelector('#tree .ix').textContent", sid), "00")
     check("平台 chips=10（含 B站）", ev("document.querySelectorAll('#chips .chip').length", sid), 10)
     check("页签计数", ev("[...document.querySelectorAll('#typeTabs button')].map(b=>b.dataset.type+':'+b.querySelector('b').textContent).join(',')", sid),
-          "all:8,image:2,anim:1,video:4,audio:1")
+          "all:8,image:3,anim:0,video:4,audio:1")
     check("缺失角标", ev("document.querySelectorAll('#grid .card .missing-tag').length", sid), 1)
     check("页面底色", ev("getComputedStyle(document.body).backgroundColor", sid), "rgb(16, 15, 14)")
 

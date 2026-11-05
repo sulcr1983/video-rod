@@ -3356,6 +3356,43 @@ async function vrPageEmbeddedVideoProbe(tabId) {
     }
 }
 
+/** Instagram：从页面 hydration JSON 的 video_versions 取完整 MP4。
+ *  网络嗅探看到的是 MSE 分片（带 bytestart/byteend），单独下下来只有 moof，
+ *  没有 ftyp/moov，Chrome 无法播放。video_versions 的首条是完整 progressive MP4。 */
+async function vrIgVideoUrls(tabId) {
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            func: function () {
+                const txt = [...document.scripts].map(function (s) { return s.textContent || ''; }).join('\n');
+                const i = txt.indexOf('video_versions');
+                if (i < 0) { return []; }
+                const seg = txt.slice(i, i + 8000);
+                const decoded = seg
+                    .replace(/\\u([0-9a-f]{4})/gi, function (_, h) {
+                        return String.fromCharCode(parseInt(h, 16));
+                    })
+                    .replace(/\\\//g, '/')
+                    .replace(/\\"/g, '"');
+                const out = [], seen = {};
+                const re = /"url"\s*:\s*"(https?:[^"]+)"/g;
+                let m;
+                while ((m = re.exec(decoded)) && out.length < 3) {
+                    const u = m[1].replace(/\\u0026/g, '&');
+                    if (!/\.mp4(\?|$)/i.test(u)) { continue; }
+                    // 只要完整文件；分片地址下下来是不可播放的 moof
+                    if (/[?&](bytestart|byteend)=/i.test(u)) { continue; }
+                    if (!seen[u]) { seen[u] = 1; out.push(u); }
+                }
+                return out;
+            }
+        }), 6000, 'ig-video-versions');
+        return (r && r[0] && r[0].result) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
 async function vrVideoOptions(tabId) {
     const out = { site: 'generic', options: [] };
 
@@ -3430,7 +3467,7 @@ async function vrVideoOptions(tabId) {
         playing = (pr && pr[0] && pr[0].result) || '';
     } catch (e) { /* 受限页面，退回体积排序 */ }
 
-    const list = (cacheData[tabId] || []).filter(function (m) {
+    let list = (cacheData[tabId] || []).filter(function (m) {
         return m && m.url && VR_VIDEO_EXT.test(m.ext || '') && !VR_STATIC_ASSET.test(m.url || '');
     }).slice().sort(function (a, b) {
         // 正在播的那条永远排第一；其余才按体积（单视频页面的老规则）
@@ -3438,6 +3475,22 @@ async function vrVideoOptions(tabId) {
         const bp = (playing && b.url === playing) ? 0 : 1;
         return (ap - bp) || ((b.size || 0) - (a.size || 0));
     });
+
+    /* Instagram 优先取 hydration JSON 的完整 progressive MP4。
+     * 嗅探缓存里的 MSE 分片带 bytestart/byteend，单下只有 moof、没有 ftyp/moov，
+     * 落盘后 Chrome 播放不了。完整地址放在最前，分片变体从列表剔除。 */
+    try {
+        const tab = await chrome.tabs.get(tabId);
+        if (/instagram\.com/i.test((tab && tab.url) || '')) {
+            const full = await vrIgVideoUrls(tabId);
+            if (full.length) {
+                const fullRows = full.map(function (u) { return { url: u, ext: 'mp4', size: 0 }; });
+                const rest = list.filter(function (m) { return !/[?&](bytestart|byteend)=/i.test(m.url || ''); });
+                list = fullRows.concat(rest);
+            }
+        }
+    } catch (e) { /* IG 探测失败时继续用嗅探列表 */ }
+
 
     // 嗅探缓存里没有当前正在播的 URL 时，直接把它补进来。
     // 页面自己播放的地址一定是最准的（微博刷新/扩展重载后缓存可能为空）。

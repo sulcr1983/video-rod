@@ -67,7 +67,9 @@
     }
 
     /* ---------- 真实条目 → 卡片模型 ---------- */
-    var EXT_ANIM = /^(gif|webp|apng|avif)$/i;
+    /* WebP 只是容器，不等于动图：小红书/Instagram 大量静态 WebP 必须归图片。
+     * 只有 GIF/APNG 这类明确动图扩展才进入 anim（用户 2026-11-06 纠正）。 */
+    var EXT_ANIM = /^(gif|apng)$/i;
 
     function toCardModel(e) {
         var P = root.VRPath || {};
