@@ -48,7 +48,7 @@
 | `#typeTabs` 全部/图片/动图/视频/音频 | 卡片只显示对应类型，徽标计数自洽 | 隔离 10 条夹具通过 | 真实 35 条再跑一次（M6） |
 | `#chips` 平台 chip | 只显示该平台；点 chip 清空残留搜索词 | 通过（含 X chip 修复） | 真实平台计数（M6） |
 | `#search` 输入 | 交集/排除语法；清空恢复 | 通过（“微博”/不存在词） | 加 `-词` 排除真实数据断言 |
-| `#sort` 最新/最早/大小/A-Z | 真实顺序变化且正确 | **FAIL**：`S.sort` 固定 `'new'` | **M2 修复** |
+| `#sort` 最新/最早/大小/A-Z | 真实顺序变化且正确 | **PASS**（M2：真实 35 条、4 模式 14/14） | 无 |
 | `#viewToggle` 网格/列表 | class/布局切换 | 通过 | 列表视图改用 `displayName`（M4） |
 | `#tree` 根节点“全部素材” | 重置 q/plat/type，卡片回到全量 | 通过 | 真实 35 条断言（M6） |
 | `#tree` 平台节点 | 展开/折叠作者；点平台筛选 | 通过 | 折叠状态与计数（M6） |
@@ -123,7 +123,7 @@
 
 | 功能 | 验收断言 | 当前状态 | 归属 |
 |---|---|---|---|
-| 排序 | 3 条真实数据下 `new/old/size/name` 四种顺序正确且互不相同 | FAIL | M2 |
+| 排序 | 真实 35 条下 `new/old/size/name` 四种顺序正确且互不相同 | PASS（14/14） | M2 已完成 |
 | 搜索语法 | `词1 词2` 交集、`-词` 排除；真实作者/标题命中 | 部分通过 | M6 |
 | 重命名持久化 | 改名 → `VRIndex.build({mode:'downloads'})` → 名字仍在；`relPath` 不变；列表同步 | 代码缺口 | M4 |
 | 批量移动 | 临时副本移动 2 条：物理文件、DB `relPath/absPath`、缩略图重建、可移回 | 死键 | M3 |
@@ -156,7 +156,7 @@ python tools/e2e-all.py --isolated --only e2e-buttons --reason "按钮回归"
 python tools/e2e-all.py --isolated --reason "离线全量"
 ```
 
-### L2 真实数据冒烟（待 M2 后新建）
+### L2 真实数据冒烟（M2 已建：`tools/library-realdata-e2e.py`）
 
 建议新增 `tools/library-realdata-e2e.py`：
 - 读取真实库，断言 `35/35` 条 `absPath` 存在；
@@ -189,7 +189,7 @@ python tools/vr-db-snapshot.py restore --port 9480 --file .work/db-snapshots/<pr
 |---|---|
 | `e2e-buttons 27/27` | 用的是 10 条假数据；只能证明“按钮接线/无异常”，不能证明真实文件可用 |
 | `library-buttons 93/85/0 异常` | 58 项 `changed:false`；破坏性跳过；不验证数据/媒体 |
-| `library-functions 42/44` | 排序是产品 bug；Plyr 选中假视频；改名不测重扫 |
+| `library-functions 42/44` | 旧基线；排序已在 M2 用真实数据 14/14 覆盖，Plyr/改名仍待 M6 重跑 |
 | `__vrBoot load:45` | 只证明读到 45 条；不等于 45 条真实可用（已清理为 35） |
 | `45/45 卡片` | 旧验收口径；现改为 `35/35 真实文件可打开` |
 
@@ -197,7 +197,7 @@ python tools/vr-db-snapshot.py restore --port 9480 --file .work/db-snapshots/<pr
 
 ## 6. P0 完成定义（DoD）
 
-- [ ] M2：排序 4 模式在真实 35 条上正确；e2e 断言不再用同标题夹具。
+- [x] M2：排序 4 模式在真实 35 条上正确；e2e 断言不再用同标题夹具（`library-realdata-e2e` 14/14）。
 - [ ] M3：批量移动在临时副本上成功；导出 API、权限、路径、回滚全部验证。
 - [ ] M4：改名 → 重扫 → 网格/列表/预览一致；`displayName` 不丢。
 - [ ] M5：无 handle 时移动/删除禁用并说明；授权后可用；`file://` 不可用有提示。
