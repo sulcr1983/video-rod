@@ -74,7 +74,10 @@
 
     function absRootFromSettings(st) {
         st = st || {};
-        if ((st.mode || 'system') === 'custom') { return normAbs(st.customRoot); }
+        var custom = (st.mode || 'system') === 'custom' ? normAbs(st.customRoot) : '';
+        /* custom 模式但 customRoot 为空（旧版本/换目录后未写回）时，
+         * 仍用 detectedRoot + subdir，否则 absRoot 为空，重扫/移动会直接报缺少根目录。 */
+        if (custom) { return custom; }
         var base = normAbs(st.detectedRoot);
         if (!base) { return ''; }
         return base + '/' + String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');

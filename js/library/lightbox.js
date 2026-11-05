@@ -168,6 +168,7 @@
             stageOuter.classList.toggle('is-video', kind === 'video');
             stageOuter.classList.toggle('is-gif', kind === 'anim');
             stageOuter.classList.toggle('is-image', kind === 'image');
+            stageOuter.classList.toggle('is-audio', kind === 'audio');
         }
 
         /* 有成熟播放器时让自绘控件条让位；Plyr 没加载成功则保留原控件条降级 */
@@ -285,11 +286,37 @@
             stage.appendChild(img);
             stage.style.cursor = 'grab';
             setTxt('st1v', '—');
-        } else {
+        } else if (kind === 'audio') {
+            /* 音频不是视频的缩小版：给独立的大尺寸播放器面板，
+             * 原生 audio 控件负责播放/进度/音量，外层负责标题与来源信息。 */
+            var aw = document.createElement('div');
+            aw.className = 'vr-audio';
+            aw.innerHTML = '<div class="a-ico"><svg class="i"><use href="#i-volume-2"/></svg></div>' +
+                '<div class="a-title">' + esc(f._title || f.title) + '</div>' +
+                '<div class="a-sub">' + esc(f.author || '未知来源') + ' · ' + fmt(f.size) + '</div>';
             var a = document.createElement('audio');
-            a.src = url; a.controls = true;
-            stage.appendChild(a);
+            a.src = url; a.controls = true; a.preload = 'auto';
+            a.addEventListener('loadedmetadata', function () {
+                setTxt('pvThirdV', fmtDur(a.duration));
+            });
+            a.addEventListener('canplay', function () {
+                setTxt('pvThirdV', fmtDur(a.duration));
+            });
+            a.addEventListener('error', function () {
+                setTxt('st1v', '—');
+                if (stage) { stage.innerHTML = '<div class="viewer-missing">音频无法播放（文件可能已移动或格式不支持）</div>'; }
+            });
+            aw.appendChild(a);
+            stage.appendChild(aw);
+            videoEl = a;
+            a.load();                 // 复用 K/M/空格/数字/方向键的媒体键盘语义
             a.play().catch(function () { });
+            setTxt('st1v', '—');
+        } else {
+            var na = document.createElement('audio');
+            na.src = url; na.controls = true;
+            stage.appendChild(na);
+            na.play().catch(function () { });
             setTxt('st1v', '—');
         }
     }
@@ -322,11 +349,11 @@
         setTxt('st2v', fmt(f.size));
         setTxt('st3v', f.savedAt || '—');
         if (el.pvThirdRow) {
-            var showThird = (f.kind === 'video' || f.kind === 'anim');
+            var showThird = (f.kind === 'video' || f.kind === 'anim' || f.kind === 'audio');
             el.pvThirdRow.classList.toggle('hidden', !showThird);
             if (showThird) {
-                el.pvThirdK.innerHTML = '<svg class="k-ico"><use href="#i-clock"/></svg>' + (f.kind === 'video' ? '时长' : '帧数');
-                setTxt('pvThirdV', f.kind === 'video' ? (f.dur || '—') : (f.frames ? f.frames + ' 帧' : '—'));
+                el.pvThirdK.innerHTML = '<svg class="k-ico"><use href="#i-clock"/></svg>' + (f.kind === 'anim' ? '帧数' : '时长');
+                setTxt('pvThirdV', f.kind === 'anim' ? (f.frames ? f.frames + ' 帧' : '—') : (f.dur || '—'));
             }
         }
         setTxt('pvSaved', f.savedAt || '—');
