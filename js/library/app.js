@@ -160,12 +160,21 @@
     }
     function sorted(rows) {
         var out = rows.slice();
-        var s = (S.sort || $('#sort') && $('#sort').value || 'new');
+        /* S.sort 必须由 #sort 的 change 事件写入。原来 S.sort 初始就是 'new'，
+         * `S.sort || select.value` 永远短路到 'new'，切 A-Z/大小都没反应。 */
+        var s = S.sort || 'new';
+        var tie = function (a, b) { return String(a.relPath || '').localeCompare(String(b.relPath || '')); };
         out.sort(function (a, b) {
-            if (s === 'old') { return (a.savedAt || '').localeCompare(b.savedAt || ''); }
-            if (s === 'size') { return (b.size || 0) - (a.size || 0); }
-            if (s === 'name') { return String(a.title).localeCompare(String(b.title), 'zh'); }
-            return (b.savedAt || '').localeCompare(a.savedAt || '');
+            var d = 0;
+            if (s === 'old') { d = (a.savedAt || '').localeCompare(b.savedAt || ''); }
+            else if (s === 'size') { d = (b.size || 0) - (a.size || 0); }
+            else if (s === 'name') {
+                /* 重命名写的是 displayName；卡片显示 _title，排序也必须用它，
+                 * 否则改了名但 A-Z 仍按旧物理文件名排。 */
+                d = String(a._title || a.title || '').localeCompare(String(b._title || b.title || ''), 'zh');
+            }
+            else { d = (b.savedAt || '').localeCompare(a.savedAt || ''); }
+            return d || tie(a, b);
         });
         return out;
     }
@@ -585,7 +594,13 @@
         var search = $('#search');
         if (search) { search.addEventListener('input', function (e) { S.q = e.target.value.trim().toLowerCase(); render(); }); }
         var sort = $('#sort');
-        if (sort) { sort.addEventListener('change', function () { render(); }); }
+        if (sort) {
+            if (sort.value) { S.sort = sort.value; }
+            sort.addEventListener('change', function () {
+                S.sort = sort.value || 'new';
+                render();
+            });
+        }
 
         var sb = $('#selectBtn');
         if (sb) {
