@@ -460,7 +460,10 @@
         try {
             chrome.storage.local.get('vrLibSettings', function (o) {
                 var s = (o && o.vrLibSettings) || {};
-                var base = s.mode === 'custom' ? s.customRoot
+                /* custom 模式但 customRoot 为空是旧数据常态；不能因此把已授权的
+                 * 真实路径显示成「未探测」。退回 detectedRoot + subdir。 */
+                var base = s.mode === 'custom' && s.customRoot
+                    ? s.customRoot
                     : (s.detectedRoot ? s.detectedRoot + '\\' + (s.subdir || 'video-rod') : '');
                 if (base) {
                     base = String(base).replace(/\//g, '\\');   // 统一成 Windows 反斜杠，别显示成 …/Downloads\video-rod
