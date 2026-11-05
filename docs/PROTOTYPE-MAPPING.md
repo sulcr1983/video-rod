@@ -43,7 +43,7 @@
 │   ├─ .root-btn（F:\download\video-rod · 点击更换目录）
 │   ├─ .side-label（资源树 + treeTotal）
 │   ├─ .tree-search
-│   ├─ nav.tree#tree（00 全部素材 / 01 X / 01·1 NASA …编号索引）
+│   ├─ nav.tree#tree（00 全部资源 / 01 X / 01·1 NASA …编号索引）
 │   ├─ .fav-side（收藏夹 + fav-menu）
 │   └─ .side-foot（N 个文件 / 体积 / meter / 回收站 / 换目录）
 └─ main

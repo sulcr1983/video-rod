@@ -2230,7 +2230,7 @@ html[data-theme="dark"] ::selection{background:rgba(232,176,75,.35)}
           </div>
         </div>
         <div class="ph-title-row">
-          <h1 id="pageTitle">全部素材</h1>
+          <h1 id="pageTitle">全部资源</h1>
           <span class="scan-note"><i class="sdot"></i><span id="syncText">2 分钟前扫描完成</span></span>
           <div class="searchbox">
             <svg class="i i-sm"><use href="#i-search"/></svg>
@@ -2757,7 +2757,7 @@ const fmt = n => n>=1024? (n/1024).toFixed(1)+' GB' : n>=1? n.toFixed(1)+' MB' :
 
 /* ---------- 侧栏资源树 ---------- */
 const TREE = [
-  {kind:'root',label:'全部素材',count:27,active:true},
+  {kind:'root',label:'全部资源',count:27,active:true},
   {kind:'plat',key:'x',label:'X',count:14},
   {kind:'author',label:'NASA',count:14,lv:2},
   {kind:'plat',key:'xiaohongshu',label:'小红书',count:8},
@@ -3745,8 +3745,8 @@ function renderEmpty(n){
     $('#emptyTitle').textContent = '「' + fav.name + '」还是空的';
     $('#emptyText').textContent = fav.sys === 'star'
       ? '在素材上右键「加星标」，或选中后右键「加入收藏夹」，就会自动收到这里。'
-      : '在全部素材里选中想要的，右键「加入收藏夹」就能放进来。一个素材可以同时在多个收藏夹里。';
-    $('#emptyAction').textContent = fav.sys === 'star' ? '去全部素材' : '去全部素材挑';
+      : '在全部资源里选中想要的，右键「加入收藏夹」就能放进来。一个素材可以同时在多个收藏夹里。';
+    $('#emptyAction').textContent = fav.sys === 'star' ? '去全部资源' : '去全部资源挑';
     $('#emptyAction').dataset.act = 'exitfav';
   } else if (fav && filtering) {
     ico('i-search');
@@ -3994,7 +3994,7 @@ $('#favSaveFilter').addEventListener('click', () => {
   if (S.type !== 'all') parts.push(({image:'图片',video:'视频',anim:'动图'})[S.type]);
   if (S.plat !== 'all' && PLAT[S.plat]) parts.push(PLAT[S.plat].label);
   if (S.q) parts.push('「' + S.q + '」');
-  const name = '筛选 · ' + (parts.length ? parts.join(' ') : '全部素材');
+  const name = '筛选 · ' + (parts.length ? parts.join(' ') : '全部资源');
   FAVORITES.push({ id: 'fav-smart-' + Date.now(), name,
                    smart: { type: S.type, plat: S.plat, q: S.q } });
   renderFavs();
@@ -4036,7 +4036,7 @@ function applyFavView(rows){
     const back = $('#crumbBack');
     if (back) back.addEventListener('click', exitFav);
   } else {
-    const T = { all: '全部素材', image: '图片', anim: '动图', video: '视频' }[S.type] || '全部素材';
+    const T = { all: '全部资源', image: '图片', anim: '动图', video: '视频' }[S.type] || '全部资源';
     $('#crumb').innerHTML = '<b>媒体库</b><span class="sep">/</span><span>全部平台</span>';
     $('#pageTitle').textContent = T;
     const plats = new Set(rows.map(f => f.plat)).size;
@@ -4203,7 +4203,7 @@ function deleteFav(fav){
   if (!fav || fav.sys) { toast('系统收藏夹不能删除'); return; }
   openConfirm({
     title: '删除收藏夹「' + fav.name + '」',
-    msg: '只删这个收藏夹，<b>里面的素材文件不受影响</b>，之后仍能在全部素材里找到。',
+    msg: '只删这个收藏夹，<b>里面的素材文件不受影响</b>，之后仍能在全部资源里找到。',
     okText: '删除收藏夹',
     onOk: () => {
       FAVORITES = FAVORITES.filter(x => x !== fav);

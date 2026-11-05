@@ -183,7 +183,7 @@
     function buildTree() {
         var c = counts();
         var keys = Object.keys(c.platforms).sort(function (a, b) { return c.platforms[b] - c.platforms[a]; });
-        var rows = [{ kind: 'root', label: '全部素材', count: c.all }];
+        var rows = [{ kind: 'root', label: '全部资源', count: c.all }];
         var pi = 0;
         keys.forEach(function (p) {
             pi++;
@@ -658,7 +658,7 @@
             tree.addEventListener('click', function (e) {
                 var n = e.target.closest('.tree-node'); if (!n) { return; }
                 if (!n.dataset.plat && !n.dataset.author) {
-                    /* 根节点「全部素材」：之前只加 active 不重置筛选，点了等于没点 */
+                    /* 根节点「全部资源」：之前只加 active 不重置筛选，点了等于没点 */
                     S.q = ''; S.plat = 'all'; S.type = 'all';
                     if ($('#search')) { $('#search').value = ''; }
                     $$('#chips .chip').forEach(function (x) {
