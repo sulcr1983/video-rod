@@ -137,7 +137,13 @@
         var thumbKey = 't:' + entry.relPath;
         if (dbReady()) {
             await root.VRDB.putThumb(thumbKey, blob, canvas.width, canvas.height);
-            try { await root.VRDB.patchFile(entry.relPath, { thumbKey: thumbKey }); } catch (e) { /* 忽略 */ }
+            /* F1 分辨率回写：这里是唯一能拿到「原始宽高」的时刻（解码文件时），
+               错过之后要重解码全库才能补，所以顺手写进条目（DB 白名单已在 mergeEntry 保留） */
+            var patch = { thumbKey: thumbKey, width: w, height: h };
+            if (entry.type === 'video' && source && source.duration) {
+                patch.duration = Math.round(source.duration * 10) / 10;
+            }
+            try { await root.VRDB.patchFile(entry.relPath, patch); } catch (e) { /* 忽略 */ }
         }
         return { blob: blob, w: canvas.width, h: canvas.height, thumbKey: thumbKey };
     }

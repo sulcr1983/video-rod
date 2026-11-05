@@ -128,6 +128,7 @@
             else { el.pvOpenTop.classList.add('hidden'); }
         }
 
+        if (f.width && f.height) { setTxt('st1v', f.width + '×' + f.height); }
         setTxt('st2v', fmt(f.size));
         setTxt('st3v', f.savedAt || '—');
         if (el.pvThirdRow) {
@@ -158,7 +159,10 @@
 
         if (el.pvTags) {
             el.pvTags.innerHTML = (f.tags && f.tags.length)
-                ? f.tags.map(function (t) { return '<span class="pv-tag">' + esc(t) + '</span>'; }).join('')
+                ? f.tags.map(function (t, i) {
+                    return '<span class="pv-tag">' + esc(t) +
+                        '<button data-ti="' + i + '" aria-label="移除标签"><svg class="i" style="width:10px;height:10px"><use href="#i-x"/></svg></button></span>';
+                }).join('')
                 : '<span class="pv-tag empty">还没有标签</span>';
         }
     }
@@ -273,6 +277,52 @@
                 navigator.clipboard.writeText(f.relPath).then(function () {
                     if (root.VRApp) { root.VRApp.toast('路径已复制'); }
                 });
+            });
+        }
+
+        /* ---- 标签（F3）：写回 VRDB 条目，重建索引由 mergeEntry 保住 ---- */
+        function curFile() { return S.list[S.idx]; }
+        async function saveTags(next) {
+            var f = curFile(); if (!f) { return; }
+            f.tags = next;
+            try { await root.VRDB.patchFile(f.relPath, { tags: next }); } catch (e) { /* 忽略 */ }
+            paintInfo(f);
+            if (root.VRApp && root.VRApp.reload) { root.VRApp.reload(); }
+        }
+        if (el.pvTags) {
+            el.pvTags.addEventListener('click', function (e) {
+                var b = e.target.closest('button[data-ti]'); if (!b) { return; }
+                var f = curFile(); if (!f) { return; }
+                var i = Number(b.dataset.ti);
+                var next = (f.tags || []).slice(); next.splice(i, 1);
+                saveTags(next);
+            });
+        }
+        var tagAdd = document.getElementById('pvTagAdd');
+        var tagWrap = document.getElementById('pvTagInputWrap');
+        var tagInput = document.getElementById('pvTagInput');
+        if (tagAdd) {
+            tagAdd.addEventListener('click', function () {
+                if (tagWrap) { tagWrap.classList.add('on'); }
+                if (tagInput) { tagInput.focus(); }
+            });
+        }
+        async function addTag() {
+            var f = curFile(); if (!f || !tagInput) { return; }
+            var v = String(tagInput.value || '').trim();
+            if (!v) { return; }
+            var next = (f.tags || []).slice();
+            if (next.indexOf(v) < 0) { next.push(v); }
+            tagInput.value = '';
+            if (tagWrap) { tagWrap.classList.remove('on'); }
+            await saveTags(next);
+        }
+        var tagSave = document.getElementById('pvTagSave');
+        if (tagSave) { tagSave.addEventListener('click', addTag); }
+        if (tagInput) {
+            tagInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+                if (e.key === 'Escape' && tagWrap) { tagWrap.classList.remove('on'); }
             });
         }
 

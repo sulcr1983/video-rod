@@ -99,6 +99,8 @@
             kind: kind,
             ext: String(ext).toUpperCase(),
             size: sizeMb,
+            width: Number(e.width) || 0,
+            height: Number(e.height) || 0,
             dur: fmtDur(e.duration),
             frames: Number(e.frames) || 0,
             h: 180,

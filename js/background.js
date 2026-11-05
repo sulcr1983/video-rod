@@ -2197,10 +2197,11 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
             G.damnUrlSet.add(tabId);
         }
     }
-    chrome.sidePanel.setOptions({
-        tabId,
-        path: "popup.html?tabId=" + tabId
-    });
+    try {
+        if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+            chrome.sidePanel.setOptions({ tabId: tabId, path: "popup.html?tabId=" + tabId });
+        }
+    } catch (e) { /* Edge/旧版无 sidePanel：忽略 */ }
 });
 
 /**
