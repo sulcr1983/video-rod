@@ -2364,6 +2364,12 @@ async function vrNameInTab(tabId, ext, override) {
     const tpl = settings.template || '${author}_${title}';
 
     let name = '';
+    // override（页面侧已知的作者/作品）优先于 DOM 提取，供分目录与命名共用
+    const info = {
+        author: (override && override.author) || '',
+        authorId: (override && override.authorId) || '',
+        pageUrl: (override && override.pageUrl) || ''
+    };
     try {
         await chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['js/naming.js'] });
         const r = await chrome.scripting.executeScript({
@@ -2382,16 +2388,48 @@ async function vrNameInTab(tabId, ext, override) {
                         if (ov.site) { i.site = ov.site; }
                         i.authorFull = N.buildAuthorFull(i.author, i.authorId);
                     }
-                    return N.buildNameFromInfo(i, location.href, { tpl: tpl, ext: ext });
+                    // 一起把归档分目录要用的字段带回来，省一次注入
+                    return {
+                        n: N.buildNameFromInfo(i, location.href, { tpl: tpl, ext: ext }),
+                        a: i.author || '',
+                        ai: i.authorId || '',
+                        u: location.href || ''
+                    };
                 } catch (e) { return ''; }
             },
             args: [tpl, ext, override || null]
         });
-        name = (r && r[0] && r[0].result) || '';
+        const v = (r && r[0] && r[0].result) || null;
+        if (v && typeof v === 'object') {
+            name = v.n || '';
+            info.author = v.a || '';
+            info.authorId = v.ai || '';
+            info.pageUrl = v.u || '';
+        } else if (typeof v === 'string') {
+            name = v;
+        }
     } catch (e) { /* 受限页面，退回时间戳名 */ }
 
     if (!name) { name = 'media_' + Date.now() + '.' + ext; }
-    return (dir + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+
+    /* 归档分目录（苏哥第一性原则 P2）：video-rod/<平台>/<作者(@ID)>/<视频|图片|音频>/<名>
+       拿不到页面地址（chrome:// 等受限页）就退回平铺，不硬造「其他网页/待整理」垃圾目录。
+       settings.subdirByPlatform === false 时也平铺（给不想分层的用户留口子）。 */
+    let sub = dir;
+    try {
+        if (info.pageUrl && self.VRPath && self.VRPath.buildRelDir && settings.subdirByPlatform !== false) {
+            sub = self.VRPath.buildRelDir({
+                subdir: dir,
+                pageUrl: info.pageUrl,
+                ext: ext,
+                type: '',
+                authorFull: info.author,
+                creatorId: info.authorId,
+                site: (override && override.site) || ''
+            }) || dir;
+        }
+    } catch (e) { sub = dir; }
+    return (sub + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
 }
 
 const VR_VIDEO_EXT = /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i;

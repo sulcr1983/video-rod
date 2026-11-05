@@ -172,6 +172,9 @@
             }
             var tail = idFromAuthorFull(full);
             if (tail) { return cleanSeg(full.replace(/\(@[^)]*\)\s*$/, '')) + '(@' + cleanSeg(tail) + ')'; }
+            // 作者名里没有 ID、但调用方另外给了 creatorId（B站 UP 主 mid 等）→ 补进目录名，
+            // 否则同名作者会挤进同一个文件夹，分不清是谁。
+            if (id) { return cleanSeg(full) + '(@' + cleanSeg(id) + ')'; }
             return cleanSeg(full);
         }
         if (id) { return '待整理(@' + cleanSeg(id) + ')'; }
