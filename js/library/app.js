@@ -441,6 +441,28 @@
         } catch (e) { /* 非扩展环境 */ }
     }
 
+    /* ---------- 全局兜底：别让「目录句柄失效」变成控制台红字 ----------
+       陈旧的 FSA 句柄（换档案/换盘）会让 queryPermission / getDirectoryHandle
+       抛 "Permissions check failed"。这类错误对用户没有意义，统一翻成一句可操作提示；
+       其余异常不吞，照常抛出去（别掩盖真 bug）。 */
+    function installGlobalErrorGuard() {
+        function isPerm(msg) {
+            return /Permissions check failed|not allowed to (read|write)|denied permission/i.test(String(msg || ''));
+        }
+        window.addEventListener('unhandledrejection', function (e) {
+            var m = (e.reason && (e.reason.message || e.reason)) || '';
+            if (isPerm(m)) {
+                try { toast('目录授权已失效：到设置里重新选一次目录就能继续'); } catch (e2) { /* 忽略 */ }
+                e.preventDefault();
+            }
+        });
+        window.addEventListener('error', function (e) {
+            if (isPerm(e && e.message)) {
+                try { toast('目录授权已失效：到设置里重新选一次目录就能继续'); } catch (e2) { /* 忽略 */ }
+            }
+        });
+    }
+
     /* ---------- 根目录自动探测（P2 前置） ----------
        根目录从来没被探测过时（vrLibSettings 只有 subdir），库页会一直显示「未探测」，
        索引也没有基准路径 → 容易把整个「下载」目录当成库。这里用最近的下载记录反推
@@ -732,6 +754,238 @@
         }
     }
 
+    /* ==========================================================
+       补齐原型里「有按钮、没接线」的死键（E2E 交叉比对查出 23 个）。
+       规矩：每个按钮点了必须有真实动作或明确提示，不许点了没反应。
+       ========================================================== */
+    function renderFavDrawer() {
+        var listEl = document.getElementById('favDrawerList');
+        var nEl = document.getElementById('favDrawerN');
+        if (nEl) { nEl.textContent = FAVS.length; }
+        if (!listEl) { return; }
+        if (!FAVS.length) { listEl.innerHTML = '<div class="dw-empty">还没有收藏夹</div>'; return; }
+        listEl.innerHTML = FAVS.map(function (fav) {
+            var n = fav.sys === 'star'
+                ? FILES.filter(function (f) { return f.starred; }).length
+                : (fav.ids || []).length;
+            return '<div class="dw-item">' +
+                '<span class="dw-name">' + esc(fav.name) + '</span>' +
+                '<span style="color:var(--faint);font-size:10px;margin-right:8px">' + n + ' 项</span>' +
+                '<button class="btn small" data-favdel="' + esc(fav.id) + '">删除</button>' +
+                '</div>';
+        }).join('');
+    }
+
+    function bindMissing() {
+        var on = function (id, fn) { var el = document.getElementById(id); if (el) { el.addEventListener('click', fn); } };
+        var byId = function (id) { return document.getElementById(id); };
+
+        /* ---- 确认框（重命名/删除共用） ---- */
+        var confirmCb = null;
+        function ask(msg, cb) {
+            var m = byId('confirmMask');
+            if (!m) { if (cb) { cb(); } return; }
+            var t = byId('confirmMsg'); if (t) { t.textContent = msg; }
+            confirmCb = cb; m.classList.add('show');
+        }
+        function closeAsk() {
+            var m = byId('confirmMask'); if (m) { m.classList.remove('show'); }
+            confirmCb = null;
+        }
+        on('confirmCancel', closeAsk);
+        on('confirmOk', function () { var cb = confirmCb; closeAsk(); if (cb) { cb(); } });
+
+        /* ---- 重命名 ---- */
+        var renRel = '';
+        function openRename(f) {
+            if (!f) { toast('先选一条素材'); return; }
+            renRel = f.relPath;
+            var m = byId('renameMask'); if (!m) { return; }
+            var inp = byId('renameInput');
+            if (inp) { inp.value = f.fileName || f.title || ''; }
+            var d = byId('renameDir');
+            if (d) { d.textContent = String(f.relPath).split('/').slice(0, -1).join(' / '); }
+            m.classList.add('show');
+            setTimeout(function () { if (inp) { inp.focus(); inp.select(); } }, 40);
+        }
+        function closeRename() { var m = byId('renameMask'); if (m) { m.classList.remove('show'); } }
+        on('renameCancel', closeRename);
+        var rmask = byId('renameMask');
+        if (rmask) { rmask.addEventListener('click', function (e) { if (e.target === rmask) { closeRename(); } }); }
+        on('renameOk', async function () {
+            var inp = byId('renameInput');
+            var v = String((inp && inp.value) || '').trim();
+            if (!v) { toast('文件名不能为空'); return; }
+            if (!root.VRRename) { toast('重命名模块没加载，请重新加载扩展'); return; }
+            try {
+                await root.VRRename.rename(renRel, v);
+                closeRename();
+                toast('已重命名');
+                await load();
+            } catch (e) {
+                toast('重命名失败：' + ((e && e.message) || '未知'));
+            }
+        });
+
+        /* ---- 预览层右侧按钮 ---- */
+        function curPreview() {
+            return (root.VRPreview && root.VRPreview.current) ? root.VRPreview.current() : null;
+        }
+        on('pvRename', function () { openRename(curPreview()); });
+        on('pvDelete', function () {
+            var f = curPreview(); if (!f) { return; }
+            ask('把「' + (f.title || f.fileName) + '」移入回收站？文件还能恢复。', async function () {
+                if (!root.VRTrash) { toast('回收站模块没加载'); return; }
+                try {
+                    await root.VRTrash.remove([f.relPath]);
+                    if (root.VRPreview) { root.VRPreview.close(); }
+                    toast('已移入回收站');
+                    await load();
+                } catch (e) { toast('删除失败：' + ((e && e.message) || '未知')); }
+            });
+        });
+        on('pvReveal', function () {
+            var f = curPreview(); if (!f) { return; }
+            var abs = f.absPath || f.relPath;
+            try { if (navigator.clipboard) { navigator.clipboard.writeText(abs).catch(function () { }); } } catch (e) { /* 忽略 */ }
+            toast('完整路径已复制：' + abs);
+        });
+        on('pvMove', function () {
+            // 移动要写盘，必须先有目录授权；直接带到设置里，别做成点了没反应的假按钮
+            toast('移动素材要先在设置里授权目录');
+            openOptions();
+        });
+        on('pvHelpBtn', function () {
+            var k = byId('keysheet'); if (k) { k.classList.add('show'); }
+        });
+        on('ksClose', function () {
+            var k = byId('keysheet'); if (k) { k.classList.remove('show'); }
+        });
+        on('pvMoreAll', function () {
+            var f = curPreview(); if (!f) { return; }
+            var who = String(f.author || '').replace(/\(@[^)]*\)\s*$/, '').trim();
+            if (!who) { toast('这条没记作者信息'); return; }
+            var se = byId('search');
+            if (se) { se.value = who; se.dispatchEvent(new Event('input', { bubbles: true })); }
+            if (root.VRPreview) { root.VRPreview.close(); }
+            toast('已按作者「' + who + '」筛选');
+        });
+        on('autoBtn', function (ev) {
+            var b = ev.currentTarget || byId('autoBtn');
+            var next = !(b && b.classList.contains('on'));
+            if (b) { b.classList.toggle('on', next); b.setAttribute('aria-pressed', next ? 'true' : 'false'); }
+            if (root.VRPreview && root.VRPreview.setAuto) { root.VRPreview.setAuto(next); }
+            toast(next ? '连播：开' : '连播：关');
+        });
+
+        /* ---- 收藏夹 ---- */
+        function openFavDrawer() {
+            renderFavDrawer();
+            var d = byId('favDrawer'); if (d) { d.classList.add('show'); }
+            var m = byId('setmask'); if (m) { m.classList.add('show'); }
+        }
+        function closeFavDrawer() {
+            var d = byId('favDrawer'); if (d) { d.classList.remove('show'); }
+            var m = byId('setmask'); if (m) { m.classList.remove('show'); }
+        }
+        on('favMore', openFavDrawer);
+        on('favDrawerClose', closeFavDrawer);
+        on('favDrawerNew', function () {
+            var n = window.prompt('新收藏夹名字', '新收藏夹');
+            if (n === null) { return; }
+            n = String(n).trim();
+            if (!n) { toast('名字不能为空'); return; }
+            FAVS.push({ id: 'f' + Date.now(), name: n, ids: [] });
+            saveFavs(); renderFavs(); renderFavDrawer();
+            toast('已新建收藏夹「' + n + '」');
+        });
+        on('favSaveFilter', function () {
+            var name = '筛选 ' + new Date().toLocaleDateString();
+            FAVS.push({
+                id: 'f' + Date.now(), name: name,
+                ids: FILES.map(function (f) { return f.id; })
+            });
+            saveFavs(); renderFavs(); renderFavDrawer();
+            toast('已把当前筛选存成收藏夹「' + name + '」');
+        });
+        on('favPopNew', function () {
+            var n = window.prompt('新收藏夹名字', '新收藏夹');
+            if (n === null) { return; }
+            n = String(n).trim();
+            if (!n) { toast('名字不能为空'); return; }
+            FAVS.push({ id: 'f' + Date.now(), name: n, ids: [] });
+            saveFavs(); renderFavs(); renderFavDrawer();
+            toast('已新建收藏夹「' + n + '」');
+        });
+        on('favPopDone', function () {
+            var pop = byId('favPop'); if (pop) { pop.classList.remove('show'); }
+        });
+
+        function curFav() {
+            var arr = FAVS.filter(function (x) { return x.id === S.fav; });
+            return arr[0] || null;
+        }
+        on('favRename', function () {
+            var fav = curFav();
+            if (!fav) { toast('先在左边选一个收藏夹'); return; }
+            var n = window.prompt('收藏夹新名字', fav.name);
+            if (n === null) { return; }
+            n = String(n).trim();
+            if (!n) { toast('名字不能为空'); return; }
+            fav.name = n; saveFavs(); renderFavs(); renderFavDrawer();
+            toast('已重命名收藏夹');
+        });
+        on('favDelete', function () {
+            var fav = curFav();
+            if (!fav) { toast('先在左边选一个收藏夹'); return; }
+            ask('删除收藏夹「' + fav.name + '」？只删这个视图，文件不会动。', function () {
+                FAVS = FAVS.filter(function (x) { return x.id !== fav.id; });
+                if (S.fav === fav.id) { S.fav = ''; }
+                saveFavs(); renderFavs(); renderFavDrawer();
+                toast('收藏夹已删除（文件没动）');
+            });
+        });
+        on('favExport', function () {
+            var fav = curFav();
+            if (!fav) { toast('先在左边选一个收藏夹'); return; }
+            var list = fav.sys === 'star'
+                ? FILES.filter(function (f) { return f.starred; })
+                : FILES.filter(function (f) { return (fav.ids || []).indexOf(f.id) >= 0; });
+            try {
+                var txt = list.map(function (f) { return f.relPath; }).join('\n');
+                var blob = new Blob([txt], { type: 'text/plain' });
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = fav.name + '.txt';
+                a.click();
+                setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+                toast('清单已导出（' + list.length + ' 条）');
+            } catch (e) { toast('导出失败'); }
+        });
+
+        // 左侧栏「回收站」入口（此前只有设置抽屉里的那个有绑定）
+        var sideTrash = byId('trashBtn');
+        if (sideTrash) { sideTrash.addEventListener('click', function () { openTrash(); }); }
+
+        // 抽屉里每行的「删除」
+        var dlist = byId('favDrawerList');
+        if (dlist) {
+            dlist.addEventListener('click', function (e) {
+                var b = e.target.closest ? e.target.closest('[data-favdel]') : null;
+                if (!b) { return; }
+                var id = b.getAttribute('data-favdel');
+                var fav = FAVS.filter(function (x) { return x.id === id; })[0];
+                if (!fav) { return; }
+                ask('删除收藏夹「' + fav.name + '」？只删这个视图，文件不会动。', function () {
+                    FAVS = FAVS.filter(function (x) { return x.id !== id; });
+                    if (S.fav === id) { S.fav = ''; }
+                    saveFavs(); renderFavs(); renderFavDrawer();
+                    toast('收藏夹已删除（文件没动）');
+                });
+            });
+        }
+    }
+
     function bindFavAndDrawer() {
         var favBtn = $('#favMenuBtn');
         if (favBtn) {
@@ -788,7 +1042,16 @@
             await refreshDrawer();
         }); }
         var trashBtn = $('#sdTrashBtn');
-        if (trashBtn) { trashBtn.addEventListener('click', function () { closeSet(); openTrash(); }); }
+        if (trashBtn) {
+            // 抽屉里点「打开回收站」：先把设置抽屉收起再开回收站。
+            // 注意 closeSet() 是 bind() 内部的局部函数，这里调不到（曾报 closeSet is not defined）。
+            trashBtn.addEventListener('click', function () {
+                var sd = $('#setdrawer'), sm = $('#setmask');
+                if (sd) { sd.classList.remove('show'); }
+                if (sm) { sm.classList.remove('show'); }
+                openTrash();
+            });
+        }
 
         var dwClose = $('#dwClose');
         if (dwClose) { dwClose.addEventListener('click', function () { closeTrash(); }); }
@@ -828,7 +1091,9 @@
 
     /* ---------- 启动 ---------- */
     async function boot() {
+        try { installGlobalErrorGuard(); } catch (e) { /* 忽略 */ }
         bind();
+        try { bindMissing(); } catch (e) { /* 单个按钮接线失败不影响启动 */ }
         await loadFavs();
         await ensureRoot();     // 先把库根锁到 <下载根>/video-rod，避免把整个下载目录当库
         await load();

@@ -366,6 +366,8 @@
                 var f = S.list[S.idx]; if (!f) { return; }
                 navigator.clipboard.writeText(f.relPath).then(function () {
                     if (root.VRApp) { root.VRApp.toast('路径已复制'); }
+                }).catch(function () {
+                    if (root.VRApp) { root.VRApp.toast('复制失败：窗口没聚焦或没给剪贴板权限'); }
                 });
             });
         }
@@ -377,6 +379,8 @@
                 var f = curFile0(); if (!f || !f.mediaUrl) { return; }
                 navigator.clipboard.writeText(f.mediaUrl).then(function () {
                     if (root.VRApp) { root.VRApp.toast('直链已复制（可能已过期）'); }
+                }).catch(function () {
+                    if (root.VRApp) { root.VRApp.toast('复制失败：窗口没聚焦或没给剪贴板权限'); }
                 });
             });
         }
@@ -447,5 +451,12 @@
     }
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
 
-    root.VRPreview = { open: open, close: close };
+    root.VRPreview = {
+        open: open,
+        close: close,
+        /* 当前正在看的素材（供库页的「重命名/删除/同作者」按钮使用） */
+        current: function () { return S.list[S.idx] || null; },
+        setAuto: function (v) { S.auto = !!v; },
+        isAuto: function () { return !!S.auto; }
+    };
 })();
