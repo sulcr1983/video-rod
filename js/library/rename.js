@@ -183,6 +183,17 @@
 
     async function rename(relPath, newName) {
         var oldRel = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        /* F5 R2：引用条目（同一物理文件的多条记录）重命名只改显示名，
+           物理文件名不动 —— 否则会连带改掉所有引用指向的文件。 */
+        try {
+            var e0 = await root.VRDB.getFile(oldRel);
+            if (e0 && e0.isRef && root.VRDedup) {
+                var ok = await root.VRDedup.renameDisplay(oldRel, String(newName || '').trim());
+                if (ok) {
+                    return { relPath: oldRel, displayOnly: true, name: String(newName || '').trim() };
+                }
+            }
+        } catch (e) { /* 查不到就按普通改名 */ }
         var segs = split(oldRel);
         var oldName = segs.pop();
         if (!oldName) {

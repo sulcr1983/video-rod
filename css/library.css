@@ -1650,3 +1650,8 @@ body.library-page{background:var(--bg);color:var(--ink);min-height:100vh}
 /* 来源徽标三态（完整/部分/未记录） */
 .pi-badge.warn{background:#2A2116;color:#E0B062}
 .pi-badge.none{background:var(--surface-3);color:var(--faint)}
+
+/* F5 去重：引用角标（内容与另一条相同，物理只存一份） */
+.ref-tag{position:absolute;right:8px;top:8px;z-index:3;font-size:9.5px;color:#141210;background:var(--accent);padding:2px 7px;border-radius:999px;font-weight:600}
+/* 去重统计两行口径 */
+.sf-dedup{font-size:10px;color:var(--faint);margin-top:3px;font-variant-numeric:tabular-nums}

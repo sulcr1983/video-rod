@@ -195,6 +195,24 @@
                 if (dbReady()) {
                     try { entry = await root.VRDB.getFile(rel); } catch (e) { /* 忽略 */ }
                 }
+                // F5 R1：删除 = 只减引用。同指纹还有别的引用时，物理文件留在原地不动
+                // （只把这一条移到回收站）；最后一条引用被清空时才真正删物理文件。
+                if (entry && entry.sha256 && root.VRDedup) {
+                    try {
+                        var cnt = await root.VRDedup.refCount(entry.sha256);
+                        if (cnt > 1) {
+                            // 还有别的引用在用同一个物理文件 → 只删库条目，不动文件
+                            await root.VRDB.deleteFiles([rel]);
+                            items.push(Object.assign({}, entry, {
+                                fileName: split(rel).pop(),
+                                state: 'ok',
+                                isRefOnly: true,
+                                refRemaining: cnt - 1
+                            }));
+                            continue;
+                        }
+                    } catch (e) { /* 判重失败按普通删除 */ }
+                }
                 await moveFile(rr.handle, rel, batchRel + '/' + rel);
                 items.push(entry || { relPath: rel, fileName: split(rel).pop(), state: 'ok' });
             } catch (e) {

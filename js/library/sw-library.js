@@ -145,14 +145,29 @@
             state: 'ok'
         };
 
-        // 同名重下时保留星标与标签（与 writeOne 同口径）
-        return root.VRDB.getFile(rel).then(function (old) {
-            if (old) {
-                if (old.starred) { item.starred = old.starred; }
-                if (old.tags && old.tags.length) { item.tags = old.tags; }
-            }
-            return root.VRDB.putFiles([item]);
-        }).then(function () {
+        // F5：FSA 直写路径同样判重
+        return Promise.resolve()
+            .then(function () {
+                if (!root.VRDedup) { return null; }
+                return root.VRDedup.afterDownload({
+                    relPath: rel, absPath: m.absPath || '', info: item
+                });
+            })
+            .catch(function () { return null; })
+            .then(function (dedup) {
+                if (dedup && dedup.info) { Object.assign(item, dedup.info); }
+                // 同名重下时保留星标与标签（与 writeOne 同口径）
+                return root.VRDB.getFile(rel);
+            })
+            .then(function (old) {
+                if (old) {
+                    if (old.starred) { item.starred = old.starred; }
+                    if (old.tags && old.tags.length) { item.tags = old.tags; }
+                    if (old.sha256 && !item.sha256) { item.sha256 = old.sha256; }
+                    if (old.isRef && !item.isRef) { item.isRef = old.isRef; }
+                }
+                return root.VRDB.putFiles([item]);
+            }).then(function () {
             notify(item);
             return item;
         }).catch(function (e) {
@@ -200,14 +215,33 @@
                 state: 'ok'
             };
 
-            // 同一 relPath 再次入库（用户重下同名文件）时，保留已打的星标/标签
-            return root.VRDB.getFile(rel).then(function (old) {
-                if (old) {
-                    if (old.starred) { item.starred = old.starred; }
-                    if (old.tags && old.tags.length) { item.tags = old.tags; }
-                }
-                return root.VRDB.putFiles([item]);
-            }).then(function () {
+            // F5 内容去重：先算指纹；命中已有条目就只写引用，不重复占盘。
+            // 判重异常一律按普通文件处理（不影响下载与入库）。
+            return Promise.resolve()
+                .then(function () {
+                    if (!root.VRDedup) { return null; }
+                    return root.VRDedup.afterDownload({
+                        relPath: rel, absPath: d.filename, info: item
+                    });
+                })
+                .catch(function () { return null; })
+                .then(function (dedup) {
+                    if (dedup && dedup.info) {
+                        // 去重模块可能补了 sha256/isRef 等字段
+                        Object.assign(item, dedup.info);
+                    }
+                    // 同一 relPath 再次入库（用户重下同名文件）时，保留已打的星标/标签
+                    return root.VRDB.getFile(rel);
+                })
+                .then(function (old) {
+                    if (old) {
+                        if (old.starred) { item.starred = old.starred; }
+                        if (old.tags && old.tags.length) { item.tags = old.tags; }
+                        if (old.sha256 && !item.sha256) { item.sha256 = old.sha256; }
+                        if (old.isRef && !item.isRef) { item.isRef = old.isRef; }
+                    }
+                    return root.VRDB.putFiles([item]);
+                }).then(function () {
                 if (key) {
                     delete pending[key];
                     scheduleSave();
