@@ -236,6 +236,9 @@
         item.mime = d.mime || '';
         item.sourceUrl = d.url || d.finalUrl || '';
         item.downloadId = d.id;
+        // 绝对路径：缩略图/指纹都要靠它读文件（2026-11-05：漏了这个字段，
+        // 结果库里所有缩略图都是灰块，因为 thumbs.js 拿 entry.absPath 去 fetch）
+        item.absPath = d.filename || '';
         return item;
     }
 

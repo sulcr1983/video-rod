@@ -147,6 +147,46 @@
           "ok": true
         }
       ]
+    },
+    {
+      "at": "2026-11-05T18:27:18",
+      "summary": "7/8 套件通过，用时 140.4s",
+      "report": "deliverables\\test-runs\\2026-11-05-1827-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        },
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        },
+        {
+          "n": "skin",
+          "ok": true
+        },
+        {
+          "n": "download-path",
+          "ok": false
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        }
+      ]
     }
   ]
 }
