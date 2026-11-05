@@ -35,21 +35,12 @@
             if (!r.ok) { return { ok: false, reason: 'http-' + r.status }; }
             return r.blob().then(function (blob) {
                 if (!blob || !blob.size) { return { ok: false, reason: 'empty-body' }; }
-                // 离屏文档没有 chrome.downloads（实测 undefined），也不能靠 SW 下载 blob URL
-                // —— blob 落盘会被 Chrome 改成一串 UUID（ADR-040 同一坑）。
-                // 用 <a download> 触发浏览器下载：download 属性里的文件名会被保留。
+                // 只负责「取字节」，落盘交给 background 的统一入口 vrDownloadWithName：
+                // 那里有文件名记账（onDeterminingFilename）、归档子目录、资源库入库。
+                // ⚠️ 不能在这里用 <a download> —— 实测会落到「下载」根目录、丢掉子目录、
+                //    也不进资源库（苏哥 2026-11-05 明确否决这条路）。
                 var bu = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = bu;
-                a.download = filename;
-                a.rel = 'noopener';
-                (document.body || document.documentElement).appendChild(a);
-                a.click();
-                a.remove();
-                setTimeout(function () {
-                    try { URL.revokeObjectURL(bu); } catch (e) { /* ignore */ }
-                }, 300000);
-                return { ok: true, bytes: blob.size, type: blob.type || '', via: 'a-download' };
+                return { ok: true, blobUrl: bu, bytes: blob.size, type: blob.type || '' };
             });
         }).catch(function (e) {
             return { ok: false, reason: String(e).slice(0, 160) };

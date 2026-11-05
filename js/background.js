@@ -729,7 +729,12 @@ function vrImgRefererRule(url, pageUrl) {
                     priority: 1,
                     action: {
                         type: 'modifyHeaders',
-                        requestHeaders: [{ header: 'Referer', operation: 'set', value: pageUrl }]
+                        // origin 必须 remove：扩展 fetch 自带 chrome-extension:// 的 Origin，
+                        // 微博 sinaimg 见到就 403（2026-11-05 实测，只补 Referer 不够）
+                        requestHeaders: [
+                            { header: 'Referer', operation: 'set', value: pageUrl },
+                            { header: 'Origin', operation: 'remove' }
+                        ]
                     },
                     condition: {
                         urlFilter: filter,
@@ -867,6 +872,34 @@ async function vrImgDownload(msg) {
         if (ruleId) { vrImgClearRefererRule(ruleId); }
         return { ok: false, code: 'IMG_E_FETCH', message: '下载发起失败，站点可能限制了直链', path: relPath };
     }
+
+    // 快速失败检测 + 离屏兜底（2026-11-05）。
+    // 微博 sinaimg 这类 CDN 只认 Referer，而 downloads 请求带不上（DNR 对它不生效），
+    // 于是会落一个 0 字节文件再报 SERVER_FORBIDDEN。以前这里直接当成功，用户看到空文件。
+    // 现在 2.5s 内判到 interrupted 就撤账、清残件，改走离屏直连（扩展上下文 fetch 能带 Referer）。
+    const outcome = await vrWaitDownload(downloadId, 2500);
+    if (outcome && outcome.state === 'interrupted') {
+        try { vrAbortFilename(url, relPath); } catch (e) { /* ignore */ }
+        vrDropDownload(downloadId);
+        if (ruleId) { vrImgClearRefererRule(ruleId); }
+        const off = await vrOffscreenDownload(url, String(relPath).split('/').pop());
+        if (off && off.ok && off.blobUrl) {
+            const id2 = await vrDownloadWithName(off.blobUrl, relPath, { meta: meta });
+            if (id2 && typeof id2 === 'object' && id2.__fsa) {
+                return { ok: true, fsa: true, downloadId: null, path: id2.path || relPath };
+            }
+            if (id2 !== null && id2 !== undefined) {
+                return { ok: true, downloadId: id2, path: relPath, via: 'offscreen' };
+            }
+        }
+        return {
+            ok: false, code: 'IMG_E_FETCH',
+            message: '站点防盗链拦了直链（已尝试离屏直连）',
+            path: relPath,
+            offscreen: off || null
+        };
+    }
+
     // 规则要覆盖到请求真正发出为止，不能 download() 一返回就删——
     // 那时请求可能还没发，删早了下载就丢 Referer（批量并发时尤其明显）。
     if (ruleId) { vrImgClearRuleAfterDownload(ruleId, downloadId); }
@@ -2503,8 +2536,14 @@ async function vrSetMediaHeaders(domain, referer) {
         if (!chrome.declarativeNetRequest || !domain || !referer) { return; }
         let origin = '';
         try { origin = new URL(referer).origin; } catch (e) { /* ignore */ }
-        const headers = [{ header: 'referer', operation: 'set', value: referer }];
-        if (origin) { headers.push({ header: 'origin', operation: 'set', value: origin }); }
+        // origin 必须 **remove** 而不是 set（2026-11-05 实测）：
+        // 扩展上下文的 fetch 会自带 `Origin: chrome-extension://<id>`，微博 sinaimg 见到
+        // 这个 Origin 直接 403（同样请求用 curl 不带 Origin 就是 200）。
+        // 只 set referer 不够，必须把这个头去掉 —— 抖音/微博图片都靠这条才通。
+        const headers = [
+            { header: 'referer', operation: 'set', value: referer },
+            { header: 'origin', operation: 'remove' }
+        ];
         await chrome.declarativeNetRequest.updateSessionRules({
             removeRuleIds: [VR_MEDIA_HEADER_RULE_ID],
             addRules: [{
@@ -3303,11 +3342,15 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         // 路线 3（最后兜底）：离屏文档直连。
         // 抖音 CDN 只认 Referer，而 downloads 请求带不上、页面 fetch 被 CORS 拦，
         // 只有扩展上下文的 fetch 能同时满足「带 Referer + 不被 CORS 拦」。
-        const savedName = filename.split('/').pop();
-        const off = await vrOffscreenDownload(pick.url, savedName);
-        if (off && off.ok) {
-            vrMarkDownloaded(savedName);
-            return finish({ ok: true, kind: 'offscreen', filename: savedName, bytes: off.bytes || 0 });
+        // 取到字节后**必须**回到 vrDownloadWithName 落盘：那里有文件名记账、
+        // 归档子目录、资源库入库。离屏里直接 <a download> 会丢目录也不进库，已否决。
+        const off = await vrOffscreenDownload(pick.url, filename.split('/').pop());
+        if (off && off.ok && off.blobUrl) {
+            const id2 = await vrDownloadWithName(off.blobUrl, filename, { meta: trace });
+            if (id2 !== null) {
+                vrMarkDownloaded(filename);
+                return finish({ ok: true, kind: 'offscreen-blob', filename: filename, bytes: off.bytes || 0 });
+            }
         }
         return { ok: false, reason: 'download-failed', page: pageDl || null, offscreen: off || null };
     }

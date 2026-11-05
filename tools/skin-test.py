@@ -154,9 +154,10 @@ def main():
     })()""", sid)
     check("安装页正文对比度 ≥ 7", (ratio if isinstance(ratio, (int, float)) else 0) >= 7, True)
 
-    # 问题提交必须是自己的仓库，不能是上游猫抓的站点
+    # 问题提交按 GPL 上游为主：本扩展是 cat-catch 的衍生作品，issue 入口沿用上游
+    # （苏哥 2026-11-05 明确：按法律还是以猫抓为主，应该写它的）
     issue_href = c.ev("(document.querySelector('.content-box a')||{}).href || ''", sid)
-    check("问题提交指向本仓库 issues", "github.com/sulcr1983/video-rod/issues" in str(issue_href), True)
+    check("问题提交指向上游 issues", "cat-catch.94cat.com/docs/issues" in str(issue_href), True)
 
     c.send("Target.closeTarget", {"targetId": tid})
 

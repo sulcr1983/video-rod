@@ -20,11 +20,15 @@
     'use strict';
 
     var MIN_SIZE = 100;
-    /* 显示尺寸门槛：宽和高都必须 ≥ 600px 才出下载按钮（用户明确要求）。
-     * 判**显示尺寸**而不是原始像素：用户要的是「页面上看着够大的图才值得下」，
-     * 缩略图列表里的小图一律不打扰，哪怕它原图很大。
-     * 历史：48 → 600（2026-10-25 用户反馈「尺寸太小的不要出现按钮」）。 */
-    var MIN_SHOW = 600;
+    /* 显示尺寸门槛（2026-11-05 v2）：
+     * 历史 48 → 600（2026-10-25 用户要「小图别冒按钮」）。
+     * 但「宽高都 ≥600」把横图全挡了 —— 微博正文图常见 542×305、B站封面 640×360，
+     * 高度永远到不了 600，用户反馈「很多图片点不到按钮」。
+     * 现改为：**长边 ≥ MIN_SHOW(500) 且短边 ≥ MIN_SHORT(200)**。
+     *   542×305 → 长 542 短 305 ✅    52×52 头像 ❌    800×3 装饰条（短边 3）❌
+     * 判的是**显示尺寸**不是原始像素：页面上看着够大才值得下，缩略图列表不打扰。 */
+    var MIN_SHOW = 500;
+    var MIN_SHORT = 200;
     /* 清单面板的「显示尺寸」门槛：只用来挡图标/按钮，与 imgMinSize 无关。
      * 面板判的是**原始像素**（imgMinSize），显示尺寸这层固定 48 就够 ——
      * 若跟着 imgMinSize 走，设 1200 时会把「原图 1200 但显示 160px」的图全挡掉。 */
@@ -32,7 +36,7 @@
     /* 细长装饰条的门槛：用「短边/长边」比来判断，不用面积。
      * 面积法会误杀正常的方形图（600×600=36万 比 1200×6=7200 还大，
      * 任何固定面积阈值都同时拦不住细条又放过方图 —— 踩过两次）。
-     * 短边 ≥ 600 已经挡掉了绝大多数装饰；这里再挡「长宽比 > 6:1」的条状图。 */
+     * 短边 ≥ 200 + 长边 ≥ 500 已挡掉绝大多数装饰；这里再挡「长宽比 > 6:1」的条状图。 */
     var MAX_ASPECT = 6;
 
     /** 可下载的位图扩展名（svg 不算：多为图标） */
@@ -479,7 +483,10 @@
         if (nw < minNatural || nh < minNatural) { return false; }
         var sh = shownSize(el);
         if (sh.w <= 0 || sh.h <= 0) { return false; }
-        if (Math.min(sh.w, sh.h) < minShow) { return false; }
+        // 短边硬底线（挡图标、头像、细装饰条）
+        if (Math.min(sh.w, sh.h) < MIN_SHORT) { return false; }
+        // 长边门槛（用户可配 imgHoverMinSize；挡缩略图列表里的中小图）
+        if (Math.max(sh.w, sh.h) < minShow) { return false; }
         // 长宽比过大的条状图（400×2 分隔线、横幅装饰）不认
         var ratio = Math.max(sh.w, sh.h) / Math.min(sh.w, sh.h);
         if (ratio > maxAspect) { return false; }
@@ -827,6 +834,7 @@
     return {
         MIN_SIZE: MIN_SIZE,
         MIN_SHOW: MIN_SHOW,
+        MIN_SHORT: MIN_SHORT,
         PANEL_MIN_SHOW: PANEL_MIN_SHOW,
         MAX_ASPECT: MAX_ASPECT,
         shownSize: shownSize,
