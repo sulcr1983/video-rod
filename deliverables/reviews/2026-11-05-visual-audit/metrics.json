@@ -1,0 +1,363 @@
+{
+ "proto-library": {
+  "bodyBg": "rgba(0, 0, 0, 0)",
+  "bodyFont": "\"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+  "bodySize": "13px",
+  "htmlScrollW": "1425 / client 1425",
+  "sidebar": [
+   0,
+   0,
+   268,
+   900
+  ],
+  "main": [
+   268,
+   0,
+   1157,
+   2798
+  ],
+  "mainPad": "26px 28px 48px",
+  "h1": {
+   "text": "全部素材",
+   "font": "32px",
+   "family": "\"Noto Serif SC\", Georgia, \"Songti SC\", \"Noto Serif SC\", \"Source Han Serif SC\", serif",
+   "weight": "600",
+   "box": [
+    296,
+    67,
+    131,
+    39
+   ]
+  },
+  "searchBox": [
+   1117,
+   76,
+   226,
+   21
+  ],
+  "crumbActs": [
+   1228,
+   26,
+   169,
+   31
+  ],
+  "toolbar": [
+   296,
+   130,
+   1101,
+   97
+  ],
+  "segCount": 4,
+  "chips": [
+   "全部平台",
+   "X",
+   "小红书",
+   "抖音",
+   "微博",
+   "YouTube",
+   "Instagram",
+   "网页"
+  ],
+  "card": {
+   "box": [
+    296,
+    243,
+    263,
+    271
+   ],
+   "radius": "12px",
+   "bg": "rgb(28, 26, 23)",
+   "shadow": "none"
+  },
+  "gridGap": "18px 16px",
+  "gridCols": "263.25px 263.25px 263.25px 263.25px",
+  "treeText": []
+ },
+ "actual-library": {
+  "bodyBg": "rgb(16, 15, 14)",
+  "bodyFont": "\"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+  "bodySize": "13px",
+  "htmlScrollW": "1430 / client 1430",
+  "sidebar": [
+   0,
+   0,
+   264,
+   900
+  ],
+  "main": [
+   264,
+   0,
+   1166,
+   1468
+  ],
+  "mainPad": "26px 28px 48px",
+  "h1": {
+   "text": "全部素材",
+   "font": "27px",
+   "family": "\"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+   "weight": "680",
+   "box": [
+    292,
+    72,
+    110,
+    32
+   ]
+  },
+  "searchBox": [
+   1118,
+   78,
+   234,
+   21
+  ],
+  "crumbActs": [
+   1248,
+   26,
+   154,
+   34
+  ],
+  "toolbar": [
+   292,
+   130,
+   1110,
+   97
+  ],
+  "segCount": 5,
+  "chips": [
+   "全部平台",
+   "B站",
+   "X",
+   "小红书",
+   "抖音",
+   "微博",
+   "YouTube",
+   "Instagram",
+   "TikTok",
+   "网页"
+  ],
+  "card": {
+   "box": [
+    292,
+    243,
+    266,
+    282
+   ],
+   "radius": "14px",
+   "bg": "rgb(28, 26, 23)",
+   "shadow": "none"
+  },
+  "gridGap": "16px",
+  "gridCols": "265.5px 265.5px 265.5px 265.5px",
+  "treeText": []
+ },
+ "proto-popup": {
+  "viewport": [
+   380,
+   560
+  ],
+  "bodyScroll": [
+   372,
+   365,
+   373,
+   365
+  ],
+  "bodyBg": "rgb(11, 10, 9)",
+  "bodySize": "13px",
+  "bodyBox": [
+   0,
+   0,
+   365,
+   838
+  ],
+  "head": [
+   -6,
+   153,
+   378,
+   53
+  ],
+  "tabs": [
+   "当前页 6",
+   "其他页 6"
+  ],
+  "texts": [
+   "点图标弹出来的面板",
+   "齿轮",
+   "库",
+   "栏",
+   "苏哥的钓鱼竿",
+   "v1.0",
+   "哔哩哔哩",
+   "纪录片 · 深海的秘密（全 6 话）",
+   "12",
+   "4",
+   "1",
+   "1",
+   "深海纪录片",
+   "画质 最高",
+   "6",
+   "6",
+   "6",
+   "4",
+   "1",
+   "1",
+   "13:20",
+   "第3话 · 午夜带的巨乌贼",
+   "96 MB",
+   "bilibili.com/video/BV1xx/3.m",
+   "→ 哔哩哔哩/深海纪录片/视频/",
+   "10:52"
+  ]
+ },
+ "actual-popup": {
+  "viewport": [
+   380,
+   560
+  ],
+  "bodyScroll": [
+   400,
+   380,
+   400,
+   400
+  ],
+  "bodyBg": "rgb(16, 15, 14)",
+  "bodySize": "12px",
+  "bodyBox": [
+   0,
+   0,
+   400,
+   286
+  ],
+  "head": [
+   0,
+   0,
+   400,
+   52
+  ],
+  "tabs": [
+   "当前页面",
+   "其他页面",
+   "寻找到疑似密钥"
+  ],
+  "texts": [
+   "video-rod",
+   "v2.7.2.1",
+   "ceogmckiinjolbbdkjfelmfcfepc",
+   "苏哥的钓鱼竿 video-rod",
+   "0",
+   "寻找到疑似密钥",
+   "0",
+   "0",
+   "0",
+   "0",
+   "抓图",
+   "还没闻到味儿~",
+   "媒体控制",
+   "选择页面:",
+   "未检测到有媒体的网页",
+   "选择媒体:",
+   "未检测到可操控媒体",
+   "倍速播放",
+   "播放",
+   "画中画",
+   "全屏",
+   "截图",
+   "循环",
+   "静音",
+   "音 量",
+   "功能入口"
+  ]
+ },
+ "proto-settings": {
+  "bodyBg": "rgb(16, 15, 14)",
+  "bodyFont": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+  "nav": [
+   0,
+   54,
+   216,
+   846
+  ],
+  "navItems": [],
+  "h1": {
+   "text": "保存位置",
+   "font": "24px",
+   "family": "\"Noto Serif SC\", Georgia, \"Songti SC\", \"Noto Serif SC\", serif",
+   "box": [
+    246,
+    76,
+    760,
+    38
+   ]
+  },
+  "sections": [],
+  "cardRadius": "13px",
+  "toggleCount": 10
+ },
+ "actual-settings": {
+  "bodyBg": "rgb(16, 15, 14)",
+  "bodyFont": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+  "nav": [
+   8,
+   8,
+   236,
+   900
+  ],
+  "navItems": [
+   "资源库",
+   "资源库",
+   "图片下载",
+   "图片下载",
+   "后缀",
+   "后缀",
+   "类型",
+   "类型",
+   "正则匹配",
+   "正则匹配",
+   "屏蔽网址",
+   "屏蔽网址",
+   "脚本",
+   "脚本",
+   "复制",
+   "复制",
+   "Aria2 RPC",
+   "Aria2 RPC",
+   "数据发送",
+   "数据发送",
+   "m3u8dl 自定义协议",
+   "m3u8dl 自定义协议",
+   "调用程序",
+   "调用程序",
+   "替换标签",
+   "替换标签"
+  ],
+  "h1": {
+   "text": "设置",
+   "font": "22px",
+   "family": "system-ui, -apple-system, \"Segoe UI\", \"Microsoft YaHei\", sans-serif",
+   "box": [
+    373,
+    38,
+    920,
+    34
+   ]
+  },
+  "sections": [
+   "资源库",
+   "下载文件按「平台 / 博主 / 类型」落到本地目录，并自动进",
+   "后缀",
+   "类型",
+   "正则匹配 / 屏蔽资源",
+   "屏蔽网址",
+   "脚本",
+   "复制",
+   "Aria2 RPC",
+   "数据发送",
+   "m3u8dl 自定义协议",
+   "调用程序",
+   "替换标签",
+   "下载器",
+   "M3U8解析器",
+   "图片下载"
+  ],
+  "cardRadius": "12px",
+  "toggleCount": 443
+ }
+}
