@@ -36,6 +36,7 @@
     var imgScale = 1;
     var imgRot = 0;
     var imgBaseW = 0;
+    var imgBaseH = 0;
     var imgX = 0;
     var imgY = 0;
 
@@ -103,8 +104,11 @@
     }
     function actualImg() {
         if (!imgEl) { return; }
-        var base = imgBaseW || imgEl.clientWidth || imgEl.naturalWidth || 1;
-        imgScale = Math.max(0.1, Math.min(8, (imgEl.naturalWidth || base) / base));
+        var nw = imgEl.naturalWidth || imgBaseW || 1;
+        var nh = imgEl.naturalHeight || imgBaseH || 1;
+        /* 图片在 contain 框里已经被等比缩放；1:1 要把“内容”放大回自然像素 */
+        var contain = Math.min((imgBaseW || nw) / nw, (imgBaseH || nh) / nh) || 1;
+        imgScale = Math.max(0.1, Math.min(8, 1 / contain));
         imgX = 0; imgY = 0;
         applyImgView();
     }
@@ -151,7 +155,7 @@
         stage.innerHTML = '';
         stage.style.cursor = '';
         videoEl = null;
-        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0; imgX = 0; imgY = 0;
+        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0; imgBaseH = 0; imgX = 0; imgY = 0;
         setTxt('iZoom', '100%');
         var url = urlOf(f);
         var kind = f.kind;
@@ -163,6 +167,7 @@
         if (stageOuter) {
             stageOuter.classList.toggle('is-video', kind === 'video');
             stageOuter.classList.toggle('is-gif', kind === 'anim');
+            stageOuter.classList.toggle('is-image', kind === 'image');
         }
 
         /* 有成熟播放器时让自绘控件条让位；Plyr 没加载成功则保留原控件条降级 */
@@ -273,6 +278,7 @@
             img.addEventListener('load', function () {
                 setTxt('st1v', img.naturalWidth + '×' + img.naturalHeight);
                 imgBaseW = img.clientWidth || img.naturalWidth || 1;
+                imgBaseH = img.clientHeight || img.naturalHeight || 1;
                 applyImgView();
             });
             img.src = url;
@@ -456,7 +462,7 @@
         destroyPlayer();
         var stage = $('#pvMedia'); if (stage) { stage.innerHTML = ''; }
         videoEl = null;
-        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0; imgX = 0; imgY = 0;
+        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0; imgBaseH = 0; imgX = 0; imgY = 0;
         try { if (animCtl) { animCtl.destroy(); } } catch (e) { /* ignore */ }
         animCtl = null;
     }
