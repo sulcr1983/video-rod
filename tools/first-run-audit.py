@@ -509,6 +509,67 @@ def main():
             for x in trash_res:
                 check(x.get("name", "删除/恢复"), x.get("pass") is True, x.get("detail", ""))
 
+        # ---------- 10. 批量删除 / 全部恢复 / 彻底删除（OPFS） ----------
+        batch_js = r"""(async()=>{
+          const out=[];
+          const opfs=await navigator.storage.getDirectory();
+          const rootName='trash-batch-'+Date.now();
+          const root=await opfs.getDirectoryHandle(rootName,{create:true});
+          const relA='video-rod/_audit/batch/a.mp4';
+          const relB='video-rod/_audit/batch/b.mp4';
+          const write=async(name)=>{
+            let d=root;
+            for(const s of ['_audit','batch']) d=await d.getDirectoryHandle(s,{create:true});
+            const h=await d.getFileHandle(name,{create:true});
+            const w=await h.createWritable(); await w.write('batch-'+name); await w.close();
+          };
+          const row=(rel,name)=>({relPath:rel,absPath:'OPFS',platform:'web',type:'video',
+            fileName:name,size:8,mtime:Date.now(),state:'ok',starred:0,tags:[]});
+          const orig=VRIndex.resolveRoot;
+          try{
+            await write('a.mp4'); await write('b.mp4');
+            await VRDB.putFiles([row(relA,'a.mp4'),row(relB,'b.mp4')]);
+            VRIndex.resolveRoot=async()=>({handle:root,absRoot:'OPFS',prefix:'video-rod'});
+            const r=await VRTrash.remove([relA,relB]);
+            const batch=r.batch;
+            out.push({name:'批量 remove moved=2',pass:r.moved===2,detail:r});
+            out.push({name:'批量 remove 后 DB 两条消失',pass:!(await VRDB.getFile(relA))&&!(await VRDB.getFile(relB))});
+            out.push({name:'两条都进入回收站',
+              pass:await VRTrash.exists(root,'_回收站/'+batch+'/_audit/batch/a.mp4')&&
+                   await VRTrash.exists(root,'_回收站/'+batch+'/_audit/batch/b.mp4')});
+            const list=await VRTrash.list();
+            const b=list.find(x=>x.batch===batch);
+            out.push({name:'manifest 记录 2 条',pass:!!b&&b.items.length===2,detail:b});
+            const back=await VRTrash.restore(batch);
+            out.push({name:'全部恢复 restored=2',pass:back.restored===2,detail:back});
+            out.push({name:'两条文件回到原位',
+              pass:await VRTrash.exists(root,'_audit/batch/a.mp4')&&
+                   await VRTrash.exists(root,'_audit/batch/b.mp4')});
+            out.push({name:'两条 DB 条目恢复',pass:!!(await VRDB.getFile(relA))&&!!(await VRDB.getFile(relB))});
+            const r2=await VRTrash.remove([relA]);
+            const b2=r2.batch;
+            const purged=await VRTrash.purge(b2,relA);
+            out.push({name:'彻底删除 purged=1',pass:purged.purged===1,detail:purged});
+            out.push({name:'彻底删除后文件不存在',
+              pass:!(await VRTrash.exists(root,'_回收站/'+b2+'/_audit/batch/a.mp4'))});
+          }finally{
+            VRIndex.resolveRoot=orig;
+            try{await VRDB.deleteFiles([relA,relB]);}catch(e){}
+            try{await opfs.removeEntry(rootName,{recursive:true});}catch(e){}
+          }
+          return JSON.stringify(out);
+        })()"""
+        batch_raw = c.ev(batch_js, sid_lib)
+        try:
+            batch_res = json.loads(batch_raw) if isinstance(batch_raw, str) else []
+        except Exception:
+            batch_res = []
+        if not batch_res:
+            check("批量删除/恢复/彻底删除测试执行", False, batch_raw)
+        else:
+            for x in batch_res:
+                check(x.get("name", "批量回收站"), x.get("pass") is True, x.get("detail", ""))
+
         check("首次使用流程无未捕获 JS 异常（页面侧）", len(c.errs) == 0, c.errs[:3])
 
         failed = [r for r in RESULTS if not r["pass"]]
