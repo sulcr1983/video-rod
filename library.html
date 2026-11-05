@@ -542,30 +542,30 @@
     <div class="sd-body">
       <div class="sd-item">
         <div class="sd-k">下载目录</div>
-        <div class="sd-v">F:\download\video-rod</div>
-        <button class="btn small" onclick="toast('原型演示：换目录')">更换目录</button>
+        <div class="sd-v" id="sdDirVal">未探测</div>
+        <button class="btn small" id="sdDirBtn">更换目录</button>
       </div>
       <div class="sd-item">
         <div class="sd-k">扫描</div>
-        <div class="sd-v">2 分钟前扫描完成 · 36 个文件</div>
-        <button class="btn small" onclick="toast('已重新扫描，36 项')">立即扫描</button>
+        <div class="sd-v" id="sdScanVal">—</div>
+        <button class="btn small" id="sdScanBtn">立即扫描</button>
       </div>
       <div class="sd-item">
         <div class="sd-k">索引</div>
-        <div class="sd-v">2032 MB · 缩略图已缓存</div>
-        <button class="btn small" onclick="toast('原型演示：重建索引')">重建索引</button>
+        <div class="sd-v" id="sdIndexVal">—</div>
+        <button class="btn small" id="sdRebuildBtn">重建索引</button>
       </div>
       <div class="sd-item">
         <div class="sd-k">回收站</div>
-        <div class="sd-v">3 项 · 保留 30 天</div>
-        <button class="btn small" onclick="toast('原型演示：打开回收站')">打开</button>
+        <div class="sd-v" id="sdTrashVal">—</div>
+        <button class="btn small" id="sdTrashBtn">打开</button>
       </div>
       <div class="sd-item">
         <div class="sd-k">文件名规则</div>
         <div class="sd-v mono">{博主}/{类型}/{标题}</div>
       </div>
     </div>
-    <footer class="sd-foot"><a href="javascript:void 0" onclick="toast('原型演示：跳转完整设置页')">打开完整扩展设置 &#8599;</a></footer>
+    <footer class="sd-foot"><a href="#" id="sdOptionsLink">打开完整扩展设置 &#8599;</a></footer>
   </aside>
 
   <div class="toast" id="toast"></div>
