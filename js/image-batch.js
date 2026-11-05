@@ -24,7 +24,8 @@
 
     const HOST_ID = 'vr-img-batch-host';
     const DEFAULT_LIMIT = 200;
-    const DEFAULT_CONCURRENCY = 3;
+    // 2 而不是 3：微博 sinaimg 对 3 并发实测会拒掉 2 张（2026-11-05）
+    const DEFAULT_CONCURRENCY = 2;
     const MAX_CONCURRENCY = 8;
     const DONE_HIDE_MS = 3000;
     const PROGRESS_TIMEOUT = 60000;   // 60s 无进度视为中断
@@ -409,28 +410,55 @@
                     concurrency: concurrency,
                     batchId: batch.batchId
                 }, res => {
-                    let out;
+                    const myBatch = batch;
+                    const settle = out => {
+                        if (state === 'running' || state === 'canceling') {
+                            batch.ok = out.succeeded;
+                            batch.fail = out.fail;
+                            batch.done = out.succeeded + out.fail;
+                            batch.failures = out.failures;
+                            state = out.canceled ? 'canceled' : 'done';
+                            if (o.showBar !== false) { renderProgress(); hideProgressLater(); }
+                        }
+                        if (typeof o.onDone === 'function') { o.onDone(out, myBatch); }
+                        resolve(out);
+                    };
                     if (res && (typeof res.succeeded === 'number' || typeof res.ok === 'number')) {
-                        out = {
+                        settle({
                             ok: true,
                             succeeded: typeof res.succeeded === 'number' ? res.succeeded : res.ok,
                             fail: res.fail || 0,
                             canceled: !!res.canceled,
                             failures: res.failures || []
-                        };
-                    } else {
-                        out = { ok: false, succeeded: 0, fail: list.length, canceled: false, failures: [] };
+                        });
+                        return;
                     }
-                    if (state === 'running' || state === 'canceling') {
-                        batch.ok = out.succeeded;
-                        batch.fail = out.fail;
-                        batch.done = out.succeeded + out.fail;
-                        batch.failures = out.failures;
-                        state = out.canceled ? 'canceled' : 'done';
-                        if (o.showBar !== false) { renderProgress(); hideProgressLater(); }
-                    }
-                    if (typeof o.onDone === 'function') { o.onDone(out, batch); }
-                    resolve(out);
+                    // 长连接回执丢了 ≠ 下载失败。批量是长任务，SW 通道可能先断；
+                    // 结果以 vrImg.batchProgress 的广播为准，等进度收齐再结算，
+                    // 否则会把「其实下完了」误报成「全部失败」（2026-11-05 实测）。
+                    const t0 = Date.now();
+                    const waitProgress = () => {
+                        const b = batch || myBatch;
+                        if (b && b.total > 0 && b.done >= b.total) {
+                            settle({
+                                ok: b.fail === 0, succeeded: b.ok, fail: b.fail,
+                                canceled: state === 'canceling',
+                                failures: (b.failures || []), viaProgress: true
+                            });
+                            return;
+                        }
+                        if (Date.now() - t0 > 25000) {
+                            settle({
+                                ok: false, succeeded: b ? b.ok : 0,
+                                fail: b ? Math.max(0, b.total - b.done) + b.fail : list.length,
+                                canceled: false, failures: (b && b.failures) || [],
+                                message: '回执丢失且进度未收齐'
+                            });
+                            return;
+                        }
+                        setTimeout(waitProgress, 800);
+                    };
+                    waitProgress();
                 });
             });
         });

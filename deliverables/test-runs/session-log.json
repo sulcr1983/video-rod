@@ -23,12 +23,22 @@
       "ts": 1793863099.0301921,
       "reason": "reload 扩展导致后台 SW 挂死，重启实例恢复下载能力",
       "headless": false
+    },
+    {
+      "at": "2026-11-05T19:43:10",
+      "ts": 1793878990.8679495,
+      "reason": "TikTok 验收需走 Clash 代理，一次性重启（今日第 5 次）",
+      "headless": false
     }
   ],
   "closes": [
     {
       "at": "2026-11-05T15:18:12",
       "ts": 1793863092.1216176
+    },
+    {
+      "at": "2026-11-05T19:43:02",
+      "ts": 1793878982.349348
     }
   ],
   "runs": [
@@ -152,6 +162,46 @@
       "at": "2026-11-05T18:27:18",
       "summary": "7/8 套件通过，用时 140.4s",
       "report": "deliverables\\test-runs\\2026-11-05-1827-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        },
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        },
+        {
+          "n": "skin",
+          "ok": true
+        },
+        {
+          "n": "download-path",
+          "ok": false
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-05T20:01:07",
+      "summary": "7/8 套件通过，用时 202.8s",
+      "report": "deliverables\\test-runs\\2026-11-05-2001-e2e-all.md",
       "live": false,
       "suites": [
         {

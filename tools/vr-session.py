@@ -163,6 +163,9 @@ def cmd_ensure(a):
     ]
     if a.headless:
         args.append("--headless=new")
+    # 可选代理：TikTok 等站直连被地区策略挡住时用它，Clash 分流不影响国内站
+    if getattr(a, "proxy", ""):
+        args.append("--proxy-server=%s" % a.proxy.strip())
 
     # 拉起方式（重要）：
     #   Python Popen(DETACHED_PROCESS) / PowerShell Start-Process 起出来的实例，
@@ -243,6 +246,7 @@ def main():
     p = sub.add_parser("ensure", help="确保有实例在线（优先复用，必要时经冷却/配额校验后启动一次）")
     p.add_argument("--reason", default="", help="本次启动原因（写入审计日志）")
     p.add_argument("--headless", action="store_true")
+    p.add_argument("--proxy", default="", help="可选 HTTP 代理（例 http://127.0.0.1:7897），用于 TikTok 等站")
     p.set_defaults(func=cmd_ensure)
 
     p = sub.add_parser("status", help="查看实例与启动配额")

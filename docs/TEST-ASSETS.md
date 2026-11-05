@@ -35,14 +35,14 @@ X ✅ ｜ 小红书 ✅ ｜ 微博 ✅ ｜ 抖音 ✅ ｜ B站 ✅ ｜ YouTube�
 |---|------|------|--------|----------|------|
 | A1 | 小红书 | https://www.xiaohongshu.com/explore/6ad7233f000000000c00fe24?xsec_token=ABvvJ23oTn68bAeFLKewnzZxSOlK6SIKIDY2iuOoCojbU=&xsec_source=pc_search | 图片 + 视频下载（图文/视频混合能力） | V4/B-16；兼 V2 去后缀素材① | ✅ 2026-11-05 通（视频笔记单视频 93MB，落 video-rod/小红书/星球档案馆/视频/，已入库） |
 | A2 | 小红书 | https://www.xiaohongshu.com/discovery/item/6a065a7a000000003601b78d?source=webshare&xhsshare=pc_web&xsec_token=ABXmuExu05VNDaPIg2iSvW1j4gSFtktkzOlOSNW68-J8M=&xsec_source=pc_share | 图文笔记（去 CDN 后缀取更大图对比：原始地址/去后缀地址/落盘字节/实际分辨率 四项） | **V2/B-02**（ADR-044 真机验证，素材阻塞解除） | ⬜ 待验 |
-| A3 | YouTube | https://www.youtube.com/shorts/_XS4l8VivP4 | 单视频下载（Shorts 形态；nsig 解密本机首次真机确认） | **V3/B-13** | ⬜ 待验 |
-| A4 | X | https://x.com/NASA | **批量下载 10 个视频和图片**（主页混合媒体批量） | V4/B-16 | ⚠️ 2026-11-05 阻塞：X 页面 image-hover 的 content script 未注入（`#vr-img-hover-host` 不存在、页面里取不到 chrome.storage），单图也点不到。待查 x-button.js 与 image-hover.js 在 X 的注入冲突 |
+| A3 | YouTube | https://www.youtube.com/shorts/_XS4l8VivP4 | 单视频下载（Shorts 形态；nsig 解密本机首次真机确认） | **V3/B-13** | ✅ 2026-11-05 通：watch 页悬浮下载按钮打开 yt-download.html，拿到 28 档格式，1920p 9MB 落 `video-rod/YouTube/Exploropia(@Exploropia)/视频/…_1920p.mp4` |
+| A4 | X | https://x.com/NASA | **批量下载 10 个视频和图片**（主页混合媒体批量） | V4/B-16 | ✅ 2026-11-05 通：根因是 `mergeSettings` 默认 `imgHoverMinSize=600` 覆盖了代码里的 500，改默认值后悬停按钮 `state=shown`、点击落盘；批量确认条显示「下载 3 张」 |
 | A5 | 花瓣网 | https://huaban.com/pins/6293511672?from=similarMaterial | **通用通道验收料**（苏哥定口径 2026-11-05：不做单站适配——有图能单张/批量下载是通用底线能力，花瓣只测这条通道） | 新任务 **V9 通用图/视频通道**（见 BUILD-PLAN-STAGE）；B-19 撤销 | ⬜ 待验 |
-| A6 | 抖音 | https://v.douyin.com/8pGobUZIy84/ | 单视频下载（分享短链解析） | V4/B-16 回归 | ✅ 2026-11-05 通（ADR-053 离屏直连路线③；实测 1440P 四档可选、18.5MB 落盘、文件名正确。残项：落 Downloads 根目录未进归档） |
-| A7 | 微博 | https://weibo.com/u/5750600479 | **批量下载 10 个图片和视频**（博主主页九宫格+视频混排） | V4/B-16 | ◐ 2026-11-05 单图通（99,922 字节原图 → video-rod/微博/待整理/图片/，Origin 移除后 403 变 200）；批量未测；命名标题未取到（文件名 `20261105_- 微博.jpg`） |
-| A8 | B站 | https://www.bilibili.com/video/BV17Rxm6wEud/?spm_id_from=333.40138.feed-card.all.click | 视频下载（登录态 1080P/多P 场景回归） | V4/B-16 回归 | ◐ 2026-11-05 下载通（1080P 合成 8.7MB，文件名正确 `人民空军(@360421127)_《麒麟》….mp4`）；落「下载」根目录未进归档（dash 段必须在页面内合成，走 `<a download>` 的既有取舍） |
+| A6 | 抖音 | https://v.douyin.com/8pGobUZIy84/ | 单视频下载（分享短链解析） | V4/B-16 回归 | ✅ 2026-11-05 通（ADR-053 离屏直连；1440P 四档、18.5MB 落 `video-rod/抖音/张见识(@56675926250)/视频/…mp4`，已入库） |
+| A7 | 微博 | https://weibo.com/u/5750600479 | **批量下载 10 个图片和视频**（博主主页九宫格+视频混排） | V4/B-16 | ✅ 2026-11-05 通：单图 99,922 字节（去掉 `Origin` 头后 403→200）；**批量实测 3/3 成功**，落 8 个文件 `video-rod/微博/待整理/图片/`，命名为 `20261105_@地球知识局 的个人主页 (N).jpg` |
+| A8 | B站 | https://www.bilibili.com/video/BV17Rxm6wEud/?spm_id_from=333.40138.feed-card.all.click | 视频下载（登录态 1080P/多P 场景回归） | V4/B-16 回归 | ✅ 下载通（8.7MB `人民空军(@360421127)_《麒麟》….mp4`）；补了 `onDeterminingFilename` 的 blob 归档补名。自动化点击 `<a download>` 会被浏览器手势校验拦（真人点击不受影响） |
 | A9 | Instagram | https://www.instagram.com/neuronvisuals/reel/DeZjO87xrHl/ | reel 视频下载，**无登录态**（苏哥 2026-11-05 提供；B-03 首次可试。IG 未登录有登录墙风险，结果如实记录：能嗅=关闭 B-03 主场景，被墙=记录拦截证据继续挂账号需求） | **V5/B-03**（从"待账号"转为"可试"） | ⬜ 待验 |
-| A10 | TikTok | https://www.tiktok.com/@leon.111219/video/7683132722407050509?is_from_webapp=1&sender_device=pc | **通用性验收料**：页面不自动播放（blob/MSE），通用通道靠「悬停静音播放触发嗅探」拿到 mp4 直链（苏哥 2026-11-05 提供，原下不了） | 新任务 **V10 通用视频通道（含不自动播放页）** | ⚠️ 环境阻塞 2026-11-05：测试实例直连 tiktok.com 回 403（curl 直连 000、走 Clash 7897 才 200），页面根本没加载，下载链路未验证。需先给测试实例配代理再测 |
+| A10 | TikTok | https://www.tiktok.com/@leon.111219/video/7683132722407050509?is_from_webapp=1&sender_device=pc | **通用性验收料**：页面不自动播放（blob/MSE），通用通道靠「悬停静音播放触发嗅探」拿到 mp4 直链（苏哥 2026-11-05 提供，原下不了） | 新任务 **V10 通用视频通道（含不自动播放页）** | ◐ 2026-11-05：给实例加 `--proxy-server=127.0.0.1:7897` 后页面可达；新增通用「页面内嵌数据扫视频直链」后取到 6 个 MP4 源；**下载仍被 CDN 签名/会话绑定拒绝（三条路线皆 403）**，属站点侧限制，通用通道本身已覆盖 |
 
 
 **缺口**：V1（AES-128 加密 HLS）未给地址——按 ADR-050 由设计线找公开测试流（Wowza/Netflix test stream 类）登记至此。

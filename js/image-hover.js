@@ -29,7 +29,11 @@
     /* 显示尺寸门槛：宽高都要 ≥ 此值才出按钮。可配（imgHoverMinSize），缺省 600。
      * 判**显示尺寸**不是原始像素 —— 一张 3000px 的原图被缩成 200px 展示时，
      * 用户要的是「页面上看着够大的图」，缩略图列表不该满屏冒按钮。 */
-    let minShow = U.MIN_SHOW;
+    // 长边门槛。**不取 U.MIN_SHOW**：实测 X 页面上拿到的是旧版 600，
+    // 而源码早已改成 500 —— content script 跨文件取常量会拿到过期值，
+    // 结果 516x290 的推文图被判不合格、按钮永远不出现。这里自己声明，一刀切断依赖。
+    let minShow = 500;
+    const MIN_SHORT_EDGE = 200;   // 短边硬底线，挡图标/头像/装饰条
 
     const HOST_ID = 'vr-img-hover-host';
 
@@ -441,19 +445,54 @@
         return false;
     }
 
+    /** 尺寸是否值得出按钮：长边 ≥ minShow 且短边 ≥ 200，长宽比 ≤ 6 */
+    function worthSize(img) {
+        const nw = Number(img.naturalWidth) || 0;
+        const nh = Number(img.naturalHeight) || 0;
+        if (nw < MIN || nh < MIN) { return false; }
+        let r;
+        try { r = img.getBoundingClientRect(); } catch (e) { return false; }
+        const w = Math.round(r.width), h = Math.round(r.height);
+        if (w <= 0 || h <= 0) { return false; }
+        const short = Math.min(w, h), long = Math.max(w, h);
+        if (short < MIN_SHORT_EDGE) { return false; }
+        if (long < minShow) { return false; }
+        if (long / short > 6) { return false; }
+        return true;
+    }
+
     function eligible(img) {
-        if (!img || img.tagName !== 'IMG' || !img.isConnected) { return false; }
-        if (host && (img === host || (host.contains && host.contains(img)))) { return false; }
-        if (!U.isWorthDownloading(img, { minNatural: MIN, minShow: minShow })) { return false; }
+        // 诊断：哪一条把这张图拒了（排查用，self.VRImgHover._lastEval 可读）
+        var why = 'ok';
+        var fin = function (v) {
+            if (typeof self !== 'undefined') {
+                var rc = null;
+                try { var r0 = img && img.getBoundingClientRect();
+                      if (r0) { rc = Math.round(r0.width) + 'x' + Math.round(r0.height); } } catch (e) { }
+                self.__vrEligible = {
+                    ok: v, why: why, minShow: minShow, size: rc,
+                    natural: img ? (img.naturalWidth + 'x' + img.naturalHeight) : '',
+                    src: String((img && (img.currentSrc || img.src)) || '').slice(0, 80)
+                };
+            }
+            return v;
+        };
+        if (!img || img.tagName !== 'IMG' || !img.isConnected) { why = 'not-img'; return fin(false); }
+        if (host && (img === host || (host.contains && host.contains(img)))) { why = 'is-host'; return fin(false); }
+        // 尺寸判定内联（不再调用 U.isWorthDownloading，避免跨文件常量版本不一致）
+        if (!worthSize(img)) { why = 'size'; return fin(false); }
         // 视频页抑制（用户反馈：视频页老冒图片下载键，很困扰）：
         //   ① 这张图就在播放器容器里（封面/海报）→ 用户要的是视频，不是这张图
         //   ② 页面主区域已有大尺寸 video（≥35% 视口）→ 判定为视频页，别抢戏
-        if (nearVideo(img) || pageIsVideoDominant()) { return false; }
+        if (nearVideo(img)) { why = 'near-video'; return fin(false); }
+        if (pageIsVideoDominant()) { why = 'video-dominant'; return fin(false); }
         const raw = img.currentSrc || img.src || img.getAttribute('src') || '';
         const url = U.absolutize(raw, document.baseURI);
-        if (!url) { return false; }
-        if (U.isDataUri(url) || U.isSvgUrl(url) || U.isPlaceholderUrl(url)) { return false; }
-        return true;
+        if (!url) { why = 'no-url'; return fin(false); }
+        if (U.isDataUri(url)) { why = 'data-uri'; return fin(false); }
+        if (U.isSvgUrl(url)) { why = 'svg'; return fin(false); }
+        if (U.isPlaceholderUrl(url)) { why = 'placeholder'; return fin(false); }
+        return fin(true);
     }
 
     /**
@@ -766,6 +805,8 @@
         hotkeyDownload: hotkeyDownload,
         lastHovered: () => lastHoveredImg,
         _state: () => ({ enabled: enabled, showDelay: showDelay, state: state,
-                         hasLast: !!lastHoveredImg })
+                         hasLast: !!lastHoveredImg }),
+        _lastEval: () => self.__vrEligible || null,
+        _eligible: (img) => eligible(img)
     };
 })();

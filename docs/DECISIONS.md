@@ -1067,6 +1067,48 @@
 - 路线③ 的 `<a download>` **不支持子目录**，文件落在 `Downloads` 根目录，未进 `video-rod/<平台>/<作者>/<类型>/` 归档结构（与 B站 durl / 微博 blob 路线同一取舍）。
 - 无 FSA 目录授权时，`chrome.downloads` 回退路径会丢文件名与子目录（`download-path` 套件 6/10 即此原因，与 ADR-040 同源）。要完整命名 + 自动归档，需授权一次归档目录。
 
+
+---
+
+## ADR-054 全站下载/管理链路收口（2026-11-05 晚，苏哥要求第一性原理收尾）
+
+目标只有两个：**能下载、能管理资源**。按这个标准逐条收口，不顺手加无关功能。
+
+### 下载链路（真机实测，全部用带登录态的 Edge 实例）
+
+| 站点 | 结果 |
+|---|---|
+| 抖音 | 1440P 四档 / 18.5MB → `video-rod/抖音/张见识(@56675926250)/视频/…mp4`，入库 |
+| 小红书 | 视频笔记 93MB → `video-rod/小红书/星球档案馆/视频/…mp4` |
+| 微博 | 单图 99,922B；**批量 3/3 成功**，共 8 张 → `video-rod/微博/待整理/图片/` |
+| X | 悬停按钮恢复、点击落盘 → `video-rod/X/待整理(@NASA)/图片/` |
+| B站 | 720P/1080P 可下（页面内合成） |
+| YouTube | watch 页入口 → 下载页 28 档 → 1920p 9MB → `video-rod/YouTube/Exploropia(@Exploropia)/视频/` |
+| TikTok | 页面可达（需代理）、通用取源到 6 个 MP4；**下载被 CDN 签名/会话绑定拒绝**，属站点侧限制 |
+
+### 关键修复（按证据定位，不猜）
+
+1. **图片批量 3 张挂 2 张**：离屏兜底里「先撤 DNR 规则再取流」顺序反了 → 改成取流成功后才撤规则；离屏文档首次创建后立刻发消息会 `no-response` → 加重试 3 次；长连接回执丢失时不能报「全部失败」，改以 `vrImg.batchProgress` 广播为准。并发 3→2（微博 CDN 对 3 并发不稳）。
+2. **X 悬停按钮不出现**：`mergeSettings` 的默认 `imgHoverMinSize=600` 覆盖了代码里的 500（诊断钩子读到 `minShow:600` 才定位）。改默认值 + 尺寸判定内联到 image-hover（切断跨文件常量版本耦合）。
+3. **资源库永远空**：首次自动索引只试需要 FSA 授权的 full/snapshot；实际 `scanDownloads` 读下载记录根本不需要授权。改三级兜底 + `d.exists === false` 过滤幽灵条目 + 跳过 `_selftest` + 补 `absPath`（缩略图/指纹要用）。16 条幽灵 → 15 条真实。
+4. **YouTube 按钮消失**：Shorts 形态 watch 页没有 `#below` 等锚点 → 补右下角悬浮兜底。
+5. **TikTok 等 MSE 站点取不到源**：新增**通用**「页面内嵌数据扫视频直链」（`vrPageEmbeddedVideoProbe`）。用一次 `JSON.stringify` + 正则，不递归（递归 200KB 内嵌数据会卡死页面主线程，实测踩到）。任何把 playAddr 写进页面数据的站点都受益，不写站点特例。
+6. **B站归档**：`<a download>` 不支持子目录 → 下载前记完整 relPath，由 `onDeterminingFilename` 对 `blob:` 下载补回目录（只匹配 blob，避免误伤其它 mp4）。
+7. **命名**：`pageTitle` 加 og:title → URL 末段 → 可见 h1 兜底；后端标题太弱（空/纯符号）时改 URL 末段。文件名从「图片」「- 微博」变成 `@地球知识局 的个人主页`。
+8. **扩展更新后点按钮报 `Extension context invalidated`**：video-overlay 的 start() 包 try/catch 并复位 busy。
+
+### 护栏
+
+- 回归 `e2e-all` 最终 7/8：`download-path` 6/10 为已知限制（无 FSA 目录授权时下载器丢名/丢目录），其余全绿。
+- 真机结果全部回填 `docs/TEST-ASSETS.md`，包括 TikTok 的失败边界，不虚报。
+- 测试实例加 `--proxy` 支持（TikTok 需要），今日启动 5/6 次，仍常驻不关。
+
+### 边界（如实记录）
+
+- TikTok 下载被 CDN 签名挡住，通用三条路线（downloads+DNR / 页面 fetch / 离屏直连）均 403；需要登录态或站点级签名方案，未做单站特例。
+- `<a download>` 类下载（B站）在**自动化点击**下会被浏览器手势校验拦截，真人点击不受影响；因此归档补名未能在自动化里端到端复验。
+- `download-path` 套件 6/10：无目录授权时 Chrome 147+ 忽略 filename，需一次 FSA 授权才能 10/10。
+
 ---
 
 *新增决策在此追加，编号顺延。*

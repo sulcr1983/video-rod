@@ -149,6 +149,12 @@
                 return;
             }
         }
+        // 兜底：Shorts 形态 / 新版布局没有 #below 等锚点时，按钮会整个消失
+        // （2026-11-05 watch 页实测）。改成右下角悬浮，保证「有视频就有入口」。
+        try {
+            document.body.appendChild(makeButton(true));
+            lastVideoId = vid;
+        } catch (e) { /* 页面结构异常不影响观看 */ }
     }
 
     // SPA 导航 + DOM 变动，双保险
