@@ -97,3 +97,24 @@ python tools/cdp-run.py --suite docs   # 走启动器（同上）
 1. 改了文件名 → 同步更新文档，或在 `MOVED` 表里登记
 2. 新增未实现的功能 → 在 `NOT_IMPLEMENTED` 里登记，并在 `TODO-VERIFIED.md` 记一条
 3. 提交前跑一次 `--suite docs`，别让漂移积累
+
+---
+
+## 七、2026-11 舞台重设计套件（ADR-052 重写路线，读到先看这节）
+
+> 这批是"用户拍板过的产品真源"，**优先级高于旧计划文档**。旧文档若与之冲突，以本节为准。
+
+| 文档/文件 | 级别 | 内容 | 用法 |
+|---|---|---|---|
+| `deliverables/prototypes/media-library-stage-v1.html` | **S** | 媒体库完整可交互原型（4313 行，CDP 验证过） | **产品真源**，施工照此复刻 |
+| `deliverables/prototypes/popup-stage-v1.html` | **S** | popup 舞台版原型（462 行） | popup 重写真源 |
+| `deliverables/prototypes/settings-stage-v1.html` | **S** | 设置页舞台版原型（884 行） | 设置页重写真源 |
+| `docs/DESIGN-SYSTEM-STAGE.md` v1.1 | **S** | 舞台 token + 组件规范 + **DOM 骨架** | 视觉/结构唯一真源 |
+| `docs/BUILD-PLAN-STAGE.md` v2.0 | **S** | 重写路线施工清单（R0-R8/T3/T4/F/V） | 施工顺序唯一真源 |
+| `docs/PROTOTYPE-MAPPING.md` v2.0 | **S** | **原型复刻规范**：数据契约（VRDB→卡片模型）、模块处置、mock→真实接入点、平台字典缺口 | 重写必读；v1.0 已作废 |
+| `docs/TEST-ASSETS.md` | **S** | 9 条真实测试素材 + 星愿 CDP 测试方法 | V 批次执行依据 |
+| `deliverables/reviews/2026-11-04-library-redesign-directions*.md` | **H** | 九方向评审稿（暗房/档案室/仪表盘/舞台/目录/天文台/宋册/唱片墙/标本柜） | 只当"为什么选舞台"背景 |
+| `deliverables/prototypes/library-redesign-options-v1.html` | **H** | 九方向速选页 | 历史 |
+
+**已作废**：`PROTOTYPE-MAPPING.md` v1.0（"改视觉补缺口"路线）、BUILD-PLAN-STAGE v1.x 的 T1/T2"换皮/结构同步"措辞。
+

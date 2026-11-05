@@ -40,7 +40,7 @@ X ✅ ｜ 小红书 ✅ ｜ 微博 ✅ ｜ 抖音 ✅ ｜ B站 ✅ ｜ YouTube�
 | A8 | B站 | https://www.bilibili.com/video/BV17Rxm6wEud/?spm_id_from=333.40138.feed-card.all.click | 视频下载（登录态 1080P/多P 场景回归） | V4/B-16 回归 | ⬜ 待验 |
 | A9 | Instagram | https://www.instagram.com/neuronvisuals/reel/DeZjO87xrHl/ | reel 视频下载，**无登录态**（苏哥 2026-11-05 提供；B-03 首次可试。IG 未登录有登录墙风险，结果如实记录：能嗅=关闭 B-03 主场景，被墙=记录拦截证据继续挂账号需求） | **V5/B-03**（从"待账号"转为"可试"） | ⬜ 待验 |
 
-**缺口**：V1（AES-128 加密 HLS）未给地址——按 ADR-046 由设计线找公开测试流（Wowza/Netflix test stream 类）登记至此。
+**缺口**：V1（AES-128 加密 HLS）未给地址——按 ADR-050 由设计线找公开测试流（Wowza/Netflix test stream 类）登记至此。
 
 ## 4. 执行顺序建议（V4/B-16 批次）
 

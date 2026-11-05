@@ -12,377 +12,562 @@
   <script src="js/library/thumbs.js" defer></script>
   <script src="js/library/indexer.js" defer></script>
   <script src="js/library/keyboard.js" defer></script>
-  <script src="js/library/video.js" defer></script>
   <script src="js/library/lightbox.js" defer></script>
-  <script src="js/library/trash.js" defer></script>
-  <script src="js/library/trash-ui.js" defer></script>
-  <script src="js/library/rename.js" defer></script>
-  <script src="js/library/batch.js" defer></script>
-  <script src="js/library/ui.js" defer></script>
+  <script src="js/library/app.js" defer></script>
 </head>
 
 <body class="library-page">
-  <header class="lib-top">
-    <a class="brand" href="options.html#anchorLibrary" title="返回设置">
-      <span class="brand-mark" aria-hidden="true">VR</span>
-      <span class="brand-text">
-        <strong>苏哥的钓鱼竿</strong>
-        <small>本地资源库</small>
+
+<svg class="sprite" aria-hidden="true"><defs>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+<symbol id="i-film" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></symbol>
+<symbol id="i-folder-input" viewBox="0 0 24 24"><path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1"/><path d="M2 13h10"/><path d="m9 16 3-3-3-3"/></symbol>
+<symbol id="i-folder-open" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+<symbol id="i-hard-drive" viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></symbol>
+<symbol id="i-bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></symbol>
+  <symbol id="i-bookmark-plus" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/><line x1="12" x2="12" y1="7" y2="13"/><line x1="15" x2="9" y1="10" y2="10"/></symbol>
+  <symbol id="i-funnel" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+  <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></symbol>
+  <symbol id="i-chevron-up" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+<symbol id="i-keyboard" viewBox="0 0 24 24"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></symbol>
+<symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/></symbol>
+<symbol id="i-maximize" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
+<symbol id="i-package" viewBox="0 0 24 24"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol>
+<symbol id="i-refresh-cw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+<symbol id="i-square-check" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+<symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+<symbol id="i-anchor" viewBox="0 0 24 24"><path d="M12 22V8"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/><circle cx="12" cy="5" r="3"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+<symbol id="i-external-link" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></symbol>
+<symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></symbol>
+<symbol id="i-volume-2" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></symbol>
+<symbol id="i-rotate-cw" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+<symbol id="i-picture-in-picture" viewBox="0 0 24 24"><path d="M2 10h6V4"/><path d="m2 4 6 6"/><path d="M21 10V7a2 2 0 0 0-2-2h-7"/><path d="M3 14v2a2 2 0 0 0 2 2h3"/><rect x="12" y="14" width="10" height="7" rx="1"/></symbol>
+<symbol id="i-repeat-1" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/></symbol>
+</defs></svg>
+
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"><svg class="i"><use href="#i-anchor"/></svg></div>
+      <div class="brand-txt">
+        <div class="brand-name">苏哥的钓鱼竿</div>
+        <div class="brand-sub">Media Library</div>
+      </div>
+    </div>
+
+    <button class="root-btn" id="rootBtn">
+      <span class="rb-ico"><svg class="i i-sm"><use href="#i-folder"/></svg></span>
+      <span class="rb-body">
+        <span class="rb-path">F:\download\video-rod</span>
+        <span class="rb-hint">点击更换目录</span>
       </span>
-    </a>
+      <svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
+    </button>
 
-    <div class="search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-        <circle cx="11" cy="11" r="7"></circle>
-        <path d="m20 20-3.2-3.2"></path>
-      </svg>
-      <input id="libSearch" type="search" placeholder="搜索文件名、博主、路径…" autocomplete="off" aria-label="搜索资源" />
-      <kbd>/</kbd>
+
+    <div>
+      <div class="side-label"><span>资源树</span><span id="treeTotal">27</span></div>
+    </div>
+    <div class="tree-search">
+      <svg class="i i-sm"><use href="#i-image"/></svg>
+      <input id="treeSearch" placeholder="搜索平台 / 博主…">
+    </div>
+    <nav class="tree" id="tree"></nav>
+
+    <div class="fav-side">
+      <button class="fav-side-btn" id="favMenuBtn">
+        <svg class="i i-sm"><use href="#i-bookmark"/></svg><span>收藏夹</span>
+        <b id="favSideCnt">0</b>
+        <svg class="i i-sm chev"><use href="#i-chevron-up"/></svg>
+      </button>
+      <div class="fav-menu" id="favMenu">
+          <div class="side-fav">
+      <div class="fav-head">
+        <span>收藏夹</span>
+        <button class="fav-add" id="favNewBtn" title="新建收藏夹"><svg class="i"><use href="#i-bookmark-plus"/></svg></button>
+        <button class="fav-add" id="favSaveFilter" title="把当前筛选存为智能收藏夹"><svg class="i"><use href="#i-funnel"/></svg></button>
+      </div>
+      <nav id="favList"></nav>
+      <div class="fav-new" id="favNewRow">
+        <input id="favNewInput" placeholder="收藏夹名字，回车创建" autocomplete="off" spellcheck="false">
+        <button class="ok" id="favNewOk">创建</button>
+      </div>
+      <button class="fav-more hidden" id="favMore">全部收藏夹（<span id="favMoreN">0</span>）</button>
+    </div>
+      </div>
     </div>
 
-    <div class="top-actions">
-      <div class="viewtoggle" role="group" aria-label="视图切换">
-        <button type="button" id="libViewGrid" class="on" data-view="grid" title="网格视图" aria-label="网格视图">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
-          </svg>
+    <div class="side-foot">
+      <div class="sf-row"><span><b id="fCount">27</b> 个文件</span><span><b id="fSize">418 MB</b></span></div>
+      <div class="meter"><i id="meterBar"></i></div>
+      <div class="sf-actions">
+        <button class="btn small" id="trashBtn" title="回收站">
+          <svg class="i" style="width:12px;height:12px"><use href="#i-trash-2"/></svg>
+          回收站 <b id="trashCnt">3</b>
         </button>
-        <button type="button" id="libViewList" data-view="list" title="列表视图" aria-label="列表视图">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M4 6h16M4 12h16M4 18h16"></path>
-          </svg>
-        </button>
+        <button class="btn small" id="resetBtn" title="重新选择根目录">换目录</button>
       </div>
-      <button type="button" id="libBatch" class="btn" aria-pressed="false" title="批量选择">批量</button>
-      <button type="button" id="libRefresh" class="btn">刷新</button>
-      <button type="button" id="libOptions" class="btn">设置</button>
     </div>
-  </header>
-
-  <div class="lib-body">
-    <aside class="lib-side" aria-label="资源筛选">
-      <div class="side-scroll">
-        <div class="side-group">
-          <h3>平台</h3>
-          <div id="libPlatformNav"></div>
-        </div>
-
-        <div class="side-group">
-          <h3>博主</h3>
-          <div id="libCreatorNav"></div>
-        </div>
-      </div>
-
-      <div class="side-foot">
-        <div class="root">
-          <span class="root-bar" aria-hidden="true"></span>
-          <div class="root-txt">
-            <div class="root-path" id="libRootPath">未探测</div>
-            <div class="root-meta" id="libRootMeta">在设置页点「校验落盘」</div>
-          </div>
-        </div>
-        <div class="foot-links">
-          <button type="button" class="link-btn" id="libFootOptions">索引维护 / 迁移…</button>
-          <button type="button" class="link-btn" id="libTrashOpen">回收站 <span class="foot-count" id="libTrashCount" hidden>0</span></button>
-        </div>
-      </div>
-    </aside>
-
-    <main class="lib-main">
-      <div class="lib-head">
-        <div class="crumb" id="libCrumb">
-          <span>资源库</span><i class="sep">/</i><b>全部资源</b>
-        </div>
-        <div class="title-row">
-          <h1 id="libTitle">全部资源</h1>
-          <p id="libSub">共 0 项</p>
-          <div class="head-tools">
-            <label class="field">
-              <span>排序</span>
-              <select id="libSort">
-                <option value="new">最新</option>
-                <option value="old">最旧</option>
-                <option value="name">名称</option>
-                <option value="size">大小</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>分组</span>
-              <select id="libGroup">
-                <option value="none">平铺</option>
-                <option value="date">按日期</option>
-              </select>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <div class="lib-scroll" id="libScroll">
-        <section class="lib-overview" id="libOverview" aria-label="资源概览" hidden>
-          <div class="section-label">
-            <span>资源概览</span><i class="ln"></i>
-            <span class="hint" id="libOverviewSummary"></span>
-            <button type="button" class="link-toggle" id="libOverviewToggle" aria-expanded="false">展开</button>
-          </div>
-
-          <div class="overview-body" id="libOverviewBody">
-          <div class="kpi-row">
-            <article class="kpi">
-              <div class="kpi-head">
-                <span class="kpi-label">总文件</span>
-                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                  <rect x="4" y="4" width="12" height="14" rx="2"></rect>
-                  <path d="M8 8h4M8 12h4"></path>
-                </svg>
-              </div>
-              <div class="kpi-num"><b id="libKpiTotal">0</b><span>项</span></div>
-              <div class="kpi-foot" id="libKpiTotalFoot">—</div>
-              <div class="kpi-bar"><i id="libKpiTotalBar" style="width:100%"></i></div>
-            </article>
-
-            <article class="kpi">
-              <div class="kpi-head">
-                <span class="kpi-label">占用空间</span>
-                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                  <ellipse cx="12" cy="6" rx="7" ry="3"></ellipse>
-                  <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"></path>
-                  <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path>
-                </svg>
-              </div>
-              <div class="kpi-num"><b id="libKpiSize">0</b><span id="libKpiSizeUnit"></span></div>
-              <div class="kpi-foot" id="libKpiSizeFoot">—</div>
-              <div class="kpi-bar"><i style="width:100%"></i></div>
-            </article>
-
-            <article class="kpi">
-              <div class="kpi-head">
-                <span class="kpi-label">图片</span>
-                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                  <rect x="3" y="4" width="18" height="16" rx="2.5"></rect>
-                  <circle cx="8.5" cy="9.5" r="1.6"></circle>
-                  <path d="m4 17 5-5 4 4 3-3 4 4"></path>
-                </svg>
-              </div>
-              <div class="kpi-num"><b id="libKpiImage">0</b><span>张</span></div>
-              <div class="kpi-foot" id="libKpiImageFoot">—</div>
-              <div class="kpi-bar"><i id="libKpiImageBar" style="width:0"></i></div>
-            </article>
-
-            <article class="kpi">
-              <div class="kpi-head">
-                <span class="kpi-label">视频</span>
-                <svg class="kpi-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                  <rect x="3" y="5" width="18" height="14" rx="2.5"></rect>
-                  <path d="m10 9.5 5 2.5-5 2.5z"></path>
-                </svg>
-              </div>
-              <div class="kpi-num"><b id="libKpiVideo">0</b><span>个</span></div>
-              <div class="kpi-foot" id="libKpiVideoFoot">—</div>
-              <div class="kpi-bar"><i id="libKpiVideoBar" style="width:0"></i></div>
-            </article>
-          </div>
-
-          <div class="insight-row">
-            <section class="insight">
-              <header class="insight-head">
-                <h2>平台分布</h2>
-                <span id="libPlatMeta">—</span>
-              </header>
-              <div class="stack" id="libPlatStack" role="img" aria-label="平台分布"></div>
-              <div class="legend" id="libPlatLegend"></div>
-            </section>
-
-            <section class="insight">
-              <header class="insight-head">
-                <h2>博主产量</h2>
-                <span>Top 5</span>
-              </header>
-              <div class="bars" id="libCreatorBars"></div>
-            </section>
-          </div>
-          </div>
-        </section>
-
-        <div class="lib-toolbar">
-          <div class="lib-tabs" id="libTypeNav" role="tablist" aria-label="类型筛选"></div>
-          <label class="mobile-plat">
-            <span>平台</span>
-            <select id="libPlatformSelect" aria-label="平台筛选"></select>
-          </label>
-        </div>
-
-        <div class="active-filters" id="libActiveFilters" hidden></div>
-
-        <section class="lib-block" id="libCreatorBlock" hidden>
-          <div class="section-label">
-            <span>博主速览</span><i class="ln"></i><span class="hint">点卡片进入博主</span>
-          </div>
-          <div class="lib-creators" id="libCreators"></div>
-        </section>
-
-        <div class="lib-grid" id="libGrid"></div>
-
-        <div class="lib-list" id="libList" hidden>
-          <table class="lib-table">
-            <thead>
-              <tr>
-                <th class="c-thumb" scope="col"><span class="sr-only">预览</span></th>
-                <th class="c-name" scope="col">名称</th>
-                <th class="c-plat" scope="col">平台</th>
-                <th class="c-creator" scope="col">博主</th>
-                <th class="c-type" scope="col">类型</th>
-                <th class="c-size" scope="col">大小</th>
-                <th class="c-date" scope="col">下载时间</th>
-                <th class="c-act" scope="col"><span class="sr-only">操作</span></th>
-              </tr>
-            </thead>
-            <tbody id="libListBody"></tbody>
-          </table>
-        </div>
-
-        <div class="lib-empty" id="libEmpty" hidden>
-          <div class="empty-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
-              <path d="M3 6h18l-2 13H5L3 6Z"></path>
-              <path d="m8 6 1-3h6l1 3"></path>
-            </svg>
-          </div>
-          <h2 id="libEmptyTitle">还没有资源</h2>
-          <p id="libEmptyText">资源库索引是空的。去设置页重建索引，或先下载一个文件。</p>
-          <div class="empty-actions">
-            <button type="button" id="libEmptyAction" class="btn primary" data-action="options">去设置页</button>
-          </div>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <!-- 批量操作条 -->
-  <div class="batch-bar" id="libBatchBar" hidden role="region" aria-label="批量操作">
-    <span class="bb-count" id="libBatchCount">已选 0 项</span>
-    <button type="button" class="bbtn" id="libBatchAll">全选</button>
-    <button type="button" class="bbtn" id="libBatchClear">取消</button>
-    <button type="button" class="bbtn danger" id="libBatchTrash" disabled>移到回收站</button>
-    <button type="button" class="bbtn primary" id="libBatchExit">退出</button>
-  </div>
-
-  <div class="lib-viewer" id="libViewer" hidden>
-    <header class="viewer-top">
-      <div class="viewer-title">
-        <strong id="libViewerTitle"></strong>
-        <span id="libViewerMeta"></span>
-      </div>
-      <span class="viewer-count" id="libViewerCount">1 / 1</span>
-      <div class="viewer-actions">
-        <button type="button" class="vbtn" id="libViewerInfoBtn" aria-pressed="true" title="信息 (i)">信息</button>
-        <button type="button" class="vbtn" id="libViewerOpen">在文件中打开</button>
-        <button type="button" class="vbtn icon" id="libViewerClose" aria-label="关闭预览">✕</button>
-      </div>
-    </header>
-
-    <div class="viewer-body">
-      <button type="button" class="viewer-nav prev" id="libViewerPrev" aria-label="上一个">‹</button>
-      <div class="viewer-stage" id="libViewerStage"></div>
-      <button type="button" class="viewer-nav next" id="libViewerNext" aria-label="下一个">›</button>
-
-      <aside class="viewer-panel" id="libViewerInfo" aria-label="文件信息">
-        <h3>文件信息</h3>
-        <dl class="facts" id="libViewerFacts"></dl>
-        <div class="panel-acts">
-          <button type="button" class="vbtn" id="libViewerCopyPath">复制路径</button>
-          <button type="button" class="vbtn" id="libViewerOpen2">在文件中打开</button>
-          <button type="button" class="vbtn danger" id="libViewerTrash">移到回收站</button>
-        </div>
-      </aside>
-    </div>
-
-    <div class="video-ctl" id="libVideoCtl" hidden>
-      <button type="button" class="vc-btn" id="libVideoPlay" aria-label="播放 / 暂停">▶</button>
-      <span class="vc-time" id="libVideoTime">0:00 / 0:00</span>
-      <input type="range" id="libVideoSeek" min="0" max="1000" value="0" step="1" aria-label="播放进度" />
-      <button type="button" class="vc-btn" id="libVideoMute" aria-label="静音">🔊</button>
-      <input type="range" id="libVideoVol" min="0" max="100" value="100" step="1" aria-label="音量" />
-      <select id="libVideoRate" aria-label="播放倍速">
-        <option value="0.5">0.5×</option>
-        <option value="0.75">0.75×</option>
-        <option value="1" selected>1×</option>
-        <option value="1.25">1.25×</option>
-        <option value="1.5">1.5×</option>
-        <option value="2">2×</option>
-      </select>
-      <label class="vc-auto"><input type="checkbox" id="libVideoAuto" checked /> 连播</label>
-      <button type="button" class="vc-btn" id="libVideoFull" aria-label="全屏">⛶</button>
-    </div>
-
-    <div class="image-ctl" id="libImageCtl" hidden>
-      <button type="button" class="vc-btn" id="libViewerZoomOut" aria-label="缩小">−</button>
-      <span class="vc-zoom" id="libViewerZoomVal">100%</span>
-      <button type="button" class="vc-btn" id="libViewerZoomIn" aria-label="放大">+</button>
-      <button type="button" class="vbtn" id="libViewerZoomReset">适应</button>
-    </div>
-
-    <div class="viewer-strip" id="libViewerStrip"></div>
-  </div>
-
-  <!-- 右键菜单 -->
-  <div class="ctxmenu" id="libCtxMenu" hidden role="menu">
-    <button type="button" data-act="preview" role="menuitem">预览</button>
-    <button type="button" data-act="open" role="menuitem">在文件中打开</button>
-    <button type="button" data-act="copy" role="menuitem">复制路径</button>
-    <button type="button" data-act="star" role="menuitem">加星标</button>
-    <button type="button" data-act="rename" role="menuitem">重命名…</button>
-    <div class="ctx-sep"></div>
-    <button type="button" data-act="trash" class="danger" role="menuitem">移到回收站</button>
-  </div>
-
-  <!-- 回收站抽屉 -->
-  <div class="trash-mask" id="libTrashMask" hidden></div>
-  <aside class="trash-drawer" id="libTrashDrawer" hidden aria-label="回收站">
-    <header class="trash-head">
-      <div>
-        <h2>回收站</h2>
-        <p id="libTrashMeta">—</p>
-      </div>
-      <button type="button" class="vbtn icon" id="libTrashClose" aria-label="关闭回收站">✕</button>
-    </header>
-    <div class="trash-list" id="libTrashList"></div>
-    <footer class="trash-foot">
-      <span class="trash-hint">恢复会写回原路径；彻底删除不可恢复。</span>
-      <button type="button" class="btn danger" id="libTrashEmpty">清空回收站</button>
-    </footer>
   </aside>
 
-  <!-- 重命名弹窗 -->
-  <div class="rename-mask" id="libRenameMask" hidden>
-    <div class="rename-box" role="dialog" aria-modal="true" aria-labelledby="libRenameTitle">
-      <h3 id="libRenameTitle">重命名</h3>
-      <label class="rename-field" for="libRenameInput">文件名（目录不变，扩展名保持一致）</label>
-      <input id="libRenameInput" type="text" autocomplete="off" spellcheck="false" />
-      <p class="rename-dir" id="libRenameDir"></p>
-      <p class="rename-error" id="libRenameError" hidden></p>
-      <div class="rename-acts">
-        <button type="button" class="btn" id="libRenameCancel">取消</button>
-        <button type="button" class="btn primary" id="libRenameOk">保存</button>
+  <main>
+    <section class="pagehead">
+      <div class="ph-left">
+        <div class="crumb-row">
+          <div class="crumb" id="crumb"><b>媒体库</b><span class="sep">/</span><span>全部平台</span></div>
+          <div class="crumb-acts">
+            <button class="btn small" id="rescanBtn"><svg class="i i-sm"><use href="#i-refresh-cw"/></svg>重新扫描</button>
+            <button class="btn small" id="settingsBtn"><svg class="i i-sm"><use href="#i-settings"/></svg>设置</button>
+          </div>
+        </div>
+        <div class="ph-title-row">
+          <h1 id="pageTitle">全部素材</h1>
+          <span class="scan-note"><i class="sdot"></i><span id="syncText">2 分钟前扫描完成</span></span>
+          <div class="searchbox">
+            <svg class="i i-sm"><use href="#i-search"/></svg>
+            <input id="search" placeholder="搜索… 空格=交集 -词=排除">
+            <kbd>⌘K</kbd>
+          </div>
+        </div>
+        <div class="ph-fav-acts hidden" id="favActs">
+          <button class="btn small" id="favRename"><svg class="i i-sm"><use href="#i-pencil"/></svg>重命名</button>
+          <button class="btn small" id="favExport"><svg class="i i-sm"><use href="#i-copy"/></svg>复制清单</button>
+          <button class="btn small danger" id="favDelete"><svg class="i i-sm"><use href="#i-trash-2"/></svg>删除收藏夹</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="toolbar">
+      <div class="seg" id="typeTabs">
+        <button data-type="all" class="active">全部 <b>27</b></button>
+        <button data-type="image">图片 <b>18</b></button>
+        <button data-type="anim">动图 <b>3</b></button>
+        <button data-type="video">视频 <b>9</b></button>
+        <button data-type="audio">音频 <b>0</b></button>
+      </div>
+      <div class="chips" id="chips">
+        <button class="chip active" data-plat="all">全部平台</button>
+        <button class="chip" data-plat="x" style="--pc:#16181D"><span class="dot"></span>X</button>
+        <button class="chip" data-plat="xiaohongshu" style="--pc:#FF2442"><span class="dot"></span>小红书</button>
+        <button class="chip" data-plat="douyin" style="--pc:#00B8B8"><span class="dot"></span>抖音</button>
+        <button class="chip" data-plat="weibo" style="--pc:#D9A03F"><span class="dot"></span>微博</button>
+        <button class="chip" data-plat="youtube" style="--pc:#FF0000"><span class="dot"></span>YouTube</button>
+        <button class="chip" data-plat="instagram" style="--pc:#C13584"><span class="dot"></span>Instagram</button>
+        <button class="chip" data-plat="web" style="--pc:#8B93A1"><span class="dot"></span>网页</button>
+      </div>
+      <div class="tools">
+        <button class="btn small" id="selectBtn"><svg class="i i-sm"><use href="#i-square-check"/></svg>选择</button>
+        <span class="select">
+          <svg class="i i-sm" style="color:var(--faint);opacity:.7"><use href="#i-list"/></svg>
+          <select id="sort">
+            <option value="new">最新保存</option>
+            <option value="old">最早保存</option>
+            <option value="size">文件最大</option>
+            <option value="name">标题 A-Z</option>
+          </select>
+        </span>
+        <div class="viewtoggle" id="viewToggle">
+          <button data-view="grid" class="active"><svg class="i i-sm"><use href="#i-layout-grid"/></svg></button>
+          <button data-view="list"><svg class="i i-sm"><use href="#i-list"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="batchbar hidden" id="batchbar">
+      <b id="batchCount">已选 0 项</b>
+      <button class="btn small" id="batchAll">全选</button>
+      <button class="btn small" id="batchInvert">反选</button>
+      <button class="btn small" id="batchClear">清除</button>
+      <span class="spacer"></span>
+      <button class="btn small" id="batchFav"><svg class="i i-sm"><use href="#i-bookmark-plus"/></svg>加入收藏夹</button>
+      <button class="btn small"><svg class="i i-sm"><use href="#i-folder-input"/></svg>移动到…</button>
+      <button class="btn small danger" id="batchTrash"><svg class="i i-sm"><use href="#i-trash-2"/></svg>删除到回收站</button>
+      <button class="btn small ghost" id="batchExit" title="退出批量选择">退出</button>
+    </div>
+
+    <div class="listhead" id="listhead">
+      <span class="c-name">名称</span><span class="c-plat">平台</span><span class="c-auth">作者</span><span class="c-size">大小</span><span class="c-time">保存</span>
+    </div>
+    <div class="grid" id="grid"></div>
+    <!-- 空状态：三种场景共用，文案与按钮由 JS 切换 -->
+    <div class="empty hidden" id="empty">
+      <div class="e-ico" id="emptyIco"><svg class="i"><use href="#i-image"/></svg></div>
+      <b id="emptyTitle">没有匹配的素材</b>
+      <p id="emptyText">换个关键词，或清除筛选条件再试。</p>
+      <div class="e-acts" id="emptyActs">
+        <button class="btn small" id="emptyAction">清除筛选</button>
+      </div>
+    </div>
+
+    <!-- 索引进度（首次扫描 / 重建索引时） -->
+    <div class="scan hidden" id="scanState">
+      <div class="scan-bar"><i></i></div>
+      <div class="scan-txt" id="scanText">正在扫描目录…</div>
+      <div class="scan-sub" id="scanSub">已发现 0 个文件</div>
+    </div>
+  </main>
+</div>
+
+<!-- 预览层 -->
+<div class="preview hidden" id="preview">
+  <header class="pv-head">
+    <button class="pv-back" id="pvBack"><svg class="i i-sm"><use href="#i-chevron-left"/></svg>返回媒体库</button>
+    <div class="pv-crumb" id="pvCrumb"><b>X</b> / NASA / videos</div>
+    <div class="pv-tools">
+      <span class="pv-count" id="pvCount">1 / 27</span>
+      <button class="iconbtn on" id="autoBtn" title="连播：播完自动下一个（滚轮可切换）" aria-pressed="true"><svg class="i i-sm"><use href="#i-repeat-1"/></svg></button>
+      <button class="iconbtn on" id="pvInfoBtn" title="信息 I"><svg class="i i-sm"><use href="#i-info"/></svg></button>
+      <button class="iconbtn" id="pvFullBtn" title="全屏 F"><svg class="i i-sm"><use href="#i-maximize"/></svg></button>
+      <button class="iconbtn" id="pvHelpBtn" title="快捷键"><svg class="i i-sm"><use href="#i-keyboard"/></svg></button>
+      <button class="iconbtn" id="pvClose" title="关闭 Esc"><svg class="i i-sm"><use href="#i-x"/></svg></button>
+    </div>
+  </header>
+  <div class="autobar hidden" id="autoBar"><i id="autoFill"></i></div>
+  <div class="pv-body" id="pvBody">
+    <div class="pv-stage" id="pvStageEl">
+      <span class="pv-type" id="pvType">VIDEO</span>
+      <div class="fakeMedia" id="pvMedia">
+        <div class="cover" id="pvCover"></div>
+        <div class="bigplay" id="pvBigPlay"><svg class="i"><use href="#i-play"/></svg></div>
+      </div>
+
+      <!-- 视频控件条：布局对应 Media Chrome 的 control-bar -->
+      <div class="vctl" id="vCtl">
+        <div class="vprog" id="vProg"><i id="vFill"></i><b class="vbub" id="vBub">01:23</b></div>
+        <div class="vbar">
+          <button class="vbtn" id="vPlay" aria-label="播放或暂停" title="播放/暂停 (Space)"><svg class="i"><use href="#i-pause"/></svg></button>
+          <span class="vtime"><b id="vCur">01:23</b> / <span id="vDur">03:45</span></span>
+          <span class="vspacer"></span>
+          <button class="vbtn txt" title="后退 5 秒 (←)">−5</button>
+          <button class="vbtn txt" title="前进 5 秒 (→)">+5</button>
+          <button class="vbtn" title="静音 (M)"><svg class="i"><use href="#i-volume-2"/></svg></button>
+          <button class="vbtn txt" id="vRate" title="倍速 ( &gt; 或 &lt; )">1×</button>
+          <button class="vbtn" title="画中画 (P)"><svg class="i"><use href="#i-picture-in-picture"/></svg></button>
+          <button class="vbtn" title="全屏 (F)"><svg class="i"><use href="#i-maximize"/></svg></button>
+        </div>
+      </div>
+
+      <!-- 图片工具栏：缩放 / 旋转 / 适应 / 1:1 -->
+      <div class="imgbar hidden" id="imgBar">
+        <button class="ibtn" title="缩小 (−)">−</button>
+        <span class="izoom" id="iZoom">100%</span>
+        <button class="ibtn" title="放大 (+)">+</button>
+        <span class="idiv"></span>
+        <button class="ibtn" title="旋转 90° (R)"><svg class="i"><use href="#i-rotate-cw"/></svg></button>
+        <button class="ibtn" title="适应窗口 (0)">适应</button>
+        <button class="ibtn" title="实际像素 (1)">1:1</button>
+      </div>
+
+      <!-- GIF 控件条：暂停 / 帧号 / 循环 / 倍速 -->
+      <div class="gifbar hidden" id="gifBar">
+        <button class="vbtn" id="gPause" title="暂停或播放 (Space)"><svg class="i"><use href="#i-pause"/></svg></button>
+        <span class="gfmt" id="gFmt">GIF</span>
+        <span class="gframe">第 <b id="gNo">12</b> / <span id="gTotal">86</span> 帧</span>
+        <button class="vbtn txt" id="gLoop" title="循环方式 (L)">⟳ 无限</button>
+        <button class="vbtn txt" id="gRate" title="倍速">1×</button>
+      </div>
+
+      <!-- 倍速选择：点控件条的 1× 弹出 -->
+      <div class="ratepop" id="ratePop" role="menu" aria-label="播放速度">
+        <div class="rp-head"><span>播放速度</span><b id="rpNow">1×</b></div>
+        <div class="rp-grid" id="rpGrid"></div>
+        <div class="rp-tip">也可用 <kbd>&gt;</kbd> 快一档 <kbd>&lt;</kbd> 慢一档</div>
+      </div>
+
+      <button class="pv-arrow pv-prev" id="pvPrev"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+      <button class="pv-arrow pv-next" id="pvNext"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+    </div>
+    <aside class="pv-info">
+      <div class="pi-head">
+        <span class="pi-kicker" id="pvPlat"><i class="dot"></i>X · 视频</span>
+        <a class="pi-open" id="pvOpenTop" href="#" target="_blank" rel="noopener" title="打开原帖"><svg class="i"><use href="#i-external-link"/></svg></a>
+      </div>
+      <h2 id="pvTitle">实验室里最危险的 5 个瞬间（上）</h2>
+
+      <a class="pi-author" id="pvAuthorRow" href="#" target="_blank" rel="noopener">
+        <span class="avatar" id="pvAvatar">奇</span>
+        <span id="pvAuthor">奇趣蛋蛋 <em>@qqdd</em></span>
+        <span class="go"><svg class="i"><use href="#i-external-link"/></svg></span>
+      </a>
+
+      <div class="pi-acts">
+        <button class="pi-act" id="pvRename"><svg class="i"><use href="#i-pencil"/></svg>重命名</button>
+        <button class="pi-act" id="pvMove"><svg class="i"><use href="#i-folder-input"/></svg>移动</button>
+        <button class="pi-act" id="pvReveal"><svg class="i"><use href="#i-folder-open"/></svg>定位</button>
+        <button class="pi-act danger" id="pvDelete" title="删除到回收站"><svg class="i"><use href="#i-trash-2"/></svg></button>
+      </div>
+
+      <section class="pi-group" style="--grp:#3FC9BE">
+        <h3 class="pi-label">文件</h3>
+        <!-- 一眼要看的三个值：做大，横排 -->
+        <div class="pi-stats">
+          <div class="stat"><b id="st1v">—</b><span id="st1k">分辨率</span></div>
+          <div class="stat"><b id="st2v">—</b><span id="st2k">大小</span></div>
+          <div class="stat"><b id="st3v">—</b><span id="st3k">保存</span></div>
+        </div>
+        <div class="pi-item hidden" id="pvStateRow"><dt><svg class="k-ico"><use href="#i-info"/></svg>状态</dt><dd id="pvState" style="color:var(--danger)">—</dd></div>
+        <!-- 其余收起来：信息一个不少，但不占版面 -->
+        <details class="pi-fold">
+          <summary>更多文件信息<i>›</i></summary>
+          <dl class="pi-list">
+            <div class="pi-item" id="pvThirdRow"><dt id="pvThirdK"><svg class="k-ico"><use href="#i-clock"/></svg>帧数</dt><dd id="pvThirdV">01:24</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-calendar"/></svg>保存时间</dt><dd id="pvSaved">—</dd></div>
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-folder"/></svg>路径</dt><dd class="mono" id="pvPath">douyin/qqdd/videos/c2.mp4</dd>
+              <button class="inline-copy" id="pvPathCopy" title="复制完整路径"><svg class="i"><use href="#i-copy"/></svg></button></div>
+          </dl>
+        </details>
+      </section>
+
+      <section class="pi-group" style="--grp:#F0C878">
+        <h3 class="pi-label">来源 <span class="pi-badge" id="pvSrcBadge"><svg class="i"><use href="#i-circle-check"/></svg>已记录</span></h3>
+        <dl class="pi-list">
+          <a class="pi-item" id="pvPageRow" href="#" target="_blank" rel="noopener">
+            <dt><svg class="k-ico"><use href="#i-external-link"/></svg>原帖</dt><dd class="mono" id="pvPageVal">—</dd><span class="go">↗</span>
+          </a>
+          <div class="pi-item" id="pvMediaRow"><dt><svg class="k-ico"><use href="#i-link"/></svg>直链</dt><dd class="mono" id="pvMediaVal">—</dd>
+            <span class="tag-warn" id="pvExpireWarn" title="CDN 直链带签名，会过期；回溯请用「原帖」"><svg class="i"><use href="#i-triangle-alert"/></svg></span>
+            <button class="inline-copy" id="pvCopyBtn"><svg class="i"><use href="#i-copy"/></svg>复制</button></div>
+          <div class="pi-item hidden" id="pvSrcMiss"><dt><svg class="k-ico"><use href="#i-triangle-alert"/></svg>提示</dt><dd class="pi-empty">历史素材：原帖与直链未记录</dd></div>
+        </dl>
+        <!-- 长串 ID 很少看，收起来 -->
+        <details class="pi-fold">
+          <summary>溯源详情<i>›</i></summary>
+          <dl class="pi-list">
+            <div class="pi-item"><dt><svg class="k-ico"><use href="#i-hash"/></svg>作品 ID</dt><dd class="mono" id="pvWorkId">—</dd></div>
+          </dl>
+        </details>
+      </section>
+
+      <section class="pi-group grp-tags" style="--grp:#B4A5F5">
+        <h3 class="pi-label">标签</h3>
+        <div class="pi-tags">
+          <div class="pv-tags" id="pvTags"><span class="pv-tag empty">还没有标签</span></div>
+          <button class="pi-tag-add" id="pvTagAdd">+ 添加</button>
+          <div class="pi-taginput" id="pvTagInputWrap">
+            <input id="pvTagInput" placeholder="输入标签，回车确认" autocomplete="off">
+            <button class="pi-copy" id="pvTagSave">保存</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="pi-more">
+        <div class="pi-more-head"><span>同作者 · <b id="pvMoreCount">0</b> 项</span><button id="pvMoreAll">查看全部</button></div>
+        <div class="pi-more-grid" id="pvMoreGrid"></div>
+      </div>
+
+      <div class="pi-foot">按 <kbd>?</kbd> 查看全部键盘与鼠标操作</div>
+    </aside>
+  </div>
+  <footer class="pv-film" id="pvFilm"></footer>
+</div>
+
+<div class="keysheet hidden" id="keysheet">
+  <div class="ks-card">
+    <div class="ks-title">
+      <h3>鼠标 + 键盘快捷键</h3>
+      <button class="iconbtn" id="ksClose" title="关闭"><svg class="i i-sm"><use href="#i-x"/></svg></button>
+    </div>
+    <p class="ks-sub">所有操作鼠标和键盘都能完成 · 在输入框里打字时快捷键自动让位</p>
+    <div class="ks-grid">
+      <div class="ks-sec">
+        <h4>通用</h4>
+        <div class="ks-row"><span>上一个 / 下一个</span><span><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></span></div>
+        <div class="ks-row"><span>快速预览（列表中）</span><span><kbd>Space</kbd></span></div>
+        <div class="ks-row"><span>关闭预览</span><span><kbd>Esc</kbd></span></div>
+        <div class="ks-row"><span>信息栏开合</span><span><kbd>I</kbd></span></div>
+        <div class="ks-row"><span>全屏</span><span><kbd>F</kbd></span></div>
+        <div class="ks-row"><span>快捷键帮助</span><span><kbd>?</kbd></span></div>
+      </div>
+      <div class="ks-sec">
+        <h4>视频</h4>
+        <div class="ks-row"><span>播放 / 暂停</span><span><kbd>Space</kbd><kbd>K</kbd></span></div>
+        <div class="ks-row"><span>快退 / 快进 5 秒</span><span><kbd>←</kbd><kbd>→</kbd></span></div>
+        <div class="ks-row"><span>逐帧（暂停时）</span><span><kbd>,</kbd><kbd>.</kbd></span></div>
+        <div class="ks-row"><span>音量 ±5%</span><span><kbd>↑</kbd><kbd>↓</kbd></span></div>
+        <div class="ks-row"><span>静音</span><span><kbd>M</kbd></span></div>
+        <div class="ks-row"><span>倍速 快 / 慢（或点 <b>1×</b> 选档）</span><span><kbd>&gt;</kbd><kbd>&lt;</kbd></span></div>
+        <div class="ks-row"><span>跳到 10%–90%</span><span><kbd>0</kbd>–<kbd>9</kbd></span></div>
+        <div class="ks-row"><span>画中画</span><span><kbd>P</kbd></span></div>
+      </div>
+      <div class="ks-sec">
+        <h4>图片</h4>
+        <div class="ks-row"><span>放大 / 缩小</span><span><kbd>+</kbd><kbd>−</kbd></span></div>
+        <div class="ks-row"><span>适应窗口</span><span><kbd>0</kbd></span></div>
+        <div class="ks-row"><span>实际像素 1:1</span><span><kbd>1</kbd></span></div>
+        <div class="ks-row"><span>旋转 90°</span><span><kbd>R</kbd></span></div>
+        <div class="ks-row"><span>缩放 / 平移</span><span>滚轮 · 拖拽 · 双击</span></div>
+      </div>
+      <div class="ks-sec">
+        <h4>GIF</h4>
+        <div class="ks-row"><span>暂停 / 继续</span><span><kbd>Space</kbd></span></div>
+        <div class="ks-row"><span>逐帧</span><span><kbd>,</kbd><kbd>.</kbd></span></div>
+        <div class="ks-row"><span>循环 无限 / 一次</span><span><kbd>L</kbd></span></div>
+        <div class="ks-row"><span>回到第一帧</span><span><kbd>0</kbd></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 回收站抽屉 -->
+  <div class="drawer-mask" id="dwMask"></div>
+  <aside class="drawer" id="drawer" aria-label="回收站">
+    <div class="dw-head">
+      <svg class="i" style="width:15px;height:15px;color:var(--muted)"><use href="#i-trash-2"/></svg>
+      <h3>回收站</h3>
+      <span class="cnt" id="dwCnt">3</span>
+      <button class="close" id="dwClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dw-note">删除的文件放在这里，恢复后会回到原来的相对路径。回收站只记路径，不占空间。</div>
+    <div class="dw-list" id="dwList"></div>
+    <div class="dw-foot">
+      <button class="btn small" id="dwRestoreAll">全部恢复</button>
+      <span class="spacer"></span>
+      <button class="btn small danger" id="dwEmpty">清空回收站</button>
+    </div>
+  </aside>
+
+  <!-- 右键菜单 -->
+  <div class="ctx" id="ctx" role="menu">
+    <button data-act="preview"><svg class="i"><use href="#i-maximize"/></svg>预览<span class="kbd">Enter</span></button>
+    <button data-act="open"><svg class="i"><use href="#i-folder-open"/></svg>在文件中打开</button>
+    <button data-act="copy"><svg class="i"><use href="#i-copy"/></svg>复制路径</button>
+    <button data-act="star"><svg class="i"><use href="#i-star"/></svg>加星标</button>
+    <button data-act="fav"><svg class="i"><use href="#i-bookmark-plus"/></svg>加入收藏夹…</button>
+    <hr>
+    <button data-act="rename"><svg class="i"><use href="#i-pencil"/></svg>重命名<span class="kbd">F2</span></button>
+    <button data-act="reveal"><svg class="i"><use href="#i-folder-input"/></svg>移动…</button>
+    <hr>
+    <button data-act="trash" class="danger"><svg class="i"><use href="#i-trash-2"/></svg>移到回收站<span class="kbd">Del</span></button>
+  </div>
+
+  <!-- 重命名 -->
+  <div class="modal-mask" id="renameMask">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="renameTitle">
+      <div class="md-head">
+        <span class="ico"><svg class="i"><use href="#i-pencil"/></svg></span>
+        <h3 id="renameTitle">重命名</h3>
+      </div>
+      <div class="md-body">
+        <label class="md-label" for="renameInput">文件名</label>
+        <div class="md-input-row">
+          <input class="md-input" id="renameInput" autocomplete="off" spellcheck="false" />
+          <span class="md-ext" id="renameExt">.mp4</span>
+        </div>
+        <p class="md-hint">扩展名单独锁定，避免误改后文件打不开。<kbd>Enter</kbd> 确认，<kbd>Esc</kbd> 取消。</p>
+        <div class="md-err hidden" id="renameErr"><svg class="i"><use href="#i-triangle-alert"/></svg><span id="renameErrText"></span></div>
+        <label class="md-label" for="renameDir">所在目录（可选）</label>
+        <input class="md-input" id="renameDir" style="width:100%;border-radius:7px;margin-bottom:12px" autocomplete="off" spellcheck="false" />
+        <div class="md-foot">
+          <button class="btn small" id="renameCancel">取消</button>
+          <button class="btn small primary" id="renameOk">重命名</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- 确认框 -->
-  <div class="confirm-mask" id="libConfirmMask" hidden>
-    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="libConfirmTitle">
-      <h3 id="libConfirmTitle">确认操作</h3>
-      <p id="libConfirmText"></p>
-      <div class="confirm-acts">
-        <button type="button" class="btn" id="libConfirmCancel">取消</button>
-        <button type="button" class="btn danger" id="libConfirmOk">确定</button>
+  <!-- 确认 -->
+  <div class="modal-mask" id="confirmMask">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="md-head">
+        <span class="ico warn" id="confirmIco"><svg class="i"><use href="#i-trash-2"/></svg></span>
+        <h3 id="confirmTitle">确认操作</h3>
+      </div>
+      <div class="md-body">
+        <p class="md-msg" id="confirmMsg">确定要执行这个操作吗？</p>
+        <div class="md-foot" style="padding-top:14px">
+          <button class="btn small" id="confirmCancel">取消</button>
+          <button class="btn small danger" id="confirmOk">确定</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="lib-toast" id="libToast" hidden></div>
+  <!-- 加入收藏夹浮层 -->
+  <div class="favpop" id="favPop" role="menu" aria-label="加入收藏夹">
+    <div class="fp-head"><span>加入收藏夹</span><span id="favPopN">已选 0 项</span></div>
+    <div class="fp-list" id="favPopList"></div>
+    <div class="fp-foot">
+      <button class="fp-new" id="favPopNew"><svg class="i"><use href="#i-bookmark-plus"/></svg>新建收藏夹</button>
+      <button class="fp-done" id="favPopDone">完成</button>
+    </div>
+  </div>
+
+  <!-- 收藏夹管理抽屉 -->
+  <div class="drawer-mask" id="favMask"></div>
+  <aside class="drawer" id="favDrawer" aria-label="管理收藏夹" style="width:400px">
+    <div class="dw-head">
+      <svg class="i" style="width:15px;height:15px;color:var(--muted)"><use href="#i-bookmark"/></svg>
+      <h3>管理收藏夹</h3>
+      <span class="cnt" id="favDrawerN">0</span>
+      <button class="close" id="favDrawerClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="dw-note">收藏夹只是「视图」，移动素材文件本身不会被改动。顺序可上下调整——收藏夹是给人看的，顺序有意义。</div>
+    <div class="dw-list" id="favDrawerList"></div>
+    <div class="dw-foot">
+      <button class="btn small" id="favDrawerNew">新建收藏夹</button>
+      <span class="spacer"></span>
+      <span style="font-size:10px;color:var(--faint)">拖动排序将在正式版支持</span>
+    </div>
+  </aside>
+
+  <div class="setmask" id="setmask"></div>
+  <aside class="setdrawer" id="setdrawer" aria-label="资源库设置">
+    <header class="sd-head">
+      <div><h3>设置</h3><p>资源库常用项 · 即改即用，不用跳走</p></div>
+      <button class="sd-x" id="setClose">&#10005;</button>
+    </header>
+    <div class="sd-body">
+      <div class="sd-item">
+        <div class="sd-k">下载目录</div>
+        <div class="sd-v">F:\download\video-rod</div>
+        <button class="btn small" onclick="toast('原型演示：换目录')">更换目录</button>
+      </div>
+      <div class="sd-item">
+        <div class="sd-k">扫描</div>
+        <div class="sd-v">2 分钟前扫描完成 · 36 个文件</div>
+        <button class="btn small" onclick="toast('已重新扫描，36 项')">立即扫描</button>
+      </div>
+      <div class="sd-item">
+        <div class="sd-k">索引</div>
+        <div class="sd-v">2032 MB · 缩略图已缓存</div>
+        <button class="btn small" onclick="toast('原型演示：重建索引')">重建索引</button>
+      </div>
+      <div class="sd-item">
+        <div class="sd-k">回收站</div>
+        <div class="sd-v">3 项 · 保留 30 天</div>
+        <button class="btn small" onclick="toast('原型演示：打开回收站')">打开</button>
+      </div>
+      <div class="sd-item">
+        <div class="sd-k">文件名规则</div>
+        <div class="sd-v mono">{博主}/{类型}/{标题}</div>
+      </div>
+    </div>
+    <footer class="sd-foot"><a href="javascript:void 0" onclick="toast('原型演示：跳转完整设置页')">打开完整扩展设置 &#8599;</a></footer>
+  </aside>
+
+  <div class="toast" id="toast"></div>
 </body>
-
 </html>
