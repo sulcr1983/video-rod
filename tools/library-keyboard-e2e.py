@@ -205,6 +205,46 @@ def main():
             c.ev("(()=>{const b=document.getElementById('pvClose');if(b)b.click();return 1})()", sid)
             time.sleep(0.4)
 
+        # 图片快捷键/工具栏：+ / - / R / 0 / 1 与按钮
+        img_open = c.ev("""(()=>{const c=[...document.querySelectorAll('#grid .card')].find(x=>
+          !x.querySelector('.thumb.is-video')&&!x.querySelector('.thumb.is-anim')&&!x.querySelector('.missing-tag'));
+          if(!c)return 'no-image';c.click();return 1})()""", sid, False)
+        time.sleep(1.2)
+        check("图片卡能打开预览", img_open == 1, img_open)
+        img_state = c.ev("""(()=>{const i=document.querySelector('#pvMedia img');if(!i)return 'no-img';
+          return JSON.stringify({zoom:(document.getElementById('iZoom')||{}).textContent||'',
+            transform:i.style.transform||'',barHidden:document.getElementById('imgBar').classList.contains('hidden')})})()""", sid, False)
+        try: ims = json.loads(img_state) if isinstance(img_state, str) else {}
+        except Exception: ims = {}
+        check("图片工具栏可见", isinstance(ims, dict) and ims.get("barHidden") is False, img_state)
+        if isinstance(ims, dict) and "zoom" in ims:
+            c.key("=", "Equal", 187, sid=sid)  # + 键（不按 Shift 也接受 =）
+            time.sleep(0.3)
+            z1 = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
+            check("+ 放大图片", str(z1).replace('%','').isdigit() and int(str(z1).replace('%','')) > 100, z1)
+
+            c.key("-", "Minus", 189, sid=sid)
+            time.sleep(0.3)
+            z2 = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
+            check("- 缩小图片", str(z2).replace('%','').isdigit() and int(str(z2).replace('%','')) < int(str(z1).replace('%','')), {"before": z1, "after": z2})
+
+            c.key("r", "KeyR", 82, sid=sid)
+            time.sleep(0.3)
+            tr = c.ev("(document.querySelector('#pvMedia img')||{}).style.transform||''", sid, False)
+            check("R 旋转图片", "rotate(90deg)" in str(tr), tr)
+
+            c.key("0", "Digit0", 48, sid=sid)
+            time.sleep(0.3)
+            z0 = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
+            check("0 适应窗口", z0 == "100%", z0)
+
+            c.key("1", "Digit1", 49, sid=sid)
+            time.sleep(0.3)
+            zactual = c.ev("(document.getElementById('iZoom')||{}).textContent||''", sid, False)
+            check("1 实际像素", isinstance(zactual, str) and zactual.endswith("%"), zactual)
+            c.ev("(()=>{const b=document.getElementById('pvClose');if(b)b.click();return 1})()", sid)
+            time.sleep(0.3)
+
         print("\n%d/%d PASS" % (sum(1 for x in RESULTS if x["pass"]), len(RESULTS)))
         try:
             os.makedirs(os.path.dirname(a.json), exist_ok=True)

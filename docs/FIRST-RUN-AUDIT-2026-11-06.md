@@ -102,8 +102,9 @@
 
 - 列表：Space/Enter 预览、↑/↓ 上一个/下一个、F2 重命名、Del（无授权只提示）、Esc 关闭、Ctrl/Cmd+A 全选、`?` 快捷键面板、`/` 聚焦搜索。
 - 视频：K 播放/暂停、M 静音、`>` 提倍速、数字 5 跳到约 50%。
-- 键盘回归 **17/17 PASS**；真实库未被删除/改名。
-- 仍未实现/未验证：图片 `+/-/0/1/R` 和 GIF 的 `, . L 0` 等帮助文案中的键位；下一步单独做图片工具栏/GIF 键位。
+- 图片：`+/-` 缩放、`R` 旋转、`0` 适应、`1` 实际像素；工具栏按钮已接线。
+- 键盘回归 **24/24 PASS**；真实库未被删除/改名。
+- GIF 的 `Space/,/./L/0` 已实现，但当前真实库没有动图素材，未自动化验证；图片滚轮/拖拽/双击平移仍待补。
 
 ---
 
@@ -171,7 +172,7 @@
 | 首次使用黑盒结果 | `deliverables/test-runs/first-run-audit.json`（48 条） |
 | 首次使用脚本 | `tools/first-run-audit.py` |
 | 收藏夹回归 | `tools/library-favorites-e2e.py`（11/11） |
-| 键盘回归 | `tools/library-keyboard-e2e.py`（17/17） |
+| 键盘回归 | `tools/library-keyboard-e2e.py`（24/24） |
 | 回收站修复 | `js/library/trash.js` |
 | P0 回归矩阵 | `docs/TEST-MATRIX-P0.md` |
 | 真实库基线 | `.work/db-snapshots/vr-library-pre-audit.json`（35 条） |
