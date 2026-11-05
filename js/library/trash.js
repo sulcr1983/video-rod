@@ -26,6 +26,12 @@
         return String(rel || '').replace(/\\/g, '/').split('/').filter(Boolean);
     }
 
+    /** 索引 relPath 首段是 subdir（video-rod），FSA 句柄指向库根，物理操作要剥掉首段。 */
+    function stripPrefix(rel, prefix) {
+        var p = prefix ? (String(prefix).replace(/^\/+|\/+$/g, '') + '/') : '';
+        return (p && String(rel).indexOf(p) === 0) ? String(rel).slice(p.length) : rel;
+    }
+
     function stamp() {
         var d = new Date();
         function p(n) { return ('0' + n).slice(-2); }
@@ -199,8 +205,9 @@
 
         for (var i = 0; i < list.length; i++) {
             var rel = list[i];
+            var fsRel = stripPrefix(rel, rr.prefix);
             try {
-                if (!(await exists(rr.handle, rel))) {
+                if (!(await exists(rr.handle, fsRel))) {
                     if (dbReady()) { await root.VRDB.deleteFiles([rel]); }
                     cleaned++;
                     continue;
@@ -227,7 +234,7 @@
                         }
                     } catch (e) { /* 判重失败按普通删除 */ }
                 }
-                await moveFile(rr.handle, rel, batchRel + '/' + rel);
+                await moveFile(rr.handle, fsRel, batchRel + '/' + fsRel);
                 items.push(entry || { relPath: rel, fileName: split(rel).pop(), state: 'ok' });
             } catch (e) {
                 failed.push({ relPath: rel, code: errCode(e), message: e.message || '' });
@@ -329,11 +336,12 @@
 
         for (var i = 0; i < targets.length; i++) {
             var it = targets[i];
+            var fsRel = stripPrefix(it.relPath, rr.prefix);
             try {
-                if (await exists(rr.handle, it.relPath)) {
+                if (await exists(rr.handle, fsRel)) {
                     throw makeErr('LIB_E_EXISTS', '原位置已有同名文件');
                 }
-                await moveFile(rr.handle, batchRel + '/' + it.relPath, it.relPath);
+                await moveFile(rr.handle, batchRel + '/' + fsRel, fsRel);
                 restored.push(it);
             } catch (e) {
                 failed.push({ relPath: it.relPath, code: errCode(e), message: e.message || '' });
@@ -397,7 +405,7 @@
         }
 
         try {
-            var segs = split(batchRel + '/' + relPath);
+            var segs = split(batchRel + '/' + stripPrefix(relPath, rr.prefix));
             var name = segs.pop();
             var dir = await dirAt(rr.handle, segs, false);
             await dir.removeEntry(name);
