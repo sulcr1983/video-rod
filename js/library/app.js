@@ -1102,9 +1102,19 @@
                     var expected = rr.absRoot
                         ? String(rr.absRoot).replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()
                         : String(rr.prefix || '');
-                    if (!expected || h.name !== expected) {
-                        toast('请选择素材库根目录「' + (expected || rr.prefix || 'video-rod') + '」，当前选的是「' + h.name + '」');
+                    if (!expected) {
+                        toast('素材库路径为空，请先在设置页填写保存位置');
                         return;
+                    }
+                    if (h.name !== expected) {
+                        /* 允许用户选中父目录（如 Downloads），自动下钻到 video-rod，
+                         * 但必须真的存在这个子目录；选错空目录直接拒绝。 */
+                        try {
+                            h = await h.getDirectoryHandle(expected);
+                        } catch (e2) {
+                            toast('请选择素材库根目录「' + expected + '」，当前选的是「' + h.name + '」');
+                            return;
+                        }
                     }
                     await root.VRIndex.setRoot(h, rr.absRoot, rr.prefix);
                     toast('已授权素材目录');
