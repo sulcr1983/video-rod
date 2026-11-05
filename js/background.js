@@ -369,6 +369,9 @@ function save(tabId) {
 // 发 vrQueueName 消息在这里记账（页面上下文与 SW 不共享内存）。
 
 const vrPendingNameByUrl = new Map();   // url -> {filename, conflictAction, at}
+// B站页面内合成（dash/durl 用 <a download>）不带目录；下载前记住完整归档路径，
+// 由 onDeterminingFilename 补回去。2 分钟窗口，避免误伤之后无关的下载。
+let vrPendingBiliName = null;
 const VR_NAME_TTL = 10 * 60 * 1000;     // 记账保留 10 分钟：兼容同 URL 重复/并发下载
 const VR_NAME_MAP_MAX = 300;            // 防御性上限，防异常残留撑爆内存
 
@@ -528,25 +531,32 @@ function vrMergeStart(taskId, urls) {
  *  拿到 blob 再交下载器落盘。抖音实测只有这条路能过 403（2026-11-05）。 */
 function vrOffscreenDownload(url, filename) {
     return vrMergeEnsureOffscreen().then(function () {
-        return new Promise(function (resolve) {
-            var done = false;
-            var finish = function (r) { if (!done) { done = true; resolve(r); } };
-            // 离屏文档没响应时不能把整个下载流程拖死：到点当失败处理，交给上层报错。
-            var timer = setTimeout(function () { finish({ ok: false, reason: 'offscreen-timeout' }); }, 25000);
-            try {
-                chrome.runtime.sendMessage(
-                    { Message: 'vrOffscreenDownload', url: url, filename: filename },
-                    function (res) {
-                        clearTimeout(timer);
-                        void chrome.runtime.lastError;
-                        // 离屏文档自己用 <a download> 落盘（文件名能保住），这里只收结果
-                        finish(res || { ok: false, reason: 'no-response' });
-                    });
-            } catch (e) {
-                clearTimeout(timer);
-                finish({ ok: false, reason: String(e).slice(0, 120) });
-            }
-        });
+        // createDocument 返回时脚本可能还没注册 listener，第一次发会 no-response。
+        // 批量并发实测 3 张会挂 1 张就是这个。重试 3 次，间隔递增。
+        function attempt(n) {
+            return new Promise(function (resolve) {
+                var done = false;
+                var finish = function (r) { if (!done) { done = true; resolve(r); } };
+                var timer = setTimeout(function () { finish({ ok: false, reason: 'offscreen-timeout' }); }, 25000);
+                try {
+                    chrome.runtime.sendMessage(
+                        { Message: 'vrOffscreenDownload', url: url, filename: filename },
+                        function (res) {
+                            clearTimeout(timer);
+                            void chrome.runtime.lastError;
+                            finish(res || { ok: false, reason: 'no-response' });
+                        });
+                } catch (e) {
+                    clearTimeout(timer);
+                    finish({ ok: false, reason: String(e).slice(0, 120) });
+                }
+            }).then(function (r) {
+                if ((r && r.ok) || n >= 2) { return r; }
+                return new Promise(function (go) { setTimeout(go, 700 * (n + 1)); })
+                    .then(function () { return attempt(n + 1); });
+            });
+        }
+        return attempt(0);
     }).catch(function (e) {
         return { ok: false, reason: String(e).slice(0, 120) };
     });
@@ -897,8 +907,10 @@ async function vrImgDownload(msg) {
     if (outcome && outcome.state === 'interrupted') {
         try { vrAbortFilename(url, relPath); } catch (e) { /* ignore */ }
         vrDropDownload(downloadId);
-        if (ruleId) { vrImgClearRefererRule(ruleId); }
+        // ⚠️ 规则不能在这里撤：下面的离屏 fetch 还要靠它补 Referer。
+        //    先撤规则再取流 = 403（2026-11-05 批量下载 2/3 失败就是踩的这个）。
         const off = await vrOffscreenDownload(url, String(relPath).split('/').pop());
+        if (ruleId) { vrImgClearRefererRule(ruleId); }
         if (off && off.ok && off.blobUrl) {
             const id2 = await vrDownloadWithName(off.blobUrl, relPath, { meta: meta });
             if (id2 && typeof id2 === 'object' && id2.__fsa) {
@@ -1002,7 +1014,14 @@ async function vrImgBatch(msg) {
                     if (key) { seen[key] = 1; vrImgRememberUrl(key); }
                 } else {
                     state.fail++;
-                    state.failures.push({ url: url, code: (r && r.code) || 'IMG_E_FETCH' });
+                    // 失败详情必须带出来：批量只报 IMG_E_FETCH 时根本查不出是哪一步挂的
+                    // （2026-11-05 微博批量 3 张挂 2 张就是这样盲了半小时）
+                    state.failures.push({
+                        url: url,
+                        code: (r && r.code) || 'IMG_E_FETCH',
+                        message: (r && r.message) || '',
+                        offscreen: (r && r.offscreen) ? { ok: false, reason: String(r.offscreen.reason || '') } : null
+                    });
                 }
             } catch (e) {
                 state.fail++;
@@ -1446,6 +1465,20 @@ try {
             // suggest 只收相对下载目录的路径；绝对路径/空路径会被浏览器忽略
             if (name && !/^([a-zA-Z]:|\/)/.test(name)) {
                 suggest({ filename: name, conflictAction: hit.conflictAction });
+                return;
+            }
+        }
+        // 防线 2.5：B站页面内合成的 blob 下载。它没有 URL 预记账（<a download>），
+        // 但下载前 SW 已经记下完整 relPath —— 在这里补回目录，避免落进下载根目录。
+        const bl = vrPendingBiliName;
+        // 只认 blob: 下载（B站页面内合成），别按 .mp4 后缀猜：
+        // 窗口期内任何无关的 mp4 下载都会被改错路径。
+        if (bl && now - bl.at < 120000 &&
+            /^blob:/i.test(String(item.url || ''))) {
+            vrPendingBiliName = null;
+            const rel = String(bl.full).replace(/\\/g, '/');
+            if (rel && !/^([a-zA-Z]:|\/)/.test(rel)) {
+                suggest({ filename: rel, conflictAction: 'uniquify' });
                 return;
             }
         }
@@ -3141,6 +3174,51 @@ function vrWithTimeout(promise, ms, label) {
     ]);
 }
 
+/** 通用：从页面内嵌 JSON / 全局变量里找视频直链。
+ *  为什么需要：TikTok 等站用 MSE(blob:) 播放，网络嗅探看到的是分片，
+ *  通用嗅探缓存里一条完整 mp4 都没有 → 面板显示「还没被嗅探到」。
+ *  这些站会把 playAddr / downloadAddr 等直链写进页面内嵌数据。
+ *  这是通法（任何页面内嵌视频地址都受益），不是站点特例。 */
+async function vrPageEmbeddedVideoProbe(tabId) {
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            func: function () {
+                // 用一次 JSON.stringify + 正则，不递归对象树：
+                // 递归遍历 TikTok 的 200KB+ 内嵌数据会卡住页面主线程（实测 WS 超时）。
+                var urls = [], seen = Object.create(null);
+                var names = Object.keys(window).filter(function (k) { return /^__/.test(k); });
+                for (var i = 0; i < names.length && urls.length < 6; i++) {
+                    var txt;
+                    try { txt = JSON.stringify(window[names[i]]); } catch (e) { continue; }
+                    if (!txt || txt.length > 3000000) { continue; }
+                    var cand = txt.match(/https?:[^"'\s\\]{20,700}/g) || [];
+                    for (var j = 0; j < cand.length && urls.length < 6; j++) {
+                        var u = cand[j].replace(/\\\//g, '/');
+                        if (!/mime_type=video_mp4|\.mp4(\?|$)|\/video\/tos\//i.test(u)) { continue; }
+                        if (!seen[u]) { seen[u] = 1; urls.push(u); }
+                    }
+                }
+                var ss = document.querySelectorAll('script[type="application/json"]');
+                for (var k = 0; k < ss.length && urls.length < 6; k++) {
+                    var raw = String(ss[k].textContent || '');
+                    var m2 = raw.match(/https?:[^"'\s\\]{20,700}/g) || [];
+                    for (var n = 0; n < m2.length && urls.length < 6; n++) {
+                        var u2 = m2[n];
+                        if (/mime_type=video_mp4|\.mp4(\?|$)/i.test(u2) && !seen[u2]) {
+                            seen[u2] = 1; urls.push(u2);
+                        }
+                    }
+                }
+                return { urls: urls, title: String(document.title || '') };
+            }
+        }), 6000, 'embedded-video');
+        return (r && r[0] && r[0].result) || { urls: [] };
+    } catch (e) {
+        return { urls: [] };
+    }
+}
+
 async function vrVideoOptions(tabId) {
     const out = { site: 'generic', options: [] };
 
@@ -3232,6 +3310,17 @@ async function vrVideoOptions(tabId) {
         if (VR_VIDEO_EXT.test(pExt)) {
             list.unshift({ url: playing, ext: pExt, size: 0 });
         }
+    }
+
+    // 嗅探缓存为空（MSE/分片站点）时，用页面内嵌数据补一次；
+    // 找不到就保持空列表，面板会提示「先播放几秒」，绝不假装有源。
+    if (!list.length) {
+        const emb = await vrPageEmbeddedVideoProbe(tabId);
+        (emb.urls || []).forEach(function (u) {
+            if (!list.some(function (m) { return m.url === u; })) {
+                list.push({ url: u, ext: 'mp4', size: 0 });
+            }
+        });
     }
 
     out.options = list.slice(0, 6).map(function (m, i) {
@@ -3384,6 +3473,8 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         return { ok: false, reason: 'no-bili-info' };
     }
 
+    // 记完整归档路径（含 video-rod/B站/<作者>/视频/），页面里的 <a download> 只认文件名
+    vrPendingBiliName = { full: full, at: Date.now() };
     if (pick.kind === 'dash') {
         await chrome.scripting.executeScript({
             target: { tabId: tabId }, world: 'MAIN', files: ['lib/mp4box.all.min.js']
