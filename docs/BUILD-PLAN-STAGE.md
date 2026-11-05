@@ -95,3 +95,8 @@ T0(done) → T0b(done) → R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 �
 | 2026-11-05 | T0b 归档 | ✅ commit `4957eb8` | 本地未 push |
 | 2026-11-05 | ~~T1 媒体库换皮~~ | ⚠️ **作废**（路线错误，改为 R1 重写） | 旧 T1 只改 CSS token，未按原型重写结构；commit `c655902` 保留作历史 |
 | 2026-11-05 | 文档重做 | ✅ ADR-052 + PROTOTYPE-MAPPING v2.0 + BUILD-PLAN v2.0 + DESIGN-SYSTEM v1.1 | 本轮 |
+| 2026-11-05 | R0 平台字典 | ✅ 12/12 parseRelPath + 6/6 detectPlatform | 补 douyin/weibo/instagram + 英文旧目录兼容 |
+| 2026-11-05 | R1 CSS 抽取 | ✅ 102KB 舞台栈；冷色/蓝/亮色残留 0；删 CDN 字体 | 旧 B+D 双皮肤段整段删除；补回 45 条 dark 分面 |
+| 2026-11-05 | R2 DOM 抽取 | ✅ 573 行原型 DOM；13 个关键钩子在位 | 剔 mock 脚本、删亮色切换 |
+| 2026-11-05 | R3/R4 渲染与筛选 | ✅ 8 卡/4 列/树 00-07/页签自洽/0 JS 错误 | app.js 接 VRDB，真实缩略图 |
+| 2026-11-05 | R5 预览层 | ✅ 真实图片 960×540 加载、信息面板/胶片条、0 错误 | lightbox.js 按原型重写 |

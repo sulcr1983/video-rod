@@ -127,6 +127,11 @@
     /* ---------- 筛选 / 排序 ---------- */
     function filtered() {
         return FILES.filter(function (f) {
+            if (S.fav) {
+                var fav = null;
+                for (var i = 0; i < FAVS.length; i++) { if (FAVS[i].id === S.fav) { fav = FAVS[i]; break; } }
+                if (fav && !favHas(fav, f)) { return false; }
+            }
             if (S.type !== 'all' && f.kind !== S.type) { return false; }
             if (S.plat !== 'all' && f.plat !== S.plat) { return false; }
             if (S.q) {
@@ -291,8 +296,7 @@
             var n = t === 'all' ? FILES.length : (c[t] || 0);
             var badge = b.querySelector('b'); if (badge) { badge.textContent = n; }
         });
-        var tc = $('#trashCnt');
-        if (tc && root.VRTrash) { /* R5 接回收站 */ }
+        renderFavs();
     }
 
     /* ---------- 缩略图懒加载 ---------- */
@@ -473,7 +477,7 @@
             await load();
             toast(ok ? '扫描完成' : '扫描失败：未授权目录');
         });
-        on('settingsBtn', function () { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.add('show'); } if (m) { m.classList.add('show'); } });
+        on('settingsBtn', function () { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.add('show'); } if (m) { m.classList.add('show'); } refreshDrawer(); });
         on('setClose', function () { closeSet(); });
         on('setmask', function () { closeSet(); });
         function closeSet() { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.remove('show'); } if (m) { m.classList.remove('show'); } }
@@ -489,6 +493,8 @@
                 else { S.q = ''; S.type = 'all'; S.plat = 'all'; if ($('#search')) { $('#search').value = ''; } render(); }
             });
         }
+
+        bindFavAndDrawer();
 
         document.addEventListener('keydown', function (e) {
             if (e.key === '/' && document.activeElement !== $('#search')) {
@@ -509,9 +515,199 @@
         toast('预览器 R5 接入中');
     }
 
+    /* ---------- 收藏夹（R6：真实持久化，收藏夹只记 id 不动物理文件） ---------- */
+    var FAVS = [];
+
+    async function loadFavs() {
+        try {
+            var v = await root.VRDB.getSetting('vrFavs', []);
+            FAVS = Array.isArray(v) ? v : [];
+        } catch (e) { FAVS = []; }
+    }
+    function saveFavs() {
+        try { root.VRDB.setSetting('vrFavs', FAVS); } catch (e) { /* 忽略 */ }
+    }
+    function favHas(fav, f) {
+        if (!fav) { return false; }
+        if (fav.sys === 'star') { return !!f.starred; }
+        return (fav.ids || []).indexOf(f.id) >= 0;
+    }
+    function renderFavs() {
+        var list = $('#favList');
+        if (!list) { return; }
+        var all = [{ id: 'fav-star', name: '已加星标', sys: 'star' }].concat(FAVS);
+        list.innerHTML = all.map(function (fav) {
+            var n = FILES.filter(function (f) { return favHas(fav, f); }).length;
+            if (fav.sys === 'star' && !n) { return ''; }
+            var on = S.fav === fav.id;
+            return '<button class="fav-row' + (on ? ' active' : '') + '" data-fav="' + esc(fav.id) + '">' +
+                '<svg class="i fi' + (fav.sys === 'star' ? ' star' : '') + '"><use href="#i-' + (fav.sys === 'star' ? 'star' : 'bookmark') + '"/></svg>' +
+                '<span class="label">' + esc(fav.name) + '</span>' +
+                '<span class="count">' + n + '</span></button>';
+        }).join('');
+        var cnt = $('#favSideCnt');
+        if (cnt) { cnt.textContent = FILES.filter(function (f) { return f.starred; }).length; }
+    }
+    function addToFav(ids) {
+        if (!ids.length) { toast('先选素材'); return; }
+        var fav = FAVS.filter(function (f) { return f.sys !== 'star'; })[0];
+        if (!fav) {
+            fav = { id: 'fav-' + Date.now(), name: '默认收藏夹', ids: [] };
+            FAVS.push(fav);
+        }
+        fav.ids = fav.ids || [];
+        ids.forEach(function (id) { if (fav.ids.indexOf(id) < 0) { fav.ids.push(id); } });
+        saveFavs(); renderFavs(); render();
+        toast('已加入「' + fav.name + '」');
+    }
+
+    /* ---------- 设置抽屉（R7：真实动作） ---------- */
+    function setVal(id, v) { var e = document.getElementById(id); if (e) { e.textContent = v; } }
+
+    async function refreshDrawer() {
+        var pathEl = $('#rootBtn .rb-path');
+        setVal('sdDirVal', pathEl ? pathEl.textContent : '未探测');
+        setVal('sdScanVal', FILES.length ? (FILES.length + ' 个文件 · 索引就绪') : '索引为空');
+        setVal('sdIndexVal', FILES.length + ' 项 · ' + Math.round(FILES.reduce(function (a, b) { return a + (b.size || 0); }, 0)) + ' MB');
+        var tc = 0;
+        try {
+            if (root.VRTrash) { var st = await root.VRTrash.status(); tc = st.count || 0; }
+        } catch (e) { tc = 0; }
+        setVal('sdTrashVal', tc ? (tc + ' 项 · 可恢复') : '空');
+        setVal('dwCnt', tc);
+        var tcnt = $('#trashCnt'); if (tcnt) { tcnt.textContent = tc; }
+    }
+
+    async function doScan() {
+        toast('正在扫描目录…');
+        var ok = await autoIndex();
+        await load();
+        await refreshDrawer();
+        toast(ok ? '扫描完成：' + FILES.length + ' 项' : '扫描失败：未授权目录');
+    }
+
+    async function openTrash() {
+        var drawer = $('#drawer'), mask = $('#dwMask');
+        if (!drawer) { return; }
+        drawer.classList.add('show');
+        if (mask) { mask.classList.add('show'); }
+        var listEl = $('#dwList');
+        if (!listEl) { return; }
+        listEl.innerHTML = '<div class="dw-empty">读取中…</div>';
+        try {
+            var batches = root.VRTrash ? await root.VRTrash.list() : [];
+            if (!batches.length) { listEl.innerHTML = '<div class="dw-empty">回收站是空的</div>'; return; }
+            listEl.innerHTML = batches.map(function (b) {
+                return b.items.map(function (it) {
+                    return '<div class="dw-item">' +
+                        '<span class="dw-name" title="' + esc(it.relPath) + '">' + esc(it.relPath) + '</span>' +
+                        '<button class="btn small" data-restore="' + esc(b.batch) + '|' + esc(it.relPath) + '">恢复</button>' +
+                        '</div>';
+                }).join('');
+            }).join('');
+        } catch (e) {
+            listEl.innerHTML = '<div class="dw-empty">读取失败：' + esc(e && e.message) + '</div>';
+        }
+    }
+
+    function bindFavAndDrawer() {
+        var favBtn = $('#favMenuBtn');
+        if (favBtn) {
+            favBtn.addEventListener('click', function () {
+                var menu = $('#favMenu');
+                if (menu) { menu.classList.toggle('on'); }
+            });
+        }
+        var favList = $('#favList');
+        if (favList) {
+            favList.addEventListener('click', function (e) {
+                var row = e.target.closest('.fav-row'); if (!row) { return; }
+                var id = row.dataset.fav;
+                S.fav = (S.fav === id) ? null : id;
+                renderFavs(); render();
+            });
+        }
+        var newBtn = $('#favNewBtn');
+        if (newBtn) {
+            newBtn.addEventListener('click', function () {
+                var row = $('#favNewRow'); if (row) { row.classList.toggle('on'); }
+                var inp = $('#favNewInput'); if (inp) { inp.focus(); }
+            });
+        }
+        function createFav() {
+            var inp = $('#favNewInput'); if (!inp) { return; }
+            var name = String(inp.value || '').trim();
+            if (!name) { return; }
+            FAVS.push({ id: 'fav-' + Date.now(), name: name, ids: [] });
+            inp.value = '';
+            var row = $('#favNewRow'); if (row) { row.classList.remove('on'); }
+            saveFavs(); renderFavs();
+            toast('已创建收藏夹「' + name + '」');
+        }
+        var okBtn = $('#favNewOk'); if (okBtn) { okBtn.addEventListener('click', createFav); }
+        var inp = $('#favNewInput');
+        if (inp) { inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { createFav(); } }); }
+
+        var bf = $('#batchFav');
+        if (bf) { bf.addEventListener('click', function () { addToFav(Array.from(S.sel)); }); }
+
+        // 设置抽屉
+        var dirBtn = $('#sdDirBtn');
+        if (dirBtn) { dirBtn.addEventListener('click', function () { openOptions(); }); }
+        var optLink = $('#sdOptionsLink');
+        if (optLink) { optLink.addEventListener('click', function (e) { e.preventDefault(); openOptions(); }); }
+        var scanBtn = $('#sdScanBtn');
+        if (scanBtn) { scanBtn.addEventListener('click', doScan); }
+        var rebuildBtn = $('#sdRebuildBtn');
+        if (rebuildBtn) { rebuildBtn.addEventListener('click', async function () {
+            toast('正在重建索引…');
+            try { await root.VRIndex.build({ mode: 'full' }); await load(); toast('索引重建完成'); }
+            catch (e) { toast('重建失败：' + (e && e.message || '未知')); }
+            await refreshDrawer();
+        }); }
+        var trashBtn = $('#sdTrashBtn');
+        if (trashBtn) { trashBtn.addEventListener('click', function () { closeSet(); openTrash(); }); }
+
+        var dwClose = $('#dwClose');
+        if (dwClose) { dwClose.addEventListener('click', function () { closeTrash(); }); }
+        var dwMask = $('#dwMask');
+        if (dwMask) { dwMask.addEventListener('click', function () { closeTrash(); }); }
+        function closeTrash() {
+            var d = $('#drawer'), m = $('#dwMask');
+            if (d) { d.classList.remove('show'); }
+            if (m) { m.classList.remove('show'); }
+        }
+        var dwList = $('#dwList');
+        if (dwList) {
+            dwList.addEventListener('click', async function (e) {
+                var b = e.target.closest('[data-restore]'); if (!b) { return; }
+                var parts = String(b.dataset.restore).split('|');
+                try {
+                    await root.VRTrash.restore(parts[0], parts.slice(1).join('|'));
+                    toast('已恢复');
+                    await load(); await refreshDrawer(); openTrash();
+                } catch (err) { toast('恢复失败：' + (err && err.message || '未知')); }
+            });
+        }
+        var dwEmpty = $('#dwEmpty');
+        if (dwEmpty) { dwEmpty.addEventListener('click', async function () {
+            try { await root.VRTrash.empty(); toast('回收站已清空'); await refreshDrawer(); openTrash(); }
+            catch (e) { toast('清空失败：' + (e && e.message || '未知')); }
+        }); }
+        var dwRestoreAll = $('#dwRestoreAll');
+        if (dwRestoreAll) { dwRestoreAll.addEventListener('click', async function () {
+            try {
+                var batches = await root.VRTrash.list();
+                for (var i = 0; i < batches.length; i++) { await root.VRTrash.restore(batches[i].batch); }
+                toast('已全部恢复'); await load(); await refreshDrawer(); openTrash();
+            } catch (e) { toast('恢复失败：' + (e && e.message || '未知')); }
+        }); }
+    }
+
     /* ---------- 启动 ---------- */
     async function boot() {
         bind();
+        await loadFavs();
         await load();
         if (!FILES.length) {
             var built = await autoIndex();
