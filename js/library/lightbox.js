@@ -36,6 +36,8 @@
     var imgScale = 1;
     var imgRot = 0;
     var imgBaseW = 0;
+    var imgX = 0;
+    var imgY = 0;
 
     /* 成熟播放器（Plyr 3.8.3）实例与布局状态 */
     var plyr = null;
@@ -92,17 +94,18 @@
     function applyImgView() {
         if (!imgEl) { return; }
         imgEl.style.transformOrigin = 'center center';
-        imgEl.style.transform = 'scale(' + imgScale + ') rotate(' + imgRot + 'deg)';
+        imgEl.style.transform = 'translate(' + imgX + 'px,' + imgY + 'px) scale(' + imgScale + ') rotate(' + imgRot + 'deg)';
         setTxt('iZoom', Math.round(imgScale * 100) + '%');
     }
     function fitImg() {
         if (!imgEl) { return; }
-        imgScale = 1; imgRot = 0; applyImgView();
+        imgScale = 1; imgRot = 0; imgX = 0; imgY = 0; applyImgView();
     }
     function actualImg() {
         if (!imgEl) { return; }
         var base = imgBaseW || imgEl.clientWidth || imgEl.naturalWidth || 1;
         imgScale = Math.max(0.1, Math.min(8, (imgEl.naturalWidth || base) / base));
+        imgX = 0; imgY = 0;
         applyImgView();
     }
     function zoomImg(factor) {
@@ -146,8 +149,9 @@
         if (!stage) { return; }
         destroyPlayer();
         stage.innerHTML = '';
+        stage.style.cursor = '';
         videoEl = null;
-        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0;
+        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0; imgX = 0; imgY = 0;
         setTxt('iZoom', '100%');
         var url = urlOf(f);
         var kind = f.kind;
@@ -265,7 +269,7 @@
         } else if (kind === 'image' || kind === 'anim') {
             var img = document.createElement('img');
             img.alt = f._title || f.title; img.draggable = false;
-            imgEl = img; imgScale = 1; imgRot = 0; imgBaseW = 0;
+            imgEl = img; imgScale = 1; imgRot = 0; imgBaseW = 0; imgX = 0; imgY = 0;
             img.addEventListener('load', function () {
                 setTxt('st1v', img.naturalWidth + '×' + img.naturalHeight);
                 imgBaseW = img.clientWidth || img.naturalWidth || 1;
@@ -273,6 +277,7 @@
             });
             img.src = url;
             stage.appendChild(img);
+            stage.style.cursor = 'grab';
             setTxt('st1v', '—');
         } else {
             var a = document.createElement('audio');
@@ -451,7 +456,7 @@
         destroyPlayer();
         var stage = $('#pvMedia'); if (stage) { stage.innerHTML = ''; }
         videoEl = null;
-        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0;
+        imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0; imgX = 0; imgY = 0;
         try { if (animCtl) { animCtl.destroy(); } } catch (e) { /* ignore */ }
         animCtl = null;
     }
@@ -723,6 +728,12 @@
         if (el.preview) {
             el.preview.addEventListener('wheel', function (e) {
                 if (el.preview.classList.contains('hidden')) { return; }
+                /* 图片：滚轮缩放；视频/GIF 才走上下切换/左右 seek */
+                if (imgEl) {
+                    e.preventDefault();
+                    zoomImg(e.deltaY < 0 ? 1.12 : 0.89);
+                    return;
+                }
                 var horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey;
                 if (horizontal) {
                     if (!videoEl || !isFinite(videoEl.duration)) { return; }
@@ -738,6 +749,35 @@
                 step(e.deltaY > 0 ? 1 : -1);
             }, { passive: false });
         }
+        /* 图片拖拽平移 / 双击切换适应↔实际像素 */
+        var imgStage = el.pvMedia || document.getElementById('pvMedia');
+        if (imgStage) {
+            var drag = null;
+            imgStage.addEventListener('pointerdown', function (e) {
+                if (!imgEl || e.button !== 0) { return; }
+                drag = { x: e.clientX, y: e.clientY, ox: imgX, oy: imgY };
+                try { imgStage.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+                imgStage.style.cursor = 'grabbing';
+            });
+            imgStage.addEventListener('pointermove', function (e) {
+                if (!drag || !imgEl) { return; }
+                imgX = drag.ox + (e.clientX - drag.x);
+                imgY = drag.oy + (e.clientY - drag.y);
+                applyImgView();
+            });
+            function endImgDrag() {
+                drag = null;
+                imgStage.style.cursor = imgEl ? 'grab' : '';
+            }
+            imgStage.addEventListener('pointerup', endImgDrag);
+            imgStage.addEventListener('pointercancel', endImgDrag);
+            imgStage.addEventListener('dblclick', function (e) {
+                if (!imgEl) { return; }
+                e.preventDefault();
+                if (imgScale > 1.05) { fitImg(); } else { actualImg(); }
+            });
+        }
+
         window.addEventListener('resize', fitPlayer);
     }
 
