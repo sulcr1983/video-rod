@@ -101,7 +101,8 @@
 |---|---|---|---|
 | `#trashBtn` / `#dwClose` | 回收站抽屉开/关 | 通过 | 无 |
 | `#dwList` 恢复/彻底删除/清空 | 真实文件移动/删除/恢复 | 未验证 | 临时副本（M6） |
-| `#sdDirBtn` | 授权/更换目录 | 当前打开完整设置页 | **M5：明确“授权当前目录”** |
+| `#sdDirBtn` | 授权/更换目录 | 当前打开完整设置页 | M6：与 `#permAuth` 授权入口统一 |
+| `#permAuth` / `#permBanner` | 无 handle 时显示只读原因，按钮禁用；点击可授权素材目录 | **PASS（M5：只读态 8/8）** | 真机 picker 授权路径待 M6 |
 | `#sdScanBtn` | 扫描并刷新 | 代码层 | 真实增量（M6） |
 | `#sdRebuildBtn` | 重建索引不丢用户数据 | 代码层 | displayName 已验证（M4），tags 待 M6 |
 | `#sdTrashBtn` / `#sdOptionsLink` | 打开回收站/设置 | 通过 | 无 |
@@ -128,7 +129,7 @@
 | 重命名持久化 | 改名 → `VRIndex.build({mode:'downloads'})` → 名字仍在；`relPath` 不变；列表/搜索/预览同步 | PASS（9/9） | M4 已完成 |
 | 批量移动 | 临时副本移动 2 条：物理文件、DB `relPath/absPath`、缩略图重建、可移回 | PASS（M3：OPFS 9/9；真实目录 UI 待 M6） | M3 已完成 |
 | 批量删除/恢复 | 临时副本删 2 → 回收站 2 → 恢复 1 → 彻底删 1；manifest/DB/物理一致 | 未验证 | M6 |
-| 只读/授权 | 无 handle：移动/删除禁用并说明；授权后可用；新 profile 无 `file://` 权限有提示 | 未实现 | M5 |
+| 只读/授权 | 无 handle：移动/删除禁用并说明；授权后可用；新 profile 无 `file://` 权限有提示 | **PASS（M5：只读态 8/8；授权路径待真机）** | M5 已完成 |
 | 缩略图 | 真实 35 条首屏可见；缺失/失败有占位；93MB 视频不无限转圈 | 部分 | M6 |
 | 预览/播放 | 真实图片 675×1200、真实视频 Plyr 16 控件；声音/暂停真实 | 链路可用 | M6 |
 | 收藏夹持久化 | 新建/加入/移除/重载/重建索引后保留；不动物理文件 | 未验证 | M6 |
@@ -200,7 +201,7 @@ python tools/vr-db-snapshot.py restore --port 9480 --file .work/db-snapshots/<pr
 - [x] M2：排序 4 模式在真实 35 条上正确；e2e 断言不再用同标题夹具（`library-realdata-e2e` 14/14）。
 - [x] M3：批量移动在临时副本上成功；导出 API、权限、防覆盖、移回已验证（OPFS 9/9）；真实目录 UI 待 M6。
 - [x] M4：改名 → 重扫 → 网格/列表/搜索/预览一致；`displayName` 不丢（9/9）。
-- [ ] M5：无 handle 时移动/删除禁用并说明；授权后可用；`file://` 不可用有提示。
+- [x] M5：无 handle 时移动/删除禁用并说明；`file://` 不可用有提示（只读态 8/8）；授权 picker 路径待 M6 真机。
 - [ ] M6：`e2e-all --isolated` 离线全绿；真实数据冒烟 35/35；按钮矩阵逐项有输入→输出；
   YouTube/批量删除/X-微博按 L3/L4 有真机证据。
 - [ ] 每次回归前后 `vr-db-snapshot.py status` 一致；真实库 0 假数据。
@@ -214,7 +215,7 @@ python tools/vr-db-snapshot.py restore --port 9480 --file .work/db-snapshots/<pr
 | M2 | `sort=new/old/size/name` 顺序、切回恢复；真实数据至少 3 条 |
 | M3 | ✅ 临时副本（OPFS）移动/移回/防覆盖 9/9；真实目录 UI 待 M6 |
 | M4 | 改名 → 重扫 → 名字保留；列表/网格/搜索/排序一致 |
-| M5 | 无 handle 禁用；授权后启用；`isAllowedFileSchemeAccess=false` 提示 |
+| M5 | ✅ 无 handle 禁用/提示 8/8；授权后启用与 picker 路径待 M6 |
 | M6 | 真实 35 条冒烟；批量删除/恢复；YouTube；Plyr 真实播放；按钮矩阵全量 |
 
 ---

@@ -729,6 +729,59 @@
         try { chrome.runtime.openOptionsPage(); } catch (e) { location.href = 'options.html'; }
     }
 
+    /* ---------- M5：只读 / 授权状态 ---------- */
+    async function refreshPermState() {
+        var banner = $('#permBanner'), txt = $('#permText'), auth = $('#permAuth');
+        var rr = null;
+        try { if (root.VRIndex && root.VRIndex.resolveRoot) { rr = await root.VRIndex.resolveRoot(); } } catch (e) { rr = null; }
+        var handle = rr && rr.handle ? rr.handle : null;
+        var writable = false;
+        if (handle) {
+            if (typeof handle.queryPermission !== 'function') { writable = true; }
+            else {
+                try { writable = (await handle.queryPermission({ mode: 'readwrite' })) === 'granted'; }
+                catch (e) { writable = false; }
+            }
+        }
+        var fileAccess = true;
+        try {
+            if (chrome.extension && chrome.extension.isAllowedFileSchemeAccess) {
+                fileAccess = await new Promise(function (res) {
+                    chrome.extension.isAllowedFileSchemeAccess(function (v) { res(!!v); });
+                });
+            }
+        } catch (e) { fileAccess = true; }
+
+        var issues = [];
+        if (!writable) {
+            issues.push(handle ? '素材目录授权已过期/不可写：当前为只读模式；移动、删除需要重新授权。'
+                              : '当前为只读模式：浏览/预览可用；移动、删除需要先授权素材目录。');
+        }
+        if (!fileAccess) {
+            issues.push('浏览器未允许访问本地文件，缩略图/预览可能失败；请在扩展详情打开「允许访问文件网址」。');
+        }
+        if (banner) { banner.classList.toggle('hidden', issues.length === 0); }
+        if (txt) { txt.textContent = issues.join(' '); }
+        if (auth) {
+            auth.textContent = writable ? '查看设置' : '授权素材目录';
+            auth.title = writable ? '打开设置' : '选择素材库根目录（video-rod）并授权读写';
+        }
+
+        /* 写操作按钮：没有可写句柄时直接禁用，避免“点了才失败” */
+        ['batchMove', 'batchTrash', 'pvDelete', 'pvMove'].forEach(function (id) {
+            var b = document.getElementById(id);
+            if (!b) { return; }
+            b.disabled = !writable;
+            if (!writable) { b.title = '需要先授权素材目录'; }
+            else if (b.title === '需要先授权素材目录') { b.removeAttribute('title'); }
+        });
+        try {
+            window.__vrPerm = { handle: !!handle, writable: writable, fileAccess: fileAccess, issues: issues };
+        } catch (e) { /* 忽略 */ }
+    }
+
+    window.addEventListener('focus', function () { refreshPermState(); });
+
     /* ---------- 预览（R5 接入真实查看器，当前提示） ---------- */
     function openPreview(f) {
         if (!f) { return; }
@@ -944,6 +997,29 @@
             toast('移动素材要先在设置里授权目录');
             openOptions();
         });
+        var permAuth = byId('permAuth');
+        if (permAuth) {
+            permAuth.addEventListener('click', async function () {
+                if (!window.__vrPerm || window.__vrPerm.writable) { openOptions(); return; }
+                if (typeof root.showDirectoryPicker !== 'function') {
+                    toast('此浏览器不支持目录授权，请到完整设置页操作');
+                    openOptions();
+                    return;
+                }
+                try {
+                    /* 用户点按钮时直接调 picker，保住 user gesture；
+                     * 选择素材库根目录（video-rod），再写回 handle/absRoot/prefix。 */
+                    var h = await root.showDirectoryPicker({ mode: 'readwrite' });
+                    var rr = await root.VRIndex.resolveRoot();
+                    await root.VRIndex.setRoot(h, rr.absRoot, rr.prefix);
+                    toast('已授权素材目录');
+                    await refreshPermState();
+                } catch (e) {
+                    if (e && e.name === 'AbortError') { return; }
+                    toast('授权失败：' + ((e && e.message) || '未知'));
+                }
+            });
+        }
         on('pvHelpBtn', function () {
             var k = byId('keysheet'); if (k) { k.classList.add('show'); }
         });
@@ -1270,6 +1346,7 @@
         try { bindMissing(); window.__vrBoot.push('bindMissing'); } catch (e) { window.__vrBoot.push('bindMissing-ERR'); }
         try { await loadFavs(); window.__vrBoot.push('favs'); } catch (e) { window.__vrBoot.push('favs-ERR:' + e.message); }
         try { await ensureRoot(); window.__vrBoot.push('root'); } catch (e) { window.__vrBoot.push('root-ERR:' + e.message); }
+        try { await refreshPermState(); window.__vrBoot.push('perm'); } catch (e) { window.__vrBoot.push('perm-ERR:' + e.message); }
         try { await load(); window.__vrBoot.push('load:' + FILES.length); } catch (e) { window.__vrBoot.push('load-ERR:' + e.message); }
         if (!FILES.length) {
             /* 索引建完必须重新读一次库（不管 build 返回什么）： */
