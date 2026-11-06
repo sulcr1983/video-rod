@@ -397,7 +397,14 @@
          * 显示出来只会是一串没意义的乱码。 */
         if (/^(blob:|data:|file:)/i.test(mediaUrl)) { mediaUrl = ''; }
         var hasMedia = !!mediaUrl;
-        show('pvSrcMiss', !hasPage && !hasMedia);
+        /* 「未记录」提示只在原帖与直链**都缺**时出现；
+         * 文案按实际情况区分，不能一律写「原帖与直链未记录」——
+         * 有直链没原帖时那句话是错的（2026-11-06 截图反馈）。 */
+        var noSource = !hasPage && !hasMedia;
+        show('pvSrcMiss', noSource);
+        if (noSource) {
+            setTxt('pvSrcMissText', '历史素材：原帖与直链均未记录');
+        }
         if (el.pvPageRow) {
             el.pvPageRow.classList.toggle('hidden', !hasPage);
             if (hasPage) { el.pvPageRow.href = f.pageUrl; setTxt('pvPageVal', f.pageUrl); }
@@ -440,6 +447,10 @@
         info.querySelectorAll('.pi-item').forEach(function (row) {
             /* 状态行由 paintInfo 按 missing 判定，别在这里按文本覆盖回来 */
             if (row.id === 'pvStateRow') { return; }
+            /* 「未记录」提示行的可见性完全由 paintInfo 决定：
+             * 它的文案是固定的非空文本，这里按文本判断会把它强行打开，
+             * 导致「有直链」时也显示「原帖与直链未记录」（2026-11-06 截图反馈）。 */
+            if (row.id === 'pvSrcMiss') { return; }
             var dd = row.querySelector('dd');
             if (!dd) { return; }
             var t = String(dd.textContent || '').trim();

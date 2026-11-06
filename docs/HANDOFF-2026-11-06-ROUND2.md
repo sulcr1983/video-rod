@@ -620,3 +620,30 @@ B-22（原型同步）按苏哥意见**不做**：当前实现优于原型，不
 - 卡片角标显示 `huaban.com` 而非「网页」。
 - 清理测试数据后库回到 39 条。
 - `e2e-all --isolated`：`stage-rewrite` 20/20、`e2e-buttons` 29/29。
+
+## 23. 详情页「来源」提示自相矛盾（2026-11-06 14:xx）
+
+用户截图：某张图同时显示徽标「部分记录」和提示「历史素材：原帖与直链未记录」，
+两者互相矛盾。
+
+### 根因
+`hideEmptyFields()` 遍历所有 `.pi-item`，按 `dd` 文本是否为空决定隐藏。
+但 `#pvSrcMiss` 的文案是**固定非空**的（「历史素材：原帖与直链未记录」），
+于是这一行永远被判为「有内容」→ 强行打开，覆盖了 `paintInfo` 里
+`show('pvSrcMiss', !hasPage && !hasMedia)` 的判定。
+
+### 修法
+1. `hideEmptyFields()` 跳过 `#pvSrcMiss`（可见性只由 `paintInfo` 决定）。
+2. 提示文案改为按实际情况生成，并加 `#pvSrcMissText` 承载：
+   只有「原帖与直链**都**缺」时才显示「历史素材：原帖与直链均未记录」。
+
+### 验证
+- 修复前：`missHidden: false`（有直链时仍显示「未记录」）。
+- 修复后：`missHidden: true`，徽标「部分记录」语义正确（有直链、无原帖）。
+- `e2e-all --isolated`：`stage-rewrite` 20/20、`e2e-buttons` 29/29。
+
+### 关于截图里的「0 KB」与站点/直链不符
+那是**测试脏数据**（写盘失败但入库的幽灵记录，`size=0`），已在本轮清理。
+当前库 39 条经核对：`size`/`absPath`/`platform`/`type` 全部非空，
+且不存在「creator 域名与 sourceUrl 域名不符」的记录。
+另外已加防护：`vrBulkSaveItem` 命中重复时校验文件是否真存在，幽灵记录不再阻断下载。
