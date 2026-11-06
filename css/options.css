@@ -1237,3 +1237,16 @@ body.options-page { margin: 0; }
   min-width: 118px;
   font-weight: 600;
 }
+
+.options-page .loc-auth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.options-page .loc-auth[hidden],
+.options-page .loc-subdir[hidden] {
+  display: none;
+}

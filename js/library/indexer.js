@@ -175,10 +175,18 @@
                 if (handle) { source = 'db'; }
             } catch (e) { /* 忽略 */ }
         }
-        // 旧授权库只在 custom 模式复用：settings.js 只在「自定义目录」按钮里写句柄
-        if (!handle && st.mode === 'custom') {
+        /* 旧授权库（vr-lib-handle）也复用：
+         * 之前「选择文件夹并授权」只写这里，system 模式完全读不到 → 用户明明选过目录，
+         * 库页仍提示只读。system 模式只接受名字与当前子目录一致的句柄，避免旧句柄指错目录。 */
+        if (!handle) {
             var lh = await legacyHandle();
-            if (lh) { handle = lh; source = 'legacy'; }
+            if (lh) {
+                var expected = String(prefix || '').replace(/^\/+|\/+$/g, '');
+                if (st.mode === 'custom' || !expected || lh.name === expected) {
+                    handle = lh;
+                    source = 'legacy';
+                }
+            }
         }
         return { handle: handle, absRoot: absRoot, prefix: prefix, source: source };
     }

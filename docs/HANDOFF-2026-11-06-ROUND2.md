@@ -155,3 +155,34 @@ node tools/test-naming.js
 注意：自选文件夹拿不到绝对路径时条目 `absPath` 为空（预览走句柄）。
 `tools/library-integrity-check.py` 仍按 absPath 检查物理文件，此场景下会把这些条目
 算作「缺失」；它是默认位置库的完整性检查，自选文件夹库请以页面预览/扫描结果为准。
+
+## 10. 只读横幅误报（2026-11-06 09:xx）
+
+反馈：已经在设置里选过目录，库页仍提示「当前为只读模式」。
+
+根因两条：
+1. 旧设置页的「选择文件夹并授权」只把句柄写进 **legacy IndexedDB `vr-lib-handle`**；
+   `VRIndex.resolveRoot()` 只在 `mode === 'custom'` 时读它。system 模式下即使句柄存在，
+   库页也拿不到 → 横幅显示成「没有授权」。
+2. FSA 目录权限在页面刷新/重开后会从 `granted` 退回 `prompt`；旧按钮只会再弹一次
+   目录选择框，用户觉得「我明明选过了」。
+
+修复：
+- `indexer.resolveRoot()`：system 模式也复用 legacy 句柄，但要求 `handle.name === subdir`
+  （避免旧句柄指到别的目录）。
+- 库页横幅：有句柄但权限为 `prompt` 时显示「浏览器收回了写入权限，点『恢复写入』即可，
+  不用重选」；按钮优先 `requestPermission()` 复用原句柄，权限被拒才回退到目录选择。
+- 设置页「默认位置」新增「授权写入」按钮 + 实时状态：已授权显示绿色路径；
+  权限被收回显示琥珀色提示；没有句柄显示「可选」。
+- 只读时同步禁用详情页「移动 / 删除」，不再点了才提示。
+
+验证：
+- `tools/library-permission-e2e.py --port 9480` → **8/8 PASS**（真实库、只读态）。
+- 真实库 9480：`resolveRoot` 现在返回 `source:'legacy'`、`handle.name:'video-rod'`，
+  横幅文案变为「已选过素材目录，但浏览器在刷新后收回了写入权限…」。
+- `e2e-all --isolated --only dedup,stage-rewrite,e2e-buttons` → 3/3、67/67。
+
+平台限制（不是代码能消除的）：
+Chrome 的目录写权限不会跨页面刷新永久保留；恢复时必须由用户手势触发
+`requestPermission()`，浏览器可能弹一次「允许编辑文件」确认。点「恢复写入」/「授权写入」
+一次即可，不需要重新选目录。

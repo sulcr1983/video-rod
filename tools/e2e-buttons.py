@@ -319,7 +319,7 @@ def main():
     # extensionReload 会重载扩展把页面上下文打掉，vrLibMigRun 会真的搬文件。
     ALLOW = {"showTestTag", "AddExt", "AddType", "AddRegex", "vrLibSaveSubdir", "vrLibRefresh"}
     DANGER = {"ClearData", "ResetAllOption", "extensionReload", "importOptions", "exportOptions",
-              "vrLibPickDir", "vrLibIdxFull", "vrLibMigPickParent", "vrLibMigPickSrc",
+              "vrLibPickDir", "vrLibAuthDefault", "vrLibIdxFull", "vrLibMigPickParent", "vrLibMigPickSrc",
               "vrLibMigPickDst", "vrLibMigPickSrc2", "vrLibMigPlan", "vrLibMigRun",
               "vrLibMigRollback", "vrLibVerify", "vrLibIdxBuild", "vrLibIdxSnap"}
     ids2 = c.ev("""(()=>[...document.querySelectorAll('.options-page button[id]')].map(b=>b.id))()""", sid2) or []

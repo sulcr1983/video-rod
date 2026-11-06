@@ -216,6 +216,8 @@
         if (box) { box.hidden = mode !== 'custom'; }
         var subBox = $('vrLibSubdirBox');
         if (subBox) { subBox.hidden = mode === 'custom'; }
+        var authBox = $('vrLibAuthBox');
+        if (authBox) { authBox.hidden = mode === 'custom'; }
 
         var custom = $('vrLibCustomRoot');
         if (custom && document.activeElement !== custom) { custom.value = state.customRoot || ''; }
@@ -375,6 +377,94 @@
             if (e && e.name === 'AbortError') { return; }   // 用户取消
             text('vrLibCustomMsg', '选择失败：' + ((e && e.message) || e), '#c0392b');
         });
+    }
+
+    /** 默认位置授权：已有句柄先尝试恢复权限；没有才弹目录选择 */
+    async function authDefault() {
+        var sub = cleanSeg($('vrLibSubdir') ? $('vrLibSubdir').value : state.subdir);
+        var base = state.detectedRoot
+            ? (String(state.detectedRoot).replace(/\/+$/, '') + '/' + sub)
+            : '';
+        var h = null;
+        try { h = await root.VRDB.getHandle('root'); } catch (e) { /* 忽略 */ }
+        if (!h) { try { h = await idbGet('root'); } catch (e) { /* 忽略 */ } }
+        if (h) {
+            try {
+                /* 先对已有句柄申请权限，再下钻子目录；顺序反了会在 prompt 状态
+                 * 直接因为「不能创建目录」失败，白白把用户踢去重选。 */
+                var grant = (typeof h.requestPermission !== 'function')
+                    ? 'granted'
+                    : await h.requestPermission({ mode: 'readwrite' });
+                if (grant === 'granted') {
+                    if (h.name !== sub) {
+                        try { h = await h.getDirectoryHandle(sub, { create: true }); }
+                        catch (e2) { h = null; }
+                    }
+                    if (h) {
+                        await root.VRIndex.setRoot(h, base, sub);
+                        await idbPut('root', h);
+                        handleName = h.name || handleName;
+                        render();
+                        text('vrLibAuthMsg', '已恢复写入权限' +
+                            (base ? ('：' + base.replace(/\//g, '\\')) : ''), '#2e7d32');
+                        refreshAuthState();
+                        return;
+                    }
+                }
+            } catch (e) { /* 落到重新选择 */ }
+        }
+        if (typeof root.showDirectoryPicker !== 'function') {
+            text('vrLibAuthMsg', '此浏览器不支持目录选择（需 Chrome 86+）', '#c0392b');
+            return;
+        }
+        try {
+            var picked = await root.showDirectoryPicker({ mode: 'readwrite' });
+            if (picked.name !== sub) {
+                try { picked = await picked.getDirectoryHandle(sub, { create: true }); }
+                catch (e2) {
+                    text('vrLibAuthMsg', '请选择「' + sub + '」文件夹，或包含它的下载目录', '#c0392b');
+                    return;
+                }
+            }
+            await root.VRIndex.setRoot(picked, base, sub);
+            await idbPut('root', picked);
+            handleName = picked.name || handleName;
+            render();
+            text('vrLibAuthMsg', '已授权写入' +
+                (base ? ('：' + base.replace(/\//g, '\\')) : ('：' + picked.name)), '#2e7d32');
+            refreshAuthState();
+        } catch (e) {
+            if (e && e.name === 'AbortError') { return; }
+            text('vrLibAuthMsg', '授权失败：' + ((e && e.message) || e), '#c0392b');
+        }
+    }
+
+    /** 设置页显示当前写入授权状态；浏览器收回权限时给出可操作提示 */
+    async function refreshAuthState() {
+        var msg = $('vrLibAuthMsg');
+        if (!msg || !state) { return; }
+        var h = null;
+        try { h = await root.VRDB.getHandle('root'); } catch (e) { /* 忽略 */ }
+        if (!h) { try { h = await idbGet('root'); } catch (e) { /* 忽略 */ } }
+        if (!h) {
+            msg.textContent = '未授权写入（可选）；下载和浏览不受影响';
+            msg.style.color = '';
+            return;
+        }
+        var st = 'granted';
+        try {
+            if (h.queryPermission) { st = await h.queryPermission({ mode: 'readwrite' }); }
+        } catch (e) { st = 'error'; }
+        if (st === 'granted') {
+            var p = state.detectedRoot
+                ? (state.detectedRoot + '\\' + (state.subdir || 'video-rod')).replace(/\//g, '\\')
+                : (h.name || '');
+            msg.textContent = '已授权写入：' + p;
+            msg.style.color = '#2e7d32';
+        } else {
+            msg.textContent = '已选过目录，但浏览器暂时收回了写入权限；点「授权写入」恢复，不用重选';
+            msg.style.color = '#b26a00';
+        }
     }
 
     function dropRootHandle() {
@@ -668,6 +758,9 @@
         var pick = $('vrLibPickDir');
         if (pick) { pick.addEventListener('click', pickCustom); }
 
+        var authBtn = $('vrLibAuthDefault');
+        if (authBtn) { authBtn.addEventListener('click', authDefault); }
+
         var verifyBtn = $('vrLibVerify');
         if (verifyBtn) { verifyBtn.addEventListener('click', verify); }
 
@@ -709,6 +802,7 @@
             }).catch(function () { /* 无句柄属正常 */ });
             /* 首次打开：默认位置也要立刻显示真实路径，不能停在「未探测」 */
             if (currentMode() === 'system') { resolveDetectedRoot(); }
+            refreshAuthState();
             // 图片下载设置（I5）：控件在 #anchorImage，与清单面板同一份存储
             if ($('anchorImage')) {
                 bindImageSettings();
