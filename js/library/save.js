@@ -371,7 +371,15 @@
                         return pump(w, src, onProgress, referrer).then(function () {
                             return w.close();
                         }).then(function () {
-                            return { dir: dir, name: name };
+                            /* 写完从文件句柄读回真实大小。
+                             * 原来上游返回的 size 对「URL 字符串」源一律是 0，
+                             * 入库后就成了 size=0 的幽灵记录（2026-11-06 实测：
+                             * 之后每次下载都被判重复跳过，用户永远下不到）。 */
+                            return fh.getFile().then(function (f) {
+                                return { dir: dir, name: name, size: f.size || 0 };
+                            }, function () {
+                                return { dir: dir, name: name, size: 0 };
+                            });
                         }).catch(function (e) {
                             return Promise.resolve().then(function () { return w.abort(); })
                                 .catch(function () { /* 已关闭则忽略 */ })
@@ -549,7 +557,8 @@
                 return writeFsa(env.root, dirs, parts.fileName, src, onProgress, o.referrer)
                     .then(function (w) {
                         var relOut = dirs.concat([w.name]).join('/');
-                        var size = (typeof src === 'string') ? 0 : (src.size || 0);
+                        /* 优先用写盘后读回的真实大小；拿不到才退回源对象大小 */
+                        var size = Number(w.size) || ((typeof src === 'string') ? 0 : (src.size || 0));
                         var out = { ok: true, mode: 'fsa', path: relOut, size: size };
                         if (o.ingest === false) { return out; }
                         return ingest(relOut, size, mime, o.meta).then(function () { return out; });

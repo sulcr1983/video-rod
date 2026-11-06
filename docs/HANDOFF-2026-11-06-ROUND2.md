@@ -552,3 +552,46 @@ B-22（原型同步）按苏哥意见**不做**：当前实现优于原型，不
    `element.click()` 与真实点击在事件顺序上不完全等价。
 3. 只读态下「移动/删除」会先要目录权限，无头环境里 `showDirectoryPicker` 会挂起；
    验证写操作先用 `VRIndex.setRoot(opfsHandle, ...)` 模拟授权。
+
+## 21. 小红书单篇视频下载失败（2026-11-06 14:xx）
+
+用户反馈：`https://www.xiaohongshu.com/discovery/item/6abe3745...` 下载不了，
+提示网络问题。实测排查出**四个叠加的 bug**。
+
+### 根因与修复
+
+**① 去重误判：图片先入库 → 视频被判重复**
+`vrFindExistingMedia` 的兜底是「同 pageUrl 的视频视为重复」，但同一条笔记的
+**图片和视频共享 pageUrl**，图片先下完后视频直接被跳过（`skipped:1`）。
+修法：兜底必须同时满足 `e.type === 'video'`。
+
+**② DNR 规则只有一条，互相覆盖**
+`VR_MEDIA_HEADER_RULE_ID` 固定 `91001`，批量下载时「图片(sns-webpic) →
+视频(sns-video)」交替设置，后一条覆盖前一条，视频拿不到 Referer →
+下载器报 `NETWORK_FAILED`。
+修法：改成**按域名分配的规则池**（91001–91012），同域名复用、池满淘汰最早的。
+
+**③ 批量路径与资源库目录规范不一致**
+`vrMediaPath` 硬编码 `xiaohongshu/…/videos/`，而资源库用的是
+`小红书/…/视频/`。同一批素材散在两个目录，`platform`/`type` 反解为空。
+修法：统一走 `VRPath.buildRelPath()` 三段式。
+
+**④ 幽灵记录阻断下载**
+`save.js` 对「URL 字符串」源的 `size` 恒写 0，入库后成了 `size:0` 的幽灵记录；
+之后每次下载都被判「重复」直接跳过，用户永远下不到。
+修法：
+- FSA 写完从文件句柄**读回真实大小**再入库；
+- `vrBulkSaveItem` 命中重复时先校验文件是否真存在（`vrEntryFileAlive`），
+  不在就删掉幽灵记录重新下载。
+
+### 验证
+- 该链接：`done:2, skipped:0, failed:0`，视频 5.3MB 落盘，
+  路径 `小红书/康辉游天下 彭博(@6031f9070000000001005c05)/视频/…_02.mp4`，
+  `platform=xiaohongshu`、`type=video`、`size=5297069` 均正确。
+- 回归：`e2e-sw` 4/4、`dedup` 21/21、`stage-rewrite` 20/20、`e2e-buttons` 29/29。
+- 库完整性 **8/8 PASS，39 条**（清理了测试期间产生的 6 条幽灵记录）。
+
+### 测试注意
+验证写操作时我用 OPFS 句柄模拟过授权，**会把库根指向浏览器私有文件系统**，
+表现为「下载成功但磁盘找不到文件」。测完必须清掉句柄
+（`VRDB.setHandle('root', null)` + 删 legacy `vr-lib-handle`）。
