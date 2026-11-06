@@ -458,3 +458,23 @@ YouTube 页面按钮提示由「支持 1080p / 4K」改为「最高支持 1080p�
 - 整条轨道仍要在下载完成后才能合并（不是边下边合并到磁盘）。
   内存峰值已降到「单个 chunk + Blob 引用」，1GB 级视频不会 OOM，
   但磁盘占用是临时的（合并完成前视频/音频各占一份）。
+
+## 18. B-23 落地：只保留左侧资源树（2026-11-06 12:xx）
+
+苏哥 2026-11-06 拍板选项 A：平台筛选只留左侧资源树，删掉顶部 chips。
+
+改动：
+- `library.html`：删除 `#chips` 整块（10 个平台按钮）。
+- `js/library/app.js`：删除 chip 点击监听，以及三处「同步 chip 高亮」代码
+  （树根节点、树平台节点、重扫后重置）。
+- `css/library.css`：工具条从两行 grid（`"seg tools" "chips chips"`）
+  改为单行 `grid-template-columns:1fr auto`。
+- 测试同步：
+  - `stage-rewrite`：「平台 chips=10」→「顶部 chips 已移除 = 0」+「左侧平台节点存在」。
+  - `e2e-buttons`：平台筛选改为点左侧树 B站 节点，断言 3 张；再点「全部资源」恢复。
+
+验证：
+- 真实库 9480：`window.__vrBoot` 正常，`#chips` 数量 0，40 张卡片，布局单行无错位。
+- `e2e-all --isolated`：`stage-rewrite` **20/20**、`e2e-buttons` **29/29**。
+
+B-22（原型同步）按苏哥意见**不做**：当前实现优于原型，不改 `media-library-stage-v1.html`。

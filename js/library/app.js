@@ -714,18 +714,6 @@
                 b.classList.add('active'); S.type = b.dataset.type; render();
             });
         }
-        var chips = $('#chips');
-        if (chips) {
-            chips.addEventListener('click', function (e) {
-                var c = e.target.closest('.chip'); if (!c) { return; }
-                $$('.chip').forEach(function (x) { x.classList.remove('active'); });
-                c.classList.add('active'); S.plat = c.dataset.plat;
-                /* 平台 chip 是维度切换，不是叠加：残留的搜索关键词会让它变空，
-                 * 用户看到的就是「X 明明有 4 条，点 X 却没内容」。 */
-                if (S.q) { S.q = ''; if ($('#search')) { $('#search').value = ''; } }
-                render();
-            });
-        }
         var vt = $('#viewToggle');
         if (vt) {
             vt.addEventListener('click', function (e) {
@@ -805,9 +793,6 @@
                     /* 根节点「全部资源」：之前只加 active 不重置筛选，点了等于没点 */
                     S.q = ''; S.plat = 'all'; S.type = 'all';
                     if ($('#search')) { $('#search').value = ''; }
-                    $$('#chips .chip').forEach(function (x) {
-                        x.classList.toggle('active', x.dataset.plat === 'all');
-                    });
                     $$('#typeTabs button').forEach(function (x) {
                         x.classList.toggle('active', x.dataset.type === 'all');
                     });
@@ -822,9 +807,6 @@
                     S.plat = (S.plat === p) ? 'all' : p;
                     S.q = '';
                     if ($('#search')) { $('#search').value = ''; }
-                    $$('#chips .chip').forEach(function (x) {
-                        x.classList.toggle('active', x.dataset.plat === S.plat);
-                    });
                     render();
                     renderTree();
                     return;
@@ -848,7 +830,6 @@
              * 用户以为「没导入」，其实刷新页面（筛选重置）才看得见。 */
             S.q = ''; S.plat = 'all'; S.type = 'all';
             if ($('#search')) { $('#search').value = ''; }
-            $$('#chips .chip').forEach(function (x) { x.classList.toggle('active', x.dataset.plat === 'all'); });
             $$('#typeTabs button').forEach(function (x) { x.classList.toggle('active', x.dataset.type === 'all'); });
             await load();
             toast(ok ? '扫描完成：' + FILES.length + ' 项已刷新' : '扫描失败：未授权目录');

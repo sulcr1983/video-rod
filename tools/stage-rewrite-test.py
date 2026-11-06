@@ -95,7 +95,9 @@ def main():
     # 原型 media-library-stage-v1.html 实测侧栏 268px（纠偏时由 264 对齐）
     check("侧栏 268px", ev("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)", sid), 268)
     check("树根编号 00", ev("document.querySelector('#tree .ix') && document.querySelector('#tree .ix').textContent", sid), "00")
-    check("平台 chips=10（含 B站）", ev("document.querySelectorAll('#chips .chip').length", sid), 10)
+    # B-23 选项 A（2026-11-06）：顶部 chips 移除，平台筛选只在左侧资源树
+    check("顶部平台 chips 已移除", ev("document.querySelectorAll('#chips .chip').length", sid), 0)
+    check("左侧平台节点存在", ev("document.querySelectorAll('#tree .tree-node.plat').length", sid) > 0, True)
     check("页签计数", ev("[...document.querySelectorAll('#typeTabs button')].map(b=>b.dataset.type+':'+b.querySelector('b').textContent).join(',')", sid),
           "all:8,image:3,anim:0,video:4,audio:1")
     check("缺失角标", ev("document.querySelectorAll('#grid .card .missing-tag').length", sid), 1)
