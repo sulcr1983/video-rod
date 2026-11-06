@@ -156,6 +156,11 @@
             .catch(function () { return null; })
             .then(function (dedup) {
                 if (dedup && dedup.info) { Object.assign(item, dedup.info); }
+                /* YouTube 同一视频重下：内容指纹命中时不再写第二张「引用」卡，
+                 * 否则库里仍会出现两张同名卡片。图片仍保留引用制。 */
+                if (dedup && dedup.deduped && item.platform === 'youtube') {
+                    return null;
+                }
                 // 同名重下时保留星标与标签（与 writeOne 同口径）
                 return root.VRDB.getFile(rel);
             })
@@ -229,6 +234,11 @@
                     if (dedup && dedup.info) {
                         // 去重模块可能补了 sha256/isRef 等字段
                         Object.assign(item, dedup.info);
+                    }
+                    /* 同 YouTube 视频重下命中内容指纹：不写引用卡，避免两条相同。 */
+                    if (dedup && dedup.deduped && item.platform === 'youtube') {
+                        if (key) { delete pending[key]; scheduleSave(); }
+                        return null;
                     }
                     // 同一 relPath 再次入库（用户重下同名文件）时，保留已打的星标/标签
                     return root.VRDB.getFile(rel);

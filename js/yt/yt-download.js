@@ -53,6 +53,9 @@
 
     var sandbox = { frame: null, ready: null, seq: 0, wait: {} };
 
+    // 诊断入口：自动化/现场排查可直接读当前格式与音轨；不参与业务逻辑。
+    try { window.__vrYtState = state; } catch (e) { /* ignore */ }
+
     // ---------- 小工具 ----------
     /** 把进度广播回原 YouTube 标签，右下角浮层显示 */
     function broadcast(text, pct, done, kind) {
@@ -430,25 +433,31 @@
                         chrome.runtime.lastError.message : '下载未被创建'));
                     return;
                 }
-                function onChange(d) {
-                    if (d.id !== id) { return; }
-                    if (d.state === 'complete' || d.state === 'interrupted') {
-                        chrome.downloads.onChanged.removeListener(onChange);
-                        setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-                        if (d.state === 'complete') {
-                            // 把下载器回报的真实路径带回去（它可能改过文件名）
-                            chrome.downloads.search({ id: id }, function (list) {
-                                var rec = list && list[0];
-                                resolve({
-                                    id: id,
-                                    absPath: (rec && rec.filename) || '',
-                                    relPath: filename
-                                });
+                var tries = 0;
+                var timer = setInterval(function () {
+                    tries++;
+                    chrome.downloads.search({ id: id }, function (list) {
+                        var it = list && list[0];
+                        if (!it) { return; }
+                        if (it.state === 'complete') {
+                            clearInterval(timer);
+                            setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+                            resolve({
+                                id: id,
+                                absPath: it.filename || '',
+                                relPath: filename
                             });
-                        } else { reject(new Error('下载中断：' + (d.error || ''))); }
-                    }
-                }
-                chrome.downloads.onChanged.addListener(onChange);
+                        } else if (it.state === 'interrupted') {
+                            clearInterval(timer);
+                            URL.revokeObjectURL(url);
+                            reject(new Error('下载中断：' + (it.error || '')));
+                        } else if (tries >= 240) {
+                            clearInterval(timer);
+                            URL.revokeObjectURL(url);
+                            reject(new Error('下载器 120 秒未完成'));
+                        }
+                    });
+                }, 500);
             });
         });
     }
@@ -631,7 +640,27 @@
             state.busy = false;
             el.go.disabled = !state.chosen;
             broadcast('下载完成：' + (meta.title || '视频'), 100, true, 'ok');
-            if (autoMode) { setTimeout(function () { try { window.close(); } catch (e) {} }, 1800); }
+            if (autoMode) {
+                /* window.close() 对 chrome.tabs.create 开的扩展页经常被忽略，
+                 * 用 tabs.remove 关掉这个后台页，避免用户看到“下载页”残留。 */
+                setTimeout(closeAuto, 1800);
+            }
+            // 同一 YouTube 视频重复下载时，清掉引用卡（用户要求只留一条）。
+            setTimeout(function () {
+                try {
+                    if (!window.VRDB || !VRDB.getAllFiles) { return; }
+                    VRDB.getAllFiles().then(function (all) {
+                        var refs = all.filter(function (x) { return x.platform === 'youtube' && x.isRef; });
+                        if (!refs.length) { return; }
+                        refs.forEach(function (x) {
+                            if (x.downloadId) {
+                                try { chrome.downloads.removeFile(x.downloadId, function () { void chrome.runtime.lastError; }); } catch (e) { /* ignore */ }
+                            }
+                        });
+                        return VRDB.deleteFiles(refs.map(function (x) { return x.relPath; }));
+                    }).catch(function () { /* ignore */ });
+                } catch (e) { /* ignore */ }
+            }, 1600);
             // FSA 直写没有下载事件，主动补一次入库，让资源库立刻能看到这张卡
             ingestSaved(saved).then(function (r) {
                 if (r && r.ok) {
@@ -759,19 +788,59 @@
     } else {
         loadFormats();
     }
-})();
 
     /* 后台模式：隐藏界面，格式就绪后自动选最高画质并开始合并；
-     * 完成后 broadcast(done) 并自动关掉这个后台标签。 */
+     * 完成后 broadcast(done) 并自动关掉这个后台标签。
+     * 注意：这段必须留在 IIFE 内，否则 autoMode/el/state 都是未定义，
+     * 后台页只会停在“正在向 YouTube 请求格式列表…”而永不开始。 */
+    function closeAuto() {
+        try {
+            chrome.runtime.sendMessage({ Message: 'vrYtClose' }, function () {
+                void chrome.runtime.lastError;
+            });
+        } catch (e) { /* ignore */ }
+        try {
+            chrome.tabs.query({}, function (ts) {
+                var me = (ts || []).filter(function (t) { return t.url === location.href; })[0];
+                if (me) { chrome.tabs.remove(me.id); }
+                else { try { window.close(); } catch (e) { /* ignore */ } }
+            });
+        } catch (e) { try { window.close(); } catch (e2) { /* ignore */ } }
+    }
+
+    function findExistingYt() {
+        if (!window.VRDB || !VRDB.getAllFiles) { return Promise.resolve(null); }
+        return VRDB.getAllFiles().then(function (all) {
+            return all.filter(function (x) {
+                if (!x || x.platform !== 'youtube' || x.state === 'missing') { return false; }
+                if (meta.pageUrl && x.pageUrl === meta.pageUrl) { return true; }
+                return !!(meta.title && x.title === meta.title);
+            })[0] || null;
+        }).catch(function () { return null; });
+    }
+
     if (autoMode) {
         document.body.classList.add('vr-auto');
         var autoTimer = setInterval(function () {
             if (el.qc && el.qc.children.length) {
                 clearInterval(autoTimer);
-                try {
-                    el.qc.children[0].click();      // 最高画质（列表已按高度降序）
-                    setTimeout(function () { el.go.click(); }, 120);
-                } catch (e) { broadcast('自动开始失败，请手动下载', null, true, 'err'); }
+                var planned = state.video[0] ? buildPath('mp4', '_' + state.video[0].height + 'p') : '';
+                var exists = window.VRDB && VRDB.getFile && planned ? VRDB.getFile(planned).catch(function () { return null; }) : Promise.resolve(null);
+                exists.then(function (samePath) {
+                    return samePath ? { relPath: planned } : findExistingYt();
+                }).then(function (hit) {
+                    if (hit) {
+                        setMsg('已存在：' + (hit.relPath || hit.title) + '，跳过重复下载');
+                        broadcast('已存在，跳过重复下载', 100, true, 'ok');
+                        closeAuto();
+                        return;
+                    }
+                    try {
+                        el.qc.children[0].click();      // 最高画质（列表已按高度降序）
+                        setTimeout(function () { el.go.click(); }, 120);
+                    } catch (e) { broadcast('自动开始失败，请手动下载', null, true, 'err'); }
+                });
             }
         }, 300);
     }
+})();

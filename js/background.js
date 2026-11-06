@@ -1751,6 +1751,27 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
                 }, function () { void chrome.runtime.lastError; });
             } catch (e) { /* 原标签已关就算了 */ }
         }
+        /* 自动下载页广播 done 后关闭它自己（页面发来的 vrYtClose 在部分 Chrome
+         * 版本会被忽略；这里按 sender.tab 关闭，保证“无感”）。 */
+        try {
+            const st = sender && sender.tab;
+            if (Message.done && st && /yt-download\.html/.test(st.url || '') && /auto=1/.test(st.url || '')) {
+                setTimeout(function () { try { chrome.tabs.remove(st.id); } catch (e) { /* ignore */ } }, 1200);
+            }
+        } catch (e) { /* ignore */ }
+        try {
+            const st = sender && sender.tab;
+            if (Message.done && st && /yt-download\.html/.test(st.url || '') && /auto=1/.test(st.url || '')) {
+                setTimeout(function () { try { chrome.tabs.remove(st.id); } catch (e) { /* ignore */ } }, 1200);
+            }
+        } catch (e) { /* ignore */ }
+        sendResponse({ ok: true });
+        return true;
+    }
+    // YouTube 后台页完成后关闭自身（window.close 对 chrome.tabs.create 的扩展页不可靠）
+    if (Message && Message.Message === 'vrYtClose') {
+        const tid = sender && sender.tab && sender.tab.id;
+        if (tid) { try { chrome.tabs.remove(tid); } catch (e) { /* ignore */ } }
         sendResponse({ ok: true });
         return true;
     }
@@ -2829,7 +2850,7 @@ function vrXhsWaitTab(tabId, timeout) {
 /** 详情页的 __INITIAL_STATE__ 是异步填充的；等待最多 ~7 秒，避免视频笔记首次扫描为空。 */
 async function vrXhsScanInTab(tabId, noteId) {
     let last = null;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
         try {
             const r = await chrome.scripting.executeScript({
                 target: { tabId: tabId }, world: 'MAIN',
@@ -2864,7 +2885,8 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
                 active: false
             });
             tabId = tab.id;
-            const loaded = await vrXhsWaitTab(tabId, 12000);
+            const loaded = await vrXhsWaitTab(tabId, 18000);
+            if (loaded) { await new Promise(function (r) { setTimeout(r, 1200); }); }
             if (!loaded) {
                 errors++;
             } else {
@@ -2875,6 +2897,9 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
                         return Object.assign({}, it, {
                             site: 'xhs', title: data.title, author: data.author,
                             authorId: data.authorId,
+                            /* 自动补全路径必须带 pageUrl：vrBulkSaveItem 靠它补
+                             * Referer/remove Origin，否则 XHS CDN 直接 403。 */
+                            pageUrl: 'https://www.xiaohongshu.com/explore/' + encodeURIComponent(data.noteId),
                             key: 'xhs:' + data.noteId + ':' + it.kind + ':' + it.index + ':' + it.url
                         });
                     });

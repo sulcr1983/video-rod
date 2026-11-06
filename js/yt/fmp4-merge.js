@@ -83,9 +83,17 @@
         return u32(b, payload + 4);
     }
 
+    /** moof 的直接子 box 是 traf；不能对整段 moof 调 readBoxes(0)，
+     *  那只会读到 moof 自己，导致 track_ID 从不改写、时间全部为 0。 */
+    function moofTrafs(moof) {
+        var top = readBoxes(moof, 0, moof.length);
+        var box = first(top, 'moof');
+        return box ? readBoxes(moof, box.payload, box.end) : [];
+    }
+
     /** 把一个 moof 里所有 tfhd.track_ID 改成 id（原地） */
     function retagMoof(moof, id) {
-        var trafs = readBoxes(moof, 0, moof.length);
+        var trafs = moofTrafs(moof);
         for (var i = 0; i < trafs.length; i++) {
             if (trafs[i].type !== 'traf') { continue; }
             var kids = readBoxes(moof, trafs[i].payload, trafs[i].end);
@@ -97,7 +105,7 @@
 
     /** 取一个 moof 的最早解码时间（用来排序交织） */
     function moofTime(moof) {
-        var trafs = readBoxes(moof, 0, moof.length);
+        var trafs = moofTrafs(moof);
         for (var i = 0; i < trafs.length; i++) {
             if (trafs[i].type !== 'traf') { continue; }
             var kids = readBoxes(moof, trafs[i].payload, trafs[i].end);
@@ -232,5 +240,5 @@
         return info;
     }
 
-    global.VRFmp4 = { merge: merge, inspect: inspect, _readBoxes: readBoxes };
+    global.VRFmp4 = { merge: merge, inspect: inspect, _readBoxes: readBoxes, _collectFragments: collectFragments };
 })(typeof self !== 'undefined' ? self : this);
