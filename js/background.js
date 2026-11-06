@@ -822,6 +822,13 @@ async function vrImgDownload(msg) {
     }
 
     const pageUrl = String((msg && msg.pageUrl) || '');
+    try {
+        const plat = (P.detectPlatform ? P.detectPlatform(pageUrl) : '');
+        const dupe = await vrFindExistingMedia({ site: plat, kind: 'image', url: url, pageUrl: pageUrl });
+        if (dupe) {
+            return { ok: true, duplicate: true, path: dupe.relPath, downloadId: null };
+        }
+    } catch (e) { /* 查重失败不阻断下载 */ }
     const ext = vrImgExt(url, msg && msg.contentType);
     let title = '';
     try { title = P.cleanSeg(String((msg && msg.title) || '')) || ''; } catch (e) { title = ''; }
@@ -2129,6 +2136,10 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             for (const it of items) {
                 const url = it && it.url;
                 if (!url || !/^https?:/i.test(url)) { failed++; continue; }
+                try {
+                    const dupe = await vrFindExistingMedia({ site: 'instagram', kind: it.kind || 'image', url: url, pageUrl: 'https://www.instagram.com/' });
+                    if (dupe) { done++; continue; }
+                } catch (e) { /* 查重失败不阻断下载 */ }
                 const kindDir = it.kind === 'video' ? 'videos' : 'images';
                 const author = safe(it.author || 'instagram') || 'instagram';
                 const base = safe(it.filename || ('ig_' + (it.index + 1))) || ('ig_' + (it.index + 1));
@@ -3047,6 +3058,11 @@ async function vrBulkSaveItem(item, name, timeoutMs) {
     if (!it.url || !/^https?:/i.test(it.url)) {
         return { ok: false, reason: 'bad-url', path: relPath };
     }
+    // 先查库：同一平台、同一规范化源 URL 直接跳过，不再发起下载。
+    const existing = await vrFindExistingMedia(it);
+    if (existing) {
+        return { ok: true, skipped: true, path: existing.relPath, reason: 'duplicate-source' };
+    }
     // 微博/小红书 CDN 认 Referer、拒绝扩展 Origin；DNR 对下载器与 SW fetch 都生效。
     const referer = String(it.pageUrl || '');
     if (referer) {
@@ -3073,6 +3089,50 @@ async function vrBulkSaveItem(item, name, timeoutMs) {
         return await vrBulkOffscreenSave(it, relPath, meta);
     }
     return { ok: true, id: id, path: relPath };
+}
+
+/** 下载前去重：同一平台 + 同一规范化媒体 URL 视为同源重复。
+ *  去掉 query/hash 与 CDN 的 !nd_* 变换后缀；不同平台允许同内容。
+ *  没有 http 源（blob/data）不参与 URL 判重，交给既有下载后指纹逻辑。 */
+function vrCanonMediaUrl(raw) {
+    const s = String(raw || '').trim();
+    if (!/^https?:/i.test(s)) { return ''; }
+    try {
+        const u = new URL(s);
+        let path = u.pathname.split('!')[0].replace(/\/+$/, '');
+        return (u.hostname.replace(/^www\./i, '').toLowerCase() + path).toLowerCase();
+    } catch (e) {
+        return s.split('#')[0].split('?')[0].split('!')[0].toLowerCase();
+    }
+}
+
+function vrSiteKey(site) {
+    const x = String(site || '').toLowerCase();
+    if (x === 'xhs') { return 'xiaohongshu'; }
+    if (x === 'x') { return 'x'; }
+    return x;
+}
+
+async function vrFindExistingMedia(item) {
+    try {
+        if (!self.VRDB || typeof self.VRDB.getAllFiles !== 'function') { return null; }
+        const it = item || {};
+        const key = vrCanonMediaUrl(it.url);
+        const plat = vrSiteKey(it.site);
+        const kind = String(it.kind || '');
+        if (!key && !(kind === 'video' && it.pageUrl)) { return null; }
+        const all = await self.VRDB.getAllFiles();
+        for (let i = 0; i < all.length; i++) {
+            const e = all[i] || {};
+            if (!e.relPath || e.state === 'missing') { continue; }
+            if (plat && e.platform && e.platform !== plat) { continue; }
+            const vals = [vrCanonMediaUrl(e.sourceUrl), vrCanonMediaUrl(e.mediaUrl)].filter(Boolean);
+            if (key && vals.indexOf(key) >= 0) { return e; }
+            /* 视频以原帖作为来源键；图片不能只看 pageUrl（同帖多图会误杀） */
+            if (kind === 'video' && it.pageUrl && e.pageUrl && e.pageUrl === it.pageUrl) { return e; }
+        }
+        return null;
+    } catch (e) { return null; }
 }
 
 /** 去重标识：不依赖 URL 的签名/token 参数。同作品同媒体视为重复。
@@ -3568,6 +3628,15 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         pick = opt.options.filter(function (o) { return o.id === optionId; })[0];
     }
     if (!pick) { return { ok: false, reason: 'no-option' }; }
+
+    try {
+        const tab = await chrome.tabs.get(tabId);
+        const dupe = await vrFindExistingMedia({
+            site: opt.site || '', kind: 'video', url: pick.url,
+            pageUrl: (tab && tab.url) || ''
+        });
+        if (dupe) { return { ok: true, skipped: true, reason: 'duplicate-source', path: dupe.relPath }; }
+    } catch (e) { /* 查重失败不阻止下载 */ }
 
     const seen = await vrDedupLoad();
     let dedupKey = '';

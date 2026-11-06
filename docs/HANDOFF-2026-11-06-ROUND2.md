@@ -93,3 +93,21 @@ node tools/test-naming.js
 - 本轮最终提交：`029cfde fix(youtube/library): 自动下载、收藏星标与详情交互`（未 push）。
 
 仍建议下一会话补：FSA 授权态下详情移动/删除实机、XHS 面板 UI 实际点击、原型同步收藏/星标与 7 列网格、性能基准。
+
+## 8. 下载前去重追加（2026-11-06 09:xx）
+
+用户反馈“全部都是重复的”，要求同一链接/来源不再重复下载，不同平台和来源允许。
+
+实现：
+- `js/background.js` 新增 `vrCanonMediaUrl`：去掉协议差异、query/hash、CDN 的 `!nd_*` 变换后缀，只保留 host+path。
+- `vrFindExistingMedia`：按「平台 + 规范化源 URL」查库；视频额外允许同 `pageUrl`。
+- 在 `vrBulkSaveItem`、`vrImgDownload`、`vrIgDownload`、`vrVideoDownload` 下载前查重；命中直接返回 `skipped/duplicate`，**不发起下载**。
+- 不同平台不互相判重（`plat` 不一致直接跳过匹配）。
+
+实测：
+- 同源 XHS 图片调用 `vrBulkSaveItem` → `{ok:true, skipped:true, reason:'duplicate-source'}`，无新文件。
+- 同源 XHS 图片调用 `vrImgDownload` → `{ok:true, duplicate:true, downloadId:null}`。
+- 清理最后一个 `isRef` 测试卡后：库 **36 条 / duplicateGroups=0 / refs=0**。
+- 完整性 **8/8 PASS，36 条**。
+
+注意：这是“下载前”的 URL/来源判重；不同 URL 但内容相同的文件仍由下载后的 SHA-256 去重兜底。真正的内容级预判需要 HEAD/ETag 或服务器摘要，当前平台不保证提供，未做。
