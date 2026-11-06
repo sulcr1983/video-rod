@@ -291,10 +291,38 @@
                 var key = null;
                 if (d.url && p[d.url]) { key = d.url; }
                 else if (d.finalUrl && p[d.finalUrl]) { key = d.finalUrl; }
-                enqueue(key ? p[key] : null, d, key);
+
+                if (key) { enqueue(p[key], d, key); return; }
+
+                /* 找不到 URL 键时的兜底：页面内合成的 blob 下载（B站 durl/dash）
+                 * URL 每次都是新的，没法预登记。用「文件名」反查预登记记录 ——
+                 * 下载前调用方用 vrPendingBiliName 的 relPath 登记过一条。 */
+                var base = String(d.filename || '').split(/[\\/]/).pop() || '';
+                var baseStem = base.replace(/ \(\d+\)(\.[a-z0-9]+)$/i, '$1');
+                var hitKey = null;
+                Object.keys(p).forEach(function (k) {
+                    if (hitKey) { return; }
+                    var r = String((p[k] && p[k].relPath) || '').replace(/\\/g, '/');
+                    if (!r) { return; }
+                    var rBase = r.split('/').pop() || '';
+                    if (rBase === base || rBase === baseStem) { hitKey = k; }
+                });
+                if (hitKey) {
+                    var m = p[hitKey];
+                    var copy = Object.assign({}, m);
+                    /* 用真实落盘文件名替换预登记名，保留目录 */
+                    var dir = String(m.relPath || '').split('/').slice(0, -1).join('/');
+                    copy.relPath = dir ? (dir + '/' + base) : base;
+                    delete p[hitKey];
+                    scheduleSave();
+                    enqueue(copy, d, null);
+                    return;
+                }
+                enqueue(null, d, null);
             });
         });
     }
+
 
     chrome.downloads.onChanged.addListener(function (delta) {
         if (!delta || !delta.state) { return; }

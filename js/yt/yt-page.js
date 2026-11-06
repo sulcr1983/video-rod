@@ -76,7 +76,7 @@
             'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
             '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>' +
             '<span>下载</span></button>' +
-            '<span class="tip">苏哥的钓鱼竿 · 支持 1080p / 4K</span>' +
+            '<span class="tip">苏哥的钓鱼竿 · 最高支持 1080p</span>' +
             '</div>';
 
         var btn = root.getElementById(BTN_ID);

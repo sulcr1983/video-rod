@@ -332,3 +332,41 @@ Chrome 的目录写权限不会跨页面刷新永久保留；恢复时必须由�
 - 文件名匹配逻辑对现有 `Guangzhou…_1920p.mp4` 命中；新下载会跳过。
 
 注意：Instagram 有一条 `(1).mp4` 是**唯一副本**（没有无后缀版本），未删除。
+
+## 15. 来源信息全空 + YouTube 大文件断流（2026-11-06 11:xx）
+
+### B站 / YouTube / X 的详情页「来源」整块空白
+实测库内元数据：B站 2/2、YouTube 4/4、X 6/6 的 `pageUrl` 与 `title` 都是空，
+微博/小红书/抖音/网页正常。三处调用方各自漏了 meta：
+
+1. **X 批量**：`vrBulkDownload` 的 x 分支调 `vrDownloadWithName` 时没传 `meta`，
+   只靠路径反解 → 原帖地址丢失。现在显式传 `vrBulkMeta(it, rel)`。
+2. **B站**：走页面内 `<a download>` + blob，`vrPendingBiliName` 只记了路径。
+   现在同一条记录里带 `meta`（platform/title/pageUrl），并在
+   `onDeterminingFilename` 拿到真实 blob URL 后把它迁到 URL 键上。
+3. **下载器兜底**：`VRSave.saveDownloads` 走 `chrome.downloads` 时不预登记 meta，
+   下载完成事件里拿不到上下文。现在下载前 `VRLib.record()`。
+4. **blob 认领兜底**：B站每次 blob URL 都是新的，`handleComplete` 查不到 URL 键。
+   新增按「文件名（去 ` (n)` 后缀）」反查预登记记录的兜底，命中就用它的 meta 入库。
+
+### YouTube 下到 ~80MB 报网络错误
+用户给的 `https://youtu.be/WuB97Yjajyg`，1080p 视频轨 75MB。`fetchBytes` 原来
+是单次 `fetch` 整段读，googlevideo 长连接被掐断就整条失败。
+
+现在改为分段续传：按 `Range` 从真实已读位置续，每段最多重试 4 次；断流时保留
+已读字节（`readStream` 返回 `complete:false`），不会错位或丢数据。
+
+实测该视频：`视频轨 35→75 MB` 全程无中断 → `音频轨 3 MB` → 合并落盘 81MB 成功。
+
+### 文案
+YouTube 页面按钮提示由「支持 1080p / 4K」改为「最高支持 1080p」。
+
+### 验证
+- `e2e-all --isolated --only e2e-sw,dedup,stage-rewrite,e2e-buttons` → **4/4、71 条**。
+- `library-integrity-check.py --port 9480` → **8/8 PASS，39 条**。
+- 未授权目录时 `VRSave` 走下载器，文件名可能被浏览器改动（提示语已说明）。
+
+### 已知限制
+- **已有条目不会自动补来源**：浏览器下载记录里 `referrer` 为空、URL 是 blob，
+  回填不了。只有新下载才带完整来源。
+- 若只想要 1080p 而当前只取到 360p，会先刷新页面重试一次；仍失败则下 360p 并提示。

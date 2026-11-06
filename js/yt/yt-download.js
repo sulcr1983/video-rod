@@ -354,32 +354,103 @@
     }
 
     // ---------- 下载 ----------
+    /**
+     * 拉一条流到内存。
+     *
+     * googlevideo 的长连接会在中途被掐断（实测 1080p 下到 ~80MB 报
+     * "Failed to fetch"）：原来单次 fetch 一断就整条失败，用户只能重来。
+     * 现在按 Range 分段续传，每段单独重试；断流时也保留已读字节，
+     * 从真实已下载位置继续，不会错位。
+     */
+    var MAX_RETRY = 4;
+
+    function concatChunks(chunks, total) {
+        var out = new Uint8Array(total), off = 0;
+        for (var i = 0; i < chunks.length; i++) {
+            out.set(chunks[i], off);
+            off += chunks[i].length;
+        }
+        return out;
+    }
+
+    /** 读完一个响应；中途断流也把已读部分交出来（complete=false） */
+    function readStream(resp, onGot) {
+        if (!resp.body || !resp.body.getReader) {
+            return resp.arrayBuffer().then(function (b) {
+                var u = new Uint8Array(b);
+                if (onGot) { onGot(u.length); }
+                return { data: u, complete: true };
+            }, function () {
+                return { data: new Uint8Array(0), complete: false };
+            });
+        }
+        var reader = resp.body.getReader();
+        var chunks = [], n = 0;
+        function pump() {
+            return reader.read().then(function (x) {
+                if (x.done) { return { data: concatChunks(chunks, n), complete: true }; }
+                chunks.push(x.value);
+                n += x.value.length;
+                if (onGot) { onGot(n); }
+                return pump();
+            }, function () {
+                /* 断流：已读的先留着，调用方会从 got 处续传 */
+                return { data: concatChunks(chunks, n), complete: false };
+            });
+        }
+        return pump();
+    }
+
     function fetchBytes(url, onProgress) {
-        return fetch(url, { credentials: 'omit' }).then(function (r) {
-            if (!r.ok) {
-                throw new Error('HTTP ' + r.status + (r.status === 403 ? '（直链失效）' : ''));
-            }
-            var total = parseInt(r.headers.get('content-length') || '0', 10) || 0;
-            if (!r.body || !r.body.getReader) {
-                return r.arrayBuffer().then(function (b) { return new Uint8Array(b); });
-            }
-            var reader = r.body.getReader();
-            var chunks = [], got = 0;
-            return (function pump() {
-                return reader.read().then(function (x) {
-                    if (x.done) {
-                        var out = new Uint8Array(got), off = 0;
-                        chunks.forEach(function (c) { out.set(c, off); off += c.length; });
-                        chunks.length = 0;
-                        return out;
-                    }
-                    chunks.push(x.value);
-                    got += x.value.length;
-                    if (onProgress) { onProgress(got, total); }
-                    return pump();
+        var total = 0;
+        var parts = [];
+        var got = 0;
+
+        function report() { if (onProgress) { onProgress(got, total); } }
+        function done() { return concatChunks(parts, got); }
+
+        /** 请求一段；返回本段读到的字节数，-1 表示断流需要续传 */
+        function step(start) {
+            var headers = {};
+            if (start > 0) { headers.Range = 'bytes=' + start + '-'; }
+            return fetch(url, { credentials: 'omit', headers: headers }).then(function (r) {
+                if (!r.ok && r.status !== 206) {
+                    throw new Error('HTTP ' + r.status + (r.status === 403 ? '（直链失效）' : ''));
+                }
+                if (!total) {
+                    var cr = r.headers.get('content-range') || '';
+                    var m = cr.match(/\/(\d+)$/);
+                    if (m) { total = parseInt(m[1], 10) || 0; }
+                    if (!total) { total = parseInt(r.headers.get('content-length') || '0', 10) || 0; }
+                }
+                var before = got;
+                return readStream(r, function (n) {
+                    got = before + n;
+                    report();
+                }).then(function (res) {
+                    if (res.data.length) { parts.push(res.data); }
+                    got = before + res.data.length;
+                    report();
+                    return res.complete ? res.data.length : -1;
                 });
-            })();
-        });
+            });
+        }
+
+        function loop(start, attempt) {
+            return step(start).catch(function (e) {
+                /* 403 / 4xx 属于直链失效，重试这段没意义，交给上层（会刷新直链） */
+                if (attempt >= MAX_RETRY || /HTTP 4\d\d/.test(String(e && e.message))) { throw e; }
+                setMsg('连接中断，从 ' + mb(got) + ' 处续传（第 ' + (attempt + 1) + ' 次）…', 'warn');
+                return new Promise(function (r) { setTimeout(r, 600 * (attempt + 1)); })
+                    .then(function () { return loop(got, attempt + 1); });
+            }).then(function (n) {
+                if (n === 0 && !total) { return done(); }     // 拿不到长度又读不到数据，别再死循环
+                if (n === -1 || (total && got < total)) { return loop(got, 0); }
+                return done();
+            });
+        }
+
+        return loop(0, 0);
     }
 
     /** 解 n 后拉流；403/解密失败自动重来一次（直链会轮换） */
