@@ -21,6 +21,7 @@
   <script src="js/library/anim.js" defer></script>
   <script src="js/library/lightbox.js" defer></script>
   <script src="js/library/move-picker.js" defer></script>
+  <script src="js/library/ctx-menu.js" defer></script>
   <script src="js/library/app.js" defer></script>
 </head>
 
@@ -229,6 +230,8 @@
       <span class="c-name">名称</span><span class="c-plat">平台</span><span class="c-auth">作者</span><span class="c-size">大小</span><span class="c-time">保存</span>
     </div>
     <div class="grid" id="grid"></div>
+    <!-- 卡片右键菜单（VRCtxMenu 渲染） -->
+    <div class="vr-ctx" id="vrCtxMenu" role="menu" hidden></div>
     <!-- 空状态：三种场景共用，文案与按钮由 JS 切换 -->
     <div class="empty hidden" id="empty">
       <div class="e-ico" id="emptyIco"><svg class="i"><use href="#i-image"/></svg></div>

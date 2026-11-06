@@ -370,3 +370,46 @@ YouTube 页面按钮提示由「支持 1080p / 4K」改为「最高支持 1080p�
 - **已有条目不会自动补来源**：浏览器下载记录里 `referrer` 为空、URL 是 blob，
   回填不了。只有新下载才带完整来源。
 - 若只想要 1080p 而当前只取到 360p，会先刷新页面重试一次；仍失败则下 360p 并提示。
+
+## 16. 右键菜单（含 Google 识图）+ 大库窗口化（2026-11-06 11:xx）
+
+### 卡片右键菜单
+新文件 `js/library/ctx-menu.js`，菜单项：打开预览 / 重命名 / 移动到… /
+在文件夹中定位 / 加入收藏 / 加星标 / **用 Google 识图**（仅图片）/ 移到回收站。
+
+为什么没直接用 `js/library/trash-ui.js`：那套是旧版库页的 DOM
+（`#libGrid` / `#libTrashDrawer` / `#libConfirmMask`），当前 `library.html`
+没有这些节点，挂上去会空指针。新模块只做菜单层，动作全部复用页面已有实现
+（`openRename` / `VRMovePicker` / `ask + VRTrash` / `VRFav` / `ensureWriteAccess`）。
+
+- 右键卡片弹出；支持 ↑↓/Enter/Esc；点击外部、滚动、缩放自动关闭。
+- 只读态点「移动到…/移到回收站」会先走 `ensureWriteAccess()`（恢复权限或弹目录选择）。
+
+### Google 识图
+本地文件 `file://` 下 Google 抓不到，必须上传字节：
+`VRFile.resolve()` 读出 Blob → 隐藏表单 multipart POST 到
+`https://lens.google.com/v3/upload` → 新标签跟随 302 到结果页。
+
+实测：点「用 Google 识图」→ 新标签打开
+`https://www.google.com.hk/search?vsrid=…`，识别成功。
+
+### B-14 大库窗口化
+`app.js` 新增窗口化渲染：**≤300 条走原路径**（一次铺满 + 滚动追加，
+行为不变）；>300 条只渲染可视区上下各 2 行，用 `paddingTop/Bottom` 撑高度。
+
+实测（`VRApp._renderFake` 压测入口）：
+| 总量 | 首屏耗时 | DOM 卡片数 |
+|---|---|---|
+| 120 | 6 ms | 120 |
+| 5 000 | 42–91 ms | 42 |
+| 50 000 | 105 ms | 49 |
+
+滚动 3 屏后窗口正确平移（42 → 70 张，`padding-top` 2104px）；
+响应式列数变化时重算列数与行高。
+
+未做：真正的「回收 DOM 复用」（当前是重绘窗口，不是节点池）。
+5 万条实测已满足「首屏 < 100 ms」的目标区间。
+
+### 验证
+- 右键菜单：图片 10 项含「用 Google 识图」，视频 9 项不含；无 JS 异常。
+- `e2e-all --isolated --only e2e-sw,stage-rewrite,e2e-buttons` → 3/3、50 条。
