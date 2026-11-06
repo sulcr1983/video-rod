@@ -2708,8 +2708,16 @@ const VR_STATIC_ASSET = /(web_login_static|\/static\/|\/assets\/|\/images?\/|\/i
  * 抖音直链不带 Referer 会 403（实测：无 Referer 403 text/html，带 Referer 206 video/mp4）。
  * CocoCut 的做法是下载前用 declarativeNetRequest 临时给媒体请求 set Referer/Origin。
  * 规则只加在指定域名上，10 分钟后自动清掉，避免长期影响页面自己的请求。 */
-const VR_MEDIA_HEADER_RULE_ID = 91001;
+/* 规则 ID 池：以前只有一条 91001，批量下载时「图片 → 视频」交替设置会互相覆盖，
+ * 后面那条一覆盖，前面的域名就再也拿不到 Referer。
+ * 小红书实测：图片在 sns-webpic-qc、视频在 sns-video-v6，两个域名必须同时生效，
+ * 否则视频落到下载器就是 NETWORK_FAILED（2026-11-06 用户反馈）。 */
+const VR_MEDIA_HEADER_RULE_BASE = 91001;
+const VR_MEDIA_HEADER_RULE_MAX = 12;
 const VR_MEDIA_HEADER_ALARM = 'vrClearMediaHeaders';
+
+/** 域名 → 规则 ID（会话内稳定分配，同域名重复设置只覆盖自己那条） */
+const vrHeaderRuleByDomain = new Map();
 
 async function vrSetMediaHeaders(domain, referer) {
     try {
@@ -2724,10 +2732,29 @@ async function vrSetMediaHeaders(domain, referer) {
             { header: 'referer', operation: 'set', value: referer },
             { header: 'origin', operation: 'remove' }
         ];
+        /* 同域名复用同一个 ID；新域名顺延分配，超出上限就淘汰最早的一个 */
+        let id = vrHeaderRuleByDomain.get(domain);
+        if (!id) {
+            const used = new Set(vrHeaderRuleByDomain.values());
+            for (let i = 0; i < VR_MEDIA_HEADER_RULE_MAX; i++) {
+                const cand = VR_MEDIA_HEADER_RULE_BASE + i;
+                if (!used.has(cand)) { id = cand; break; }
+            }
+            if (!id) {
+                /* 池满：淘汰最早的一条 */
+                const oldest = vrHeaderRuleByDomain.keys().next().value;
+                id = vrHeaderRuleByDomain.get(oldest);
+                vrHeaderRuleByDomain.delete(oldest);
+                try {
+                    await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [id] });
+                } catch (e) { /* ignore */ }
+            }
+            vrHeaderRuleByDomain.set(domain, id);
+        }
         await chrome.declarativeNetRequest.updateSessionRules({
-            removeRuleIds: [VR_MEDIA_HEADER_RULE_ID],
+            removeRuleIds: [id],
             addRules: [{
-                id: VR_MEDIA_HEADER_RULE_ID,
+                id: id,
                 priority: 1,
                 action: { type: 'modifyHeaders', requestHeaders: headers },
                 condition: {
@@ -2889,15 +2916,26 @@ function vrXhsScanInPage(noteId) {
             const raw = (v && (v.master_url || v.masterUrl || v.url)) ||
                 (v && Array.isArray(v.backupUrls) && v.backupUrls[0]) || '';
             const url = xhsHttps(raw);
-            if (!url || vids.has(url)) { return; }
-            vids.set(url, {
+            if (!url) { return; }
+            /* 同一视频在 media.stream 与 mediaV2 里会重复出现（EF4/EF5/EF6/EF7
+             * 加上 h264/h265/av1 两代结构），按 URL 去重会留下低清那条。
+             * 这里改成按「素材 ID」聚合：取 URL 里最后一段去掉清晰度后缀的
+             * 稳定 ID，同 ID 只保留分辨率/码率最高的一个。 */
+            const idMatch = url.match(/\/([0-9a-f]{20,})[_-]\d+\.mp4/i) || url.match(/\/([0-9a-f]{20,})\.mp4/i);
+            const vid = idMatch ? idMatch[1] : url;
+            const cand = {
                 kind: 'video', url: url, ext: 'mp4', index: idx || 0,
                 format: String(v.format || '').toLowerCase(),
                 width: Number(v.width) || 0,
                 height: Number(v.height) || 0,
                 bitrate: Number(v.avg_bitrate || v.video_bitrate || 0),
                 quality: v.quality_type || ''
-            });
+            };
+            const prev = vids.get(vid);
+            if (!prev) { vids.set(vid, cand); return; }
+            /* 同 ID：留更高的（高度优先，其次码率） */
+            const better = (cand.height - prev.height) || (cand.bitrate - prev.bitrate);
+            if (better > 0) { vids.set(vid, cand); }
         }
         const oldStreams = note.video && note.video.media && note.video.media.stream;
         if (oldStreams) {
@@ -3089,8 +3127,27 @@ function vrMediaPath(item, name) {
     const site = i.site === 'x' ? 'x'
         : i.site === 'weibo' ? 'weibo'
             : i.site === 'xhs' ? 'xiaohongshu' : 'other';
-    const author = String(i.author || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 60);
-    const id = String(i.authorId || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim().slice(0, 40);
+    /* 统一走 VRPath 三段式（平台/作者/类型 + 中文目录名）：
+     * 以前这里硬编码 'xiaohongshu/…/videos/'，和资源库的 '小红书/…/视频/'
+     * 不是一套 —— 同一批素材散在两个目录，索引反解拿不到 platform/type。
+     * 2026-11-06 实测：小红书视频入库后 platform 为空，根源就是这条路径。 */
+    if (self.VRPath && self.VRPath.buildRelPath) {
+        try {
+            const rel = self.VRPath.buildRelPath({
+                platform: site === 'other' ? 'web' : site,
+                authorFull: i.author || '',
+                creatorId: i.authorId || '',
+                type: i.kind === 'video' ? 'video' : (i.kind === 'audio' ? 'audio' : 'image'),
+                ext: i.ext || (i.kind === 'video' ? 'mp4' : 'jpg'),
+                fileName: name,
+                pageUrl: i.pageUrl || '',
+                subdir: 'video-rod'
+            });
+            if (rel) { return rel; }
+        } catch (e) { /* 退回下面的简单路径 */ }
+    }
+    const author = String(i.author || '').replace(/[<>:"/\|?* -]/g, '_').trim().slice(0, 60);
+    const id = String(i.authorId || '').replace(/[<>:"/\|?* -]/g, '_').trim().slice(0, 40);
     const folder = author ? (id ? author + '(@' + id + ')' : author) : site;
     const kind = i.kind === 'video' ? 'videos' : 'images';
     return 'video-rod/' + site + '/' + folder + '/' + kind + '/' + name;
@@ -3155,6 +3212,27 @@ async function vrBulkOffscreenSave(item, relPath, meta) {
  *  <a download> 不认目录，微博批量曾因此只把第 1 条落到 Downloads 根目录，
  *  文件名被压成 video-rod_weibo_…，入库 platform/type 全空（2026-11-05 实测）。
  *  返回 {ok, fsa?, path?, id?, reason?}，调用方只按真实终态计数。 */
+/** 库内条目指向的文件是否还在磁盘上（用于识别幽灵记录）。 */
+async function vrEntryFileAlive(e) {
+    try {
+        if (!e) { return false; }
+        if (e.downloadId != null) {
+            const got = await new Promise(function (resolve) {
+                try {
+                    chrome.downloads.search({ id: e.downloadId }, function (list) {
+                        void chrome.runtime.lastError;
+                        resolve(list && list[0] || null);
+                    });
+                } catch (err) { resolve(null); }
+            });
+            if (got) { return got.exists !== false; }
+        }
+        /* 没有 downloadId（FSA 直写）：用库里的 size 兜底 —— size=0 基本可以判定写盘没成 */
+        if (!Number(e.size)) { return false; }
+        return !!e.relPath;
+    } catch (err) { return true; }
+}
+
 async function vrBulkSaveItem(item, name, timeoutMs) {
     const it = item || {};
     const relPath = vrMediaPath(it, name);
@@ -3164,7 +3242,15 @@ async function vrBulkSaveItem(item, name, timeoutMs) {
     // 先查库：同一平台、同一规范化源 URL 直接跳过，不再发起下载。
     const existing = await vrFindExistingMedia(it);
     if (existing) {
-        return { ok: true, skipped: true, path: existing.relPath, reason: 'duplicate-source' };
+        /* 必须确认这条记录指向的文件**真的还在**。
+         * 2026-11-06 实测：库里留下 size=0 的幽灵记录（写盘失败但仍入库），
+         * 之后每次下载都被判「重复」直接跳过，用户永远下不到——
+         * 表现就是「点了没反应 / 网络问题」。文件不在就当没命中，重新下载。 */
+        const alive = await vrEntryFileAlive(existing);
+        if (alive) {
+            return { ok: true, skipped: true, path: existing.relPath, reason: 'duplicate-source' };
+        }
+        try { await self.VRDB.deleteFiles([existing.relPath]); } catch (e) { /* 忽略 */ }
     }
     // 微博/小红书 CDN 认 Referer、拒绝扩展 Origin；DNR 对下载器与 SW fetch 都生效。
     const referer = String(it.pageUrl || '');
@@ -3242,8 +3328,13 @@ async function vrFindExistingMedia(item) {
             if (plat && e.platform && e.platform !== plat) { continue; }
             const vals = [vrCanonMediaUrl(e.sourceUrl), vrCanonMediaUrl(e.mediaUrl)].filter(Boolean);
             if (key && vals.indexOf(key) >= 0) { return e; }
-            /* 视频以原帖作为来源键；图片不能只看 pageUrl（同帖多图会误杀） */
-            if (kind === 'video' && it.pageUrl && e.pageUrl && e.pageUrl === it.pageUrl) { return e; }
+            /* 视频以原帖作为来源键 —— 但必须确认那条记录**也是视频**。
+             * 2026-11-06 实测：同一条小红书笔记的图片和视频共享 pageUrl，
+             * 图片先入库后，视频被这条兜底误判成「重复」直接跳过，
+             * 用户看到的就是「下载失败 / 没有视频」。
+             * 只有图片端（kind=video）与记录端（e.type=video）都成立才算重复。 */
+            if (kind === 'video' && it.pageUrl && e.pageUrl &&
+                e.pageUrl === it.pageUrl && e.type === 'video') { return e; }
         }
         return null;
     } catch (e) { return null; }
@@ -3499,9 +3590,13 @@ async function vrPageMetaInTab(tabId) {
 try {
     chrome.alarms.onAlarm.addListener(function (a) {
         if (a && a.name === VR_MEDIA_HEADER_ALARM) {
-            chrome.declarativeNetRequest.updateSessionRules({
-                removeRuleIds: [VR_MEDIA_HEADER_RULE_ID]
-            });
+            /* 清理整池规则（原来是单条 91001，现在按域名分配多个 ID） */
+            const ids = [];
+            for (let i = 0; i < VR_MEDIA_HEADER_RULE_MAX; i++) {
+                ids.push(VR_MEDIA_HEADER_RULE_BASE + i);
+            }
+            vrHeaderRuleByDomain.clear();
+            chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: ids });
         }
     });
 } catch (e) { /* ignore */ }
