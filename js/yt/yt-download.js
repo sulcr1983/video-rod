@@ -428,6 +428,20 @@
     function saveToDownloads(blob, filename) {
         return new Promise(function (resolve, reject) {
             var url = URL.createObjectURL(blob);
+            /* 下载器通道也要把元数据预登记给资源库，否则入库条目 pageUrl/title 为空，
+             * 下次下载无法按来源去重（2026-11-06 的 YouTube 重复卡片就是这么来的）。 */
+            try {
+                chrome.runtime.sendMessage({
+                    Message: 'vrQueueName', url: url, filename: filename, conflictAction: 'uniquify',
+                    meta: {
+                        platform: 'youtube', platformName: 'YouTube',
+                        title: meta.title || '', pageUrl: meta.pageUrl || '',
+                        creatorFull: meta.author || '', creatorId: meta.authorId || '',
+                        type: /\.m4a$/i.test(filename) ? 'audio' : 'video',
+                        mime: /\.m4a$/i.test(filename) ? 'audio/mp4' : 'video/mp4'
+                    }
+                }, function () { void chrome.runtime.lastError; });
+            } catch (e) { /* 记账失败不影响下载 */ }
             chrome.downloads.download({
                 url: url, filename: filename, conflictAction: 'uniquify', saveAs: false
             }, function (id) {
@@ -623,7 +637,7 @@
         });
     }
 
-    function run() {
+    async function run() {
         if (state.busy || !state.chosen) { return; }
         var o = state.chosen;
         state.busy = true;
@@ -631,6 +645,18 @@
         el.file.classList.remove('on');
         el.note.textContent = '';
         state.mergeError = '';
+
+        /* 手动下载也要查重：之前只有 auto=1 会检查，手动点下载会再落一份
+         * xxx (1).mp4（2026-11-06 反馈的 YouTube 重复卡片）。 */
+        var existing = null;
+        try { existing = await findExistingYt(); } catch (e) { existing = null; }
+        if (existing) {
+            state.busy = false;
+            el.go.disabled = !state.chosen;
+            setMsg('已存在：' + (existing.relPath || existing.title || '同一视频') + '，跳过重复下载');
+            broadcast('已存在，跳过重复下载', 100, true, 'ok');
+            return;
+        }
 
         function stage(txt, pct) { setMsg(txt); setBar(pct); }
         function finish(saved) {
@@ -814,11 +840,22 @@
 
     function findExistingYt() {
         if (!window.VRDB || !VRDB.getAllFiles) { return Promise.resolve(null); }
+        var wanted = (meta.title ? safe(meta.title) : '');
+        /* 下载器兜底入库的历史条目没有 pageUrl/title，只能从文件名认。
+         * 去掉质量后缀/重名后缀后做完整比较，避免「Foo」误命中「Foo Bar」。 */
+        function ytStem(rel) {
+            var base = String(rel || '').split('/').pop().replace(/\.(mp4|m4a)$/i, '');
+            return base.replace(/ \(\d+\)$/, '')
+                .replace(/_(无音轨|视频轨|音频轨)$/, '')
+                .replace(/_\d{3,4}p$/, '');
+        }
         return VRDB.getAllFiles().then(function (all) {
             return all.filter(function (x) {
                 if (!x || x.platform !== 'youtube' || x.state === 'missing') { return false; }
                 if (meta.pageUrl && x.pageUrl === meta.pageUrl) { return true; }
-                return !!(meta.title && x.title === meta.title);
+                if (meta.title && x.title === meta.title) { return true; }
+                if (wanted && ytStem(x.relPath) === wanted) { return true; }
+                return false;
             })[0] || null;
         }).catch(function () { return null; });
     }
