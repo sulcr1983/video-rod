@@ -3925,8 +3925,16 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
     let metaOverride = null;
     if (opt.site === 'douyin') {
         metaOverride = opt.meta || null;
-        const tab = await chrome.tabs.get(tabId);
-        await vrSetMediaHeaders('douyinvod.com', (tab && tab.url) || 'https://www.douyin.com/');
+        /* 标签页可能在探测/选源期间被用户关掉：这里必须兜住。
+         * 另外 5 处 tabs.get（3970/4051/4116/4127/4164）都判了 try，
+         * 唯独这一处是裸 await —— 关页后整次下载会以未捕获 Promise 拒绝结束
+         * （edge://extensions 里表现为「No tab with id: xxx」）。 */
+        let douyinTabUrl = '';
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            douyinTabUrl = (tab && tab.url) || '';
+        } catch (e) { /* 页面已关：退回落站地址，规则仍可用 */ }
+        await vrSetMediaHeaders('douyinvod.com', douyinTabUrl || 'https://www.douyin.com/');
     }
 
     // ---- 通用站点：直链交给既有的自定义文件名下载（M8） ----
