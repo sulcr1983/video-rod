@@ -2785,6 +2785,10 @@ async function vrSetMediaHeadersFor(url, referer) {
  *  返回 complete/interrupted 的 item；还在下载则返回 null（视为已开始，不打断）。 */
 function vrWaitDownload(id, ms) {
     return new Promise(function (resolve) {
+        /* 防御：id 必须是数字。FSA 直写会返回 {__fsa:true,path} 这种对象，
+         * 一旦传进来，downloads.search({id}) 会抛 TypeError 并把整个调用链搞崩
+         * （表现是「文件下好了按钮却报失败」）。这里直接当「不是下载器任务」处理。 */
+        if (typeof id !== 'number' || !isFinite(id)) { resolve(null); return; }
         const until = Date.now() + ms;
         function tick() {
             chrome.downloads.search({ id: id }, function (items) {
@@ -3942,11 +3946,20 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         const trace = {
             pageUrl: pageUrl || (meta && meta.pageUrl) || '',
             mediaUrl: pick.url || '',
+            /* sourceUrl 也要写：查重（vrFindExistingMedia）同时比对 sourceUrl 与 mediaUrl，
+             * 只写一边会让老条目/另一条路径的下载查不到重复。 */
+            sourceUrl: pick.url || '',
             author: (meta && meta.author) || '',
             authorId: (meta && meta.authorId) || '',
             workId: (meta && meta.workId) || '',
             title: (meta && meta.title) || '',
-            platform: (meta && meta.site) || ''
+            /* platform 必须按页面 URL 推断：meta.site 在通用分支是空的
+             * （微博视频走的是 generic），直接取值会让入库条目 platform/type 全空。 */
+            platform: (meta && meta.site) ||
+                (self.VRPath && typeof self.VRPath.detectPlatform === 'function'
+                    ? self.VRPath.detectPlatform(pageUrl || '')
+                    : '') || '',
+            type: 'video'
         };
         try {
             const nm = await vrTraceMetaInTab(tabId);
@@ -3958,6 +3971,14 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         if (pageUrl) { await vrSetMediaHeadersFor(pick.url, pageUrl); }
         const id = await vrDownloadWithName(pick.url, filename, { meta: trace });
         let pageDl = null;
+        /* FSA 直写成功时没有 downloadId，返回的是 {__fsa:true, path} —— 对象不是数字。
+         * 原代码直接把对象丢给 vrWaitDownload，后者拿它当 downloads.search({id}) 的 id，
+         * Chrome 抛 "Invalid type: expected integer, found object"，触发 → 按钮收到 ok:false → 显示叹号。
+         * 而文件其实已经落盘成功。*/
+        if (id && typeof id === 'object' && id.__fsa) {
+            vrMarkDownloaded(filename);
+            return finish({ ok: true, kind: 'fsa', filename: filename, path: id.path || filename });
+        }
         if (id !== null) {
             const outcome = await vrWaitDownload(id, 2500);
             if (!outcome || outcome.state !== 'interrupted') {
