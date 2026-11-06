@@ -120,12 +120,16 @@
         var out = [], i = 0;
         while (i < boxes.length) {
             if (boxes[i].type !== 'moof') { i++; continue; }
+            /* moof 要改 track_ID，必须复制（几 KB，忽略不计） */
             var moof = b.slice(boxes[i].start, boxes[i].end);
             if (newId != null) { retagMoof(moof, newId); }
             var parts = [moof];
             i++;
             while (i < boxes.length && boxes[i].type === 'mdat') {
-                parts.push(b.slice(boxes[i].start, boxes[i].end));
+                /* mdat 占整轨 99% 的字节：用 subarray 视图，不复制。
+                 * 原来 slice() 会把 291MB 的视频再拷一份，加上合并前的两条轨，
+                 * 峰值轻松过 600MB，主线程直接卡住。 */
+                parts.push(b.subarray(boxes[i].start, boxes[i].end));
                 i++;
             }
             out.push({ t: moofTime(moof), parts: parts });
@@ -137,6 +141,18 @@
         var n = 0;
         for (var i = 0; i < parts.length; i++) { n += parts[i].length; }
         return n;
+    }
+
+    /**
+     * 把分片数组直接交给 Blob，不再逐片拼成一个大 Uint8Array。
+     *
+     * 原来 `new Blob(all)` 里 all 是若干 Uint8Array 视图，Blob 构造函数会把它们
+     * 各拷一份；1080p 291MB / 4K 692MB 的视频（双轨合计近 1GB）会长时间卡住
+     * 主线程，用户看到的就是「音频合并卡死」。Blob 接受 Uint8Array 序列时
+     * 由浏览器内部按引用拼接，代价低得多。
+     */
+    function toBlob(parts) {
+        return new Blob(parts, { type: 'video/mp4' });
     }
 
     /**
@@ -226,6 +242,198 @@
         for (var f = 0; f < frags.length; f++) {
             for (var p = 0; p < frags[f].parts.length; p++) { all.push(frags[f].parts[p]); }
         }
+        return toBlob(all);
+    }
+
+    /**
+     * 跨整条轨道扫描顶层 box（只读每个 box 的 8/16 字节头，不读内容）。
+     * mergeBlobs 需要知道每个 moof/mdat 的绝对偏移，但整条轨道几百 MB，
+     * 不能整份读进内存。
+     *
+     * @param {Blob} blob
+     * @returns {Promise<Array<{type,start,end,payload}>>}
+     */
+    async function scanBoxes(blob) {
+        var out = [];
+        var pos = 0;
+        var size = blob.size;
+        /* 一次预读 1MB 当窗口：几百个分片时，逐个 slice(8 字节) 的异步往返
+         * 会把 400MB 的扫描拖到 2 秒以上。窗口迭代把往返次数降一个数量级。 */
+        var WIN = 1024 * 1024;
+        var buf = new Uint8Array(0);
+        var bufStart = -1;
+        async function windowAt(at) {
+            if (bufStart >= 0 && at >= bufStart && at + 16 <= bufStart + buf.length) { return; }
+            bufStart = at;
+            buf = new Uint8Array(await blob.slice(at, Math.min(at + WIN, size)).arrayBuffer());
+        }
+        var local = -1;
+        while (pos + 8 <= size) {
+            if (bufStart < 0 || pos < bufStart || pos + 16 > bufStart + buf.length) {
+                await windowAt(pos);
+                local = 0;
+            } else {
+                local = pos - bufStart;
+            }
+            var head = buf.subarray(local, Math.min(local + 16, buf.length));
+            var boxSize = u32(head, 0);
+            var hdr = 8;
+            if (boxSize === 1) {
+                if (head.length < 16) { break; }
+                boxSize = u32(head, 8) * 4294967296 + u32(head, 12);
+                hdr = 16;
+            } else if (boxSize === 0) {
+                boxSize = size - pos;
+            }
+            if (boxSize < hdr || pos + boxSize > size) { break; }
+            out.push({ type: boxType(head, 4), start: pos, end: pos + boxSize, payload: pos + hdr });
+            pos += boxSize;
+        }
+        return out;
+    }
+
+    /**
+     * 流式合并：内存只保留「当前分片」，不再把两条轨整份读进内存。
+     *
+     * 为什么需要：291MB 的 1080p60 双轨合计约 300MB，长视频的 1080p 能到 1GB+。
+     * 原来的 fetchBytes 会把整条轨道攒成一个大 Uint8Array，加上 Blob 拼接的副本，
+     * 峰值轻松翻倍 —— 这就是「音频合并卡死」的真正原因。
+     *
+     * 做法：
+     *   1. 轨道以 Blob 形式传入（fetch 的 response.blob() 由浏览器托管，不占 JS 堆）；
+     *   2. 用 slice() 只把「moof + 它紧跟的 mdat 包头」读进内存判断结构；
+     *   3. 输出同样按分片写入 writable，逐块释放。
+     *
+     * @param {Blob} vBlob 视频轨
+     * @param {Blob} aBlob 音频轨
+     * @param {object} opt { onProgress(done,total), chunkHint }
+     * @returns {Promise<Blob>} 合并结果（仍是 Blob，交给 save() 流式写盘）
+     */
+    async function mergeBlobs(vBlob, aBlob, opt) {
+        var o = opt || {};
+        var onProgress = typeof o.onProgress === 'function' ? o.onProgress : function () {};
+        /* 先只读文件头：ftyp + moov 都在开头，几十 KB 足够 */
+        var HEAD = Math.min(vBlob.size, 2 * 1024 * 1024);
+        var vHead = new Uint8Array(await vBlob.slice(0, HEAD).arrayBuffer());
+        var aHead = new Uint8Array(await aBlob.slice(0, Math.min(aBlob.size, HEAD)).arrayBuffer());
+        var vb = readBoxes(vHead, 0, vHead.length);
+        var ab = readBoxes(aHead, 0, aHead.length);
+
+        var vMoov = first(vb, 'moov');
+        if (!vMoov || !first(ab, 'moov')) { throw new Error('输入里没有 moov（不是分片 MP4？）'); }
+        if (vMoov.end > HEAD) { throw new Error('moov 超过 2MB，暂不支持（罕见）'); }
+
+        var vKids = readBoxes(vHead, vMoov.payload, vMoov.end);
+        var vTrak = first(vKids, 'trak');
+        if (!vTrak) { throw new Error('moov 里缺 trak'); }
+        var vTkhd = first(readBoxes(vHead, vTrak.payload, vTrak.end), 'tkhd');
+        if (!vTkhd) { throw new Error('trak 里缺 tkhd'); }
+        var vId = u32(vHead, tkhdOffset(vHead, vTkhd.payload));
+
+        var aMoov = first(ab, 'moov');
+        var aKids = readBoxes(aHead, aMoov.payload, aMoov.end);
+        var aTrak = first(aKids, 'trak');
+        if (!aTrak) { throw new Error('音频 moov 里缺 trak'); }
+        var aTkhd = first(readBoxes(aHead, aTrak.payload, aTrak.end), 'tkhd');
+        if (!aTkhd) { throw new Error('音频 trak 里缺 tkhd'); }
+        var aId = u32(aHead, tkhdOffset(aHead, aTkhd.payload));
+        var newAId = (aId === vId) ? (vId === 2 ? 3 : 2) : aId;
+
+        /* 音频 trak 整块（几 KB）：复制后原地改 track_ID */
+        var aTrakBytes = new Uint8Array(await aBlob.slice(aTrak.start, aTrak.end).arrayBuffer());
+        w32(aTrakBytes, (aTkhd.payload - aTrak.start) + (aHead[aTkhd.payload] === 1 ? 20 : 12), newAId);
+
+        var vMvex = first(vKids, 'mvex');
+        var aMvex = first(aKids, 'mvex');
+        var mvexParts = [];
+        if (vMvex) {
+            var vTrex = first(readBoxes(vHead, vMvex.payload, vMvex.end), 'trex');
+            if (vTrex) { mvexParts.push(vHead.slice(vTrex.start, vTrex.end)); }
+        }
+        if (aMvex) {
+            var aTrex = first(readBoxes(aHead, aMvex.payload, aMvex.end), 'trex');
+            if (aTrex) {
+                var trex = new Uint8Array(await aBlob.slice(aTrex.start, aTrex.end).arrayBuffer());
+                w32(trex, 8 + 4, newAId);
+                mvexParts.push(trex);
+            }
+        }
+        var newMvex = mvexParts.length ? makeBox('mvex', mvexParts) : null;
+
+        var parts = [], putAudio = false, putMvex = false;
+        for (var i = 0; i < vKids.length; i++) {
+            var k = vKids[i];
+            if (k.type === 'mvex') {
+                if (newMvex) { parts.push(newMvex); putMvex = true; }
+                continue;
+            }
+            if (k.type === 'trak') {
+                parts.push(vHead.slice(k.start, k.end));
+                if (!putAudio) { parts.push(aTrakBytes); putAudio = true; }
+                continue;
+            }
+            if (k.type === 'mvhd') {
+                var mv = vHead.slice(k.start, k.end);
+                w32(mv, mv.length - 4, Math.max(vId, newAId) + 1);
+                parts.push(mv);
+                continue;
+            }
+            parts.push(vHead.slice(k.start, k.end));
+        }
+        if (!putAudio) { parts.push(aTrakBytes); }
+        if (newMvex && !putMvex) { parts.push(newMvex); }
+        var moov = makeBox('moov', parts);
+
+        var ftypBox = first(vb, 'ftyp');
+        var ftyp = ftypBox ? vHead.slice(ftypBox.start, ftypBox.end) : makeBox('ftyp', []);
+
+        /* 片段：只读每个 moof 的头（含 tfdt），mdat 用 Blob 切片引用，不进 JS 堆 */
+        var CHUNK = o.chunkHint || (4 * 1024 * 1024);
+        async function fragsOf(blob, head, boxes, newId) {
+            var out = [];
+            for (var bi = 0; bi < boxes.length; bi++) {
+                if (boxes[bi].type !== 'moof') { continue; }
+                var moofStart = boxes[bi].start, moofEnd = boxes[bi].end;
+                var moofBytes;
+                if (moofEnd <= head.length) {
+                    moofBytes = head.slice(moofStart, moofEnd);
+                } else {
+                    moofBytes = new Uint8Array(await blob.slice(moofStart, moofEnd).arrayBuffer());
+                }
+                if (newId != null) { retagMoof(moofBytes, newId); }
+                var pieces = [moofBytes];
+                /* mdat 连续段：按 Blob 引用，不读内容 */
+                var j = bi + 1;
+                var mdatStart = -1, mdatEnd = -1;
+                while (j < boxes.length && boxes[j].type === 'mdat') {
+                    if (mdatStart < 0) { mdatStart = boxes[j].start; }
+                    mdatEnd = boxes[j].end;
+                    j++;
+                }
+                if (mdatStart >= 0) { pieces.push(blob.slice(mdatStart, mdatEnd)); }
+                out.push({ t: moofTime(moofBytes), parts: pieces });
+                /* j 已经指向下一个 moof（或末尾）：把循环变量推到它前一位，
+                 * 让 for 的 bi++ 正好落在下一个 moof 上。写 bi = j - 1 会漏掉
+                 * 紧跟在 mdat 后的那一个 moof，输出直接少一大半数据。 */
+                bi = j - 1;
+            }
+            return out;
+        }
+
+        /* 注意：vb/ab 只是文件头 2MB 里的 box，后面几十上百个分片不在其中。
+         * 必须跨整条轨道重新扫描（只读 box 头，不读 mdat 内容）。 */
+        var vAll = await scanBoxes(vBlob);
+        var aAll = await scanBoxes(aBlob);
+        var vFrags = await fragsOf(vBlob, vHead, vAll, null);
+        var aFrags = await fragsOf(aBlob, aHead, aAll, newAId);
+        var frags = vFrags.concat(aFrags);
+        frags.sort(function (x, y) { return x.t - y.t; });
+
+        var all = [ftyp, moov];
+        for (var f = 0; f < frags.length; f++) {
+            for (var p = 0; p < frags[f].parts.length; p++) { all.push(frags[f].parts[p]); }
+        }
+        onProgress(1, 1);
         return new Blob(all, { type: 'video/mp4' });
     }
 
@@ -240,5 +448,5 @@
         return info;
     }
 
-    global.VRFmp4 = { merge: merge, inspect: inspect, _readBoxes: readBoxes, _collectFragments: collectFragments };
+    global.VRFmp4 = { merge: merge, mergeBlobs: mergeBlobs, inspect: inspect, _readBoxes: readBoxes, _collectFragments: collectFragments };
 })(typeof self !== 'undefined' ? self : this);

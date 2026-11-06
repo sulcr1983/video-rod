@@ -2832,11 +2832,20 @@ function vrXhsScanInPage(noteId) {
         const n = st && st.note;
         const map = n && n.noteDetailMap;
         if (!map) { return { ok: false, reason: 'no-state' }; }
+        /* 详情页的 map 有时以 noteId 为键、有时直接是「第一个」；
+         * 更常见的是 id 对上了但 note 还没填（异步加载）。逐个找有 note 的项，
+         * 别再因为 key 不匹配就返回空 note（表现为「识别到 0 个媒体」）。 */
         let id = noteId || n.currentNoteId || Object.keys(map)[0];
-        let d = map[id];
-        if (!d) { d = map[Object.keys(map)[0]]; }
-        const note = d && d.note;
+        let note = (map[id] && map[id].note) || null;
+        if (!note) {
+            const keys = Object.keys(map);
+            for (let i = 0; i < keys.length; i++) {
+                const cand = map[keys[i]] && map[keys[i]].note;
+                if (cand) { id = keys[i]; note = cand; break; }
+            }
+        }
         if (!note) { return { ok: false, reason: 'no-note' }; }
+        const d = map[id];
 
         const u = note.user || {};
         const author = u.nickname || u.nickName || '小红书用户';
@@ -2875,7 +2884,11 @@ function vrXhsScanInPage(noteId) {
 
         const vids = new Map();
         function addVideo(v, idx) {
-            const url = xhsHttps((v && (v.master_url || v.masterUrl || v.url)) || '');
+            /* 字段名在 mediaV2 / media.stream 两代结构里各不相同：
+             * master_url / masterUrl / url / backupUrls[0]。少认一个就整条视频丢失。 */
+            const raw = (v && (v.master_url || v.masterUrl || v.url)) ||
+                (v && Array.isArray(v.backupUrls) && v.backupUrls[0]) || '';
+            const url = xhsHttps(raw);
             if (!url || vids.has(url)) { return; }
             vids.set(url, {
                 kind: 'video', url: url, ext: 'mp4', index: idx || 0,
