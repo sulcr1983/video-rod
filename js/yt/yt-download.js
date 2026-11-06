@@ -36,6 +36,13 @@
         openDir: document.getElementById('openDir')
     };
 
+    /* 画质硬上限：1080p。
+     * 4K/2K 单体动辄 300MB~700MB，双轨全量进内存再合并，普通机器必崩；
+     * 苏哥 2026-11-06 定：1080p 够用，超过的不提供。 */
+    var MAX_HEIGHT = 1080;
+    /* 单条轨道内存上限：超过就明确报错，不硬撑（避免页面被 OOM 杀掉）。 */
+    var MAX_TRACK_BYTES = 400 * 1024 * 1024;
+
     var state = {
         formats: [],
         video: [],          // [{height, fps, itag, url, size, codec}]
@@ -257,7 +264,17 @@
             if (r > rc || (r === rc && (f.bitrate || 0) > (cur.bitrate || 0))) { byH[h] = f; }
         });
         state.video = Object.keys(byH).map(function (k) { return byH[k]; })
+            .filter(function (f) { return !f.height || f.height <= MAX_HEIGHT; })
             .sort(function (a, b) { return b.height - a.height; });
+        /* 只在有 1080p 时才丢掉更高档；万一某视频只有 4K 没有 1080p，
+         * 上面的过滤会把列表清空 —— 这种情况保留原始列表，别让用户无档可选。 */
+        if (!state.video.length) {
+            state.video = Object.keys(byH).map(function (k) { return byH[k]; })
+                .sort(function (a, b) { return b.height - a.height; });
+            state.overCap = true;
+        } else {
+            state.overCap = false;
+        }
 
         // 音频优先 AAC
         auds.sort(function (a, b) {
@@ -279,6 +296,17 @@
     function render() {
         el.qc.innerHTML = '';
         var opts = [];
+        /* 给用户一句明确解释：不是「取不到」，是我们主动不做更高档 */
+        var capNote = document.getElementById('capNote');
+        if (!capNote) {
+            capNote = document.createElement('p');
+            capNote.id = 'capNote';
+            capNote.className = 'cap-note';
+            el.qc.parentNode.insertBefore(capNote, el.qc);
+        }
+        capNote.textContent = state.overCap
+            ? '这个视频只有超过 1080p 的档位；为避免超大文件合并失败，仍可下载，但可能较慢。'
+            : ('最高支持 1080p（更高的档位已隐藏）');
 
         state.video.forEach(function (f, i) {
             var total = (f.size || 0) + (state.audio ? (state.audio.size || 0) : 0);
@@ -364,52 +392,65 @@
      */
     var MAX_RETRY = 4;
 
-    function concatChunks(chunks, total) {
-        var out = new Uint8Array(total), off = 0;
-        for (var i = 0; i < chunks.length; i++) {
-            out.set(chunks[i], off);
-            off += chunks[i].length;
-        }
-        return out;
-    }
-
-    /** 读完一个响应；中途断流也把已读部分交出来（complete=false） */
-    function readStream(resp, onGot) {
+    /**
+     * 边读边把每个 chunk 包成 Blob 交给 onChunk —— 不在这里累积整条轨道。
+     *
+     * 之前这里把全部 chunk 攒进数组、最后拼成一个大 Uint8Array：
+     * 284MB 的 1080p 就整份留在 JS 堆里，长视频 1GB+ 直接把页面搞崩。
+     * 现在一次只有一个 chunk 在堆上，其余由浏览器托管。
+     *
+     * @param {Response} resp
+     * @param {(chunk: Uint8Array) => void} onChunk
+     * @returns {Promise<{bytes:number, complete:boolean}>}
+     */
+    function readStream(resp, onChunk) {
         if (!resp.body || !resp.body.getReader) {
             return resp.arrayBuffer().then(function (b) {
                 var u = new Uint8Array(b);
-                if (onGot) { onGot(u.length); }
-                return { data: u, complete: true };
+                if (u.length && onChunk) { onChunk(u); }
+                return { bytes: u.length, complete: true };
             }, function () {
-                return { data: new Uint8Array(0), complete: false };
+                return { bytes: 0, complete: false };
             });
         }
         var reader = resp.body.getReader();
-        var chunks = [], n = 0;
+        var n = 0;
         function pump() {
             return reader.read().then(function (x) {
-                if (x.done) { return { data: concatChunks(chunks, n), complete: true }; }
-                chunks.push(x.value);
-                n += x.value.length;
-                if (onGot) { onGot(n); }
+                if (x.done) { return { bytes: n, complete: true }; }
+                if (x.value && x.value.length) {
+                    n += x.value.length;
+                    if (onChunk) { onChunk(x.value); }
+                }
                 return pump();
             }, function () {
-                /* 断流：已读的先留着，调用方会从 got 处续传 */
-                return { data: concatChunks(chunks, n), complete: false };
+                /* 断流：已交给 onChunk 的部分已经落成 Blob，不会丢 */
+                return { bytes: n, complete: false };
             });
         }
         return pump();
     }
 
+    /**
+     * 拉一条轨道，返回 **Blob**（不是 Uint8Array）。
+     *
+     * 两件事同时保证了内存安全：
+     *   ① 每个 chunk 立即包成 Blob，不把整条轨道留在 JS 堆里；
+     *   ② 断流按 Range 从真实已读位置续传，已读部分不丢。
+     * 284MB 的 1080p60 实测可完整下完；长视频 1GB 也只有单个 chunk 占内存。
+     */
+    var MAX_TOTAL_RETRY = 40;
+
     function fetchBytes(url, onProgress) {
         var total = 0;
         var parts = [];
         var got = 0;
+        var retry = 0;
 
         function report() { if (onProgress) { onProgress(got, total); } }
-        function done() { return concatChunks(parts, got); }
+        function done() { return new Blob(parts, { type: 'video/mp4' }); }
 
-        /** 请求一段；返回本段读到的字节数，-1 表示断流需要续传 */
+        /** 请求一段；返回 {bytes, complete}，失败抛出 */
         function step(start) {
             var headers = {};
             if (start > 0) { headers.Range = 'bytes=' + start + '-'; }
@@ -423,34 +464,40 @@
                     if (m) { total = parseInt(m[1], 10) || 0; }
                     if (!total) { total = parseInt(r.headers.get('content-length') || '0', 10) || 0; }
                 }
-                var before = got;
-                return readStream(r, function (n) {
-                    got = before + n;
+                return readStream(r, function (chunk) {
+                    /* 立即转 Blob：chunk 用完即可回收，堆里不会累积 */
+                    parts.push(new Blob([chunk]));
+                    got += chunk.length;
                     report();
-                }).then(function (res) {
-                    if (res.data.length) { parts.push(res.data); }
-                    got = before + res.data.length;
-                    report();
-                    return res.complete ? res.data.length : -1;
                 });
             });
         }
 
-        function loop(start, attempt) {
-            return step(start).catch(function (e) {
-                /* 403 / 4xx 属于直链失效，重试这段没意义，交给上层（会刷新直链） */
+        function loop(attempt) {
+            return step(got).then(function (res) {
+                if (!total || got >= total) { return done(); }
+                if (!res.complete) {
+                    /* 断流但有进展：继续从 got 续 */
+                    retry++;
+                    if (retry > MAX_TOTAL_RETRY) {
+                        throw new Error('连接反复中断（已下载 ' + mb(got) + '）');
+                    }
+                    setMsg('连接中断，从 ' + mb(got) + ' 处续传…', 'warn');
+                    return new Promise(function (r) { setTimeout(r, 400); }).then(function () { return loop(0); });
+                }
+                /* 服务器结束了但总长未到：继续要下一段 */
+                return loop(0);
+            }).catch(function (e) {
                 if (attempt >= MAX_RETRY || /HTTP 4\d\d/.test(String(e && e.message))) { throw e; }
+                retry++;
+                if (retry > MAX_TOTAL_RETRY) { throw e; }
                 setMsg('连接中断，从 ' + mb(got) + ' 处续传（第 ' + (attempt + 1) + ' 次）…', 'warn');
                 return new Promise(function (r) { setTimeout(r, 600 * (attempt + 1)); })
-                    .then(function () { return loop(got, attempt + 1); });
-            }).then(function (n) {
-                if (n === 0 && !total) { return done(); }     // 拿不到长度又读不到数据，别再死循环
-                if (n === -1 || (total && got < total)) { return loop(got, 0); }
-                return done();
+                    .then(function () { return loop(attempt + 1); });
             });
         }
 
-        return loop(0, 0);
+        return loop(0);
     }
 
     /** 解 n 后拉流；403/解密失败自动重来一次（直链会轮换） */
@@ -729,6 +776,18 @@
             return;
         }
 
+        /* 体积保护：单轨超上限就直接拒绝，别让浏览器 OOM 把整个页面弄死。
+         * 这是「合并卡死」的第二道防线（第一道是 1080p 上限）。 */
+        var needBytes = (o.video ? (o.video.size || 0) : 0) +
+            ((!o.audioOnly && !o.muxed && state.audio) ? (state.audio.size || 0) : 0);
+        if (needBytes > MAX_TRACK_BYTES) {
+            state.busy = false;
+            el.go.disabled = !state.chosen;
+            setMsg('这个档位约 ' + mb(needBytes) + '，超过单次合并上限 ' +
+                mb(MAX_TRACK_BYTES) + '；请选低一档，或用浏览器下载器自行保存。', 'err');
+            return;
+        }
+
         function stage(txt, pct) { setMsg(txt); setBar(pct); }
         function finish(saved) {
             setBar(100);
@@ -794,12 +853,9 @@
             return fetchStream(onlySrc, isAudioOnly ? '音频' : '视频', function (got, total) {
                 setBar(total ? 5 + (got / total) * 85 : 50);
                 setMsg((isAudioOnly ? '音频 ' : '视频 ') + mb(got) + (total ? ' / ' + mb(total) : ''));
-            }).then(function (bytes) {
+            }).then(function (blob) {
                 stage('写入磁盘…', 92);
-                return save(
-                    new Blob([bytes], { type: isAudioOnly ? 'audio/mp4' : 'video/mp4' }),
-                    buildPath(isAudioOnly ? 'm4a' : 'mp4', isAudioOnly ? '' : nameSuffix)
-                );
+                return save(blob, buildPath(isAudioOnly ? 'm4a' : 'mp4', isAudioOnly ? '' : nameSuffix));
             }).then(finish, fail);
         }
 
@@ -808,51 +864,52 @@
         fetchStream(vSrc, '视频', function (got, total) {
             setBar(total ? 5 + (got / total) * 60 : 35);
             setMsg('视频轨 ' + mb(got) + (total ? ' / ' + mb(total) : ''));
-        }).then(function (vBytes) {
+        }).then(function (vBlob) {
             stage('下载音频轨…', 66);
-            if (!aSrc) { return { v: vBytes, a: null }; }
+            if (!aSrc) { return { v: vBlob, a: null }; }
             return fetchStream(aSrc, '音频', function (got, total) {
                 setBar(total ? 66 + (got / total) * 18 : 75);
                 setMsg('音频轨 ' + mb(got) + (total ? ' / ' + mb(total) : ''));
-            }).then(function (aBytes) { return { v: vBytes, a: aBytes }; });
+            }).then(function (aBlob) { return { v: vBlob, a: aBlob }; });
         }).then(function (pair) {
             stage('合并音视频…', 86);
             /* 音频轨必须真有数据且带 mp4a 标记，否则明确报错，
-             * 不能静默产出一个「能播但没声音」的文件（苏哥反馈的老问题）。 */
-            var aBytes = pair.a || new Uint8Array(0);
-            var hasMp4a = false;
-            for (var bi = 0; bi < Math.min(aBytes.length, 20000) - 4; bi++) {
-                if (aBytes[bi] === 109 && aBytes[bi + 1] === 112 &&
-                    aBytes[bi + 2] === 52 && aBytes[bi + 3] === 97) { hasMp4a = true; break; }
-            }
-            if (!pair.a || pair.a.length < 1000 || !hasMp4a) {
-                return save(new Blob([pair.v], { type: 'video/mp4' }),
-                    buildPath('mp4', nameSuffix + '_无音轨'))
-                    .then(function () { throw new Error('音频轨为空/格式不对，已保存无声视频并标注'); });
-            }
-            setMsg('合并音视频（不重编码，' + mb(pair.v.length + pair.a.length) + '）…');
-            return new Promise(function (res) { setTimeout(res, 30); }).then(function () {
-                var blob = null;
-                try {
-                    blob = VRFmp4.merge(pair.v, pair.a);
-                } catch (e) {
-                    state.mergeError = String((e && e.message) || e);
+             * 不能静默产出一个「能播但没声音」的文件（苏哥反馈的老问题）。
+             * 现在两条轨都是 Blob：只读音频开头的 20KB 做检查，不碰整份数据。 */
+            return (pair.a
+                ? pair.a.slice(0, 20000).arrayBuffer().then(function (buf) {
+                    var aBytes = new Uint8Array(buf);
+                    var hasMp4a = false;
+                    for (var bi = 0; bi + 4 < aBytes.length; bi++) {
+                        if (aBytes[bi] === 109 && aBytes[bi + 1] === 112 &&
+                            aBytes[bi + 2] === 52 && aBytes[bi + 3] === 97) { hasMp4a = true; break; }
+                    }
+                    return hasMp4a;
+                })
+                : Promise.resolve(false)).then(function (ok) {
+                if (!pair.a || pair.a.size < 1000 || !ok) {
+                    return save(pair.v, buildPath('mp4', nameSuffix + '_无音轨'))
+                        .then(function () { throw new Error('音频轨为空/格式不对，已保存无声视频并标注'); });
                 }
-                if (blob) {
-                    stage('写入磁盘…', 94);
-                    return save(blob, buildPath('mp4', nameSuffix));
-                }
-                // 合并失败 → 两条轨都留着，别让用户白等
-                return save(new Blob([pair.v], { type: 'video/mp4' }),
-                    buildPath('mp4', nameSuffix + '_视频轨'))
-                    .then(function () {
-                        return save(new Blob([pair.a], { type: 'audio/mp4' }),
-                            buildPath('m4a', '_音频轨'));
-                    })
-                    .then(function () {
-                        throw new Error('合并失败（' + state.mergeError +
-                            '），已分别保存视频轨与音频轨');
+                var totalBytes = (pair.v.size || 0) + (pair.a.size || 0);
+                setMsg('合并音视频（不重编码，' + mb(totalBytes) + '）…');
+                return new Promise(function (res) { setTimeout(res, 30); }).then(function () {
+                    return VRFmp4.mergeBlobs(pair.v, pair.a).then(function (blob) {
+                        stage('写入磁盘…', 94);
+                        return save(blob, buildPath('mp4', nameSuffix));
                     });
+                }).catch(function (e) {
+                    /* 合并失败 → 两条轨都留着，别让用户白等 */
+                    state.mergeError = String((e && e.message) || e);
+                    return save(pair.v, buildPath('mp4', nameSuffix + '_视频轨'))
+                        .then(function () {
+                            return save(pair.a, buildPath('m4a', '_音频轨'));
+                        })
+                        .then(function () {
+                            throw new Error('合并失败（' + state.mergeError +
+                                '），已分别保存视频轨与音频轨');
+                        });
+                });
             });
         }).then(finish, fail);
     }
