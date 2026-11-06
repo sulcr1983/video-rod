@@ -147,9 +147,12 @@
     function filtered() {
         return FILES.filter(function (f) {
             if (S.fav) {
-                var fav = null;
-                for (var i = 0; i < FAVS.length; i++) { if (FAVS[i].id === S.fav) { fav = FAVS[i]; break; } }
-                if (fav && !favHas(fav, f)) { return false; }
+                var fav = findFav(S.fav);
+                /* 找不到收藏夹时**不能放行**：原实现 `if (fav && ...)` 在 fav 为 null
+                 * 时直接跳过筛选，结果「已加星标」这种虚拟夹（不在 FAVS 里）
+                 * 会显示全部素材（2026-11-06 用户反馈：筛选出来根本不是收藏的东西）。 */
+                if (!fav) { return false; }
+                if (!favHas(fav, f)) { return false; }
             }
             if (S.type !== 'all' && f.kind !== S.type) { return false; }
             if (S.plat !== 'all' && f.plat !== S.plat) { return false; }
@@ -1167,6 +1170,16 @@
     function saveFavs() {
         try { root.VRDB.setSetting('vrFavs', FAVS); } catch (e) { /* 忽略 */ }
     }
+    /** 按 id 找收藏夹；`fav-star` 是虚拟的「已加星标」夹，不在 FAVS 里。 */
+    function findFav(id) {
+        if (!id) { return null; }
+        if (id === 'fav-star') { return { id: 'fav-star', name: '已加星标', sys: 'star' }; }
+        for (var i = 0; i < FAVS.length; i++) {
+            if (FAVS[i].id === id) { return FAVS[i]; }
+        }
+        return null;
+    }
+
     function favHas(fav, f) {
         if (!fav) { return false; }
         if (fav.sys === 'star') { return !!f.starred; }
@@ -1185,8 +1198,18 @@
                 '<span class="label">' + esc(fav.name) + '</span>' +
                 '<span class="count">' + n + '</span></button>';
         }).join('');
+        /* 底部「收藏夹」按钮的计数 = 收藏夹里的条目数。
+         * 原来这里写的是「星标数」，按钮文字却是「收藏夹」，
+         * 用户看到的数字和点进去的内容对不上（2026-11-06 反馈）。 */
         var cnt = $('#favSideCnt');
-        if (cnt) { cnt.textContent = FILES.filter(function (f) { return f.starred; }).length; }
+        if (cnt) {
+            var seen = {};
+            FAVS.forEach(function (fav) {
+                if (fav.sys === 'star') { return; }
+                (fav.ids || []).forEach(function (id) { seen[id] = 1; });
+            });
+            cnt.textContent = Object.keys(seen).length;
+        }
     }
     function oneFav() {
         var fav = FAVS.filter(function (f) { return f.sys !== 'star'; })[0];
@@ -1612,13 +1635,17 @@
             toast('已新建收藏夹「' + n + '」');
         });
         on('favSaveFilter', function () {
+            /* 必须用 filtered()（当前筛选结果），不是 FILES（全部）。
+             * 原实现把整个库都存进「智能夹」，等于没筛（2026-11-06 反馈）。 */
+            var rows = sorted(filtered());
+            if (!rows.length) { toast('当前筛选没有素材'); return; }
             var name = '筛选 ' + new Date().toLocaleDateString();
             FAVS.push({
                 id: 'f' + Date.now(), name: name,
-                ids: FILES.map(function (f) { return f.id; })
+                ids: rows.map(function (f) { return f.id; })
             });
             saveFavs(); renderFavs(); renderFavDrawer();
-            toast('已把当前筛选存成收藏夹「' + name + '」');
+            toast('已把当前 ' + rows.length + ' 项存成收藏夹「' + name + '」');
         });
         on('favPopNew', function () {
             var n = window.prompt('新收藏夹名字', '新收藏夹');
@@ -1634,8 +1661,7 @@
         });
 
         function curFav() {
-            var arr = FAVS.filter(function (x) { return x.id === S.fav; });
-            return arr[0] || null;
+            return findFav(S.fav);
         }
         on('favRename', function () {
             var fav = curFav();
