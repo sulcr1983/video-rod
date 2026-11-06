@@ -80,3 +80,16 @@ node tools/test-naming.js
 - [ ] FSA 授权态下移动/删除实机
 - [ ] XHS 面板 UI 点击 + 原型同步
 - [ ] 性能基准
+
+## 7. 最终验证（2026-11-06 08:53）
+
+- `python tools/e2e-all.py --isolated --only stage-rewrite,e2e-buttons --timeout 180` → **2/2 套件通过**：`stage-rewrite 19/19`、`e2e-buttons 27/27`。
+- `python tools/library-integrity-check.py --port 9480` → **8/8 PASS，37 条**。
+- 详情页收藏/星标：实测收藏可在“已收藏/收藏”间切换，星标可在“已星标/星标”间切换；收藏夹数据库只剩一条「收藏」。
+- 左侧平台筛选：点击 B站节点后右侧只剩 1 张，顶部 B站 chip 同步 active。
+- 网格：当前 6 列（列宽约 196px），1920 宽视口 7 列；缩略图 16:10。
+- 小红书 `vrXhsAutoQueue`：`files=5, skipped=0, errors=0`。
+- YouTube 自动页：后台 `active:false`；下载完成后自动关闭；同目标路径已存在时跳过重复。
+- 本轮最终提交：`029cfde fix(youtube/library): 自动下载、收藏星标与详情交互`（未 push）。
+
+仍建议下一会话补：FSA 授权态下详情移动/删除实机、XHS 面板 UI 实际点击、原型同步收藏/星标与 7 列网格、性能基准。
