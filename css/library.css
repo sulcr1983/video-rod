@@ -1833,3 +1833,23 @@ h1 {
 .mv-new{display:flex;gap:8px;margin-top:10px}
 .mv-new.hidden{display:none}
 .mv-new .md-input{flex:1;margin:0}
+
+/* ---------- 卡片右键菜单 ---------- */
+.vr-ctx{
+  position:fixed;z-index:120;min-width:196px;padding:6px;
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:var(--sh-3);
+}
+.vr-ctx[hidden]{display:none}
+.vr-ctx .vr-ctx-item{
+  display:flex;align-items:center;gap:9px;width:100%;
+  padding:8px 10px;border-radius:var(--r-sm);
+  color:var(--ink-2);font-size:12.5px;text-align:left;
+  transition:background .1s,color .1s;
+}
+.vr-ctx .vr-ctx-item:hover,
+.vr-ctx .vr-ctx-item:focus-visible{background:var(--surface-3);color:var(--ink);outline:none}
+.vr-ctx .vr-ctx-item.danger{color:var(--danger)}
+.vr-ctx .vr-ctx-item.danger:hover{background:var(--danger-soft)}
+.vr-ctx .vr-ctx-item .i{color:inherit;opacity:.85}
+.vr-ctx .vr-ctx-sep{height:1px;margin:5px 8px;background:var(--line-2)}

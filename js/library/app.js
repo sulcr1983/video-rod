@@ -307,16 +307,109 @@
     }
 
     /* ---------- 主渲染 ---------- */
-    var PAGE = 120;          // F7 分级加载：首屏只铺这么多，滚动再追加
+    var PAGE = 120;          // 小库：首屏铺这么多，滚动再追加
+    /* 大库阈值：超过就转窗口化渲染（只保留可视区附近的行），
+     * 否则 5 万条会堆出 60 万 DOM 节点、布局 3 秒以上。 */
+    var WIN_THRESHOLD = 300;
+    var WIN_OVERSCAN = 2;    // 可视区上下各多渲染 2 行，滚动不闪白
+
+    var win = {
+        on: false,
+        cols: 4,
+        rowH: 0,
+        start: 0,
+        end: 0,
+        totalRows: 0
+    };
+
+    /** 当前 grid 的实际列数（读 computedStyle，兼容响应式断点） */
+    function gridCols(grid) {
+        var tpl = String(getComputedStyle(grid).gridTemplateColumns || '');
+        var n = tpl.split(' ').filter(Boolean).length;
+        return n > 0 ? n : 1;
+    }
+
+    /** 测一行的高度：渲染完第一行后量卡片外框 */
+    function measureRowH(grid) {
+        var first = grid.querySelector('.card');
+        if (!first) { return 0; }
+        var r = first.getBoundingClientRect();
+        if (!r.height) { return 0; }
+        var gap = parseFloat(getComputedStyle(grid).rowGap || '0') || 0;
+        return r.height + gap;
+    }
+
+    /** 窗口化：只渲染 [startRow, endRow) 的行，用 padding 撑起总高度 */
+    function paintWindow() {
+        var grid = $('#grid');
+        var rows = S.rows || [];
+        if (!grid || !rows.length || !win.on) { return; }
+        var total = win.totalRows;
+        var start = Math.max(0, win.start);
+        var end = Math.min(total, win.end);
+        var from = start * win.cols;
+        var to = Math.min(rows.length, end * win.cols);
+        grid.innerHTML = rows.slice(from, to).map(card).join('');
+        /* padding 用 px 撑高度：5 万条×12 行会到 160 万 px，超出 Chrome 的
+         * 布局可靠范围（约 33M px 才硬上限，但取整误差会累积成滚动跳动）。
+         * 这里按整像素取整并夹住，滚动位置靠 window 重算，不依赖 padding 精确。 */
+        var PAD_MAX = 2000000;
+        var pt = Math.min(PAD_MAX, Math.round(start * win.rowH));
+        var pb = Math.min(PAD_MAX, Math.round(Math.max(0, (total - end)) * win.rowH));
+        grid.style.paddingTop = pt + 'px';
+        grid.style.paddingBottom = pb + 'px';
+        observeThumbs();
+    }
+
+    /** 根据滚动位置重算窗口；滚动时只在跨行时重绘 */
+    function updateWindow(force) {
+        if (!win.on) { return; }
+        var grid = $('#grid');
+        if (!grid) { return; }
+        var top = grid.getBoundingClientRect().top;
+        var viewH = window.innerHeight || 800;
+        var firstRow = Math.floor((-top) / win.rowH);
+        var visibleRows = Math.ceil(viewH / win.rowH) + 1;
+        var start = Math.max(0, firstRow - WIN_OVERSCAN);
+        var end = Math.min(win.totalRows, firstRow + visibleRows + WIN_OVERSCAN);
+        if (!force && start === win.start && end === win.end) { return; }
+        win.start = start;
+        win.end = end;
+        paintWindow();
+    }
 
     function render() {
         var rows = sorted(filtered());
         S.list = rows;
         S.rows = rows;
-        S.shown = Math.min(PAGE, rows.length);
         var grid = $('#grid');
         grid.className = 'grid' + (S.view === 'list' ? ' list' : '') + (S.select ? ' selecting' : '');
-        grid.innerHTML = rows.slice(0, S.shown).map(card).join('');
+
+        /* 小库：保持原路径（一次铺满，滚动追加），行为与以前完全一致 */
+        if (rows.length <= WIN_THRESHOLD) {
+            win.on = false;
+            grid.style.paddingTop = '';
+            grid.style.paddingBottom = '';
+            S.shown = Math.min(PAGE, rows.length);
+            grid.innerHTML = rows.slice(0, S.shown).map(card).join('');
+        } else {
+            /* 大库：先量列数/行高，再按窗口画 */
+            win.on = true;
+            win.cols = gridCols(grid);
+            win.totalRows = Math.ceil(rows.length / win.cols);
+            grid.style.paddingTop = '0px';
+            grid.style.paddingBottom = '0px';
+            if (!win.rowH) { win.rowH = 260; }       // 首次给个估值，画完立刻校正
+            win.start = 0;
+            win.end = Math.min(win.totalRows, Math.ceil((window.innerHeight || 800) / win.rowH) + WIN_OVERSCAN);
+            paintWindow();
+            var measured = measureRowH(grid);
+            if (measured > 0 && Math.abs(measured - win.rowH) > 2) {
+                win.rowH = measured;
+                updateWindow(true);
+            }
+            S.shown = rows.length;
+        }
         var lh = $('#listhead');
         if (lh) { lh.classList.toggle('on', S.view === 'list'); }
         grid.classList.toggle('hidden', rows.length === 0);
@@ -364,8 +457,20 @@
     }
 
     window.addEventListener('scroll', function () {
+        if (win.on) { updateWindow(); return; }
         if (nearBottom()) { appendMore(); }
     }, { passive: true });
+
+    window.addEventListener('resize', function () {
+        if (!win.on) { return; }
+        var grid = $('#grid');
+        if (!grid) { return; }
+        win.cols = gridCols(grid);
+        win.totalRows = Math.ceil((S.rows || []).length / win.cols);
+        var measured = measureRowH(grid);
+        if (measured > 0) { win.rowH = measured; }
+        updateWindow(true);
+    });
 
     /* ---------- F5 去重统计：逻辑大小 vs 物理占用 ---------- */
     function renderDedupStat(rows) {
@@ -927,6 +1032,51 @@
         toast('预览器 R5 接入中');
     }
 
+    /* ---------- 卡片右键菜单（VRCtxMenu 接线） ---------- */
+    /* 复用已有实现：重命名 openRename / 移动 VRMovePicker / 删除确认 ask
+     * 都在 bindMissing 的闭包里，所以这里只注册回调，具体函数在 bindMissing 内注入。 */
+    var ctxHooks = null;
+    function initCtxMenu(hooks) {
+        ctxHooks = hooks;
+        if (!root.VRCtxMenu) { return; }
+        root.VRCtxMenu.init({
+            toast: toast,
+            find: function (id) { return FILES.find(function (f) { return f.id === id; }) || null; },
+            list: function () { return S.list; },
+            preview: function (f) { openPreview(f); },
+            rename: function (f) { if (ctxHooks && ctxHooks.rename) { ctxHooks.rename(f); } },
+            move: async function (f) {
+                if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
+                if (typeof ensureWriteAccess === 'function' && !(await ensureWriteAccess())) { return; }
+                root.VRMovePicker.open([f], moveHooks());
+            },
+            reveal: function (f) { if (ctxHooks && ctxHooks.reveal) { ctxHooks.reveal(f); } },
+            fav: async function (f) {
+                if (hasFavorite(f.relPath)) {
+                    var fav = FAVS.filter(function (x) { return x.sys !== 'star'; })[0];
+                    if (fav) {
+                        fav.ids = (fav.ids || []).filter(function (id) { return id !== f.relPath; });
+                        saveFavs(); renderFavs(); render();
+                        toast('已取消收藏');
+                    }
+                    return;
+                }
+                addToDefault(f.relPath);
+                renderFavs(); render();
+                toast('已加入收藏');
+            },
+            star: async function (f) {
+                if (root.VRFav && typeof root.VRFav.toggleStar === 'function') {
+                    var next = await root.VRFav.toggleStar(f.relPath);
+                    f.starred = !!next;
+                    render();
+                    toast(next ? '已加星标' : '已取消星标');
+                }
+            },
+            remove: function (f) { if (ctxHooks && ctxHooks.remove) { ctxHooks.remove(f); } }
+        });
+    }
+
     /* ---------- 收藏夹（R6：真实持久化，收藏夹只记 id 不动物理文件） ---------- */
     var FAVS = [];
 
@@ -1304,6 +1454,45 @@
             if (!(await ensureWriteAccess())) { return; }
             root.VRMovePicker.open([f], moveHooks());
         });
+        /* 右键菜单回调：复用这一层已有的 openRename / ask / 定位实现 */
+        if (typeof initCtxMenu === 'function') {
+            initCtxMenu({
+                rename: function (f) { openRename(f); },
+                reveal: function (f) {
+                    if (!f || !f.absPath) { toast('这条没有本地路径，无法定位'); return; }
+                    if (f.downloadId != null && chrome.downloads && chrome.downloads.show) {
+                        try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
+                    }
+                    var BS = String.fromCharCode(92);
+                    var folder = String(f.absPath).replace(new RegExp('[' + BS + '/][^' + BS + '/]+$'), '');
+                    var url = '';
+                    try {
+                        url = root.VRPath && root.VRPath.toFileUrl
+                            ? root.VRPath.toFileUrl(folder)
+                            : ('file:///' + folder.split(String.fromCharCode(92)).join('/'));
+                        if (url.charAt(url.length - 1) !== '/') { url += '/'; }
+                    } catch (e) { toast('路径无法打开'); return; }
+                    try {
+                        if (chrome.tabs && chrome.tabs.create) { chrome.tabs.create({ url: url }); }
+                        else { window.open(url, '_blank'); }
+                    } catch (e) { /* 忽略 */ }
+                },
+                remove: async function (f) {
+                    if (!f) { return; }
+                    if (typeof ensureWriteAccess === 'function' && !(await ensureWriteAccess())) { return; }
+                    ask('把「' + (f._title || f.title || f.fileName) + '」移入回收站？文件还能恢复。', async function () {
+                        if (!root.VRTrash) { toast('回收站模块没加载'); return; }
+                        try {
+                            await root.VRTrash.remove([f.relPath]);
+                            if (root.VRPreview) { root.VRPreview.close(); }
+                            toast('已移入回收站');
+                            await load();
+                        } catch (e) { toast('删除失败：' + ((e && e.message) || '未知')); }
+                    });
+                }
+            });
+        }
+
         var permAuth = byId('permAuth');
         if (permAuth) {
             permAuth.addEventListener('click', async function () {
@@ -1584,6 +1773,7 @@
         try { installGlobalErrorGuard(); } catch (e) { /* 忽略 */ }
         try { bind(); window.__vrBoot.push('bind'); } catch (e) { window.__vrBoot.push('bind-ERR:' + e.message); throw e; }
         try { bindMissing(); window.__vrBoot.push('bindMissing'); } catch (e) { window.__vrBoot.push('bindMissing-ERR'); }
+        try { initCtxMenu(); window.__vrBoot.push('ctx'); } catch (e) { window.__vrBoot.push('ctx-ERR:' + e.message); }
         try { await loadFavs(); window.__vrBoot.push('favs'); } catch (e) { window.__vrBoot.push('favs-ERR:' + e.message); }
         try { await ensureRoot(); window.__vrBoot.push('root'); } catch (e) { window.__vrBoot.push('root-ERR:' + e.message); }
         try { await refreshPermState(); window.__vrBoot.push('perm'); } catch (e) { window.__vrBoot.push('perm-ERR:' + e.message); }
@@ -1601,6 +1791,35 @@
         boot();
     }
 
-    root.VRApp = { reload: load, toast: toast, getFiles: function () { return FILES; } };
+    root.VRApp = {
+        reload: load,
+        toast: toast,
+        getFiles: function () { return FILES; },
+        /* 压测入口（B-14）：把合成条目塞进渲染链路，验证大库窗口化。
+         * 只在显式调用时生效，不影响正常启动。 */
+        _renderFake: function (n) {
+            var base = FILES[0] || {};
+            var fake = [];
+            for (var i = 0; i < n; i++) {
+                fake.push(Object.assign({}, base, {
+                    id: 'fake/' + i, relPath: 'fake/' + i + '.jpg',
+                    title: 't' + i, _title: 't' + i, kind: 'image', ext: 'JPG',
+                    tags: [], starred: false, state: 'ok', isRef: 0, sha256: ''
+                }));
+            }
+            FILES = fake;
+            RAW = {};
+            fake.forEach(function (e) { RAW[e.relPath] = e; });
+            var t0 = performance.now();
+            render();
+            return {
+                ms: Math.round(performance.now() - t0),
+                domCards: document.querySelectorAll('#grid .card').length,
+                total: n,
+                padTop: document.getElementById('grid').style.paddingTop,
+                padBottom: document.getElementById('grid').style.paddingBottom
+            };
+        }
+    };
     root.VRFav = { toggleStar: toggleStar, addToFav: addToFav, addToDefault: addToDefault, hasFavorite: hasFavorite };
 })();
