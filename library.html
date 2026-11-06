@@ -136,7 +136,7 @@
       <div class="sf-actions">
         <button class="btn small" id="trashBtn" title="回收站">
           <svg class="i" style="width:12px;height:12px"><use href="#i-trash-2"/></svg>
-          回收站 <b id="trashCnt">3</b>
+          回收站 <b id="trashCnt" hidden>0</b>
         </button>
         <button class="btn small" id="resetBtn" title="重新选择根目录">换目录</button>
       </div>
@@ -159,7 +159,10 @@
           <div class="searchbox">
             <svg class="i i-sm"><use href="#i-search"/></svg>
             <input id="search" placeholder="搜索… 空格=交集 -词=排除">
-            <kbd>⌘K</kbd>
+            <button type="button" id="searchClear" class="sc-clear" hidden aria-label="清除搜索">
+              <svg class="i" style="width:11px;height:11px"><use href="#i-x"/></svg>
+            </button>
+            <kbd title="按 / 聚焦搜索框，Esc 清空">/</kbd>
           </div>
         </div>
         <div class="ph-fav-acts hidden" id="favActs">
@@ -206,6 +209,13 @@
       <b id="batchCount">已选 0 项</b>
       <button class="btn small" id="batchAll">全选</button>
       <button class="btn small" id="batchInvert">反选</button>
+      <select class="btn small bb-type" id="batchByType" title="按类型追加选择">
+        <option value="">按类型…</option>
+        <option value="image">只选图片</option>
+        <option value="anim">只选动图</option>
+        <option value="video">只选视频</option>
+        <option value="audio">只选音频</option>
+      </select>
       <button class="btn small" id="batchClear">清除</button>
       <span class="spacer"></span>
       <button class="btn small" id="batchFav"><svg class="i i-sm"><use href="#i-bookmark-plus"/></svg>加入收藏夹</button>
@@ -458,7 +468,7 @@
     <div class="dw-head">
       <svg class="i" style="width:15px;height:15px;color:var(--muted)"><use href="#i-trash-2"/></svg>
       <h3>回收站</h3>
-      <span class="cnt" id="dwCnt">3</span>
+      <span class="cnt" id="dwCnt" hidden>0</span>
       <button class="close" id="dwClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
     </div>
     <div class="dw-note">删除的文件放在这里，恢复后会回到原来的相对路径。回收站只记路径，不占空间。</div>
@@ -470,19 +480,7 @@
     </div>
   </aside>
 
-  <!-- 右键菜单 -->
-  <div class="ctx" id="ctx" role="menu">
-    <button data-act="preview"><svg class="i"><use href="#i-maximize"/></svg>预览<span class="kbd">Enter</span></button>
-    <button data-act="open"><svg class="i"><use href="#i-folder-open"/></svg>在文件中打开</button>
-    <button data-act="copy"><svg class="i"><use href="#i-copy"/></svg>复制路径</button>
-    <button data-act="star"><svg class="i"><use href="#i-star"/></svg>加星标</button>
-    <button data-act="fav"><svg class="i"><use href="#i-bookmark-plus"/></svg>加入收藏夹…</button>
-    <hr>
-    <button data-act="rename"><svg class="i"><use href="#i-pencil"/></svg>重命名<span class="kbd">F2</span></button>
-    <button data-act="reveal"><svg class="i"><use href="#i-folder-input"/></svg>移动…</button>
-    <hr>
-    <button data-act="trash" class="danger"><svg class="i"><use href="#i-trash-2"/></svg>移到回收站<span class="kbd">Del</span></button>
-  </div>
+  <!-- 右键菜单（ctx-menu.js 渲染 .vr-ctx，见 #vrCtxMenu） -->
 
   <!-- 重命名 -->
   <div class="modal-mask" id="renameMask">
@@ -518,7 +516,8 @@
         <h3 id="moveTitle">移动素材</h3>
       </div>
       <div class="md-body">
-        <div class="mv-path" id="movePath">资源库根目录</div>
+        <div class="mv-crumbs" id="moveCrumbs"></div>
+        <input class="md-input mv-search" id="moveSearch" placeholder="搜索文件夹…（回车跳到第一个）" autocomplete="off" spellcheck="false" />
         <div class="mv-list" id="moveList"></div>
         <div class="mv-new hidden" id="moveNewRow">
           <input class="md-input" id="moveNewName" placeholder="新文件夹名称" autocomplete="off" spellcheck="false" />
@@ -615,6 +614,6 @@
     <footer class="sd-foot"><a href="#" id="sdOptionsLink">打开完整扩展设置 &#8599;</a></footer>
   </aside>
 
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast"><span id="toastText"></span><button type="button" id="toastAct" hidden></button></div>
 </body>
 </html>
