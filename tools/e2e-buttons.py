@@ -183,13 +183,15 @@ def main():
     c.ev("""(()=>{const b=[...document.querySelectorAll('#typeTabs button')].find(x=>x.dataset.type==='all'); b.click(); return 1})()""", sid)
     time.sleep(0.8)
 
-    # 3 平台 chip
+    # 3 平台筛选（B-23 选项 A：顶部 chips 已移除，改由左侧资源树承担）
     chips = c.ev("document.querySelectorAll('#chips .chip').length", sid)
-    c.ev("""(()=>{const b=[...document.querySelectorAll('#chips .chip')].find(x=>x.dataset.plat==='bilibili'); if(!b) return 0; b.click(); return 1})()""", sid)
+    ck("顶部 chips 已移除", chips, 0)
+    ev_plat = c.ev("""(()=>{const n=[...document.querySelectorAll('#tree .tree-node.plat')].find(x=>x.dataset.plat==='bilibili'); if(!n) return 0; n.click(); return 1})()""", sid)
     time.sleep(0.8)
-    ck("点「B站」筛选生效", c.ev("document.querySelectorAll('#grid .card').length", sid), 3)
-    c.ev("""(()=>{const b=[...document.querySelectorAll('#chips .chip')].find(x=>x.dataset.plat==='all'); if(b) b.click(); return 1})()""", sid)
+    ck("点左侧「B站」节点筛选生效", c.ev("document.querySelectorAll('#grid .card').length", sid), 3)
+    c.ev("""(()=>{const n=document.querySelector('#tree .tree-node'); if(n) n.click(); return 1})()""", sid)
     time.sleep(0.8)
+    ck("点「全部资源」恢复", c.ev("document.querySelectorAll('#grid .card').length", sid) > 3, True)
 
     # 4 视图切换
     before_cls = c.ev("document.getElementById('grid').className", sid)

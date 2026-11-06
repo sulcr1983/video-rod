@@ -1607,11 +1607,11 @@ kbd{
 .crumb-acts{display:flex;gap:8px}
 .scan-note{display:inline-flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);white-space:nowrap}
 .scan-note .sdot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);flex:none}
-/* toolbar 两行制：第一行=类型+右侧工具，第二行=平台 chips 通栏左对齐（永不折半行） */
-.toolbar{display:grid;grid-template-columns:1fr auto;grid-template-areas:"seg tools" "chips chips";row-gap:11px;align-items:center}
-.toolbar .seg{grid-area:seg}
-.toolbar .tools{grid-area:tools;margin-left:0}
-.toolbar .chips{grid-area:chips;flex-wrap:wrap}
+/* toolbar 单行制（B-23 选项 A，2026-11-06）：平台筛选只保留左侧资源树，
+   顶部 chips 已移除；这里改为单行 grid，右侧工具贴边。 */
+.toolbar{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px}
+.toolbar .seg{grid-column:1}
+.toolbar .tools{grid-column:2;margin-left:0}
 .stats-inline{flex:none}
 .stats-inline .it{padding:6px 11px;gap:6px}
 .stats-inline .it b{font-size:14px}
