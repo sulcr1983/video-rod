@@ -705,6 +705,36 @@
     }
 
     /* ---------- 事件 ---------- */
+    /* ---------- 确认框（模块级：bind 与 bindMissing 共用） ----------
+     * 原实现把 ask() 定义在 bindMissing() 内部，而 batchTrash 在 bind() 里调用它，
+     * 结果是「删除到回收站」点了抛 ReferenceError，界面毫无反应。 */
+    var _confirmCb = null;
+    function ask(msg, cb) {
+        var m = document.getElementById('confirmMask');
+        if (!m) { if (cb) { cb(); } return; }
+        var t = document.getElementById('confirmMsg');
+        if (t) { t.textContent = msg; }
+        _confirmCb = cb;
+        m.classList.add('show');
+    }
+    function closeAsk() {
+        var m = document.getElementById('confirmMask');
+        if (m) { m.classList.remove('show'); }
+        _confirmCb = null;
+    }
+    function bindConfirm() {
+        var ok = document.getElementById('confirmOk');
+        var cancel = document.getElementById('confirmCancel');
+        if (cancel) { cancel.addEventListener('click', closeAsk); }
+        if (ok) {
+            ok.addEventListener('click', function () {
+                var cb = _confirmCb;
+                closeAsk();
+                if (cb) { cb(); }
+            });
+        }
+    }
+
     function bind() {
         var tt = $('#typeTabs');
         if (tt) {
@@ -758,6 +788,7 @@
              * 早就做完了 —— 单条删除走的是它，批量却只弹一句提示。这里直接接同一套 API。 */
             var list = FILES.filter(function (f) { return S.sel.has(f.id); });
             if (!list.length) { toast('先选素材'); return; }
+            markWritePending();
             if (!(await ensureWriteAccess())) { return; }
             ask('把选中的 ' + list.length + ' 项移入回收站？文件还能恢复。', async function () {
                 if (!root.VRTrash) { toast('回收站模块没加载'); return; }
@@ -922,6 +953,13 @@
     }
 
     /** 写操作前的统一入口：能用原句柄恢复就恢复，否则直接弹目录选择。 */
+    /** 写操作前先给一句明确反馈：无授权时系统目录框会弹出来，
+     *  用户不知道发生了什么就容易判定「按钮坏了」。 */
+    function markWritePending() {
+        if (window.__vrPerm && window.__vrPerm.writable) { return; }
+        toast('需要素材目录写权限：请在系统对话框里选择 video-rod 文件夹');
+    }
+
     async function ensureWriteAccess() {
         if (window.__vrPerm && window.__vrPerm.writable) { return true; }
         var p = window.__vrPerm;
@@ -937,7 +975,17 @@
                 }
             } catch (e) { /* 落到重新选择 */ }
         }
-        return await authorizeRoot();
+        /* 关键：走到这里说明自动恢复失败（常见于权限被浏览器收回后又拒绝，
+         * 或 requestPermission 在无用户手势时被拒）。必须弹目录选择，
+         * 并且无论成败都要给提示 —— 否则用户点「删除/移动」只会看到毫无反应。 */
+        var ok = false;
+        try { ok = await authorizeRoot(); } catch (e2) { ok = false; }
+        if (!ok) {
+            toast('需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」');
+            var banner = $('#permBanner');
+            if (banner) { banner.classList.remove('hidden'); }
+        }
+        return ok;
     }
 
     async function refreshPermState() {
@@ -1259,21 +1307,6 @@
         var on = function (id, fn) { var el = document.getElementById(id); if (el) { el.addEventListener('click', fn); } };
         var byId = function (id) { return document.getElementById(id); };
 
-        /* ---- 确认框（重命名/删除共用） ---- */
-        var confirmCb = null;
-        function ask(msg, cb) {
-            var m = byId('confirmMask');
-            if (!m) { if (cb) { cb(); } return; }
-            var t = byId('confirmMsg'); if (t) { t.textContent = msg; }
-            confirmCb = cb; m.classList.add('show');
-        }
-        function closeAsk() {
-            var m = byId('confirmMask'); if (m) { m.classList.remove('show'); }
-            confirmCb = null;
-        }
-        on('confirmCancel', closeAsk);
-        on('confirmOk', function () { var cb = confirmCb; closeAsk(); if (cb) { cb(); } });
-
         /* ---- 重命名 ---- */
         var renRel = '';
         function openRename(f) {
@@ -1394,6 +1427,7 @@
         on('pvRename', function () { openRename(curPreview()); });
         on('pvDelete', async function () {
             var f = curPreview(); if (!f) { return; }
+            markWritePending();
             if (!(await ensureWriteAccess())) { return; }
             ask('把「' + (f.title || f.fileName) + '」移入回收站？文件还能恢复。', async function () {
                 if (!root.VRTrash) { toast('回收站模块没加载'); return; }
@@ -1432,6 +1466,7 @@
         on('pvMove', async function () {
             var f = curPreview(); if (!f) { return; }
             if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
+            markWritePending();
             if (!(await ensureWriteAccess())) { return; }
             root.VRMovePicker.open([f], moveHooks());
         });
@@ -1672,6 +1707,7 @@
                 var list = FILES.filter(function (f) { return S.sel.has(f.id); });
                 if (!list.length) { toast('先选素材'); return; }
                 if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
+                markWritePending();
                 if (!(await ensureWriteAccess())) { return; }
                 root.VRMovePicker.open(list, moveHooks());
             });
@@ -1755,6 +1791,7 @@
         try { bind(); window.__vrBoot.push('bind'); } catch (e) { window.__vrBoot.push('bind-ERR:' + e.message); throw e; }
         try { bindMissing(); window.__vrBoot.push('bindMissing'); } catch (e) { window.__vrBoot.push('bindMissing-ERR'); }
         try { initCtxMenu(); window.__vrBoot.push('ctx'); } catch (e) { window.__vrBoot.push('ctx-ERR:' + e.message); }
+        try { bindConfirm(); window.__vrBoot.push('confirm'); } catch (e) { window.__vrBoot.push('confirm-ERR:' + e.message); }
         try { await loadFavs(); window.__vrBoot.push('favs'); } catch (e) { window.__vrBoot.push('favs-ERR:' + e.message); }
         try { await ensureRoot(); window.__vrBoot.push('root'); } catch (e) { window.__vrBoot.push('root-ERR:' + e.message); }
         try { await refreshPermState(); window.__vrBoot.push('perm'); } catch (e) { window.__vrBoot.push('perm-ERR:' + e.message); }
