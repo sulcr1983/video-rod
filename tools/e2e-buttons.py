@@ -273,7 +273,7 @@ def main():
             print("   ↑ 按钮 %s 触发异常" % bid)
         # 每点一个就复位：把所有弹层关掉，避免遮挡后续点击
         c.ev("""(()=>{
-          ['setdrawer','drawer','renameMask','keysheet','preview','favPopNew','favDrawer'].forEach(id=>{
+          ['setdrawer','drawer','renameMask','moveMask','confirmMask','keysheet','preview','favPopNew','favDrawer'].forEach(id=>{
             const e=document.getElementById(id); if(e) e.classList.remove('show');
           });
           ['setmask','mask'].forEach(id=>{const e=document.getElementById(id); if(e) e.classList.remove('show');});

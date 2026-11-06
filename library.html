@@ -20,6 +20,7 @@
   <script src="js/library/keyboard.js" defer></script>
   <script src="js/library/anim.js" defer></script>
   <script src="js/library/lightbox.js" defer></script>
+  <script src="js/library/move-picker.js" defer></script>
   <script src="js/library/app.js" defer></script>
 </head>
 
@@ -507,11 +508,37 @@
         </div>
         <p class="md-hint">扩展名单独锁定，避免误改后文件打不开。<kbd>Enter</kbd> 确认，<kbd>Esc</kbd> 取消。</p>
         <div class="md-err hidden" id="renameErr"><svg class="i"><use href="#i-triangle-alert"/></svg><span id="renameErrText"></span></div>
-        <label class="md-label" for="renameDir">所在目录（可选）</label>
-        <input class="md-input" id="renameDir" style="width:100%;border-radius:7px;margin-bottom:12px" autocomplete="off" spellcheck="false" />
+        <label class="md-label">所在目录</label>
+        <div class="md-dir" id="renameDir">—</div>
+        <p class="md-hint">重命名只改资源库里的显示名，不修改磁盘文件名。</p>
         <div class="md-foot">
           <button class="btn small" id="renameCancel">取消</button>
           <button class="btn small primary" id="renameOk">重命名</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 移动：文件夹选择（不要求用户手写路径） -->
+  <div class="modal-mask" id="moveMask">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="moveTitle" style="width:min(480px,100%)">
+      <div class="md-head">
+        <span class="ico"><svg class="i"><use href="#i-folder-input"/></svg></span>
+        <h3 id="moveTitle">移动素材</h3>
+      </div>
+      <div class="md-body">
+        <div class="mv-path" id="movePath">资源库根目录</div>
+        <div class="mv-list" id="moveList"></div>
+        <div class="mv-new hidden" id="moveNewRow">
+          <input class="md-input" id="moveNewName" placeholder="新文件夹名称" autocomplete="off" spellcheck="false" />
+          <button class="btn small" id="moveNewOk">创建</button>
+        </div>
+        <p class="md-hint" id="moveHint">选择目标文件夹后点「移动到这里」；文件会移动，原目录结构不变。</p>
+        <div class="md-foot">
+          <button class="btn small" id="moveNewBtn">新建文件夹</button>
+          <span style="flex:1"></span>
+          <button class="btn small" id="moveCancel">取消</button>
+          <button class="btn small primary" id="moveOk">移动到这里</button>
         </div>
       </div>
     </div>
