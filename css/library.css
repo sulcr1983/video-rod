@@ -1795,3 +1795,41 @@ h1 {
 
 /* 收藏夹收敛：只保留一个「收藏」，分类用标签；隐藏新建收藏夹入口 */
 #favNewBtn,#favSaveFilter,#favPopNew,#favDrawerNew{display:none!important}
+
+/* 模态框显示态：JS 用的是 .show（rename / confirm / move），
+   之前只写了 .on，导致对话框永远不可见——「重命名/删除没反应」的根因。 */
+.modal-mask.show{opacity:1;pointer-events:auto}
+.modal-mask.show .modal{transform:none}
+
+/* 重命名：所在目录只读展示 */
+.md-dir{
+  margin:0 0 12px;padding:8px 10px;
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--surface-2);color:var(--muted);
+  font-size:11.5px;word-break:break-all;
+}
+
+/* 移动：应用内文件夹选择 */
+.mv-path{
+  margin-bottom:8px;font-size:11.5px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.mv-list{
+  max-height:300px;overflow:auto;
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  background:var(--surface-2);
+}
+.mv-row{
+  display:flex;align-items:center;gap:9px;width:100%;
+  padding:9px 11px;border-bottom:1px solid var(--line-2);
+  text-align:left;font-size:12.5px;color:var(--ink-2);
+}
+.mv-row:last-child{border-bottom:0}
+.mv-row:hover{background:var(--surface-3);color:var(--ink)}
+.mv-row .i{color:var(--primary)}
+.mv-row .mv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mv-row .mv-sub{font-size:10.5px;color:var(--faint)}
+.mv-empty{padding:18px 12px;text-align:center;font-size:12px;color:var(--muted)}
+.mv-new{display:flex;gap:8px;margin-top:10px}
+.mv-new.hidden{display:none}
+.mv-new .md-input{flex:1;margin:0}

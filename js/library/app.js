@@ -1031,6 +1031,26 @@
         }).join('');
     }
 
+    /* 移动：应用内文件夹选择（move-picker.js），不让用户手写路径 */
+    function moveHooks() {
+        return {
+            getEntry: function (rel) { return RAW[rel] || null; },
+            toast: toast,
+            onNeedAuth: function () {
+                toast('移动素材要先授权素材目录（设置 → 保存位置）');
+                var d = $('#setdrawer'), m = $('#setmask');
+                if (d) { d.classList.add('show'); }
+                if (m) { m.classList.add('show'); }
+            },
+            onDone: async function () {
+                S.sel.clear(); S.select = false;
+                var sb = $('#selectBtn'); if (sb) { sb.classList.remove('is-on'); }
+                var bb = $('#batchbar'); if (bb) { bb.classList.add('hidden'); }
+                await load();
+            }
+        };
+    }
+
     function bindMissing() {
         var on = function (id, fn) { var el = document.getElementById(id); if (el) { el.addEventListener('click', fn); } };
         var byId = function (id) { return document.getElementById(id); };
@@ -1210,17 +1230,8 @@
         });
         on('pvMove', function () {
             var f = curPreview(); if (!f) { return; }
-            var b = byId('batchMove');
-            if (b && !b.disabled) {
-                /* 单条移动复用批量移动的真实实现：只选中当前项，再触发 batchMove。
-                 * 这样不会出现「批量能移、单条只能跳设置」的两套逻辑。 */
-                S.sel = new Set([f.id]);
-                S.select = true;
-                b.click();
-            } else {
-                toast('移动素材要先授权素材目录');
-                openOptions();
-            }
+            if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
+            root.VRMovePicker.open([f], moveHooks());
         });
         var permAuth = byId('permAuth');
         if (permAuth) {
@@ -1457,82 +1468,14 @@
         if (inp) { inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { createFav(); } }); }
 
         var bmBtn = $('#batchMove');
-        if (bmBtn) { bmBtn.addEventListener('click', async function () {
-            var list = FILES.filter(function (f) { return S.sel.has(f.id); });
-            if (!list.length) { toast('先选素材'); return; }
-            var rr = null;
-            try {
-                if (root.VRTrash && root.VRTrash.resolveRoot) { rr = await root.VRTrash.resolveRoot(); }
-            } catch (e) { rr = null; }
-            if (!rr || !rr.handle) {
-                toast('移动到别的文件夹要先授权素材目录（设置 → 保存位置）');
-                var d = $('#setdrawer'), m = $('#setmask');
-                if (d) { d.classList.add('show'); }
-                if (m) { m.classList.add('show'); }
-                return;
-            }
-            var dest = window.prompt('移动到素材库下的哪个文件夹？\n（例：未分类、微博精选）', '未分类');
-            if (dest === null) { return; }
-            dest = String(dest).replace(/[\\/:*?"<>|]/g, '_').replace(/^\/+|\/+$/g, '').trim();
-            if (!dest) { toast('文件夹名不能为空'); return; }
-
-            /* 索引 relPath 的首段是 subdir（video-rod），而 FSA 句柄指向库根，
-             * 所以物理操作必须把首段剥掉；原实现直接把 video-rod/... 传给
-             * moveFile，有句柄也会多一层目录。 */
-            var pfx = String(rr.prefix || '').replace(/^\/+|\/+$/g, '');
-            var stripPfx = function (rel) {
-                var p = pfx ? (pfx + '/') : '';
-                return (p && rel.indexOf(p) === 0) ? rel.slice(p.length) : rel;
-            };
-            var absRoot = String(rr.absRoot || '').replace(/[\\/]+$/, '');
-            var okN = 0, failN = 0, skipN = 0;
-
-            for (var i = 0; i < list.length; i++) {
-                var f = list[i];
-                var name = String(f.relPath).split('/').pop();
-                var newRel = (pfx ? pfx + '/' : '') + dest + '/' + name;
-                if (newRel === f.relPath) { skipN++; continue; }
-                if (RAW[newRel]) { failN++; continue; }     // DB 已有同名目标，先不覆盖
-
-                var fromFs = stripPfx(f.relPath);
-                var toFs = stripPfx(newRel);
-                var moved = false, dbWritten = false;
-                try {
-                    await root.VRTrash.moveFile(rr.handle, fromFs, toFs, { noOverwrite: true });
-                    moved = true;
-                    var old = RAW[f.relPath] || {};
-                    if (root.VRDB && root.VRDB.putFiles) {
-                        var absRel = toFs.replace(/\//g, '\\');
-                        var next = Object.assign({}, old, {
-                            relPath: newRel,
-                            /* absRoot 是库根，toFs 已剥掉 subdir，不能再拼 video-rod */
-                            absPath: absRoot ? absRoot + '\\' + absRel : (old.absPath || ''),
-                            thumbKey: null,
-                            state: 'ok'
-                        });
-                        /* 先写新条目再删旧条目：写失败时旧索引还在，记录不会消失 */
-                        await root.VRDB.putFiles([next]);
-                        dbWritten = true;
-                        await root.VRDB.deleteFiles([f.relPath]);
-                    }
-                    okN++;
-                } catch (e) {
-                    /* 物理已移动但 DB 未写成功：尽量移回去，避免文件与索引脱节 */
-                    if (moved && !dbWritten) {
-                        try { await root.VRTrash.moveFile(rr.handle, toFs, fromFs, { noOverwrite: true }); }
-                        catch (e2) { /* 回滚失败，保留失败计数，用户可重扫 */ }
-                    }
-                    failN++;
-                }
-            }
-            S.sel.clear(); S.select = false;
-            var sb = $('#selectBtn'); if (sb) { sb.classList.remove('is-on'); }
-            var bb = $('#batchbar'); if (bb) { bb.classList.add('hidden'); }
-            await load();
-            toast('移动完成：' + okN + ' 项' +
-                (skipN ? '，跳过 ' + skipN : '') +
-                (failN ? '，失败 ' + failN : ''));
-        }); }
+        if (bmBtn) {
+            bmBtn.addEventListener('click', function () {
+                var list = FILES.filter(function (f) { return S.sel.has(f.id); });
+                if (!list.length) { toast('先选素材'); return; }
+                if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
+                root.VRMovePicker.open(list, moveHooks());
+            });
+        }
 
         var bf = $('#batchFav');
         if (bf) { bf.addEventListener('click', function () { addToFav(Array.from(S.sel)); }); }
