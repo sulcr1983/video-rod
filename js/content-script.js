@@ -3,6 +3,52 @@
     var _videoSrc = [];
     var _key = new Set();
     var m3u8Text = new Map();
+
+    /* ---------- 扩展上下文存活判定 ----------
+     * 扩展被更新/重载后，旧页面里的 content script 会变成「孤儿」：
+     * 监听器还在、仍能收到页面消息，但任何 chrome.* 调用都会同步抛
+     * "Extension context invalidated."。以前这些调用点是裸调用，
+     * 页面每推一条消息就在 edge://extensions 错误页攒一条红字
+     * （实测单个小红书页面可积到 30 条以上，且会一直涨到刷新为止）。
+     * 现在统一先判存活、再兜底发送；确实失效就静默自毁，不再制造噪音。 */
+    var _dead = false;
+    var _pageListener = null;
+
+    function runtimeAlive() {
+        if (_dead) { return false; }
+        try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; }
+    }
+
+    /* 上下文已失效：摘掉页面监听器（否则还会继续吞掉页面的 postMessage），
+     * 断开保活通道，后续所有发送直接短路。 */
+    function bury() {
+        if (_dead) { return; }
+        _dead = true;
+        try {
+            if (_pageListener) { window.removeEventListener("message", _pageListener, { capture: true }); }
+        } catch (e) { /* 忽略 */ }
+        try {
+            if (Port && Port.onDisconnect) { Port.onDisconnect.removeListener(onPortDisconnect); }
+            if (Port && Port.disconnect) { Port.disconnect(); }
+        } catch (e) { /* 忽略 */ }
+    }
+
+    /* 统一发送口：先判存活，再包 try/catch，并读一次 lastError，
+     * 避免控制台再报 "Unchecked runtime.lastError"。 */
+    function safeSend(msg, cb) {
+        if (!runtimeAlive()) { bury(); return false; }
+        try {
+            chrome.runtime.sendMessage(msg, function (res) {
+                void chrome.runtime.lastError;
+                if (cb) { try { cb(res); } catch (e) { /* 忽略 */ } }
+            });
+            return true;
+        } catch (e) {
+            bury();
+            return false;
+        }
+    }
+
     chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         if (chrome.runtime.lastError) { return; }
         // 获取页面视频对象
@@ -198,12 +244,25 @@
     });
 
     // Heart Beat
-    var Port;
+    var Port = null;
+    function onPortDisconnect() {
+        if (!Port) { return; }
+        try { void chrome.runtime.lastError; } catch (e) { /* 忽略 */ }
+        // 上下文已失效就别再重连了：孤儿态下 connect 只会同步抛错，
+        // 而且 onDisconnect 会再次触发，形成递归风暴。
+        if (!runtimeAlive()) { bury(); return; }
+        connect();
+    }
     function connect() {
-        Port = chrome.runtime.connect(chrome.runtime.id, { name: "HeartBeat" });
-        Port.postMessage("HeartBeat");
-        Port.onMessage.addListener(function (message, Port) { return true; });
-        Port.onDisconnect.addListener(connect);
+        if (!runtimeAlive()) { bury(); return; }
+        try {
+            Port = chrome.runtime.connect(chrome.runtime.id, { name: "HeartBeat" });
+            Port.postMessage("HeartBeat");
+            Port.onMessage.addListener(function (message, Port) { return true; });
+            Port.onDisconnect.addListener(onPortDisconnect);
+        } catch (e) {
+            bury();
+        }
     }
     connect();
 
@@ -221,7 +280,7 @@
     }
     const isFirefox = navigator.userAgent.includes('Firefox');
     const sendAddMedia = (data) => {
-        chrome.runtime.sendMessage({
+        safeSend({
             Message: "addMedia",
             url: data.url,
             href: data.href ?? location.href,
@@ -231,7 +290,7 @@
             requestId: data.requestId
         });
     };
-    window.addEventListener("message", (event) => {
+    _pageListener = function (event) {
         const action = ["catCatchAddMedia", "catCatchAddKey", "catCatchFFmpeg", "catCatchFFmpegResult", "catCatchCloseScript", "vrNetMedia"];
         if (!event.data || !event.data.action || event.origin !== window.location.origin || !action.includes(event.data.action)) { return; }
         event.stopPropagation();
@@ -279,12 +338,12 @@
             }
             if (_key.has(key)) { return; }
             _key.add(key);
-            chrome.runtime.sendMessage({
+            safeSend({
                 Message: "send2local",
                 action: "addKey",
                 data: key,
             });
-            chrome.runtime.sendMessage({
+            safeSend({
                 Message: "popupAddKey",
                 data: key,
                 url: event.data.url,
@@ -305,18 +364,28 @@
                 url: event.data.href ?? event.source.location.href,
             };
             data = { ...event.data, ...data };
-            chrome.runtime.sendMessage(data);
+            safeSend(data);
         }
         if (event.data.action == "catCatchFFmpegResult") {
             if (!event.data.state || !event.data.tabId) { return; }
-            chrome.runtime.sendMessage({ Message: "catCatchFFmpegResult", ...event.data });
+            safeSend({ Message: "catCatchFFmpegResult", ...event.data });
         }
         if (event.data.action == "catCatchCloseScript") {
             if (!event.data.script || !event.isTrusted) { return; }
-            chrome.runtime.sendMessage({ Message: "closeScript", ...event.data });
+            safeSend({ Message: "closeScript", ...event.data });
         }
 
-    }, { capture: true });
+    };
+
+    // 注册为具名引用，孤儿态下才能被 bury() 摘掉
+    // 注意：connect() 在加载早期就可能因孤儿态触发 bury()，
+    // 那时监听器还没赋值。所以这里先判存活：已经死了就不注册，
+    // 免得继续吞掉页面的 postMessage（否则页面消息也会被无声吃掉）。
+    if (!_dead && runtimeAlive()) {
+        window.addEventListener("message", _pageListener, { capture: true });
+    } else {
+        bury();
+    }
 
     function ArrayToBase64(data) {
         try {
