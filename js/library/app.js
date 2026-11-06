@@ -785,11 +785,14 @@
         try { if (root.VRIndex && root.VRIndex.resolveRoot) { rr = await root.VRIndex.resolveRoot(); } } catch (e) { rr = null; }
         var handle = rr && rr.handle ? rr.handle : null;
         var writable = false;
+        var permState = '';
         if (handle) {
-            if (typeof handle.queryPermission !== 'function') { writable = true; }
+            if (typeof handle.queryPermission !== 'function') { writable = true; permState = 'granted'; }
             else {
-                try { writable = (await handle.queryPermission({ mode: 'readwrite' })) === 'granted'; }
-                catch (e) { writable = false; }
+                try {
+                    permState = await handle.queryPermission({ mode: 'readwrite' });
+                    writable = permState === 'granted';
+                } catch (e) { writable = false; permState = 'error'; }
             }
         }
         var fileAccess = true;
@@ -813,8 +816,11 @@
         if (!writable) {
             issues.push(rootInvalid
                 ? '素材目录句柄与当前素材库路径不一致：请重新授权「' + ((rr && rr.absRoot) || '') + '」。'
-                : (handle ? '素材目录授权已过期/不可写：当前为只读模式；移动、删除需要重新授权。'
-                          : '当前为只读模式：浏览/预览可用；移动、删除需要先授权素材目录。'));
+                : (handle
+                    ? (permState === 'prompt'
+                        ? '已选过素材目录，但浏览器在刷新后收回了写入权限，当前为只读；点「恢复写入」即可，不用重新选目录。'
+                        : '素材目录当前不可写：点「恢复写入」重新授权；浏览/预览仍可用。')
+                    : '当前为只读模式：浏览/预览可用；点「授权素材目录」选择素材库根目录。'));
         }
         if (!fileAccess) {
             issues.push('浏览器未允许访问本地文件，缩略图/预览可能失败；请在扩展详情打开「允许访问文件网址」。');
@@ -822,12 +828,12 @@
         if (banner) { banner.classList.toggle('hidden', issues.length === 0); }
         if (txt) { txt.textContent = issues.join(' '); }
         if (auth) {
-            auth.textContent = writable ? '查看设置' : '授权素材目录';
-            auth.title = writable ? '打开设置' : '选择素材库根目录（video-rod）并授权读写';
+            auth.textContent = writable ? '查看设置' : (handle ? '恢复写入' : '授权素材目录');
+            auth.title = writable ? '打开设置' : (handle ? '沿用已选目录，重新申请写入权限' : '选择素材库根目录（video-rod）并授权读写');
         }
 
         /* 写操作按钮：没有可写句柄时直接禁用，避免“点了才失败” */
-        ['batchMove', 'batchTrash'].forEach(function (id) {
+        ['batchMove', 'batchTrash', 'pvDelete', 'pvMove'].forEach(function (id) {
             var b = document.getElementById(id);
             if (!b) { return; }
             b.disabled = !writable;
@@ -835,7 +841,7 @@
             else if (b.title === '需要先授权素材目录') { b.removeAttribute('title'); }
         });
         try {
-            window.__vrPerm = { handle: !!handle, writable: writable, fileAccess: fileAccess, issues: issues };
+            window.__vrPerm = { handle: handle, writable: writable, permState: permState, fileAccess: fileAccess, issues: issues };
         } catch (e) { /* 忽略 */ }
     }
 
@@ -1220,6 +1226,31 @@
         if (permAuth) {
             permAuth.addEventListener('click', async function () {
                 if (!window.__vrPerm || window.__vrPerm.writable) { openOptions(); return; }
+                /* 已经选过目录：优先沿用现有句柄申请写入权限。
+                 * 浏览器的目录权限在页面刷新/一段时间后会退回 prompt，
+                 * 让用户再选一次目录既反直觉也不安全。 */
+                var saved = window.__vrPerm.handle;
+                if (saved && typeof saved.requestPermission === 'function') {
+                    try {
+                        var st = await saved.requestPermission({ mode: 'readwrite' });
+                        if (st === 'granted') {
+                            var rr0 = await root.VRIndex.resolveRoot();
+                            var want = rr0.absRoot
+                                ? String(rr0.absRoot).replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()
+                                : String(rr0.prefix || '');
+                            if (want && saved.name !== want) {
+                                try { saved = await saved.getDirectoryHandle(want); }
+                                catch (e3) { saved = null; }
+                            }
+                            if (saved) {
+                                await root.VRIndex.setRoot(saved, rr0.absRoot, rr0.prefix);
+                                toast('已恢复写入权限');
+                                await refreshPermState();
+                                return;
+                            }
+                        }
+                    } catch (e) { /* 落到重新选择 */ }
+                }
                 if (typeof root.showDirectoryPicker !== 'function') {
                     toast('此浏览器不支持目录授权，请到完整设置页操作');
                     openOptions();
