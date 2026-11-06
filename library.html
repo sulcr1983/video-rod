@@ -471,11 +471,23 @@
       <span class="cnt" id="dwCnt" hidden>0</span>
       <button class="close" id="dwClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
     </div>
-    <div class="dw-note">删除的文件放在这里，恢复后会回到原来的相对路径。回收站只记路径，不占空间。</div>
+    <div class="dw-note">
+      删除的文件移到这里，恢复后回到原来的相对路径。回收站只记路径与元数据，不再占额外空间。
+    </div>
+    <!-- 工具栏：搜索 + 批量选择。删除多了以后，逐条找文件是不现实的。 -->
+    <div class="dw-tools">
+      <input type="search" id="dwSearch" class="dw-search" placeholder="搜索文件名或路径…" autocomplete="off">
+      <button class="btn small" id="dwSelAll" title="全选当前筛选结果">全选</button>
+    </div>
     <div class="dw-list" id="dwList"></div>
     <div class="dw-foot">
-      <button class="btn small" id="dwRestoreAll">全部恢复</button>
+      <label class="dw-pick" title="选中的条目会被恢复/彻底删除">
+        <input type="checkbox" id="dwPickAll"> 已选 <b id="dwPickN">0</b>
+      </label>
+      <button class="btn small" id="dwRestoreSel">恢复所选</button>
+      <button class="btn small danger" id="dwPurgeSel">彻底删除所选</button>
       <span class="spacer"></span>
+      <button class="btn small" id="dwRestoreAll">全部恢复</button>
       <button class="btn small danger" id="dwEmpty">清空回收站</button>
     </div>
   </aside>

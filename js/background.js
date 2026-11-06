@@ -2186,11 +2186,13 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message.Message == "vrXhsScan") {
         const tabId = sender && sender.tab ? sender.tab.id : null;
         if (tabId == null) { sendResponse({ ok: false, reason: 'no-tab' }); return true; }
-        chrome.scripting.executeScript({
-            target: { tabId: tabId }, world: 'MAIN',
-            args: [Message.noteId || ''], func: vrXhsScanInPage
-        }).then(function (r) {
-            sendResponse((r && r[0] && r[0].result) || { ok: false, reason: 'no-result' });
+        /* 单篇扫描必须带重试：页面 __INITIAL_STATE__ 是异步填的，
+         * 目标笔记的 .note 一开始往往是空对象 {}。只调一次就返回的话，
+         * 用户点下载的瞬间恰好早于填充完成 —— 直接失败（「有时成功有时不行」）。
+         * vrXhsScanInTab 已有 ~8 秒的轮询重试，这里复用它，
+         * 与自动补全走同一条路径，行为一致。 */
+        vrXhsScanInTab(tabId, Message.noteId || '').then(function (res) {
+            sendResponse(res || { ok: false, reason: 'no-result' });
         }).catch(function (e) {
             sendResponse({ ok: false, reason: String(e).slice(0, 120) });
         });
@@ -2859,19 +2861,49 @@ function vrXhsScanInPage(noteId) {
         const n = st && st.note;
         const map = n && n.noteDetailMap;
         if (!map) { return { ok: false, reason: 'no-state' }; }
-        /* 详情页的 map 有时以 noteId 为键、有时直接是「第一个」；
-         * 更常见的是 id 对上了但 note 还没填（异步加载）。逐个找有 note 的项，
-         * 别再因为 key 不匹配就返回空 note（表现为「识别到 0 个媒体」）。 */
-        let id = noteId || n.currentNoteId || Object.keys(map)[0];
-        let note = (map[id] && map[id].note) || null;
-        if (!note) {
-            const keys = Object.keys(map);
-            for (let i = 0; i < keys.length; i++) {
-                const cand = map[keys[i]] && map[keys[i]].note;
-                if (cand) { id = keys[i]; note = cand; break; }
-            }
+        /* 2026-11-06 实测（真实登录态页面取证），这里有两个坑：
+         *
+         * ① noteDetailMap 里混着**空条目**：key 是 'undefined' 和 ''，
+         *    它们的 .note 是**没有任何字段的空对象 {}**。空对象是 truthy，
+         *    所以原来的 `if (!note)` / `if (cand)` 判空全部失效 —— 明明没数据
+         *    却被当成「找到了」，解析出 0 个媒体。
+         *    这正是「有时能下、有时失败」的机制：页面 state 是异步填的，
+         *    读得早就碰上空对象（失败），读得晚就有数据（成功）。
+         *    所以判据必须是「有没有实际字段」，不是「引用是否非空」。
+         *
+         * ② currentNoteId 实测是 **object** 不是字符串，直接当 key 会变成
+         *    '[object Object]'，永远查不到。
+         *
+         * 重要：目标笔记没填好时**绝不能拿 map 里别的笔记顶替**。
+         * map 里同时有推荐流的十几篇笔记，抓到哪篇就下错哪篇的内容 ——
+         * 那比失败更糟（用户会拿到完全无关的视频/图片）。
+         * 正确做法是返回 note-loading，让上层 vrXhsScanInTab 继续重试。 */
+        const noteUsable = function (x) {
+            return !!x && typeof x === 'object' && !Array.isArray(x) &&
+                Object.keys(x).length > 0;
+        };
+
+        /* 目标 id：调用方参数优先；其次从 URL 路径取（本函数在页面主世界，
+         * location 可用）；最后才用 currentNoteId。 */
+        let target = String(noteId || '');
+        if (!target) {
+            const pm = String(location.pathname || '')
+                .match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/);
+            if (pm) { target = pm[1]; }
         }
-        if (!note) { return { ok: false, reason: 'no-note' }; }
+        if (!target) {
+            const curId = n.currentNoteId;
+            if (typeof curId === 'string' || typeof curId === 'number') { target = String(curId); }
+            else if (curId && typeof curId === 'object' && curId.noteId) { target = String(curId.noteId); }
+        }
+
+        const id = target;
+        let note = null;
+        if (id && map[id] && noteUsable(map[id].note)) { note = map[id].note; }
+        if (!noteUsable(note)) {
+            /* 目标笔记还没加载完：交给上层重试，不抓别人的笔记。 */
+            return { ok: false, reason: 'note-loading', noteId: id || '' };
+        }
         const d = map[id];
 
         const u = note.user || {};

@@ -1532,28 +1532,238 @@
         toast(ok ? '扫描完成：' + FILES.length + ' 项' : '扫描失败：未授权目录');
     }
 
+    /* ---------- 回收站（S5 完整版） ----------
+     * 后端 VRTrash 早就齐了（remove/list/restore/purge/empty/preflightRestore），
+     * 但抽屉只渲染了「名字 + 恢复」两样东西，单条彻底删除 purge 压根没有入口。
+     * 这里把它做成一个能真正用的回收站：
+     *   · 按批次分组显示（同一批删除的时间最有用）
+     *   · 缩略图 + 文件名 + 相对路径 + 体积
+     *   · 搜索过滤（删多了靠肉眼翻不现实）
+     *   · 单条恢复 / 单条彻底删除
+     *   · 多选：恢复所选 / 彻底删除所选 / 全选
+     * 所有破坏性操作都先确认；彻底删除额外说明「不可恢复」。 */
+
+    /* 抽屉的临时状态。不持久化：每次打开都从磁盘清单重建，
+     * 避免 UI 状态和实际文件长期不一致。 */
+    var TR = { batches: [], q: '', picked: {}, busy: false };
+
+    function trSize(bytes) {
+        var n = Number(bytes) || 0;
+        var mb = n / 1048576;
+        return fmt(mb);
+    }
+
+    function trGroupLabel(at, batch) {
+        var d = new Date(Number(at) || 0);
+        var today = new Date();
+        var sameDay = d.toDateString() === today.toDateString();
+        var y = new Date(today.getTime() - 86400000);
+        var yest = d.toDateString() === y.toDateString();
+        var hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+        if (sameDay) { return '今天 ' + hm; }
+        if (yest) { return '昨天 ' + hm; }
+        if (!at) { return batch || ''; }
+        return (d.getMonth() + 1) + '-' + d.getDate() + ' ' + hm;
+    }
+
+    /* 缩略图：只有图片/视频才值得解码；视频用容器占位（回收站里取首帧成本太高）。 */
+    function trThumb(it) {
+        var ext = String(it.ext || it.relPath.split('.').pop() || '').toLowerCase();
+        var isImg = /^(jpg|jpeg|png|webp|gif|bmp|avif|heic|heif)$/.test(ext);
+        var isVid = it.kind === 'video' || /^(mp4|mov|webm|mkv)$/.test(ext);
+        if (isImg) {
+            /* 文件已经搬进回收站，原相对路径不再可直接访问；
+             * 统一给图标占位，避免一次开几十个会 404 的请求。 */
+            return '<div class="dw-thumb"><svg class="i"><use href="#i-image"/></svg></div>';
+        }
+        if (isVid) {
+            return '<div class="dw-thumb"><svg class="i"><use href="#i-play"/></svg></div>';
+        }
+        return '<div class="dw-thumb"><svg class="i"><use href="#i-file-text"/></svg></div>';
+    }
+
+    /* 当前筛选结果（搜索命中 + 批次展开）。 */
+    function trVisible() {
+        var q = String(TR.q || '').trim().toLowerCase();
+        var out = [];
+        TR.batches.forEach(function (b) {
+            var items = (b.items || []).filter(function (it) {
+                if (!q) { return true; }
+                return String(it.relPath || '').toLowerCase().indexOf(q) >= 0;
+            });
+            if (items.length) { out.push({ batch: b.batch, at: b.at, items: items }); }
+        });
+        return out;
+    }
+
+    function trPickedList() {
+        var out = [];
+        TR.batches.forEach(function (b) {
+            (b.items || []).forEach(function (it) {
+                var k = b.batch + '|' + it.relPath;
+                if (TR.picked[k]) { out.push({ batch: b.batch, relPath: it.relPath, item: it }); }
+            });
+        });
+        return out;
+    }
+
+    function trSyncPicked() {
+        /* 清掉已经不在清单里的选择（恢复/删除后），否则批量操作会带上脏数据。 */
+        var alive = {};
+        TR.batches.forEach(function (b) {
+            (b.items || []).forEach(function (it) { alive[b.batch + '|' + it.relPath] = 1; });
+        });
+        Object.keys(TR.picked).forEach(function (k) {
+            if (!alive[k]) { delete TR.picked[k]; }
+        });
+        var n = Object.keys(TR.picked).length;
+        var nEl = document.getElementById('dwPickN');
+        if (nEl) { nEl.textContent = n; }
+        var allEl = document.getElementById('dwPickAll');
+        if (allEl) {
+            var vis = trVisible();
+            var total = vis.reduce(function (a, b) { return a + b.items.length; }, 0);
+            allEl.checked = total > 0 && n >= total;
+            allEl.indeterminate = n > 0 && n < total;
+        }
+        var btnR = document.getElementById('dwRestoreSel');
+        var btnP = document.getElementById('dwPurgeSel');
+        if (btnR) { btnR.disabled = !n || TR.busy; }
+        if (btnP) { btnP.disabled = !n || TR.busy; }
+    }
+
+    function trRender() {
+        var listEl = document.getElementById('dwList');
+        if (!listEl) { return; }
+        var vis = trVisible();
+        if (!vis.length) {
+            var total = TR.batches.reduce(function (a, b) { return a + (b.items || []).length; }, 0);
+            listEl.innerHTML = total
+                ? '<div class="dw-empty">没有匹配「' + esc(TR.q) + '」的条目</div>'
+                : '<div class="dw-empty">回收站是空的<div style="margin-top:6px;font-size:10px">删除的文件会先放到这里，可以随时恢复</div></div>';
+            trSyncPicked();
+            return;
+        }
+        var html = vis.map(function (b) {
+            var head = '<div class="dw-group"><b>' + esc(trGroupLabel(b.at, b.batch)) + '</b>' +
+                '<span>' + b.items.length + ' 项</span></div>';
+            var rows = b.items.map(function (it) {
+                var k = b.batch + '|' + it.relPath;
+                var on = !!TR.picked[k];
+                var name = String(it.fileName || it.relPath.split('/').pop() || '');
+                var dir = String(it.relPath || '').split('/').slice(0, -1).join('/');
+                var meta = trSize(it.size) + (it.kind === 'video' ? ' · 视频' : (it.kind === 'image' ? ' · 图片' : ''));
+                return '<div class="dw-item' + (on ? ' on' : '') + '" data-row="' + esc(k) + '">' +
+                    '<label class="dw-check"><input type="checkbox" data-pick="' + esc(k) + '"' + (on ? ' checked' : '') + '></label>' +
+                    trThumb(it) +
+                    '<div class="dw-body">' +
+                    '<div class="dw-name" title="' + esc(name) + '">' + esc(name) + '</div>' +
+                    '<div class="dw-path" title="' + esc(dir) + '">' + esc(dir || '（根目录）') + '</div>' +
+                    '<div class="dw-meta">' + esc(meta) + '</div>' +
+                    '</div>' +
+                    '<div class="dw-acts">' +
+                    '<button data-restore="' + esc(k) + '" title="恢复"><svg class="i"><use href="#i-rotate-cw"/></svg></button>' +
+                    '<button class="del" data-purge="' + esc(k) + '" title="彻底删除（不可恢复）"><svg class="i"><use href="#i-trash-2"/></svg></button>' +
+                    '</div></div>';
+            }).join('');
+            return head + rows;
+        }).join('');
+        listEl.innerHTML = html;
+        trSyncPicked();
+    }
+
+    async function trReload() {
+        var listEl = document.getElementById('dwList');
+        if (listEl) { listEl.innerHTML = '<div class="dw-empty">读取中…</div>'; }
+        try {
+            TR.batches = root.VRTrash ? await root.VRTrash.list() : [];
+        } catch (e) {
+            TR.batches = [];
+            if (listEl) { listEl.innerHTML = '<div class="dw-empty">读取失败：' + esc(e && e.message || '未知') + '</div>'; }
+            return;
+        }
+        trRender();
+    }
+
     async function openTrash() {
         var drawer = $('#drawer'), mask = $('#dwMask');
         if (!drawer) { return; }
         drawer.classList.add('show');
         if (mask) { mask.classList.add('show'); }
-        var listEl = $('#dwList');
-        if (!listEl) { return; }
-        listEl.innerHTML = '<div class="dw-empty">读取中…</div>';
+        trRender();
+        await trReload();
+    }
+
+    /* 恢复所选：逐条恢复，统计成功/失败，最后一次性播报。
+     * 不用「全部恢复」那条路径 —— 用户选了哪些就只动哪些。 */
+    async function trRestorePicked() {
+        var picks = trPickedList();
+        if (!picks.length || TR.busy) { return; }
+        /* 恢复前预检冲突，避免用户点了之后发现静默失败。 */
+        var conflicts = [];
         try {
-            var batches = root.VRTrash ? await root.VRTrash.list() : [];
-            if (!batches.length) { listEl.innerHTML = '<div class="dw-empty">回收站是空的</div>'; return; }
-            listEl.innerHTML = batches.map(function (b) {
-                return b.items.map(function (it) {
-                    return '<div class="dw-item">' +
-                        '<span class="dw-name" title="' + esc(it.relPath) + '">' + esc(it.relPath) + '</span>' +
-                        '<button class="btn small" data-restore="' + esc(b.batch) + '|' + esc(it.relPath) + '">恢复</button>' +
-                        '</div>';
-                }).join('');
-            }).join('');
-        } catch (e) {
-            listEl.innerHTML = '<div class="dw-empty">读取失败：' + esc(e && e.message) + '</div>';
+            var pf = await root.VRTrash.preflightRestore();
+            if (pf && pf.conflicts && pf.conflicts.length) {
+                var want = {};
+                picks.forEach(function (p) { want[p.relPath] = 1; });
+                conflicts = pf.conflicts.filter(function (p) { return want[p]; });
+            }
+        } catch (e) { /* 预检失败不阻断，restore 自己也会兜 */ }
+        var msg = '恢复所选 ' + picks.length + ' 项？文件会回到原来的相对路径。';
+        if (conflicts.length) {
+            msg += '\n\n注意：' + conflicts.length + ' 项原位置已有同名文件，会跳过（不覆盖）。';
         }
+        ask(msg, async function () {
+            TR.busy = true; trSyncPicked();
+            var okN = 0, failN = 0, firstErr = '';
+            for (var i = 0; i < picks.length; i++) {
+                var p = picks[i];
+                if (picks.length > 2) { toast('正在恢复 ' + (i + 1) + '/' + picks.length + '…', { ms: 600000 }); }
+                try {
+                    var r = await root.VRTrash.restore(p.batch, p.relPath);
+                    if (r && r.restored) { okN += r.restored; }
+                    if (r && r.failed && r.failed.length) {
+                        failN += r.failed.length;
+                        if (!firstErr) { firstErr = (r.failed[0].message || r.failed[0].code || ''); }
+                    } else if (!r || !r.restored) { failN++; }
+                } catch (e) {
+                    failN++;
+                    if (!firstErr) { firstErr = String(e && e.message || '未知'); }
+                }
+                delete TR.picked[p.batch + '|' + p.relPath];
+            }
+            TR.busy = false;
+            await load(); await refreshDrawer(); await trReload();
+            if (failN) {
+                toast('恢复完成：成功 ' + okN + ' 项，失败 ' + failN + ' 项' + (firstErr ? '（' + firstErr + '）' : ''));
+            } else {
+                toast('已恢复 ' + okN + ' 项');
+            }
+        });
+    }
+
+    /* 彻底删除所选：purge 是真正不可逆的，确认文案必须说清楚。 */
+    async function trPurgePicked() {
+        var picks = trPickedList();
+        if (!picks.length || TR.busy) { return; }
+        var sample = picks.length <= 3
+            ? '\n\n' + picks.map(function (p) { return '· ' + String(p.relPath).split('/').pop(); }).join('\n')
+            : '\n\n其中：' + String(picks[0].relPath).split('/').pop() + ' 等';
+        ask('彻底删除所选 ' + picks.length + ' 项？\n\n这会连同文件一起删除，**无法恢复**。' + sample, async function () {
+            TR.busy = true; trSyncPicked();
+            var okN = 0, failN = 0;
+            for (var i = 0; i < picks.length; i++) {
+                var p = picks[i];
+                try {
+                    await root.VRTrash.purge(p.batch, p.relPath);
+                    okN++;
+                    delete TR.picked[p.batch + '|' + p.relPath];
+                } catch (e) { failN++; }
+            }
+            TR.busy = false;
+            await refreshDrawer(); await trReload();
+            toast(failN ? ('已彻底删除 ' + okN + ' 项，' + failN + ' 项失败') : ('已彻底删除 ' + okN + ' 项'));
+        });
     }
 
     /* ==========================================================
@@ -2026,6 +2236,33 @@
             if (done) { await load(); toast('索引重建完成'); }
             await refreshDrawer();
         }); }
+        var dupBtn = $('#sdDupBtn');
+        if (dupBtn) {
+            dupBtn.addEventListener('click', async function () {
+                if (!root.VRDedup || !root.VRDedup.scan) { toast('去重模块没加载'); return; }
+                if (dupBtn.disabled) { return; }
+                dupBtn.disabled = true;
+                var old = dupBtn.textContent;
+                dupBtn.textContent = '扫描中…';
+                try {
+                    var r = await root.VRDedup.scan();
+                    var val = $('#sdDupVal');
+                    if (!r.groups.length) {
+                        if (val) { val.textContent = '没有重复'; }
+                        toast('没有发现内容重复的素材');
+                    } else {
+                        var saved = fmt(r.reclaimBytes / 1048576);
+                        if (val) { val.textContent = r.groups.length + ' 组 · ' + r.items + ' 条 · 可省 ' + saved; }
+                        toast('发现 ' + r.groups.length + ' 组重复（' + r.items + ' 条，可省 ' + saved + '）');
+                    }
+                } catch (e) {
+                    toast('扫描重复失败：' + ((e && e.message) || '未知'));
+                } finally {
+                    dupBtn.disabled = false;
+                    dupBtn.textContent = old;
+                }
+            });
+        }
         var trashBtn = $('#sdTrashBtn');
         if (trashBtn) {
             // 抽屉里点「打开回收站」：先把设置抽屉收起再开回收站。
@@ -2049,20 +2286,133 @@
         }
         var dwList = $('#dwList');
         if (dwList) {
+            /* 勾选框：只改选择状态，不重排列表（重排会让正在点的行跳位）。 */
+            dwList.addEventListener('change', function (e) {
+                var cb = e.target.closest && e.target.closest('[data-pick]');
+                if (!cb) { return; }
+                var k = cb.dataset.pick;
+                if (cb.checked) { TR.picked[k] = 1; } else { delete TR.picked[k]; }
+                var row = cb.closest('.dw-item');
+                if (row) { row.classList.toggle('on', !!cb.checked); }
+                trSyncPicked();
+            });
             dwList.addEventListener('click', async function (e) {
-                var b = e.target.closest('[data-restore]'); if (!b) { return; }
-                var parts = String(b.dataset.restore).split('|');
-                try {
-                    await root.VRTrash.restore(parts[0], parts.slice(1).join('|'));
-                    toast('已恢复');
-                    await load(); await refreshDrawer(); openTrash();
-                } catch (err) { toast('恢复失败：' + (err && err.message || '未知')); }
+                /* 点行本身也能切换勾选（勾选框太小，手机上不好点） */
+                var restoreBtn = e.target.closest && e.target.closest('[data-restore]');
+                var purgeBtn = e.target.closest && e.target.closest('[data-purge]');
+                if (!restoreBtn && !purgeBtn) {
+                    var row = e.target.closest && e.target.closest('[data-row]');
+                    if (row && !(e.target.closest('input'))) {
+                        var k = row.dataset.row;
+                        if (TR.picked[k]) { delete TR.picked[k]; } else { TR.picked[k] = 1; }
+                        trRender();
+                    }
+                    return;
+                }
+                /* 单条恢复 */
+                if (restoreBtn) {
+                    var pk = String(restoreBtn.dataset.restore || '');
+                    var sep = pk.indexOf('|');
+                    var batch = pk.slice(0, sep), rel = pk.slice(sep + 1);
+                    if (!batch || !rel) { return; }
+                    restoreBtn.disabled = true;
+                    try {
+                        var r = await root.VRTrash.restore(batch, rel);
+                        if (r && r.restored) {
+                            delete TR.picked[pk];
+                            toast('已恢复');
+                        } else {
+                            var why = (r && r.failed && r.failed[0] && (r.failed[0].message || r.failed[0].code)) || '未知';
+                            toast('恢复失败：' + why, { ms: 6000 });
+                        }
+                        await load(); await refreshDrawer(); await trReload();
+                    } catch (err) {
+                        toast('恢复失败：' + (err && err.message || '未知'));
+                        restoreBtn.disabled = false;
+                    }
+                    return;
+                }
+                /* 单条彻底删除 */
+                var pk2 = String(purgeBtn.dataset.purge || '');
+                var sep2 = pk2.indexOf('|');
+                var batch2 = pk2.slice(0, sep2), rel2 = pk2.slice(sep2 + 1);
+                if (!batch2 || !rel2) { return; }
+                var nm = String(rel2).split('/').pop();
+                ask('彻底删除「' + nm + '」？\n\n这会连同文件一起删除，**无法恢复**。', async function () {
+                    purgeBtn.disabled = true;
+                    try {
+                        await root.VRTrash.purge(batch2, rel2);
+                        delete TR.picked[pk2];
+                        toast('已彻底删除');
+                        await refreshDrawer(); await trReload();
+                    } catch (err) {
+                        toast('彻底删除失败：' + (err && err.message || '未知'));
+                        purgeBtn.disabled = false;
+                    }
+                });
             });
         }
+
+        /* 搜索：输入即过滤，不请求磁盘（清单已在内存）。 */
+        var dwSearch = $('#dwSearch');
+        if (dwSearch) {
+            dwSearch.addEventListener('input', function () {
+                TR.q = String(dwSearch.value || '');
+                trRender();
+            });
+        }
+
+        /* 全选 / 取消全选：作用于「当前筛选结果」，与搜索口径一致。 */
+        var dwSelAll = $('#dwSelAll');
+        if (dwSelAll) {
+            dwSelAll.addEventListener('click', function () {
+                var vis = trVisible();
+                var total = vis.reduce(function (a, b) { return a + b.items.length; }, 0);
+                var cur = Object.keys(TR.picked).length;
+                if (cur >= total && total > 0) {
+                    TR.picked = {};
+                } else {
+                    vis.forEach(function (b) {
+                        b.items.forEach(function (it) { TR.picked[b.batch + '|' + it.relPath] = 1; });
+                    });
+                }
+                trRender();
+            });
+        }
+
+        var dwPickAll = $('#dwPickAll');
+        if (dwPickAll) {
+            dwPickAll.addEventListener('change', function () {
+                if (dwPickAll.checked) {
+                    trVisible().forEach(function (b) {
+                        b.items.forEach(function (it) { TR.picked[b.batch + '|' + it.relPath] = 1; });
+                    });
+                } else {
+                    TR.picked = {};
+                }
+                trRender();
+            });
+        }
+
+        var dwRestoreSel = $('#dwRestoreSel');
+        if (dwRestoreSel) { dwRestoreSel.addEventListener('click', trRestorePicked); }
+        var dwPurgeSel = $('#dwPurgeSel');
+        if (dwPurgeSel) { dwPurgeSel.addEventListener('click', trPurgePicked); }
+
         var dwEmpty = $('#dwEmpty');
         if (dwEmpty) { dwEmpty.addEventListener('click', async function () {
-            try { await root.VRTrash.empty(); toast('回收站已清空'); await refreshDrawer(); openTrash(); }
-            catch (e) { toast('清空失败：' + (e && e.message || '未知')); }
+            var st;
+            try { st = await root.VRTrash.status(); } catch (e) { st = { count: 0 }; }
+            if (!st || !st.count) { toast('回收站是空的'); return; }
+            ask('清空回收站？\n\n里面 ' + st.count + ' 项文件会被**彻底删除**，无法恢复。',
+                async function () {
+                    try {
+                        await root.VRTrash.empty();
+                        TR.picked = {};
+                        toast('回收站已清空');
+                        await refreshDrawer(); await trReload();
+                    } catch (e) { toast('清空失败：' + (e && e.message || '未知')); }
+                });
         }); }
         var dwRestoreAll = $('#dwRestoreAll');
         if (dwRestoreAll) { dwRestoreAll.addEventListener('click', async function () {
@@ -2093,7 +2443,10 @@
                         var msg = '已恢复 ' + okN + ' 项';
                         if (failN) { msg += '，' + failN + ' 项因同名被跳过'; }
                         toast(msg);
-                        await load(); await refreshDrawer(); openTrash();
+                        /* 恢复后清单整体变了，残留的勾选指向已不存在的条目，
+                         * 不清掉会让紧随其后的批量操作带上脏数据。 */
+                        TR.picked = {};
+                        await load(); await refreshDrawer(); await trReload();
                     } catch (e) {
                         toast('恢复失败：' + (e && e.message || '未知'));
                     } finally {
@@ -2126,6 +2479,14 @@
             try { await autoIndex(); } catch (e) { /* 未授权等，落到空态 */ }
             await load();
         }
+        /* 回收站计数必须在启动时刷一次。
+         * 2026-11-06 实测：status() 明明返回 count=15、batches=4，
+         * 但侧栏徽标一直停在初始的「0」且 hidden（设置抽屉里的「回收站」也显示 —）。
+         * 原因是这里从来没调用过 refreshDrawer() —— 只有用户手动点开设置抽屉、
+         * 或做过一次删除之后才会刷新。于是「回收站里明明有文件，界面上一个数字都没有」，
+         * 看起来就像这个功能没做。 */
+        try { await refreshDrawer(); window.__vrBoot.push('drawer'); }
+        catch (e) { window.__vrBoot.push('drawer-ERR:' + (e && e.message || '')); }
     }
 
     if (document.readyState === 'loading') {
