@@ -216,6 +216,7 @@
 
     function applyFormats(res) {
         state.formats = res.formats || [];
+        state.limitedReason = res.limitedReason || '';
         state.playerId = res.playerId || '';
         state.durSec = res.durationSec || 0;
         meta.title = res.title || meta.title;
@@ -330,6 +331,8 @@
             return;
         }
         el.qc.firstChild.click();
+        if (state.limitedReason) { setMsg('已取到格式（受限）', 'warn'); }
+        else { setMsg('已取到 ' + state.formats.length + ' 档格式'); }
     }
 
     /** 选中某档时的提示：大文件 / AV1 兼容性 */
@@ -344,6 +347,7 @@
                 tips.push('AV1：Chrome/Edge/VLC 可播，老播放器可能不支持');
             }
         }
+        if (state.limitedReason) { tips.push(state.limitedReason); }
         el.note.textContent = tips.join('；') || '';
         el.note.style.cursor = '';
         el.note.onclick = null;

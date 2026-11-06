@@ -37,12 +37,13 @@
 
 ## 3. 未完成 / 需下一会话验证
 
-1. **详情页移动/删除的真实写盘**：当前 9480 的 FSA 根句柄为 `null`，按钮会提示“先授权素材目录”，未在授权态走完物理移动/回收站。
+1. **详情页移动/删除**：隔离 profile 已完成真实写盘（见 §11）；真实库 9480 已恢复写权限，建议手工点一次单条移动/删除确认。
 2. **XHS 主页「收集并下载」UI 点击**：后端 `vrXhsAutoQueue` 已 5/5；UI 面板未再点一遍。
 3. **YouTube 自动页**：代码已关闭后台页并跳过重复；最终一次完整下载+关闭需在干净 profile 再打一次日志。
 4. **顶部平台 chip 与左侧树**：左侧已可筛选，顶部仍保留；如果产品决定只留一个入口，再删顶部 chips 并同步 `e2e-buttons`/`stage-rewrite`。
 5. **原型同步**：本轮新增收藏/星标双按钮、7 列网格未同步到 `deliverables/prototypes/media-library-stage-v1.html`；原型仍是设计真源，动 UI 前先对照。
 6. **性能**：5 万条虚拟滚动、首帧大视频、缩略图批量解码未在本轮测量。
+7. **右键菜单**：`trash-ui.js` 未挂到 library.html；详情页/批量条可用，卡片右键的「重命名/移动/删除」还没有入口。
 
 ## 4. 复现命令
 
@@ -219,3 +220,45 @@ Chrome 的目录写权限不会跨页面刷新永久保留；恢复时必须由�
 剩余：
 - 右键菜单（`trash-ui.js`）当前没有挂到 library.html；详情页三条已可用。
   如果要在卡片右键也提供「移动…」，后续把 `trash-ui.js` 接上并复用 `VRMovePicker`。
+
+## 12. YouTube 取格式失败 + 小红书批量「无反应」（2026-11-06 10:xx）
+
+### YouTube：`取格式失败：VISIONOS → UNPLAYABLE: Sign in to confirm you're not a bot`
+两个独立原因：
+1. **后台标签页被 Chrome 冻结**（`tab.frozen=true`）。对冻结页
+   `chrome.scripting.executeScript` 会一直不回调，旧代码没有超时，页面看起来卡死。
+   现在 `ytFormats` 先 `chrome.tabs.get`：`frozen/discarded` 就 `tabs.reload` 唤醒，
+   再注入；注入本身有 20 秒超时，超时给明确提示。
+2. YouTube 对非 WEB 客户端做风控（VISIONOS/MWEB/TVHTML5/ANDROID/IOS 全部
+   `LOGIN_REQUIRED`/`UNPLAYABLE`）。现在客户端列表加入 **WEB 兜底**，并允许
+   progressive（单文件）直链；WEB 通常只给 360p，UI 会明确提示「当前只返回
+   360p 单文件直链（高画质走 SABR，暂不支持）」，不再报「取格式失败」。
+   错误信息也改成短句（详细尝试结果放 `detail` + console.warn）。
+
+实测 `https://youtu.be/Ej_kZi6qX9w`：
+- 页面被唤醒后重新取到 **32 档、1080p**（VISIONOS 恢复）；成功提示为
+  「已取到 32 档格式」。
+- 若只有 WEB 可用，则显示 360p 单文件 + 受限说明，仍能下载。
+
+### 小红书批量：移动后「无反应 / 依然无效果」
+三个问题叠加：
+1. **重复被当成成功**：`vrBulkDownload` 把 `vrBulkSaveItem` 的
+   `{ok:true, skipped:true}` 计入 `done`，UI 显示「完成 5 个文件」，但磁盘没有新文件。
+   现在 skipped 单独计数，文案变成「没有新文件：N 条都已下载过（同来源自动跳过…）」。
+2. **XHS CDN 同一张图每次签名前缀不同**：
+   `…/202611060359/<hash>/spectrum/ID` vs `…/202611061013/<hash>/spectrum/ID`。
+   旧规范化保留时间戳，导致同图反复下载成 `(1)(2)(3)`。现在
+   `vrCanonMediaUrl` 对 `xhscdn.com` 只保留 `/spectrum/<稳定 ID>`（视频保留
+   `xhscdn.com/stream/…`），CDN 子域也归一。
+3. **「收集并下载」在自动补全未勾选时只收集不下载**；现在点它会自动勾选并开始。
+   另加 90 秒无进度看门狗，后台回执丢失时不会永久锁死按钮。
+
+验证：
+- 同一篇已下载笔记再跑一次：`没有新文件：5 条都已下载过（同来源自动跳过…）`，
+  无新下载、无新文件。
+- 清理测试产生的 `(1)/(2)` 重复文件后，真实库恢复 **36 条 / 8/8 PASS**。
+- `e2e-all --isolated --only stage-rewrite,e2e-buttons` → 2/2、46 条断言。
+
+未完成：
+- YouTube 高画质仍依赖 VISIONOS 等客户端给直链；若全部被风控，只能 360p。
+  真正的 4K 兜底需要 SABR 复放（BACKLOG P2），本轮未做。
