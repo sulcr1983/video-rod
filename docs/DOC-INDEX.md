@@ -1,8 +1,7 @@
 # 文档索引与可信度分级
 
-> 更新：2026-10-25 ｜ 用途：接手时先看这份，知道**哪份文档能信、哪份只能当历史看**
->
-> 项目里文档有 30+ 份，但**性质不同**。混着读会被过时信息误导（本轮已踩过）。
+> 更新：2026-11-06 ｜ 共 **67 份**文档
+> 用途：接手时先看这份，知道**哪份能信、哪份只能当历史看**。
 
 ---
 
@@ -11,110 +10,135 @@
 | 级别 | 含义 | 能不能当现状用 |
 |---|---|---|
 | **S** 权威 | 由代码实测/核查得出，随时可复现 | ✅ 能 |
-| **A** 现状 | 描述当前实现，但需偶尔核对 | ⚠️ 大体能，关键处核对代码 |
-| **P** 规划 | 早期设计/计划，**未实现的部分属正常** | ❌ 只能当「当初想做什么」看 |
-| **H** 历史 | 决策记录、审计过程、阶段性交接 | ❌ 只当「为什么这么定」看 |
+| **A** 现状 | 描述当前实现，关键处需核对代码 | ⚠️ 大体能 |
+| **P** 规划 | 早期设计/计划，**未实现部分属正常** | ❌ 只当「当初想做什么」 |
+| **H** 历史 | 决策记录、审计过程、阶段性交接 | ❌ 只当「为什么这么定」 |
+
+> **判断口诀**：文档里写的「待施工 / 计划中 / 未做」，先去代码里搜一眼再信。
+> 本项目已发生多次「文档说没做、代码其实做了」（见 §六）。
 
 ---
 
-## 二、S 级：权威（可直接信）
+## 二、S 级 · 权威（可直接信）
 
 | 文档 | 内容 | 为什么权威 |
 |---|---|---|
-| **`TODO-VERIFIED.md`** | 未完成清单 | 2026-10-25 逐项用代码核实 |
-| **`TESTING.md`** | 测试策略与用例 | 基线数字来自 `--suite full` 实测（20 套 / 574 条） |
-| **`DEPENDENCY-EVAL-FLOATING-UI.md`** | 浮层定位依赖评估 | 含实际落地参数与踩坑记录 |
-| **`RESEARCH-COMPETITOR-IMAGE.md`** | 竞品逆向 | 基于两个开源项目源码 + 提交记录 |
-| **`YT-CLIENT-STATUS.md`** | YouTube 客户端实测 | 带时间戳的真机实测结果 |
+| **`BACKLOG.md`** | **待办唯一真源** | 状态只在这里改；2026-11-06 已按代码逐条核实 |
+| **`E2E-BUTTON-AUDIT-2026-11-06.md`** | 全量按钮审计 | 99 按钮实点 91、JS 异常 0，可复现 |
+| **`INTERFACE-CONTRACT.md`** | 前后交互契约 | IndexedDB 结构、字段权威表、消息通道 |
+| **`TEST-ASSETS.md`** | 实测素材登记 | 带真实 URL 与验证结果 |
+| **`TEST-BROWSER.md`** | 测试浏览器与登录态规则 | 操作步骤可复现 |
+| **`DESIGN-SYSTEM-STAGE.md`** | 设计 token 真源 | 改 UI 前必读 |
+| **`DECISIONS.md`** | 决策记录（55 条 ADR） | 每个「为什么」都有出处 |
 
 ---
 
-## 三、A 级：现状（大体可信）
+## 三、A 级 · 现状（描述当前实现）
 
-| 文档 | 内容 | 注意 |
+| 文档 | 内容 | 备注 |
 |---|---|---|
-| **`HANDOFF.md`** | 交接主文档 | §7 有过时内容，已加警告指向 TODO-VERIFIED |
-| **`IMAGE-I1I2-IMPL.md`** | 图片悬停实现 | 实现细节准；DNR 坑必读 |
-| **`IMAGE-I3-IMPL.md`** | 图片批量实现 | 同上 |
-| **`IMAGE-I4-IMPL.md`** | 清单面板实现 | 实现细节准；**浮标现已默认关闭**（`imgPanel: false`），该文档未提默认值，以代码为准 |
-| **`IMAGE-I5-IMPL.md`** | 设置项与快捷键 | 已补 `imgBgScan`，`imgPanel` 默认值已修正 |
-| **`PRODUCT-IMAGE-ENTRY.md`** | 图片入口产品方案 | 含已落地改动 |
-| **`DECISIONS.md`** | ADR 决策记录 | 早期条目是历史背景，结论仍有效 |
+| `LIBRARY-PLAN.md` | 资源库权威方案：目录规范、数据模型、迁移、索引 | S0–S2 已实现 |
+| `YT-FEASIBILITY.md` | YouTube 可行性实测：SABR 真相、客户端矩阵 | 结论已落地 |
+| `YT-IMPLEMENTATION.md` | YouTube 实现记录与验证状态 | — |
+| `YT-CLIENT-STATUS.md` | YouTube 客户端可用性实测 | 有日期，需复核 |
+| `DEDUP-REF-DESIGN.md` | 去重引用方案：SHA-256 + 引用计数 | **已实现** |
+| `MEDIA-METADATA-PLAN.md` | 媒体溯源元数据方案 | **已实现** |
+| `MEDIA-VIEWER-PLAN.md` | 查看器方案 | **已实现** |
+| `PREWORK-PROVENANCE.md` | 下载溯源预研 | **已实现** |
+| `LIBRARY-IMPLEMENTATION.md` | 媒体库 P1/P2 实施规格 | — |
+| `PROTOTYPE-MAPPING.md` | 原型复刻施工规范 | 原型已部分超前 |
+| `TESTING.md` | 测试策略与回归清单 | 基线数字可能滞后 |
+| `TEST-MATRIX-P0.md` | P0 回归矩阵 | — |
+| `TEST-PLAN-DOWNLOAD.md` | 下载链路验收清单 | — |
+| `FRONTEND-UI-SYSTEM.md` | 前端统一设计 | 与 STAGE 版并存 |
+| `DESIGN-SYSTEM-BD.md` | 设计系统 B+D | 被 STAGE 取代，留档 |
+| `LIBRARY-BENCHMARK.md` | 素材库同行调研（八家） | 含「明确不做」清单 |
+| `FUNCTION-AUDIT-ENTRY.md` | 入口层功能审视 | — |
+| `RELEASE-FEASIBILITY.md` | 发布可行性（结论：暂不发布） | — |
+| `MOBILE-RESEARCH.md` | 移动端可行性调研 | — |
+| `BEUI-EVAL.md` | beUI 技术评估 | — |
+| `DEPENDENCY-EVAL-FLOATING-UI.md` | 浮层定位依赖评估 | — |
+| `REF-YTB-TUBLY.md` | Tubly 拆包分析 | — |
+| `RESEARCH-COMPETITOR-IMAGE.md` | 竞品逆向 | — |
+| `IMAGE-*-RESEARCH/PLAN/IMPL.md` | 图片下载系列（调研→方案→实现） | I1–I5 已实现 |
+| `INCIDENT-20261019-LIBRARY-DIR.md` | 媒体库目录限制复盘 | 教训仍有效 |
+| `INVENTORY-2026-11-06.md` | 全面盘点 | 快照，会过期 |
 
 ---
 
-## 四、P 级：规划（未实现属正常）
-
-| 文档 | 内容 | 未实现部分 |
-|---|---|---|
-| **`LIBRARY-PLAN.md`** | 资源库主线方案 | `archive.js`（B 模式）、`bridge.js`（能力已并入） |
-| **`IMAGE-DOWNLOAD-PLAN.md`** | 图片下载总方案 | I6 图集：模式 A（滚动）已落地，B（翻页）/C（站点 API）未做 |
-| **`DESIGN.md`** | 早期设计稿 | `image-scanner.js` / `bilibili.js` / `youtube.js` 都换了落点，已加阅读须知 |
-| **`BUILD-PLAN.md`** | 构建计划 | 构建链未建（无 `package.json`） |
-| **`FRONTEND-UI-SYSTEM.md`** | UI 体系 | 部分设想未落地 |
-| **`MOBILE-RESEARCH.md`** | 移动端调研 | 纯调研，无实现 |
-
-> ⚠️ 读 P 级文档时记住：**看到「（新）」就是「当时计划」，不代表现在有**。
-
----
-
-## 五、H 级：历史（只当背景）
+## 四、P 级 · 规划（未实现部分属正常）
 
 | 文档 | 内容 |
 |---|---|
-| **`HANDOFF-I5-WIP.md`** | I5 中途交接（已过时） |
-| **`AUDIT-I5-WEIBO-PLAN.md`** | 微博适配审计 |
-| **`IMAGE-DOWNLOAD-RESEARCH.md`** | 早期调研 |
-| **`IMAGE-AUTO-INDEX-RESEARCH.md`** | 自动索引调研 |
-| **`YT-FEASIBILITY.md`** | YouTube 可行性论证 |
-| **`REF-YTB-TUBLY.md`** | 参考项目分析 |
-| **`S5B-BATCH-RENAME.md`** | S5b 专项记录 |
-| **`LIBRARY-PLAN-审计方案.md`** | 外部审计方案 |
-| **`PLAN.md`** / **`REQUIREMENTS.md`** | 最初的需求与计划 |
+| `PLAN.md` | 方案书 v1.1 |
+| `BUILD-PLAN.md` | 施工计划 M0–M11（+ M12 附录） |
+| `BUILD-PLAN-STAGE.md` | 舞台换皮施工清单 |
+| `REQUIREMENTS.md` / `REQUIREMENTS-CHECKLIST.md` | 需求规格 |
+| `DESIGN.md` | 技术设计（部分模块名已漂移，见 §六） |
+| `LIBRARY-PLAN-审计方案.md` | 方案审计 |
+| `LIBRARY-FULL-TEST.md` | 逐按钮验收（旧口径） |
+| `MEDIA-LIBRARY-PLAN.md` | 早期媒体库方案 |
+| `OPTIONS-REDESIGN.md` | 设置页重设计 |
+| `UI-IMPL-PLAN.md` | 界面落地技术文档 |
+| `IMPACT-ANALYSIS-UI-REDESIGN.md` | 增量影响分析 |
+| `PRODUCT-IMAGE-ENTRY.md` | 图片入口收敛方案 |
+| `S5B-BATCH-RENAME.md` | 批量选择 + 重命名 |
+| `STYLE-OPTIONS.md` | 界面风格四方向 |
+| `AUDIT-I5-WEIBO-PLAN.md` | 微博缺陷修复方案 |
+| `IMAGE-AUTO-INDEX-RESEARCH.md` | 自动归类调研 |
+| `READINESS-20261104.md` | 就绪度评估 |
+| `MERGE-20261104.md` | 两线合并记录 |
+| `STATUS-20261104.md` | 阶段性汇报 |
 
 ---
 
-## 六、怎么保持同步
+## 五、H 级 · 历史（交接与审计留痕）
 
-**已内置检查工具**：
+| 文档 | 时间 | 说明 |
+|---|---|---|
+| `HANDOFF-2026-11-06-ROUND2.md` | 2026-11-06 | **最新交接**，含本轮全部修复记录（21 节） |
+| `HANDOFF-2026-11-06.md` | 2026-11-06 上午 | 诊断交接，§6 根因档案仍有价值 |
+| `HANDOFF-I5-WIP.md` | 2026-11-04 | I5 进行中快照 |
+| `HANDOFF-20261019.md` | 2026-10-19 | 旧交接 |
+| `HANDOFF.md` | 2026-10 | 最早交接 |
+| `E2E-AUDIT-2026-11-06.md` | 2026-11-06 | E2E 审计记录 |
+| `FIRST-RUN-AUDIT-2026-11-06.md` | 2026-11-06 | 首轮黑盒验收 |
+| `TODO-VERIFIED.md` | 2026-10-25 | 已被 BACKLOG 取代 |
 
-```bash
-python tools/check-doc-sync.py     # 核查文档引用的文件是否存在
-python tools/cdp-run.py --suite docs   # 走启动器（同上）
-```
-
-**它做什么**：
-- 扫描 `docs/*.md` 里所有 `js/xxx.js` 引用
-- 区分四类：正常 / 元引用（在说明某文件去向）/ 位置变更 / 失效
-- 当前结果：**53 个引用，46 个存在，0 失效，0 位置变更** ✅
-
-**判定规则**（避免误报）：
-- 行内含「不存在 / 原计划 / 实际路径 / 并入 / 移到」→ 元引用，不算失效
-- `js/hls.js` 实为 `lib/hls.min.js` → 省略 `.min` 的第三方库，不算失效
-- 设计文档里的「（新）」→ 规划项，不算失效
-
-**维护约定**：
-1. 改了文件名 → 同步更新文档，或在 `MOVED` 表里登记
-2. 新增未实现的功能 → 在 `NOT_IMPLEMENTED` 里登记，并在 `TODO-VERIFIED.md` 记一条
-3. 提交前跑一次 `--suite docs`，别让漂移积累
+> ⚠️ `TODO-VERIFIED.md` 里的「未完成清单」**已过期**，状态以 `BACKLOG.md` 为准。
 
 ---
 
-## 七、2026-11 舞台重设计套件（ADR-052 重写路线，读到先看这节）
+## 六、已知文档漂移（别被误导）
 
-> 这批是"用户拍板过的产品真源"，**优先级高于旧计划文档**。旧文档若与之冲突，以本节为准。
+| 文档说 | 实际 |
+|---|---|
+| `DESIGN.md` 提到 `js/image-scanner.js`、`bilibili.js`、`youtube.js` | **不存在**；能力在 `popup-videorod.js` / `x-button.js` / `js/yt/` |
+| `TODO-VERIFIED.md` 列了一堆「未做」 | 多数已实现，见 `BACKLOG.md` §2026-11-06 核实 |
+| 旧 README 说「YouTube 纯扩展基本无解」 | **已实现 1080p 下载**（SABR 只挡更高档位） |
+| 旧 README 说去重/溯源「待施工」 | **均已实现**（`dedup.js` / `sw-library.js`） |
+| 旧 README 说「27 个脚本、600+ 断言」 | 实际 **54 个脚本、1336 条断言** |
+| 旧 README 说「60+ 条 ADR」 | 实际 **55 条** |
+| `MEDIA-LIBRARY-PLAN.md` 的 `index.json` 方案 | 最终采用 **IndexedDB**（见 ADR） |
 
-| 文档/文件 | 级别 | 内容 | 用法 |
-|---|---|---|---|
-| `deliverables/prototypes/media-library-stage-v1.html` | **S** | 媒体库完整可交互原型（4313 行，CDP 验证过） | **产品真源**，施工照此复刻 |
-| `deliverables/prototypes/popup-stage-v1.html` | **S** | popup 舞台版原型（462 行） | popup 重写真源 |
-| `deliverables/prototypes/settings-stage-v1.html` | **S** | 设置页舞台版原型（884 行） | 设置页重写真源 |
-| `docs/DESIGN-SYSTEM-STAGE.md` v1.1 | **S** | 舞台 token + 组件规范 + **DOM 骨架** | 视觉/结构唯一真源 |
-| `docs/BUILD-PLAN-STAGE.md` v2.0 | **S** | 重写路线施工清单（R0-R8/T3/T4/F/V） | 施工顺序唯一真源 |
-| `docs/PROTOTYPE-MAPPING.md` v2.0 | **S** | **原型复刻规范**：数据契约（VRDB→卡片模型）、模块处置、mock→真实接入点、平台字典缺口 | 重写必读；v1.0 已作废 |
-| `docs/TEST-ASSETS.md` | **S** | 9 条真实测试素材 + 星愿 CDP 测试方法 | V 批次执行依据 |
-| `deliverables/reviews/2026-11-04-library-redesign-directions*.md` | **H** | 九方向评审稿（暗房/档案室/仪表盘/舞台/目录/天文台/宋册/唱片墙/标本柜） | 只当"为什么选舞台"背景 |
-| `deliverables/prototypes/library-redesign-options-v1.html` | **H** | 九方向速选页 | 历史 |
+---
 
-**已作废**：`PROTOTYPE-MAPPING.md` v1.0（"改视觉补缺口"路线）、BUILD-PLAN-STAGE v1.x 的 T1/T2"换皮/结构同步"措辞。
+## 七、按用途快速定位
 
+**我要接手这个项目**
+→ `README.md` → 本文件 → `HANDOFF-2026-11-06-ROUND2.md` → `BACKLOG.md`
+
+**我要改资源库 UI**
+→ `DESIGN-SYSTEM-STAGE.md`（token）→ `deliverables/prototypes/media-library-stage-v1.html`（原型）→ `INTERFACE-CONTRACT.md`
+
+**我要改下载链路**
+→ `LIBRARY-PLAN.md`（目录规范）→ `js/background.js` → `TEST-PLAN-DOWNLOAD.md`
+
+**我要查某功能做没做**
+→ 先搜代码，再看 `BACKLOG.md`，**不要**只看 `TODO-VERIFIED.md`
+
+**我要跑测试**
+→ `TESTING.md` + `TEST-BROWSER.md`；命令见 README「开发与测试」
+
+**我要知道某个决定为什么这么做**
+→ `DECISIONS.md`（ADR-001 ~ ADR-055）
