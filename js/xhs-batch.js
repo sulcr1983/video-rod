@@ -16,7 +16,7 @@
     const KEY = 'vrXhsQueue';
     let queue = [];
     let btn = null, panel = null, listEl = null, statusEl = null;
-    let autoEl = null, downloadBtn = null, running = false;
+    let autoEl = null, downloadBtn = null, running = false, runTimer = 0;
 
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -66,6 +66,7 @@
                 queue = (res && res[KEY]) || [];
                 if (!Array.isArray(queue)) { queue = []; }
                 render();
+                setStatus('共 ' + queue.length + ' 条；手动滚动不会自动翻页');
             });
         } catch (e) { render(); }
     }
@@ -166,9 +167,12 @@
         panel.querySelector('[data-collect]').addEventListener('click', collect);
         panel.querySelector('[data-collect-download]').addEventListener('click', function () {
             collect();
+            if (!queue.length) { setStatus('没有收集到笔记：先手动滚动页面再点'); return; }
+            /* 按钮写着「收集并下载」，就不该因为一个默认关闭的勾选框变成只收集。
+             * 点它视为用户明确要下载，自动勾上并继续。 */
             if (!autoEl.checked) {
-                setStatus('已收集；勾选「自动补全详情」后点下载队列');
-                return;
+                autoEl.checked = true;
+                setStatus('已自动开启「自动补全详情」，开始下载…');
             }
             download();
         });
@@ -196,6 +200,20 @@
         setStatus('本页识别 ' + found.length + ' 条，新增 ' + added + ' 条，共 ' + queue.length + ' 条');
     }
 
+    function resetRunning() {
+        running = false;
+        if (runTimer) { clearTimeout(runTimer); runTimer = 0; }
+        if (downloadBtn) { downloadBtn.disabled = !queue.length; }
+    }
+    /** 长任务回执可能丢失；90 秒没有进度就解锁按钮，避免永久「无反应」 */
+    function armWatchdog() {
+        if (runTimer) { clearTimeout(runTimer); }
+        runTimer = setTimeout(function () {
+            if (!running) { return; }
+            resetRunning();
+            setStatus('后台 90 秒没有进度，可能已中断；已完成的文件不会重复下载，可直接重试');
+        }, 90000);
+    }
     function download() {
         if (!queue.length || running) { return; }
         if (!autoEl || !autoEl.checked) {
@@ -203,27 +221,30 @@
             return;
         }
         running = true;
-        downloadBtn.disabled = true;
+        if (downloadBtn) { downloadBtn.disabled = true; }
+        armWatchdog();
         setStatus('自动补全中：' + queue.length + ' 条，3–5 秒/篇…');
         try {
             chrome.runtime.sendMessage({
                 Message: 'vrXhsAuto',
                 notes: queue.slice()
             }, res => {
-                running = false;
-                downloadBtn.disabled = false;
+                resetRunning();
                 if (chrome.runtime.lastError || !res || !res.ok) {
                     setStatus('自动补全失败：' + (res && res.reason ? res.reason : '请查看扩展日志'));
                     return;
                 }
-                setStatus('完成：' + (res.files || 0) + ' 个文件，跳过 ' + (res.skipped || 0) +
-                    '，' + (res.errors || 0) + ' 篇失败' +
-                    (res.stopped ? '；' + res.stopped : ''));
+                var f = res.files || 0, sk = res.skipped || 0, er = res.errors || 0;
+                if (!f && sk && !er) {
+                    setStatus('没有新文件：' + sk + ' 条都已下载过（同来源自动跳过；若文件被手动移动，请先在资源库重扫）');
+                } else {
+                    setStatus('完成：' + f + ' 个文件，跳过 ' + sk +
+                        '，' + er + ' 篇失败' + (res.stopped ? '；' + res.stopped : ''));
+                }
                 render();
             });
         } catch (e) {
-            running = false;
-            downloadBtn.disabled = false;
+            resetRunning();
             setStatus('无法连接后台：' + String(e).slice(0, 80));
         }
     }
@@ -231,6 +252,19 @@
     try {
         chrome.runtime.onMessage.addListener(msg => {
             if (!msg || msg.Message !== 'vrXhsAutoProgress') { return; }
+            armWatchdog();
+            if (msg.finished || (msg.total && msg.done >= msg.total) || msg.stop) {
+                resetRunning();
+            }
+            if (msg.finished) {
+                var f = msg.files || 0, sk = msg.skipped || 0, er = msg.errors || 0;
+                setStatus((!f && sk && !er)
+                    ? ('没有新文件：' + sk + ' 条都已下载过（同来源自动跳过；若文件被手动移动，请先在资源库重扫）')
+                    : ('完成：' + f + ' 个文件，跳过 ' + sk + '，' + er + ' 篇失败' +
+                        (msg.stop ? '；' + msg.stop : '')));
+                render();
+                return;
+            }
             setStatus('自动补全 ' + msg.done + '/' + msg.total +
                 '，已下载 ' + (msg.files || 0) + ' 个' +
                 (msg.skipped ? '，跳过重复 ' + msg.skipped : '') +

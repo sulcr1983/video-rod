@@ -1548,6 +1548,9 @@ function ytCollectFormats(videoId) {
             // 它排在第一位；后面几个是备用，YouTube 灰度随时会变，多留几个活得久。
             var clients = [
                 ['VISIONOS', 'VISIONOS', '101', '0.1'],
+                /* WEB 是最后的保底：它通常只给 SABR + 一个 360p 单文件直链，
+                 * 但比「所有客户端都失败」强。高画质需要 SABR 复放，见 BACKLOG。 */
+                ['WEB', 'WEB', '1', webVer],
                 ['MWEB', 'MWEB', '2', webVer],
                 ['TVHTML5', 'TVHTML5', '7', '7.20261023.00.00'],
                 ['ANDROID', 'ANDROID', '3', '19.44.38'],
@@ -1603,8 +1606,11 @@ function ytCollectFormats(videoId) {
                         continue;
                     }
                     var sd0 = j.streamingData || {};
-                    var hasUrl = (sd0.adaptiveFormats || []).some(function (f) { return !!f.url; });
-                    if (!hasUrl) {
+                    /* adaptive 有直链最好；只有 progressive（常见于 WEB）也接受。
+                     * 之前只认 adaptive，导致 WEB 明明有 360p 直链却被当成失败。 */
+                    var hasAdaptiveUrl = (sd0.adaptiveFormats || []).some(function (f) { return !!f.url; });
+                    var hasProgressUrl = (sd0.formats || []).some(function (f) { return !!f.url; });
+                    if (!hasAdaptiveUrl && !hasProgressUrl) {
                         lastErr = c[0] + ' → 只有 SABR，没有直链';
                         tried.push(lastErr);
                         continue;
@@ -1629,12 +1635,17 @@ function ytCollectFormats(videoId) {
                 var hint = videoDead
                     ? '这个视频在 YouTube 侧本身不可播放（已下架/私有/地区或会员限制），换一个视频试试。'
                     : (loginNeeded
-                        ? '这个视频需要登录才能播放。先在本浏览器登录 YouTube，再回来重试。'
+                        ? 'YouTube 要求「确认不是机器人」。保持已登录，刷新视频页后重试；仍失败时可先播放几秒再点下载。'
                         : 'YouTube 正在限制本机请求。刷新视频页、等几分钟，或确认已登录后再试。');
+                var summary = videoDead
+                    ? '视频不可播放'
+                    : (loginNeeded ? 'YouTube 要求登录验证（风控）' : 'YouTube 限制了本机请求');
+                try { console.warn('[video-rod] ytFormats 全部失败:', joined); } catch (e2) { /* 忽略 */ }
                 return {
                     ok: false,
                     code: code,
-                    error: joined || lastErr || '所有客户端都拿不到直链',
+                    error: summary,
+                    detail: joined || lastErr || '所有客户端都拿不到直链',
                     tried: tried,
                     hint: hint
                 };
@@ -1665,13 +1676,17 @@ function ytCollectFormats(videoId) {
             var pjs = cfg.get('PLAYER_JS_URL') || '';
             var m = String(pjs).match(/\/s\/player\/([^\/]+)\//);
             var vd = json.videoDetails || {};
+            var limited = !out.some(function (f) { return !f.hasAudio && f.height; });
             return {
                 ok: true,
                 formats: out,
                 title: vd.title || document.title,
                 author: vd.author || '',
                 durationSec: +vd.lengthSeconds || 0,
-                playerId: m ? m[1] : ''
+                playerId: m ? m[1] : '',
+                /* 高画质轨只有 SABR 直链时，当前管线只能下 360p 单文件 */
+                limited: limited,
+                limitedReason: limited ? 'YouTube 当前只返回 360p 单文件直链（高画质走 SABR，暂不支持）' : ''
             };
         } catch (e) {
             return { ok: false, error: String((e && e.message) || e) };
@@ -1813,18 +1828,55 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             sendResponse({ ok: false, error: '拿不到标签页 ID（页面可能已关闭）' });
             return true;
         }
-        chrome.scripting.executeScript({
-            target: { tabId: ytTabId },
-            world: 'MAIN',
-            func: ytCollectFormats,
-            args: [String(Message.videoId || '')]
-        }, function (res) {
-            if (chrome.runtime.lastError) {
-                sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+        /* 后台标签页会被 Chrome 冻结（frozen）；对冻结页 executeScript 会一直不回调。
+         * 用户遇到的表现就是「取格式失败」或一直转圈。这里先探状态：
+         * 冻结/丢弃就先 reload 唤醒，再注入；同时给注入加超时，绝不让 UI 无限等。 */
+        var responded = false;
+        var sendOnce = function (x) { if (!responded) { responded = true; sendResponse(x); } };
+        var runInject = function () {
+            var timer = setTimeout(function () {
+                sendOnce({
+                    ok: false, code: 'YT_E_TIMEOUT',
+                    error: 'YouTube 页面无响应（可能被浏览器冻结）',
+                    hint: '切到 YouTube 标签页刷新一下，再回来点下载。'
+                });
+            }, 20000);
+            try {
+                chrome.scripting.executeScript({
+                    target: { tabId: ytTabId },
+                    world: 'MAIN',
+                    func: ytCollectFormats,
+                    args: [String(Message.videoId || '')]
+                }, function (res) {
+                    clearTimeout(timer);
+                    if (chrome.runtime.lastError) {
+                        sendOnce({ ok: false, error: chrome.runtime.lastError.message });
+                        return;
+                    }
+                    var r = res && res[0] && res[0].result;
+                    sendOnce(r || { ok: false, error: '页面没有返回数据' });
+                });
+            } catch (e) {
+                clearTimeout(timer);
+                sendOnce({ ok: false, error: String((e && e.message) || e) });
+            }
+        };
+        chrome.tabs.get(ytTabId, function (t) {
+            if (chrome.runtime.lastError || !t) {
+                sendOnce({ ok: false, error: 'YouTube 标签页已关闭，请重新打开视频页' });
                 return;
             }
-            var r = res && res[0] && res[0].result;
-            sendResponse(r || { ok: false, error: '页面没有返回数据' });
+            if (t.frozen || t.discarded) {
+                chrome.tabs.reload(ytTabId, {}, function () {
+                    if (chrome.runtime.lastError) {
+                        sendOnce({ ok: false, error: 'YouTube 页面被浏览器冻结，请切到该标签页刷新后重试' });
+                        return;
+                    }
+                    setTimeout(runInject, 2500);
+                });
+            } else {
+                runInject();
+            }
         });
         return true;
     }
@@ -2948,6 +3000,17 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
             await vrBulkSleep(3000 + Math.floor(Math.random() * 2000));
         }
     }
+    /* 明确告诉页面「队列结束」：长任务的回执可能先断，
+     * 页面不能只靠 sendMessage 回调解除 running，否则按钮会永久卡住。 */
+    if (sourceTabId != null) {
+        try {
+            chrome.tabs.sendMessage(sourceTabId, {
+                Message: 'vrXhsAutoProgress', done: done, total: list.length,
+                files: files, skipped: skipped, errors: errors, stop: stopped,
+                finished: true
+            });
+        } catch (e) { /* 页面关了 */ }
+    }
     return { ok: true, total: list.length, done: done, files: files, skipped: skipped, errors: errors, stopped: stopped };
 }
 
@@ -3100,7 +3163,18 @@ function vrCanonMediaUrl(raw) {
     try {
         const u = new URL(s);
         let path = u.pathname.split('!')[0].replace(/\/+$/, '');
-        return (u.hostname.replace(/^www\./i, '').toLowerCase() + path).toLowerCase();
+        const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+        /* 小红书 CDN 的同一张图每次签名会换「时间戳/哈希」前缀：
+         *   .../202611060359/afb41021.../spectrum/1040g34o3205sjv8tk8605
+         *   .../202611061013/014f4926.../spectrum/1040g34o3205sjv8tk8605
+         * 只有 /spectrum/ 之后才是稳定的素材 ID；CDN 节点子域也会变，
+         * 所以统一归一到 xhscdn.com。不这么做，同一批图会被反复下载成 (2)(3)。 */
+        if (/(^|\.)xhscdn\.com$/i.test(host)) {
+            const m = path.match(/\/spectrum\/(.+)$/i);
+            if (m) { return 'xhscdn.com/spectrum/' + m[1].toLowerCase(); }
+            return 'xhscdn.com' + path.toLowerCase();
+        }
+        return (host + path).toLowerCase();
     } catch (e) {
         return s.split('#')[0].split('?')[0].split('!')[0].toLowerCase();
     }
@@ -3205,6 +3279,7 @@ async function vrBulkDownload(items, tabId) {
         } else {
             const name = vrBulkName(it, i);
             let ok = false;
+            let skipDup = false;
             if (it.site === 'x') {
                 // X CDN 允许 downloads；按媒体库平台/作者/类型落盘
                 const id = await vrDownloadWithName(it.url, vrMediaPath(it, name));
@@ -3237,19 +3312,25 @@ async function vrBulkDownload(items, tabId) {
                     const r = await vrBulkSaveItem(it, nm, 20000);
                     it.url = savedUrl;
                     it.ext = savedExt;
-                    return !!(r && r.ok);
+                    return r || null;
                 };
-                ok = await attempt(it.url, it.ext);
-                if (!ok && it.urlFallback) { ok = await attempt(it.urlFallback, it.extFallback); }
+                let r = await attempt(it.url, it.ext);
+                if ((!r || !r.ok) && it.urlFallback) { r = await attempt(it.urlFallback, it.extFallback); }
+                if (r && r.skipped) { skipDup = true; }
+                ok = !!(r && r.ok);
             } else {
                 // 微博等主页批量：不能走页面 <a download>（不认目录、多次点击会被
                 // 浏览器拦截，实测只剩第 1 条落到 Downloads 根目录）。这里统一走
                 // 带 filename + 预登记 meta 的下载器/FSA 通道。
                 const r = await vrBulkSaveItem(it, name, 20000);
+                if (r && r.skipped) { skipDup = true; }
                 ok = !!(r && r.ok);
             }
             if (ok === true) {
-                done++;
+                /* 重复来源不发起下载，也不能算「完成 N 个文件」——
+                 * 之前这里把 skipped 当成功，UI 显示下载了 5 个但磁盘没有新文件。 */
+                if (skipDup) { skipped++; }
+                else { done++; }
                 failStreak = 0;
                 if (mediaKey) { seen.add(mediaKey); }
             } else if (ok === null) {
