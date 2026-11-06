@@ -304,3 +304,31 @@ Chrome 的目录写权限不会跨页面刷新永久保留；恢复时必须由�
 注意：已清除真实库里名为 `download` 的错句柄。下次点「授权素材目录」
 （或直接点删除/移动）时，选择 `D:\personal\Downloads\video-rod` 或它的上级
 `D:\personal\Downloads` 一次即可。
+
+## 14. YouTube 重复卡片（2026-11-06 11:xx）
+
+现象：资源库出现两条同标题、同 9.0MB 的 YouTube 卡片，一条 `.mp4`、一条 `(1).mp4`。
+
+根因：
+1. **手动下载没有查重**：`yt-download.js` 只有 `auto=1` 分支调用 `findExistingYt()`，
+   手动点「下载」会直接再落一份，下载器 `uniquify` 生成 `(1)`。
+2. **下载器兜底入库的条目没有 pageUrl/title**：旧条目 `sourceUrl` 是 `blob:`，
+   `pageUrl/title` 为空，按「平台+规范化 URL」的去重完全匹配不到。
+3. 历史测试残留 `dup_probe.webp` 也被当成正式素材显示。
+
+修复：
+- `run()`（手动下载）开始前同样调用 `findExistingYt()`，命中直接提示「已存在，跳过重复下载」。
+- 兜底匹配：去掉 ` (n)`、`_无音轨/视频轨/音频轨`、`_1920p` 等后缀后，与
+  `safe(meta.title)` 做**完整比较**，避免「Foo」误命中「Foo Bar」。
+- `saveToDownloads()` 在 `chrome.downloads.download` 前先 `vrQueueName` 预登记
+  `platform/title/pageUrl/creator`，以后下载器通道入库的条目也能按来源去重。
+- 清理：删除 YouTube `(1).mp4`（保留 `.mp4`）、删除测试残留 `dup_probe.webp`
+  及其空目录；库回到 **36 条**。
+
+验证：
+- 库内 YouTube 只剩 3 条唯一视频，无 `(1)` 重复；`dup_probe` 已消失。
+- `library-integrity-check.py --port 9480` → **8/8 PASS，36 条**
+  （顺带修正一条抖音文件被替换后的 DB size 不一致）。
+- 文件名匹配逻辑对现有 `Guangzhou…_1920p.mp4` 命中；新下载会跳过。
+
+注意：Instagram 有一条 `(1).mp4` 是**唯一副本**（没有无后缀版本），未删除。
