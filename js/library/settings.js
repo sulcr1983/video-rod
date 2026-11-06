@@ -147,33 +147,340 @@
 
     /* ---------------- 渲染 ---------------- */
 
+    var uiMode = '';             // 未保存前用户点选的模式；保存后与 state.mode 对齐
+    var pendingHandle = null;    // 本次选择、尚未保存的目录句柄
+    var pendingName = '';
+    var pendingCount = null;
+    var handleName = '';         // 已保存目录句柄的显示名（FSA 拿不到绝对路径）
+    var scanBusy = false;
+
+    function modeOf() {
+        return (state && state.mode === 'custom') ? 'custom' : 'system';
+    }
+
+    function currentMode() {
+        return uiMode || modeOf();
+    }
+
+    function baseNameOf(p) {
+        return String(p || '').replace(/\\/g, '/').split('/').pop() || '';
+    }
+
+    /** 与库页 app.js 的 ensureRoot 同口径：从下载记录反推下载根目录 */
+    function guessBase(list, subdir) {
+        var want = '/' + String(subdir || 'video-rod') + '/';
+        var i;
+        for (i = 0; i < list.length; i++) {
+            var f = String((list[i] || {}).filename || '').replace(/\\/g, '/');
+            var k = f.indexOf(want);
+            if (k > 0) { return f.slice(0, k); }
+        }
+        for (i = 0; i < list.length; i++) {
+            var g = String((list[i] || {}).filename || '').replace(/\\/g, '/');
+            var dir = g.slice(0, g.lastIndexOf('/'));
+            if (dir) { return dir; }
+        }
+        return '';
+    }
+
+    /** 首次打开就把默认位置算出来；算不到也允许保存，首次下载时浏览器会自动建目录 */
+    function resolveDetectedRoot(cb) {
+        if (state.detectedRoot) { if (cb) { cb(state.detectedRoot); } return; }
+        try {
+            chrome.downloads.search({ limit: 50, orderBy: ['-startTime'] }, function (list) {
+                var base = guessBase(list || [], (state && state.subdir) || 'video-rod');
+                if (!base) { if (cb) { cb(''); } return; }
+                save({ detectedRoot: base }, function () {
+                    render();
+                    if (cb) { cb(base); }
+                });
+            });
+        } catch (e) { if (cb) { cb(''); } }
+    }
+
     function render() {
         if (!state) { return; }
+        var mode = currentMode();
+
         var sub = $('vrLibSubdir');
         if (sub && document.activeElement !== sub) { sub.value = state.subdir || 'video-rod'; }
 
-        var mode = $('vrLibMode');
-        if (mode) { mode.value = state.mode || 'system'; }
+        var sys = $('vrLibModeSystem'), cus = $('vrLibModeCustom');
+        if (sys) { sys.checked = mode === 'system'; }
+        if (cus) { cus.checked = mode === 'custom'; }
+        var optS = $('vrLibOptSystem'), optC = $('vrLibOptCustom');
+        if (optS) { optS.classList.toggle('on', mode === 'system'); }
+        if (optC) { optC.classList.toggle('on', mode === 'custom'); }
+
+        var box = $('vrLibCustomBox');
+        if (box) { box.hidden = mode !== 'custom'; }
+        var subBox = $('vrLibSubdirBox');
+        if (subBox) { subBox.hidden = mode === 'custom'; }
 
         var custom = $('vrLibCustomRoot');
         if (custom && document.activeElement !== custom) { custom.value = state.customRoot || ''; }
-        if (custom) { custom.disabled = (state.mode || 'system') !== 'custom'; }
-
-        var pick = $('vrLibPickDir');
-        if (pick) { pick.disabled = (state.mode || 'system') !== 'custom'; }
 
         var rootEl = $('vrLibRoot');
         if (rootEl) {
-            rootEl.textContent = state.detectedRoot
-                ? (state.detectedRoot + '\\' + (state.subdir || 'video-rod'))
-                : '未探测（点下方「校验落盘」）';
+            var subdir = state.subdir || 'video-rod';
+            if (state.detectedRoot) {
+                var shown = String(state.detectedRoot + '\\' + subdir).replace(/\//g, '\\');
+                rootEl.textContent = shown;
+                rootEl.title = shown;
+            } else {
+                rootEl.textContent = '系统下载目录\\' + subdir + '（首次下载时自动创建）';
+                rootEl.title = '';
+            }
         }
 
-        idbGet('root').then(function (h) {
-            if (h && h.name) { text('vrLibCustomMsg', '已授权目录：' + h.name, '#2e7d32'); }
-        }).catch(function () { /* 无句柄属正常 */ });
+        var nameEl = $('vrLibCustomName');
+        if (nameEl) {
+            var nm = pendingName || (state.mode === 'custom'
+                ? (state.customRoot ? baseNameOf(state.customRoot) : handleName)
+                : '');
+            if (mode !== 'custom') {
+                nameEl.textContent = '把素材存到你指定的文件夹；已有内容会扫描入库';
+            } else if (!nm) {
+                nameEl.textContent = '未选择（点下方「选择文件夹…」）';
+            } else {
+                nameEl.textContent = '已选择：' + nm +
+                    (pendingCount != null ? ('，发现 ' + pendingCount + (pendingCount >= 5000 ? '+' : '') + ' 个媒体文件') : '');
+            }
+        }
 
         renderLibSettings();
+    }
+
+    /* ---------------- 保存位置：选择 / 扫描 / 保存 ---------------- */
+
+    var SKIP_DIRS = { _verify: 1, _回收站: 1, _library: 1, _migration: 1, _selftest: 1 };
+
+    function skipDirName(name) {
+        return !name || name.charAt(0) === '.' || SKIP_DIRS[name] || /\.(part|crdownload|tmp)$/i.test(name);
+    }
+
+    function isMediaName(name) {
+        try { return root.VRPath.typeOf({ fileName: name }) !== 'other'; } catch (e) { return false; }
+    }
+
+    /** 选目录时先数一下会导入多少，别让用户点保存后才发现很大 */
+    async function countMediaInHandle(handle, limit) {
+        var cap = limit || 5000;
+        var n = 0;
+        async function walk(dir, depth) {
+            if (n >= cap || depth > 6) { return; }
+            for await (var entry of dir.entries()) {
+                var name = entry[0], eh = entry[1];
+                if (skipDirName(name)) { continue; }
+                if (eh.kind === 'file') {
+                    if (isMediaName(name)) { n++; }
+                } else {
+                    await walk(eh, depth + 1);
+                }
+                if (n >= cap) { return; }
+            }
+        }
+        await walk(handle, 0);
+        return n;
+    }
+
+    /**
+     * FSA 只给目录句柄，拿不到绝对路径。这里用「文件名 + 大小」对一遍下载记录：
+     * 只要目录里有任意一个文件是浏览器下载过的，就能反推出这个目录的绝对路径。
+     * 对不上就返回空——预览走句柄，不阻塞保存。
+     */
+    async function inferAbsRoot(handle) {
+        var list = await new Promise(function (resolve) {
+            try {
+                chrome.downloads.search({ limit: 5000, orderBy: ['-startTime'] }, function (l) {
+                    void chrome.runtime.lastError;
+                    resolve(l || []);
+                });
+            } catch (e) { resolve([]); }
+        });
+        var byKey = {};
+        list.forEach(function (d) {
+            if (!d || d.state !== 'complete' || !d.filename) { return; }
+            var k = baseNameOf(d.filename).toLowerCase() + '|' + (d.fileSize || d.totalBytes || 0);
+            if (!byKey[k]) { byKey[k] = d.filename; }
+        });
+        if (!Object.keys(byKey).length) { return ''; }
+
+        var hit = null, seen = 0;
+        async function walk(dir, rel, depth) {
+            if (hit || depth > 5 || seen > 500) { return; }
+            for await (var entry of dir.entries()) {
+                var name = entry[0], eh = entry[1];
+                if (skipDirName(name)) { continue; }
+                var r = rel ? (rel + '/' + name) : name;
+                if (eh.kind === 'file') {
+                    seen++;
+                    try {
+                        var f = await eh.getFile();
+                        var k = name.toLowerCase() + '|' + f.size;
+                        if (byKey[k]) { hit = { abs: byKey[k], rel: r }; return; }
+                    } catch (e) { /* 跳过读不了的文件 */ }
+                } else {
+                    await walk(eh, r, depth + 1);
+                }
+                if (hit || seen > 500) { return; }
+            }
+        }
+        try { await walk(handle, '', 0); } catch (e) { return ''; }
+        if (!hit) { return ''; }
+
+        var dir = String(hit.abs).replace(/\\/g, '/');
+        var cut = dir.lastIndexOf('/');
+        if (cut > 0) { dir = dir.slice(0, cut); }
+        var segs = hit.rel.split('/');
+        segs.pop();                                  // 去掉文件名
+        for (var i = 0; i < segs.length; i++) {
+            var k2 = dir.lastIndexOf('/');
+            if (k2 <= 2) { break; }                   // 别把盘符削掉
+            dir = dir.slice(0, k2);
+        }
+        return dir.replace(/\//g, '\\');
+    }
+
+    function pickCustom() {
+        if (typeof root.showDirectoryPicker !== 'function') {
+            text('vrLibCustomMsg', '此浏览器不支持目录选择（需 Chrome 86+）', '#c0392b');
+            return;
+        }
+        root.showDirectoryPicker({ mode: 'readwrite' }).then(function (h) {
+            var display = h.name || '已选文件夹';
+            pendingHandle = h;
+            pendingName = display;
+            pendingCount = null;
+            uiMode = 'custom';
+            render();
+            text('vrLibCustomMsg', '已选择：' + display + '，正在检查已有文件…', '#666');
+            return idbPut('root', h).catch(function () { return null; }).then(function () {
+                return countMediaInHandle(h).catch(function () { return null; });
+            }).then(function (n) {
+                pendingCount = n;
+                render();
+                return inferAbsRoot(h).catch(function () { return ''; });
+            }).then(function (abs) {
+                if (abs) {
+                    var input = $('vrLibCustomRoot');
+                    if (input && !String(input.value || '').trim()) { input.value = abs; }
+                }
+                text('vrLibCustomMsg',
+                    '已选择：' + display +
+                    (pendingCount != null ? ('，发现 ' + pendingCount + (pendingCount >= 5000 ? '+' : '') + ' 个媒体文件') : '') +
+                    '；点「保存并使用」开始入库', '#2e7d32');
+            });
+        }).catch(function (e) {
+            if (e && e.name === 'AbortError') { return; }   // 用户取消
+            text('vrLibCustomMsg', '选择失败：' + ((e && e.message) || e), '#c0392b');
+        });
+    }
+
+    function dropRootHandle() {
+        pendingHandle = null;
+        pendingName = '';
+        pendingCount = null;
+        handleName = '';
+        try { idbPut('root', null); } catch (e) { /* 忽略 */ }
+        try {
+            if (root.VRIndex && root.VRIndex.setRoot) { root.VRIndex.setRoot(null, '', ''); }
+        } catch (e) { /* 忽略 */ }
+    }
+
+    function saveAll() {
+        if (scanBusy || !state) { return; }
+        var mode = currentMode();
+        var subEl = $('vrLibSubdir');
+        var sub = cleanSeg(subEl ? subEl.value : state.subdir);
+
+        if (mode === 'system') {
+            var wasCustom = state.mode === 'custom';
+            save({ mode: 'system', subdir: sub }, function () {
+                uiMode = 'system';
+                if (wasCustom) { dropRootHandle(); }
+                render();
+                text('vrLibSaveMsg', '正在识别下载目录…', '#666');
+                resolveDetectedRoot(function (base) {
+                    var target = base ? (String(base).replace(/\//g, '\\') + '\\' + sub) : ('系统下载目录\\' + sub);
+                    text('vrLibSaveMsg',
+                        '已保存：' + target + (base ? '' : '（首次下载时自动创建）'), '#2e7d32');
+                });
+            });
+            return;
+        }
+
+        var h = pendingHandle;
+        var absEl = $('vrLibCustomRoot');
+        var abs = String((absEl && absEl.value) || state.customRoot || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+        if (!h) {
+            if (state.mode !== 'custom') {
+                text('vrLibSaveMsg', '请先点「选择文件夹…」选一个目录', '#b26a00');
+                return;
+            }
+            idbGet('root').then(function (saved) {
+                if (!saved) {
+                    text('vrLibSaveMsg', '请先点「选择文件夹…」选一个目录', '#b26a00');
+                    return;
+                }
+                pendingHandle = saved;
+                saveCustom(saved, abs, sub);
+            }).catch(function () {
+                text('vrLibSaveMsg', '请先点「选择文件夹…」选一个目录', '#b26a00');
+            });
+            return;
+        }
+        saveCustom(h, abs, sub);
+    }
+
+    function saveCustom(handle, abs, sub) {
+        scanBusy = true;
+        handleName = handle.name || handleName;
+        text('vrLibSaveMsg', '正在保存…', '#666');
+        save({ mode: 'custom', customRoot: abs, subdir: sub }, async function () {
+            uiMode = 'custom';
+            render();
+            try { await idbPut('root', handle); } catch (e) { /* 忽略 */ }
+            try {
+                if (root.VRIndex && root.VRIndex.setRoot) {
+                    await root.VRIndex.setRoot(handle, abs, sub);
+                }
+            } catch (e) { /* 内存态失败不影响本次扫描，下面会报错 */ }
+
+            text('vrLibSaveMsg', '已保存，正在扫描已有素材…', '#666');
+            try {
+                if (!root.VRIndex) { throw new Error('索引模块未加载'); }
+                var r = await root.VRIndex.build({
+                    mode: 'full',
+                    /* 首次导入自选文件夹时不要把旧位置的条目判成缺失：
+                     * 这不是「文件被删」，只是换了库根。保留旧条目，用户可切回。 */
+                    markMissing: false,
+                    onProgress: function (p) {
+                        if (p && p.total) {
+                            text('vrLibSaveMsg', '正在扫描 ' + p.done + ' / ' + p.total + '…', '#666');
+                        }
+                    }
+                });
+                var un = 0;
+                try {
+                    var all = await root.VRDB.getAllFiles();
+                    un = all.filter(function (f) { return f && f.untracked; }).length;
+                } catch (e) { /* 统计失败不影响结果 */ }
+                text('vrLibSaveMsg',
+                    '已保存并入库：' + (r.ok || 0) + ' 个文件' +
+                    (un ? ('，其中 ' + un + ' 个在「未整理」') : '') +
+                    '。原有文件未移动。', '#2e7d32');
+                refreshIndex();
+            } catch (e) {
+                text('vrLibSaveMsg', '已保存，但扫描失败：' + ((e && e.message) || e), '#c0392b');
+            } finally {
+                scanBusy = false;
+                pendingHandle = null;
+                pendingName = '';
+                pendingCount = null;
+                render();
+            }
+        });
     }
 
     /* ---------------- 校验落盘 ---------------- */
@@ -331,50 +638,35 @@
         if (saveBtn) {
             saveBtn.addEventListener('click', function () {
                 var v = cleanSeg(sub && sub.value);
-                save({ subdir: v }, function () {
-                    if (sub) { sub.value = v; }
-                    render();
-                    text('vrLibSubdirMsg', '已保存；新下载生效（旧文件需在 S1b 迁移）', '#2e7d32');
-                });
+                if (sub) { sub.value = v; }
+                saveAll();
             });
         }
 
-        var mode = $('vrLibMode');
-        if (mode) {
-            mode.addEventListener('change', function () {
-                save({ mode: mode.value }, function (s) {
-                    render();
-                    if (s.mode === 'custom') {
-                        text('vrLibCustomMsg', '自定义模式需在设置里填路径并授权；搬移在 S1b 实现', '#b26a00');
-                    }
-                });
+        ['vrLibModeSystem', 'vrLibModeCustom'].forEach(function (id) {
+            var radio = $(id);
+            if (!radio) { return; }
+            radio.addEventListener('change', function () {
+                if (!radio.checked) { return; }
+                uiMode = radio.value;
+                render();
+                if (uiMode === 'custom') {
+                    text('vrLibCustomMsg', pendingHandle ? '点「保存并使用」开始入库'
+                        : '先点「选择文件夹…」选一个目录', '#666');
+                }
             });
-        }
+        });
 
         var custom = $('vrLibCustomRoot');
         if (custom) {
             custom.addEventListener('change', function () {
+                if (currentMode() !== 'custom') { return; }
                 save({ customRoot: String(custom.value || '').trim() });
             });
         }
 
         var pick = $('vrLibPickDir');
-        if (pick) {
-            pick.addEventListener('click', function () {
-                if (typeof root.showDirectoryPicker !== 'function') {
-                    text('vrLibCustomMsg', '此浏览器不支持目录选择（需 Chrome 86+）', '#c0392b');
-                    return;
-                }
-                root.showDirectoryPicker({ mode: 'readwrite' }).then(function (h) {
-                    return idbPut('root', h).then(function () {
-                        text('vrLibCustomMsg', '已授权：' + h.name + '（路径请在上方输入框填完整）', '#2e7d32');
-                    });
-                }).catch(function (e) {
-                    if (e && e.name === 'AbortError') { return; }   // 用户取消
-                    text('vrLibCustomMsg', '授权失败：' + (e && e.message ? e.message : e), '#c0392b');
-                });
-            });
-        }
+        if (pick) { pick.addEventListener('click', pickCustom); }
 
         var verifyBtn = $('vrLibVerify');
         if (verifyBtn) { verifyBtn.addEventListener('click', verify); }
@@ -402,11 +694,21 @@
     function init() {
         if (!$('anchorLibrary')) { return; }       // 不是 options 页
         load(function () {
+            uiMode = state.mode === 'custom' ? 'custom' : 'system';
             render();
             bind();
             bindIndex();
             bindLibSettings();
             refreshIndex();
+            /* 目录句柄只有名字（FSA 不给绝对路径），显示出来让用户知道选的是哪个 */
+            idbGet('root').then(function (h) {
+                if (h && h.name) {
+                    handleName = h.name;
+                    if (currentMode() === 'custom') { render(); }
+                }
+            }).catch(function () { /* 无句柄属正常 */ });
+            /* 首次打开：默认位置也要立刻显示真实路径，不能停在「未探测」 */
+            if (currentMode() === 'system') { resolveDetectedRoot(); }
             // 图片下载设置（I5）：控件在 #anchorImage，与清单面板同一份存储
             if ($('anchorImage')) {
                 bindImageSettings();

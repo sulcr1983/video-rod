@@ -74,10 +74,11 @@
 
     function absRootFromSettings(st) {
         st = st || {};
-        var custom = (st.mode || 'system') === 'custom' ? normAbs(st.customRoot) : '';
-        /* custom 模式但 customRoot 为空（旧版本/换目录后未写回）时，
-         * 仍用 detectedRoot + subdir，否则 absRoot 为空，重扫/移动会直接报缺少根目录。 */
-        if (custom) { return custom; }
+        var isCustom = (st.mode || 'system') === 'custom';
+        var custom = isCustom ? normAbs(st.customRoot) : '';
+        /* 自选文件夹的路径可能拿不到（FSA 只给句柄）。这时 absRoot 就是空，
+         * 不能回退到系统下载目录——那会把 handle 里的文件指到错误路径。 */
+        if (isCustom) { return custom; }
         var base = normAbs(st.detectedRoot);
         if (!base) { return ''; }
         return base + '/' + String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
@@ -190,8 +191,17 @@
         if (dbReady()) {
             try {
                 if (typeof root.VRDB.setHandle === 'function') { await root.VRDB.setHandle('root', memHandle); }
-                if (memRoot && typeof root.VRDB.setSetting === 'function') { await root.VRDB.setSetting('rootAbs', memRoot); }
-                if (memPrefix && typeof root.VRDB.setSetting === 'function') { await root.VRDB.setSetting('rootPrefix', memPrefix); }
+                if (absRoot !== undefined && memRoot && typeof root.VRDB.setSetting === 'function') {
+                    await root.VRDB.setSetting('rootAbs', memRoot);
+                }
+                /* 自选文件夹可能没有绝对路径：显式清掉旧 rootAbs，别让上一次的位置
+                 * 污染本次索引（absPath 会全部指到错目录）。 */
+                if (absRoot !== undefined && !memRoot && typeof root.VRDB.setSetting === 'function') {
+                    await root.VRDB.setSetting('rootAbs', '');
+                }
+                if (memPrefix && typeof root.VRDB.setSetting === 'function') {
+                    await root.VRDB.setSetting('rootPrefix', memPrefix);
+                }
             } catch (e) { /* 内存可用即可，落库失败不阻断本次 */ }
         }
         return { absRoot: memRoot, prefix: memPrefix };
@@ -229,8 +239,54 @@
             downloadId: null,
             starred: 0,
             tags: [],
-            state: 'ok'
+            state: 'ok',
+            /* 1 = 从文件系统扫到、但认不出平台/来源；资源库左栏单独归到「未整理」。
+             * 下载/快照来源会按平台重新计算，不由旧值继承。 */
+            untracked: 0
         };
+    }
+
+    function platformNameOf(p) {
+        if (!p) { return ''; }
+        try {
+            return (root.VRPath && root.VRPath.PLATFORM_DIR && root.VRPath.PLATFORM_DIR[p]) || p;
+        } catch (e) { return p; }
+    }
+
+    function baseName(p) {
+        return String(p || '').replace(/\\/g, '/').split('/').pop() || '';
+    }
+
+    function dlKey(name, size) {
+        return String(name || '').toLowerCase() + '|' + (Number(size) || 0);
+    }
+
+    /** 全量扫描时用下载记录补元数据：先按绝对路径，再按「文件名+大小」兜底 */
+    function matchDownload(idx, absPath, name, size) {
+        if (!idx) { return null; }
+        if (absPath) {
+            var byPath = idx.byPath[normAbs(absPath)];
+            if (byPath) { return byPath; }
+        }
+        return idx.byKey[dlKey(name, size)] || null;
+    }
+
+    async function buildDownloadIndex() {
+        var list;
+        try {
+            list = await searchDownloads({ limit: DL_LIMIT, orderBy: ['-startTime'] });
+        } catch (e) {
+            return null;
+        }
+        var byPath = {}, byKey = {};
+        list.forEach(function (d) {
+            if (!d || d.state !== 'complete' || !d.filename) { return; }
+            var p = normAbs(d.filename);
+            byPath[p] = d;
+            var k = dlKey(baseName(p), d.fileSize || d.totalBytes || 0);
+            if (!byKey[k]) { byKey[k] = d; }
+        });
+        return { byPath: byPath, byKey: byKey };
     }
 
     function entryFromDownload(d, relPath) {
@@ -242,6 +298,7 @@
         // 绝对路径：缩略图/指纹都要靠它读文件（2026-11-05：漏了这个字段，
         // 结果库里所有缩略图都是灰块，因为 thumbs.js 拿 entry.absPath 去 fetch）
         item.absPath = d.filename || '';
+        item.untracked = 0;
         return item;
     }
 
@@ -266,6 +323,7 @@
         if (!out.type && old.type) { out.type = old.type; }
         if (!out.mime && old.mime) { out.mime = old.mime; }
         if (!out.sourceUrl && old.sourceUrl) { out.sourceUrl = old.sourceUrl; }
+        if (!out.absPath && old.absPath) { out.absPath = old.absPath; }
         /* F2 溯源：重建索引时保住「原帖/直链/作者ID/作品ID」，
            否则重建一次索引，来源就全变「未记录」了（ADR-052 铁律） */
         ['pageUrl', 'mediaUrl', 'authorUid', 'authorHandle', 'authorState', 'workId', 'dlAt'].forEach(function (k) {
@@ -273,6 +331,15 @@
         });
         if (out.downloadId === null && old.downloadId !== undefined) { out.downloadId = old.downloadId; }
         out.state = 'ok';
+        /* 未整理状态每次扫描重新计算：下载/快照源带平台，文件系统源认不出才置 1。
+         * 置 1 时清掉旧平台，避免旧值把未整理条目又塞回某个平台。 */
+        out.untracked = item.untracked ? 1 : 0;
+        if (out.untracked) {
+            out.platform = '';
+            out.platformName = '';
+            out.creatorFull = '';
+            out.creatorId = '';
+        }
         return out;
     }
 
@@ -350,13 +417,14 @@
             var relPath = String(f.relPath || '').replace(/\\/g, '/');
             if (!relPath || skipRel(relPath) || splitRel(relPath).indexOf('..') !== -1) { continue; }
             var relFromRoot = (pfx && relPath.indexOf(pfx) === 0) ? relPath.slice(pfx.length) : relPath;
-            var item = entryFromRel(relPath, absRoot + '/' + relFromRoot, f.size, f.mtime);
-            if (f.platform) { item.platform = f.platform; }
+            var item = entryFromRel(relPath, (absRoot ? absRoot + '/' + relFromRoot : ''), f.size, f.mtime);
+            if (f.platform) { item.platform = f.platform; item.platformName = platformNameOf(f.platform); }
             if (f.creatorId) { item.creatorId = f.creatorId; }
             if (f.type) { item.type = f.type; }
             if (f.fileName) { item.fileName = f.fileName; }
             item.starred = f.starred ? 1 : 0;
             item.tags = Array.isArray(f.tags) ? f.tags : [];
+            item.untracked = item.platform ? 0 : 1;
             out.push(item);
             if (onProgress && i % 100 === 0) {
                 onProgress({ phase: 'snapshot', done: i + 1, total: files.length });
@@ -390,7 +458,7 @@
         }
     }
 
-    async function scanFull(handle, absRoot, prefix, onProgress) {
+    async function scanFull(handle, absRoot, prefix, dlIdx, onProgress) {
         var raw = [];
         await walk(handle, '', raw, 0);
         var out = [];
@@ -398,7 +466,26 @@
             var relFromRoot = raw[i].rel;
             if (skipRel(relFromRoot)) { continue; }
             var relPath = prefix ? (prefix + '/' + relFromRoot) : relFromRoot;
-            out.push(entryFromRel(relPath, absRoot + '/' + relFromRoot, raw[i].size, raw[i].mtime));
+            var absPath = absRoot ? (absRoot + '/' + relFromRoot) : '';
+            var item = entryFromRel(relPath, absPath, raw[i].size, raw[i].mtime);
+            /* 「自选文件夹」里的历史素材：能从下载记录对上就补回来源；
+             * 认不出平台/来源的，交给资源库的「未整理」入口。 */
+            var d = matchDownload(dlIdx, absPath, raw[i].name, raw[i].size);
+            if (d) {
+                item.mime = d.mime || '';
+                item.sourceUrl = d.url || d.finalUrl || '';
+                item.downloadId = d.id;
+                if (!item.absPath && d.filename) { item.absPath = d.filename; }
+                var plat = '';
+                try { plat = root.VRPath ? root.VRPath.detectPlatform(d.referrer || d.finalUrl || d.url || '') : ''; } catch (e2) { plat = ''; }
+                if (plat && (plat !== 'web' || !item.platform)) {
+                    item.platform = plat;
+                    item.platformName = platformNameOf(plat);
+                }
+            }
+            item.untracked = item.platform ? 0 : 1;
+            if (item.untracked) { item.platformName = ''; }
+            out.push(item);
             if (onProgress && i % 50 === 0) {
                 onProgress({ phase: 'full', done: i + 1, total: raw.length });
             }
@@ -431,9 +518,11 @@
             scanned = await scanSnapshot(rr.handle, absRoot, rr.prefix, onProgress);
         } else if (mode === 'full') {
             if (!rr.handle) { throw makeErr('LIB_E_NO_PERM', '需要一次目录授权才能全量扫描'); }
-            if (!absRoot) { throw makeErr('LIB_E_NO_PERM', '缺少资源库根目录（先点「校验落盘」）'); }
             await ensureRead(rr.handle);
-            scanned = await scanFull(rr.handle, absRoot, rr.prefix, onProgress);
+            /* 自选文件夹可能拿不到绝对路径（FSA 不给路径），handle 本身就是根；
+             * 此时 absPath 留空，由 VRFile 用句柄读文件生成预览。 */
+            var dlIdx = await buildDownloadIndex();
+            scanned = await scanFull(rr.handle, absRoot, rr.prefix, dlIdx, onProgress);
         } else {
             throw makeErr('LIB_E_UNKNOWN', '未知索引模式：' + mode);
         }
@@ -450,7 +539,7 @@
 
         // 全量源扫不到的旧条目：标 missing，不删除（ADR-030）
         var missing = 0;
-        if (mode !== 'downloads') {
+        if (mode !== 'downloads' && opts.markMissing !== false) {
             oldFiles.forEach(function (f) {
                 if (!f || !f.relPath || seen[f.relPath]) { return; }
                 missing++;

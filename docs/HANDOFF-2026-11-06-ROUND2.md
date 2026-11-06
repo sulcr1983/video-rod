@@ -68,6 +68,10 @@ node tools/test-naming.js
 - `js/library/app.js`：筛选、收藏/星标、详情管理。
 - `js/library/lightbox.js`：详情收藏/星标、标题、管理按钮。
 - `js/library/sw-library.js`：YouTube 重复不写引用卡。
+- `js/library/settings.js`：保存位置首开默认值、自选文件夹选择/导入、未整理统计。
+- `js/library/indexer.js`：full 扫描无 absRoot、下载记录补元数据、`untracked`。
+- `js/library/localfile.js`：无绝对路径时用目录句柄生成 Blob URL（缩略图/详情）。
+- `js/library/thumbs.js` / `lightbox.js`：接入 `VRFile` 句柄回读。
 - `library.html` / `css/library.css`：详情按钮、7 列网格、标题截断。
 
 ## 6. 交接检查清单
@@ -111,3 +115,43 @@ node tools/test-naming.js
 - 完整性 **8/8 PASS，36 条**。
 
 注意：这是“下载前”的 URL/来源判重；不同 URL 但内容相同的文件仍由下载后的 SHA-256 去重兜底。真正的内容级预判需要 HEAD/ETag 或服务器摘要，当前平台不保证提供，未做。
+
+## 9. 保存位置首开体验 + 自选文件夹导入（2026-11-06 09:xx）
+
+用户反馈：首次打开「保存位置」只显示「未探测」，必须点「校验落盘」才算可用；
+希望能默认用系统下载目录下的 video-rod，点保存即可；也可以选别的文件夹，
+已有素材要扫描入库，认不出来源的进「未整理」。
+
+实现：
+- **首次打开即显示真实默认路径**：`settings.js` 在 system 模式下用下载记录反推
+  `detectedRoot`；找不到时显示「系统下载目录\video-rod（首次下载时自动创建）」，
+  不再出现「未探测」。
+- **「位置与模式」改为两个选项卡**：默认位置（推荐）/ 自选文件夹；一个
+  「保存并使用」按钮同时保存模式、子目录和目录授权。
+- **自选文件夹**：`showDirectoryPicker` 后立刻统计媒体文件数；有下载记录能对上的
+  文件会自动反推绝对路径（FSA 本身不给路径），对不上也能保存。
+- **导入已有素材**：保存后调用 `VRIndex.build({mode:'full', markMissing:false})`
+  扫描整个文件夹入库；原来的库条目不会被误标缺失。
+- **未整理菜单**：全量扫描时认不出平台、且对不上下载记录的文件写 `untracked:1`，
+  资源库左栏在「全部资源」下面出现「未整理 N」，点击即筛选。卡片平台显示「未整理」。
+- **无绝对路径也能预览**：新增 `js/library/localfile.js`，`VRFile.resolve()` 在
+  `absPath` 为空时用目录句柄读文件生成 Blob URL；缩略图队列和详情页都已接入。
+- `js/library/indexer.js`：full 扫描允许无 absRoot；从下载记录按「绝对路径 →
+  文件名+大小」补平台/来源；`setRoot` 会清掉过期 `rootAbs`。
+
+验证：
+- Node 单测式假句柄：full 扫描 → 未整理/已分类/下载记录匹配均正确。
+- 隔离 profile（9490）+ OPFS 句柄：导入 2 个文件 → 库 2 条、未整理 1、
+  左栏「未整理」筛选 1 条、两张缩略图均由句柄回读生成。
+- 真实库（9480）：36 条不变；`e2e-all --isolated --only dedup,stage-rewrite,e2e-buttons`
+  → **3/3 套件 67/67**（dedup 21/21、stage-rewrite 19/19、e2e-buttons 27/27）。
+- 路径/落盘/图片/命名单测：57/57、42/42、100/100、32/32。
+
+未完成 / 需人工：
+- 「选择文件夹」会弹系统原生对话框，自动化点不了；授权后 → 扫描入库的整条链路
+  需要用真实文件夹点一遍（本次用 OPFS 句柄等价验证了后半段）。
+- 旧的 `F:\download\video-rod` 授权句柄与当前设置无关；切 system 时会清理。
+
+注意：自选文件夹拿不到绝对路径时条目 `absPath` 为空（预览走句柄）。
+`tools/library-integrity-check.py` 仍按 absPath 检查物理文件，此场景下会把这些条目
+算作「缺失」；它是默认位置库的完整性检查，自选文件夹库请以页面预览/扫描结果为准。
