@@ -74,10 +74,31 @@
         return el ? (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() : '';
     }
 
-    /** 微博缩略图 → 大图；已经是 large 的不动 */
+    /**
+     * 微博缩略图地址 → 候选链（顺序即优先级）。
+     *
+     * 2026-11-06 升级：原来只把 /orj360|mw690|…/ 替换成 /large/ 就完事，
+     * 但实测 oslarge 目录真实存在且未下线（方案文档 §3.4），原图档位应当排在前面。
+     * 返回数组而不是单个 URL —— 调用方把整条链交给 vrBulkSaveItem 的候选池。
+     *
+     * 具体档位顺序由 VRWeiboAlbum.candidatesFromUrl 统一维护（与相册备份同一份规则），
+     * 这里不重复实现，避免两处规则漂移。
+     *
+     * @returns {string[]} 非 sinaimg 地址原样返回单元素数组（无从构造档位）
+     */
     function bigImage(src) {
-        return String(src || '').replace(
-            /\/(orj360|orj480|orj1080|mw690|mw1024|thumb150|thumbnail)\//, '/large/');
+        const s = String(src || '');
+        if (!s) { return []; }
+
+        const A = self.VRWeiboAlbum;
+        if (A && typeof A.candidatesFromUrl === 'function') {
+            return A.candidatesFromUrl(s);
+        }
+
+        /* 兜底：本文件在 X / 小红书页面也会加载，那两个分支没有 weibo-album-core.js。
+         * 保持升级前的行为（缩略图档位 → /large/），不引入对 core 的硬依赖。 */
+        return [s.replace(
+            /\/(orj360|orj480|orj1080|mw690|mw1024|thumb150|thumbnail)\//, '/large/')];
     }
 
     function add(item) {
@@ -140,8 +161,10 @@
             }
             let title = text(card).replace(/^@[^:：\s]{1,20}[:：]?\s*/, '').replace(/\s+/g, ' ').trim();
             if (title.length > 100) { title = title.slice(0, 100); }
+            const chain = bigImage(src);
+            if (!chain.length) { return; }
             add({
-                site: 'weibo', kind: 'image', url: bigImage(src), ext: 'jpg',
+                site: 'weibo', kind: 'image', url: chain[0], urls: chain, ext: 'jpg',
                 title: title, author: author, authorId: authorId, pageUrl: location.href
             });
         });

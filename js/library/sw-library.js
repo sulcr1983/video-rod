@@ -137,6 +137,9 @@
             mtime: Number(m.mtime) || Date.now(),
             mime: m.mime || '',
             sourceUrl: m.sourceUrl || '',
+            /* mediaUrl 是查重的关键字段之一（另一个是 sourceUrl）。
+             * 漏掉它会让 vrFindExistingMedia 拿空串比对，永远查不到重复。 */
+            mediaUrl: m.mediaUrl || '',
             pageUrl: m.pageUrl || '',
             title: m.title || '',
             downloadId: 0,

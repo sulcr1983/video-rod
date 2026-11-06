@@ -135,6 +135,35 @@ p1.then(r => {
 }).then(r => {
     eq('saveFile 无内容 → BAD_PATH', r.code, S.CODES.BAD_PATH);
 
+    /* ---------------- 入库路径必须带 subdir 前缀 ---------------- */
+    /* 回归：FSA 落盘时 relOut 是把根句柄那层剥掉的（微博/xxx/视频/a.mp4），
+     * 但入库必须补回 video-rod/ 前缀，否则 parseRelPath 把「微博」当 subdir，
+     * 从第二段找平台 → 找不到 → platform/type 全空（资源库不分组、查重失效）。
+     * 2026-11-06 实测：库里 27 个视频 mediaUrl 全空、platform 大量为空，就是这条链路断的。 */
+    /* path.js 是 IIFE，挂到 self（Node 里就是 globalThis），不走 module.exports */
+    require(path.join(__dirname, '..', 'js', 'library', 'path.js'));
+    const V = globalThis.VRPath;
+    ok('VRPath 已加载', !!(V && typeof V.parseRelPath === 'function'));
+
+    const noPrefix = V.parseRelPath('微博/weibo.com/视频/a.mp4');
+    eq('入库路径缺前缀 → platform 反解失败（对照）', noPrefix.platform, '');
+
+    const withPrefix = V.parseRelPath('video-rod/微博/weibo.com/视频/a.mp4');
+    eq('补齐前缀后 platform 正确', withPrefix.platform, 'weibo');
+    eq('补齐前缀后 type 正确', withPrefix.type, 'video');
+
+    /* ---------------- 入库字段必须包含 mediaUrl ---------------- */
+    /* 查重（vrFindExistingMedia）同时比对 sourceUrl 与 mediaUrl，
+     * 任一侧漏搬都会让同一素材反复下载。这里直接扫源码确认字段被搬运，
+     * 因为 ingest 是内部函数、Node 里调不到。 */
+    const saveSrc = require('fs').readFileSync(SRC, 'utf8');
+    ok('save.ingest 搬运 mediaUrl', /mediaUrl:\s*m\.mediaUrl/.test(saveSrc));
+    ok('save.ingest 搬运 sourceUrl', /sourceUrl:\s*m\.sourceUrl/.test(saveSrc));
+
+    const swSrc = require('fs').readFileSync(
+        path.join(__dirname, '..', 'js', 'library', 'sw-library.js'), 'utf8');
+    ok('sw-library.ingestDirect 保留 mediaUrl', /mediaUrl:\s*m\.mediaUrl/.test(swSrc));
+
     /* ---------------- 汇总 ---------------- */
     console.log(`\n${pass} 通过 / ${fails.length} 失败`);
     if (fails.length) {
