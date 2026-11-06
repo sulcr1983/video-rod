@@ -478,3 +478,38 @@ YouTube 页面按钮提示由「支持 1080p / 4K」改为「最高支持 1080p�
 - `e2e-all --isolated`：`stage-rewrite` **20/20**、`e2e-buttons` **29/29**。
 
 B-22（原型同步）按苏哥意见**不做**：当前实现优于原型，不改 `media-library-stage-v1.html`。
+
+## 19. 小红书搜索页「嗅探一直 0」（2026-11-06 12:xx）
+
+现象：小红书搜索结果页，Popup 显示「嗅探到 0 个」，视频/图片/流全是 0。
+
+### 根因（两个断点，缺一不可）
+1. **`net-sniff.js` 只扫 JSON/XHR 响应，且正则只认带扩展名的 URL**。
+   小红书 CDN 的图片地址全部**没有文件扩展名**：
+   ```
+   https://sns-webpic-qc.xhscdn.com/202611061137/<hash>/spectrum/<id>!nc_n_webp_prv_1
+   https://sns-na-i4.xhscdn.com/notes_pre_post/<id>?imageView2/2/w/1440/format/webp
+   ```
+   实测该页 125 条 xhscdn 资源，旧的 `MEDIA_RE` / `PATHY_RE` 一条都匹配不到。
+2. **搜索页的图片是 `<img>` 直接加载**，根本不出现在任何响应体里，
+   只包 fetch/XHR 永远看不到 → 需要 `PerformanceObserver` 读资源时间线。
+
+### 改法（`js/net-sniff.js`）
+- 新增 `XHS_ANY_RE` 宽松捞出 `sns-*.xhscdn.com` 下的 URL，再用
+  `wantedXhsImage()` 过滤：保留 `spectrum / notes_pre_post / notes_uhdr /
+  note_pre_post_uhdr` 或裸 `hash/id!` / `imageView2` 形态，
+  排除 `avatar / comment / emoji / sticker / icon / sprite`。
+- 新增 `PerformanceObserver({type:'resource', buffered:true})` 兜底，
+  只挑 xhscdn 且通过过滤的，不影响其他站点。
+- `guessExt()` 补小红书无扩展名判定（`format=jpg` → jpg，其余 webp）。
+
+### 验证
+- 该搜索页：`__vrNetSniff` 从 `{hits:0, posts:0}` → **`{hits:1065, posts:8}`**。
+- 后台 `MediaData[tab]`：**57 条**，`ext` 分布 `webp:50 / jpg:7`（无空值）。
+- 去重后单页可下载约 40–57 张图。
+- `e2e-sw` 4/4、`e2e-popup` 5/5、`e2e-overlay` 16/16。
+
+### 注意
+- 该页是**搜索结果页**，卡片封面本身分辨率较低；要原图需进笔记详情页
+  （那边 `notes_pre_post` 带 `imageView2/2/w/1440`）。
+- 头像、评论表情已排除，不进素材库。

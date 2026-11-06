@@ -33,6 +33,36 @@
     var PATHY_RE = /https?:\/\/[^\s"'\\<>()]+?\/(?:video\/tos|playwm|playlist|vod\/)[^\s"'\\<>()]*/gi;
 
     /**
+     * 小红书 CDN：图片地址**没有文件扩展名**，靠路径特征识别。
+     * 实测（2026-11-06 搜索页）45 条 xhscdn 资源全部如此，
+     * 旧的 MEDIA_RE / PATHY_RE 一条都匹配不到 —— 这就是「嗅探一直 0」的主因。
+     *
+     * 实测形态（大小写/目录都可能变）：
+     *   /202611061137/<hash>/<id>!nc_n_webp_prv_1       裸封面
+     *   /202611061137/<hash>/spectrum/<id>!...          正文图
+     *   /202611061137/<hash>/notes_pre_post/<id>!...    正文图（旧）
+     *   /202611061137/<hash>/notes_uhdr/<id>!...        HDR 变体
+     *   /202611061137/<hash>/note_pre_post_uhdr/<id>!.. HDR 变体
+     *   /notes_pre_post/<id>?imageView2/.../format/webp 详情页原图
+     *
+     * 先宽松捞出 sns-*.xhscdn.com 下的 URL，再用 wantedXhsImage() 排除头像/评论
+     * 表情/静态资源 —— 写成一个复杂正则反而容易漏（实测确实漏了 UHDR 两种）。
+     */
+    var XHS_ANY_RE = /https?:\/\/sns-[a-z0-9-]+\.xhscdn\.com\/[^\s"'\\<>()]+/gi;
+    var XHS_BAD_DIR = /\/(?:avatars?|comments?|emoji|stickers?|icons?|sprites?)\//i;
+    var XHS_GOOD_DIR = /\/(?:spectrum|notes?_pre_post|notes?_uhdr|note_pre_post_uhdr)\//i;
+
+    function wantedXhsImage(u) {
+        var s2 = String(u || '');
+        if (XHS_BAD_DIR.test(s2)) { return false; }
+        if (XHS_GOOD_DIR.test(s2)) { return true; }
+        /* 裸形态：<32位hash>/<id>! 或带 imageView2 的缩放参数 */
+        if (/\/[0-9a-f]{20,}\/[0-9a-zA-Z]{20,}[!?]/.test(s2)) { return true; }
+        if (/imageView2|imageMogr2/i.test(s2)) { return true; }
+        return false;
+    }
+
+    /**
      * 猜扩展名。抖音/西瓜的播放地址长这样：
      *   …/video/tos/cn/tos-cn-ve-15/xxx/?a=6383&…&mime_type=video_mp4
      * 路径里没有 .mp4，后台按后缀判类型会判成空 → 悬浮键列不出源 → 点了没反应。
@@ -45,6 +75,18 @@
         if (/\.m4a(\?|$)/i.test(s2)) { return 'm4a'; }
         if (/\.mp3(\?|$)/i.test(s2) || /mime_type=audio/i.test(s2)) { return 'mp3'; }
         if (/\.webm(\?|$)/i.test(s2)) { return 'webm'; }
+        /* 小红书 CDN 无扩展名：按路径判图片；后台还会用 Content-Type 再确认。
+         * 注意目录后可能直接跟文件名（notes_pre_post/<id>?...），
+         * 所以不能要求「目录后还有一段」。 */
+        if (/xhscdn\.com\/(?:.*\/)?(?:spectrum|notes?_pre_post|notes?_uhdr|note_pre_post_uhdr)\//i.test(s2)) {
+            if (/format\/jpe?g/i.test(s2)) { return 'jpg'; }
+            if (/format\/png/i.test(s2)) { return 'png'; }
+            return 'webp';
+        }
+        /* 裸形态：/<ts>/<hash>/<id>!<transform> 或带 imageView2 的缩放参数 */
+        if (/xhscdn\.com/i.test(s2) && (/imageView2|imageMogr2/i.test(s2) || /\/[0-9a-f]{20,}\/[0-9a-zA-Z]{20,}!/i.test(s2))) {
+            return 'webp';
+        }
         return '';
     }
 
@@ -83,6 +125,14 @@
             // 明显是图片/头像的路径别混进来
             if (/\.(?:jpe?g|png|webp|gif|svg|ico)(?:\?|$)/i.test(u)) { continue; }
             pushHit(u, out);
+        }
+        /* 小红书无扩展名图片：单独扫一遍（头像/评论图除外）。
+         * 注意 PER_SCAN 上限是 8，放在最后只是补漏，不改变既有优先级。 */
+        XHS_ANY_RE.lastIndex = 0;
+        while ((m = XHS_ANY_RE.exec(text))) {
+            var xu = m[0].replace(/[),;]+$/, '');
+            if (!wantedXhsImage(xu)) { continue; }
+            pushHit(xu, out);
         }
         if (out.length) {
             reported += out.length;
@@ -137,4 +187,45 @@
             return origSend.apply(this, arguments);
         };
     } catch (e) { /* 忽略 */ }
+
+    /* ---------------- 资源列表兜底 ----------------
+     * 小红书搜索页/主页的图片是 <img> 直接加载的，压根不出现在任何 JSON 响应里，
+     * fetch/XHR 旁读永远扫不到 —— 用户看到的就是「一直 0」。
+     * PerformanceObserver 能拿到每个资源请求的 URL，正好补这个洞。
+     * 只挑 sns-*.xhscdn.com 且通过 wantedXhsImage() 的，不影响其他站点。 */
+    function scanPerfEntries(entries) {
+        try {
+            var out = [];
+            for (var i = 0; i < entries.length; i++) {
+                var u = entries[i] && entries[i].name;
+                if (!u || !/xhscdn\.com/i.test(u)) { continue; }
+                if (!wantedXhsImage(u)) { continue; }
+                pushHit(u, out);
+            }
+            if (out.length) {
+                reported += out.length;
+                report(out);
+            }
+        } catch (e) { /* 忽略 */ }
+    }
+
+    try {
+        if (typeof PerformanceObserver === 'function') {
+            var po = new PerformanceObserver(function (list) {
+                scanPerfEntries(list.getEntries());
+            });
+            po.observe({ type: 'resource', buffered: true });
+        } else {
+            /* 老浏览器：定时扫一次全量，滚动后再补一次 */
+            setTimeout(function () {
+                try { scanPerfEntries(performance.getEntriesByType('resource')); } catch (e) { /* 忽略 */ }
+            }, 1500);
+        }
+    } catch (e) {
+        try {
+            setTimeout(function () {
+                try { scanPerfEntries(performance.getEntriesByType('resource')); } catch (e2) { /* 忽略 */ }
+            }, 1500);
+        } catch (e3) { /* 忽略 */ }
+    }
 })();
