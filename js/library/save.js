@@ -476,6 +476,11 @@
             title: m.title || '',
             pageUrl: m.pageUrl || '',
             sourceUrl: m.sourceUrl || '',
+            /* mediaUrl 必须一起搬：查重（vrFindExistingMedia）拿 sourceUrl/mediaUrl
+             * 与候选 URL 比对，这里漏掉就永远查不到「下过同一张/同一个视频」，
+             * 表现是同一素材反复下载、库里堆 (1)(2)(3) 副本。
+             * 注意 mediaUrl 可能是签名直链（带 token/Expires），比对侧会先规范化。 */
+            mediaUrl: m.mediaUrl || '',
             size: Number(size) || 0,
             mtime: Date.now(),
             mime: mime || ''
@@ -561,7 +566,16 @@
                         var size = Number(w.size) || ((typeof src === 'string') ? 0 : (src.size || 0));
                         var out = { ok: true, mode: 'fsa', path: relOut, size: size };
                         if (o.ingest === false) { return out; }
-                        return ingest(relOut, size, mime, o.meta).then(function () { return out; });
+
+                        /* 入库用的 relPath 必须把前缀补回来。
+                         * relOut 是把根句柄那一层剥掉后的「磁盘相对路径」（如 微博/xxx/视频/a.mp4），
+                         * 而 parseRelPath 期望首段是 subdir（video-rod/微博/xxx/视频/a.mp4）。
+                         * 直接用 relOut 会让 parseRelPath 把「微博」当成 subdir，
+                         * 从第二段开始找平台 —— 找不到就得到 platform/type 全空的条目
+                         * （资源库不分组、查重也按 platform 预筛而失效）。
+                         * 注意：这里**只影响入库元数据**，落盘路径仍用 relOut，不会多建目录。 */
+                        var relForDb = (prefix ? prefix + '/' : '') + relOut;
+                        return ingest(relForDb, size, mime, o.meta).then(function () { return out; });
                     }).catch(function (e) {
                         // 写失败不能让用户白等：回退下载器，但把 FSA 的真实原因带回去
                         var code = mapError(e);

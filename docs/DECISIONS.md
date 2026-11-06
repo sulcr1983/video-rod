@@ -575,7 +575,6 @@
 
 ---
 
-*新增决策在此追加，编号顺延。*
 ## ADR-029 B站完整视频下载：在「页面主世界」直面 CDN，并优先要整段 MP4(durl)
 
 - **日期**：2026-10-18 ｜ **状态**：✅
@@ -1096,6 +1095,11 @@
 6. **B站归档**：`<a download>` 不支持子目录 → 下载前记完整 relPath，由 `onDeterminingFilename` 对 `blob:` 下载补回目录（只匹配 blob，避免误伤其它 mp4）。
 7. **命名**：`pageTitle` 加 og:title → URL 末段 → 可见 h1 兜底；后端标题太弱（空/纯符号）时改 URL 末段。文件名从「图片」「- 微博」变成 `@地球知识局 的个人主页`。
 8. **扩展更新后点按钮报 `Extension context invalidated`**：video-overlay 的 start() 包 try/catch 并复位 busy。
+9. **扩展错误页 60 条错误的真实构成（2026-11-06 实测）**：不再凭截图推断，直接读取运行中的 Edge 错误页得到全量数据。60 条里 **36 条是孤儿上下文**（扩展重载后旧页面的 content script 仍存活，裸 `chrome.runtime.sendMessage` 逐条抛错，集中在 `content-script.js`，占 60%），**17 条是真实缺陷**，**7 条是已降级提示或浏览器侧限制**。
+   - 孤儿上下文治理范围从「仅 video-overlay 点击路径」扩到 `content-script.js` 全量发送路径：新增 `runtimeAlive()`（判 `chrome.runtime && chrome.runtime.id`）、`safeSend()`、孤儿态 `bury()` 自毁（摘监听器 + 断保活）；HeartBeat 的 `onDisconnect` 改为具名回调并先判存活，避免递归重连风暴。裸调用从 7 处降至 0。
+   - 真实缺陷里只修当前仍复现的：`weibo-backup.js` 两处引用从未声明的 `order`（月份选择已废弃）→ 改为 `pickedCount()`/`totalCount()`；`background.js` 抖音分支唯一未包 try 的 `await chrome.tabs.get`（`No tab with id` 未捕获拒绝）；`downloads-page.js` 的 `chrome.downloads.show` 补同步与 Promise 双重捕获（`Download must be complete`）。
+   - **不修但要记住**：`moveHooks` / `ask` 报 not defined 是修复前旧脚本残留（当前 `app.js` 中二者均已声明）；`Invalid url pattern '*://127.0.0.1:18080/*'` 的 18080 在扩展源码里不存在，仅见于 `archive/` 与 `deliverables/` 原型页，来源未证实，不动代码。
+   - 取证方法：Edge 的扩展错误只存在进程内存（`Extension State` leveldb 停在旧时间戳、无错误文本），**重启浏览器即清零**，所以不能用 CDP 重启方式读取；只能用 Windows UI Automation 读已渲染的错误页。新版本 Chrome/Edge 已移除 `--load-extension`，验证时改用 CDP `Extensions.loadUnpacked`。
 
 ### 护栏
 
@@ -1163,4 +1167,277 @@ gifuct-js、否决 Media Chrome」的播放器部分**，依据是苏哥 2026-11
 
 ---
 
-*新增决策在此追加，编号顺延。*
+## ADR-056 微博相册备份走站点 API + 逐张入库（2026-11-06）
+
+- **日期**：2026-11-06 ｜ **状态**：✅ 已定，待施工 ｜ **触发**：苏哥要求参考星愿里装的「叫小微--微博相册备份/无水印下载」
+- **方案全文**：`docs/WEIBO-ALBUM-PLAN.md`（含源码拆解、本机实测、候选链、验收）
+
+**背景**
+
+现有微博批量是「人工往下拉 + DOM 扫描」（`js/bulk-profile.js` 的 `scanWeibo()`），只能记到当前已加载的图。
+小微的做法是打微博官方相册接口 `GET /ajax/profile/getImageWall?uid=&sinceid=&has_album=true`，
+用 `since_id` 游标分页，拿到**整个相册历史**，再按 `timeline_year/month` 分桶。
+
+**决策**
+
+1. **引入相册 API，作为独立的「相册备份」入口**，与现有滚动记录**并存**，不替代：
+   滚动记录管「随手刷到的」，相册备份管「历史全量」。现有 DOM 扫描一行不改（除 §4 的候选升级）。
+2. **落盘逐张进资源库**，复用既有 `vrBulkDownload` → `vrBulkSaveItem`（单地址 → downloads → 离屏 → FSA），
+   **不新增下载实现**，也**不做内存 zip**（小微那种 zip 落盘与资源库完全脱节，无法预览/去重/检索）。
+   注意：`vrBulkSaveItem` **只使用单个 `it.url`**，没有候选池（2026-11-06 核实：当前版本、HEAD、git 全历史均无 `it.urls`）。
+3. **候选链收到两级**：`wx3/large` → `wx3/original`。
+   首版是五级 `oslarge → large → original → lz → proxy`，被**登录态实测推翻**：
+   `large`（744×913 / 353KB）才是最大档，`oslarge`（690×847 / 161KB）更小；
+   `original` 与 `large` 完全一致；`lz` 与第三方代理 3/3 全部 `Failed to fetch` —— 三者一并移除。
+   因后端不遍历候选，改为**下载前用样本图探测一次**，把验证过的档位作为整批首选地址（`probeTiers`）。
+4. **候选校验不能只看 HTTP 200**：实测 sinaimg 对无效 pid 返回 **200 + image/gif 占位图**
+   （final URL 含 `/images/default_`），必须按「非占位图 + 非 gif + ≥1KB」判定。
+5. **分页用多重终止、不按月**：实测 `timeline_year/month` 大面积为空（3 页 71 条中 65 条无月份，
+   第 2 页起整页为空），故**不按月分组也不按月份终止**；终止条件为：空页 / 取够 N 张 / 游标不推进 / `MAX_PAGES` 上限 / 用户停止。
+6. **去重按 `mediaId = pid` 双层保障**：`vrMediaIdentity()` 的键虽然含 `mediaId`，但**也含 URL 的
+   `origin+pathname`** —— 档位从 `/large/` 换到 `/original/` 就会算出新键、判成新图。
+   故内容脚本侧再按 pid 过滤（`filterDone`/`mergeDone`，存 `chrome.storage.local` 的 `vrWeiboDone:<uid>`）。
+7. **无 `pid` 的条目必须跳过**：接口首条实测为 `object_id: null` 且无 `pid`，硬拼会得到 `undefined.jpg`。
+
+**与 ADR-010 的关系（必须写清）**
+
+ADR-010 是「只抓已加载项，**不自动滚动**」，理由写的是「自动滚动有副作用（触发播放、加载量失控）」。
+本决策**不违反**它：
+
+- 相册 API 是**一次同源 GET**，不滚动页面、不触发播放、不操作用户的滚动条 —— ADR-010 针对的副作用一个都不存在；
+- 加载量由**用户设定的「最多取 N 张」**决定，且先只取元数据（pid + mid，体积很小），下载另由用户勾选触发 —— 比自动滚动更可控；
+- 仍保留「不自动翻页」这条：分页循环由用户点「开始」触发、可随时「停止」，与 ADR-033 的「半手动」口径一致。
+
+**实测依据（Edge 真实登录态，CDP 9480）**
+
+- 端点存在且可用：`ok:1`，`since_id` 会推进。
+- 防盗链是「UA + Referer」组合判定：`wx*.sinaimg.cn` 在「Chrome UA 且无 Referer」下 **403**，带 Referer 或无 UA 均 200
+  → 取字节必须走页面上下文 fetch 或带 Referer 的离屏 fetch，**不能裸直连**。
+- 档位真实对比（3 样本）：`large` 最大，`oslarge` 更小，`original` 与 `large` 相等，`lz`/`proxy` 全失败。
+- 月份字段：71 条中 65 条为空，按 mid 分组仅补回 8 条，`statuses/show?id=<mid>` 可反查但每条约一次请求。
+- 端到端：44 张收集成功、档位探测 `large` 首次命中、条目构造正确。
+
+**已知未做（如实记录）**
+
+- 实站「点下载选中 → 落盘入库」这一环尚未人工验收（采集与构造已实测通过）。
+- 月份信息若确实需要，可走逐条 `statuses/show` 反查，默认不做（风控代价）。
+
+**已知未实测（如实记录）**
+
+- `since_id` 是否真会推进、翻到底的具体形态；
+- 各档位的真实像素/字节对比（`oslarge` 是否真优于 `large`）。
+
+根因：星愿未开 `--remote-debugging-port`，Cookie 库被浏览器独占锁定，开 CDP 需 `taskkill` 会关掉苏哥当前窗口，故未擅自执行。
+代码已用**双重终止条件**与**同级回退**消除对前者的依赖；后者最差等同现状，不会更糟。
+
+**影响面**
+
+新增 `js/weibo-backup.js` + `js/weibo-album-core.js`；`manifest.json` 微博分支 +2 行（含加载顺序）；
+`js/bulk-profile.js` 的 `bigImage()` 改为返回候选数组（`it.url` 不变，补 `it.urls`）。
+`js/background.js` **一行未改**（候选探测与去重都在内容脚本侧）。回滚为单提交 `git revert`。
+
+---
+
+## ADR-057 视频预览图：根因是 type 空串，不是大文件（2026-11-06）
+
+- **日期**：2026-11-06 ｜ **状态**：✅ 已修并实测 ｜ **触发**：苏哥报「微博下载的视频没有预览图」
+
+**症状**：21 个视频里 4 个没有预览图，含一个 114MB 的大文件。
+
+**初判是错的**：一开始按「moov atom 在文件尾部、要读完整 114MB」归因为大文件解码慢，
+并据此把视频超时从 8s 调到 30s。**实测证伪** —— 修好后同一个 114MB 文件 **259ms** 就出图了。
+
+**真根因（两条，都在 `js/library/thumbs.js`）**
+
+1. **`enqueue()` 的 type 判断把条目拒了**：原逻辑 `if (entry.type !== 'image' && entry.type !== 'video') return;`。
+   存量数据里有条目的 `type` 是**空字符串**（实测 VFE Team 那两个就是），于是**从未进过队列**，
+   永远不会生成预览图 —— 跟文件大小毫无关系。
+2. **失败后没有任何记忆**：`.catch` 只 `delete inflight`，等于「从未尝试」。
+   虚拟滚动一次重绘就重新烧一遍超时，坏文件能把 `MAX_RUNNING=2` 的队列堵满。
+   叠加第 1 条：这些条目此前根本没进队列，所以「30 秒超时」的解释从一开始就不成立。
+
+**三处附带缺陷（同类症状，一并修）**
+
+- `dbReady()` 为 false 时仍 `return` 对象 → UI 有图但**刷新即失**，条目永远没有 `thumbKey`。
+- `patchFile` 被 `try/catch` 静默忽略 → thumb 表里有孤儿 blob、条目却没 `thumbKey`，
+  `cached()` 永不命中 → 每次进视口重抽。**注意 `db.js:104-110` 在条目不存在时返回 `null` 而不是抛错**，
+  必须显式检查返回值。
+- 超时分支只 `reject` 不 `cleanup()` → 挂着的 `<video>` 一直占并发槽。
+
+**修复**
+
+1. 新增 `kindOf(entry)`：type 合法则用，否则**按扩展名推断**并回写 `entry.type`。
+2. 新增失败记忆 `failed[relPath]` + `MAX_ATTEMPT = 2`；达上限后 `enqueue` 直接跳过；成功即清零。
+3. 新增 `VRThumbs.retry(relPath)`（不传参则清全部），供手动重试。
+4. `dbReady()` false 与 `patchFile` 返回 null 都当作失败抛出，计入失败记忆。
+5. 超时兜底里 `cleanup()`，不再占并发槽。
+6. 去掉 `onloadeddata` 里「无条件再等 3 秒」的盲等；seek 命中不到就退回当前首帧。
+
+**实测结果（Edge 9480，真实库）**
+
+| 项 | 修前 | 修后 |
+|---|---|---|
+| 缺预览图的视频 | **4** | **0** |
+| VFE 视频（3MB） | 40s 超时 | **258ms** |
+| 8K 视频（2MB） | — | **260ms** |
+| 大文件（114MB） | 40s 超时 | **259ms** |
+| 单测 `tools/test-thumbs-queue.js` | 无 | **17/17** |
+
+**教训**：不要因为「文件大」就直接归因到解码性能。
+先验证「任务到底有没有真的进入队列」—— 这次是 `type` 空串把它挡在门外，
+调大超时、优化 seek 全是无效功。
+
+---
+
+## ADR-059 微博视频「下好了却显示叹号」：FSA 返回值被当成 downloadId（2026-11-06）
+
+- **日期**：2026-11-06 ｜ **状态**：✅ 已修并实测 ｜ **触发**：苏哥报「点击微博视频后台会悄悄下载，但按钮出现叹号，让人以为没成功」
+
+**现象**：点视频下载按钮 → 文件**确实落盘了**（14,592,126 字节，`state: complete`），
+但按钮闪一下红色叹号（`vr-warn`），用户以为失败。
+
+**证据链（真实下载记录，同一秒内两条）**
+
+```
+14:19:39  ...平台.mp4.htm   state=interrupted  bytes=0    error=SERVER_FORBIDDEN   ← 路线1 直连被拒的残件
+14:19:41  ...平台 (1).mp4   state=complete     bytes=14592126                       ← 路线2 真的下好了
+```
+
+两条记录并存，正好对应「实际成功 + 界面报错」。
+
+**根因**
+
+`vrDownloadWithName()` 在 **FSA 直写成功**时返回的不是 downloadId（数字），而是一个对象：
+
+```js
+return { __fsa: true, path: r.path };   // background.js:600
+```
+
+但 `vrVideoDownload` 的通用 URL 分支没有判断它，直接把对象丢给 `vrWaitDownload`：
+
+```js
+const id = await vrDownloadWithName(...);
+if (id !== null) {                      // 对象 !== null，直接进
+    const outcome = await vrWaitDownload(id, 2500);   // ← 拿对象当 id
+```
+
+`vrWaitDownload` 里 `chrome.downloads.search({ id: <object> })` 于是抛：
+
+```
+TypeError: Error at property 'id': Invalid type: expected integer, found object
+```
+
+异常一路冒到 `sendMessage` 的回调 → `res.ok` 为假 → `flash('warn')` → **叹号**。
+
+**关键点**：文件其实已经由 FSA 直写落到目标目录了，**整个下载是成功的**，
+只是返回值处理崩了。这就是「悄悄下载 + 报失败」的全部机制。
+
+**为什么只有这条路径出问题**
+
+仓库里另外 5 处都判了 `__fsa`（`905` / `931` / `2507` / `3457` / `3527`），
+唯独 `vrVideoDownload` 的通用 URL 分支漏了。属于「同一约定没在所有调用点落实」。
+
+**修复**
+
+1. `vrVideoDownload` 补 `__fsa` 判断：直接按成功返回
+   `{ ok: true, kind: 'fsa', filename, path }`，不再走 `vrWaitDownload`。
+2. `vrWaitDownload` 加防御：`id` 不是数字就直接 `resolve(null)`。
+   所有调用点的语义都是「只有 `interrupted` 才算失败」，返回 `null` 等同于「没有中断」，
+   所以这个防御不会把真失败误判成成功。
+
+**实测结果**
+
+| 项 | 修前 | 修后 |
+|---|---|---|
+| 返回值 | `null`（异常抛出） | `{ ok: true, kind: 'fsa', filename, path }` |
+| 按钮 | 红色叹号 | 完成态 |
+| 文件落盘 | 14,592,126 字节（成功） | 14,592,126 字节（成功） |
+
+**顺带发现（未在本条修）**
+
+FSA 直写那条入库记录的 `platform` / `type` 为空，因为 `vrVideoDownload` 传的 `trace.platform`
+取自 `meta.site`，而微博走的是 `generic` 站点分支拿到空值。
+这会让新条目在资源库里缺平台/类型 —— 与 ADR-057 的 `type` 空串是同一类数据问题，
+建议后续统一在 `vrVideoDownload` 里按 `tab.url` 推断平台后补进 `trace`。
+
+**教训**：`vrDownloadWithName` 有两种成功形态（数字 id / `{__fsa}` 对象）。
+凡是消费它的返回值，必须先区分这两者；判 `!== null` 是不够的。
+
+---
+
+## ADR-060 重复下载的根因：mediaUrl 在入库链路上被丢掉（2026-11-06）
+
+- **日期**：2026-11-06 ｜ **状态**：✅ 已修并实测 ｜ **触发**：苏哥报「还是很多重复，点几下就出现几次」
+
+**症状**：同一素材反复下载，库里堆 `(1)(2)(3)` 副本。
+
+**实测数据（修复前，真实库）**
+
+```
+总 47 条 / 视频 27 条
+mediaUrl 为空：27 / 27     ← 全部为空
+sourceUrl 为空：9 / 27
+pageUrl   为空：13 / 27
+platform  为空：8 条
+```
+
+**根因：三层各自丢字段，链路从头到尾没把 mediaUrl 运到 DB**
+
+1. `js/background.js` 的 `vrVideoDownload` 组 `trace` 时**只写了 `mediaUrl`，没写 `sourceUrl`**。
+2. `js/library/save.js` 的 `ingest()` 构造入库 `info` 时**漏搬运 `mediaUrl`**（只搬了 `sourceUrl`）。
+3. `js/library/sw-library.js` 的 `ingestDirect()` 的 `item` **根本没有 `mediaUrl` 字段**。
+
+查重函数 `vrFindExistingMedia` 是这么比的：
+
+```js
+const vals = [vrCanonMediaUrl(e.sourceUrl), vrCanonMediaUrl(e.mediaUrl)].filter(Boolean);
+if (key && vals.indexOf(key) >= 0) { return e; }
+```
+
+两侧都是空串 → `.filter(Boolean)` 直接把它们滤掉 → **永远匹配不到** → 每次都当新素材下载。
+
+**为什么之前「看起来有查重」却没生效**
+
+查重代码本身是对的，`vrMediaIdentity()` 的内存去重也在跑；
+但只要跨会话/重启（内存表清空），就只剩依赖 DB 的 `vrFindExistingMedia` 这一条，
+而它因为字段空而失效 —— 所以表现为「同一次会话内偶尔能拦，隔一会儿点又重复下」。
+
+**第二个连带缺陷：入库路径缺 subdir 前缀**
+
+FSA 落盘时 `relOut` 是剥掉根句柄那一层的（`微博/weibo.com/视频/a.mp4`），
+但入库也用了这个值。`parseRelPath()` 期望首段是 `video-rod`：
+
+```js
+subdir: 微博          ← 把平台名当成了 subdir
+platform: ''          ← 从第二段开始找，weibo.com 不在别名表 → 反解失败
+```
+
+于是 `platform`/`type` 兜底全空。
+
+**修复**
+
+| 文件 | 改动 |
+|---|---|
+| `js/background.js` | `trace` 补 `sourceUrl`、`type: 'video'`；`platform` 改为按 `pageUrl` 走 `VRPath.detectPlatform()`（原来取 `meta.site`，通用分支是空） |
+| `js/library/save.js` | `ingest()` 搬运 `mediaUrl`；FSA 成功入库时用 `prefix + '/' + relOut` 作为 DB 路径（**落盘路径不变**，不多建目录） |
+| `js/library/sw-library.js` | `ingestDirect()` 的 `item` 增加 `mediaUrl` |
+
+**实测（修复后）**
+
+| 项 | 结果 |
+|---|---|
+| 第一次下载 | `{ ok: true, kind: 'fsa' }` |
+| 第二次下载 | `{ ok: true, skipped: true, reason: 'duplicate' }` |
+| 新增条目数 | **1**（不是 2） |
+| 新条目元数据 | `platform: weibo`、`type: video`、`sourceUrl/mediaUrl/pageUrl` 全有 |
+| 单测 | test-save 49/49、test-path 57/57、test-thumbs-queue 17/17、test-weibo-album 113/113 |
+
+**存量数据未修（如实记录）**
+
+库里 47 条历史条目的 `mediaUrl` 仍为空 —— 本次修复只保证**新下载**不再丢字段。
+要让存量也能查重，需要一次回填（重扫时按 relPath/文件名推断，或从下载记录反查）。
+未做，因为存量条目的原始直链已经无从获取。
+
+**教训**：查重失效不一定出在查重代码本身。
+这次是**上游三个环节依次丢字段**，任何一层漏了，下游比对就永远是空对空。
+加字段时要一路跟到 DB，不能只看函数「有传参」。

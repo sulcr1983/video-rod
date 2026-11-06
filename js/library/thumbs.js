@@ -21,6 +21,12 @@
     var running = 0;
     var inflight = {};
 
+    /* 失败记忆：同一文件失败到上限就不再自动重试。
+     * 原实现失败后一干二净（delete inflight），下次重绘又从头烧一遍超时 ——
+     * 虚拟滚动反复重绘时，一个坏文件能把队列堵满。 */
+    var MAX_ATTEMPT = 2;
+    var failed = Object.create(null);   // relPath -> 已失败次数
+
     function dbReady() {
         return typeof root.VRDB !== 'undefined' && root.VRDB && typeof root.VRDB.putThumb === 'function';
     }
@@ -41,50 +47,79 @@
     }
 
     function loadVideoFrame(url) {
-        return Promise.race([timeout(VIDEO_TIMEOUT), new Promise(function (resolve, reject) {
-            var v = document.createElement('video');
-            var settled = false;
+        var v = document.createElement('video');
+        var settled = false;
+        var graceful = 0;
 
-            function fail() {
-                if (settled) { return; }
-                settled = true;
-                cleanup();
-                reject(new Error('video frame failed'));
-            }
+        function cleanup() {
+            try { v.removeAttribute('src'); v.load(); } catch (e) { /* 忽略 */ }
+        }
 
-            function cleanup() {
-                try { v.removeAttribute('src'); v.load(); } catch (e) { /* 忽略 */ }
-            }
+        return Promise.race([
+            /* 超时兜底：必须把 <video> 一起拆掉。
+             * 原实现只 reject，挂着的 <video> 仍占着 MAX_RUNNING=2 的并发槽，
+             * 后续条目排队等到天荒地老 —— 大文件连续失败时整库都不出图。 */
+            timeout(VIDEO_TIMEOUT).catch(function (e) {
+                if (!settled) { settled = true; cleanup(); }
+                throw e;
+            }),
+            new Promise(function (resolve, reject) {
+                function fail() {
+                    if (settled) { return; }
+                    settled = true;
+                    clearTimeout(graceful);
+                    cleanup();
+                    reject(new Error('video frame failed'));
+                }
 
-            function draw() {
-                if (settled) { return; }
-                settled = true;
-                /* 必须先把解码好的这一帧交给调用方画进 canvas，再清 src。
-                 * 原实现先 cleanup()（removeAttribute('src') + load()），
-                 * generate() 拿到 video 时帧已被清掉 → 画出来是空白，
-                 * 表现就是「视频卡片永远没有预览图」。
-                 * resolve 后的 await 是微任务，setTimeout(0) 是宏任务，顺序安全。 */
-                resolve(v);
-                setTimeout(cleanup, 0);
-            }
+                function draw() {
+                    if (settled) { return; }
+                    settled = true;
+                    clearTimeout(graceful);
+                    /* 先把解码好的这一帧交给调用方画进 canvas，再清 src。
+                     * 原实现先 cleanup() 会清掉帧 → 画出来空白。 */
+                    resolve(v);
+                    setTimeout(cleanup, 0);
+                }
 
-            v.muted = true;
-            v.preload = 'auto';
-            v.onerror = fail;
-            v.onloadeddata = function () {
-                try {
-                    var t = Math.min(1, Math.max(0, (v.duration || 2) / 3));
-                    v.currentTime = t;
-                    /* 大文件 seek 可能迟迟不回 onseeked：3 秒后用当前帧兜底，
-                     * 有画面总比一直空着强（draw 内部有 settled 去重）。 */
-                    setTimeout(draw, 3000);
-                } catch (e) {
+                /* 首帧已可画：大文件等 seek 太慢时直接用它兜底 */
+                function drawFirst() {
+                    if (settled || !v.videoWidth) { return; }
                     draw();
                 }
-            };
-            v.onseeked = draw;
-            v.src = url;
-        })]);
+
+                /* seek 到 1/3 处拿更有代表性的一帧；失败就退回首帧 */
+                function seekFor() {
+                    if (settled) { return; }
+                    try {
+                        var t = Math.min(1, Math.max(0, (v.duration || 2) / 3));
+                        if (Math.abs((v.currentTime || 0) - t) < 0.05) { drawFirst(); return; }
+                        v.currentTime = t;
+                    } catch (e) {
+                        drawFirst();
+                    }
+                }
+
+                v.muted = true;
+                v.preload = 'auto';
+                v.onerror = fail;
+
+                /* 关键顺序：loadeddata 之后**先去 seek**，等 onseeked 再 draw。
+                 * 若在这里直接 drawFirst()，会立刻以首帧结算，
+                 * seek 出来的那一帧永远用不上（settled 已置位）。 */
+                v.onloadeddata = function () {
+                    if (settled) { return; }
+                    seekFor();
+                    /* 3 秒内 seek 还没回来就用当前首帧兜底 —— 比原来无条件盲等 3 秒快，
+                     * 只在真卡住时才等满。 */
+                    graceful = setTimeout(drawFirst, 3000);
+                };
+
+                v.onseeked = draw;
+
+                v.src = url;
+            })
+        ]);
     }
 
     function toCanvas(source, w, h) {
@@ -149,15 +184,24 @@
             if (!blob) { return null; }
 
             var thumbKey = 't:' + entry.relPath;
-            if (dbReady()) {
-                await root.VRDB.putThumb(thumbKey, blob, canvas.width, canvas.height);
-                /* F1 分辨率回写：这里是唯一能拿到「原始宽高」的时刻（解码文件时），
-                   错过之后要重解码全库才能补，所以顺手写进条目（DB 白名单已在 mergeEntry 保留） */
-                var patch = { thumbKey: thumbKey, width: w, height: h };
-                if (entry.type === 'video' && source && source.duration) {
-                    patch.duration = Math.round(source.duration * 10) / 10;
-                }
-                try { await root.VRDB.patchFile(entry.relPath, patch); } catch (e) { /* 忽略 */ }
+            if (!dbReady()) {
+                /* 库没准备好时不能算成功：原实现照样 return 对象，
+                 * UI 有图但刷新即失，条目也永远没有 thumbKey。 */
+                return null;
+            }
+            await root.VRDB.putThumb(thumbKey, blob, canvas.width, canvas.height);
+            /* F1 分辨率回写：这里是唯一能拿到「原始宽高」的时刻（解码文件时），
+               错过之后要重解码全库才能补，所以顺手写进条目（DB 白名单已在 mergeEntry 保留） */
+            var patch = { thumbKey: thumbKey, width: w, height: h };
+            if (entry.type === 'video' && source && source.duration) {
+                patch.duration = Math.round(source.duration * 10) / 10;
+            }
+            /* patchFile 失败不能吞：吞了就会出现「thumb 表里有 blob、条目却没 thumbKey」，
+             * 于是 cached() 永不命中，每次进视口都重新抽 30 秒。
+             * 注意 db.js:104-110 在条目不存在时返回 null 而不是抛错，必须显式检查。 */
+            var saved = await root.VRDB.patchFile(entry.relPath, patch);
+            if (!saved) {
+                throw new Error('patchFile missed: ' + entry.relPath);
             }
             return { blob: blob, w: canvas.width, h: canvas.height, thumbKey: thumbKey };
         } finally {
@@ -178,11 +222,24 @@
                                 return null;
                             }
                             return generate(it).then(function (made) {
-                                if (made) { announce(it.relPath, made); }
+                                if (made) {
+                                    failed[it.relPath] = 0;   // 成功即清零
+                                    announce(it.relPath, made);
+                                }
                             });
                         });
                     })
-                    .catch(function () { /* 单条失败静默，保留占位 */ })
+                    .catch(function (err) {
+                        /* 记一次失败并留痕（原来纯静默，排查时完全看不到原因）。
+                         * 达到上限后 enqueue 会直接跳过，不再反复烧超时。 */
+                        failed[it.relPath] = (failed[it.relPath] || 0) + 1;
+                        try {
+                            if (failed[it.relPath] === 1) {
+                                console.warn('[video-rod] 缩略图生成失败',
+                                    it.relPath, (err && err.message) || err);
+                            }
+                        } catch (e) { /* 忽略 */ }
+                    })
                     .then(function () {
                         running--;
                         delete inflight[it.relPath];
@@ -192,21 +249,50 @@
         }
     }
 
+    /** 条目是否可生成缩略图：type 缺失时按扩展名兜底。
+     *  实测有存量条目的 type 是空串（如 VFE 那两个），原来会被直接拒之门外，
+     *  表现就是「这些视频永远没有预览图」。 */
+    function kindOf(entry) {
+        if (!entry) { return ''; }
+        if (entry.type === 'image' || entry.type === 'video') { return entry.type; }
+        var p = String(entry.relPath || '').toLowerCase();
+        if (/\.(jpe?g|png|gif|webp|avif|bmp|svg|heic)$/.test(p)) { return 'image'; }
+        if (/\.(mp4|m4v|mov|webm|mkv|avi|flv|ts)$/.test(p)) { return 'video'; }
+        return '';
+    }
+
     /** 加入队列；重复入队/音频/缺失条目直接忽略 */
     function enqueue(entry) {
         if (!entry || !entry.relPath) { return; }
         if (inflight[entry.relPath]) { return; }
-        if (entry.type !== 'image' && entry.type !== 'video') { return; }
+        var kind = kindOf(entry);
+        if (!kind) { return; }
+        /* 把推断结果写回 entry：generate() 里按 entry.type 分流，空串会走错分支 */
+        if (!entry.type) { entry.type = kind; }
         if (entry.state === 'missing') { return; }
+        /* 失败到上限就不再自动重试：避免每次重绘都重烧 30 秒超时。
+         * 手动重试走 retry()，会清掉失败计数。 */
+        if ((failed[entry.relPath] || 0) >= MAX_ATTEMPT) { return; }
         inflight[entry.relPath] = 1;
         queue.push(entry);
         pump();
     }
 
+    /** 清掉某条（或全部）的失败记忆，让它下次能被重新尝试 */
+    function retry(relPath) {
+        if (relPath) {
+            delete failed[relPath];
+        } else {
+            failed = Object.create(null);
+        }
+    }
+
     root.VRThumbs = {
         enqueue: enqueue,
-        clear: function () { queue.length = 0; },
+        retry: retry,
+        clear: function () { queue.length = 0; failed = Object.create(null); },
         // 测试用
-        _size: function () { return queue.length; }
+        _size: function () { return queue.length; },
+        _failed: function (relPath) { return failed[relPath] || 0; }
     };
 })(typeof self !== 'undefined' ? self : this);
