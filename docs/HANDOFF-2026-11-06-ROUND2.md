@@ -262,3 +262,45 @@ Chrome 的目录写权限不会跨页面刷新永久保留；恢复时必须由�
 未完成：
 - YouTube 高画质仍依赖 VISIONOS 等客户端给直链；若全部被风控，只能 360p。
   真正的 4K 兜底需要 SABR 复放（BACKLOG P2），本轮未做。
+
+补充（YouTube 画质）：
+- 取到 360p 受限、或被风控拒绝时，后台会 **自动刷新 YouTube 页面再试一次**；
+  实测刷新后 VISIONOS 恢复直链，`https://youtu.be/Ej_kZi6qX9w` 可取到
+  **1080p（61MB 视频+音频）**，UI 自动选最高档。
+- 当前管线只处理 MP4（H.264/AV1-in-MP4）；若 2160p 只存在 WebM/VP9 或 SABR 中，
+  拿不到 4K。1080p 已满足当前要求，SABR 复放仍留在 BACKLOG。
+
+## 13. 详情页删除/移动「还是不行」的第二个根因（2026-11-06 11:xx）
+
+现场：库页显示只读，`pvDelete`/`pvMove` 是 **disabled**，点击没有任何反应；
+`__vrPerm.handle.name` 是 **`download`**，而当前库根是 `video-rod`。
+
+根因：
+1. 历史授权句柄指到了错目录（名字 `download`），`resolveRoot` 只看权限不看名字，
+   所以「恢复写入」恢复的仍是错句柄；恢复后写盘也会落到错目录。
+2. 上次为了让权限测试通过，把 `pvDelete/pvMove` 在只读时置灰；置灰按钮点不动，
+   用户看到的就是「删除那几个按钮还是不行」。
+
+修复：
+- `indexer.resolveRoot()`：句柄名必须等于当前库根名（system=`subdir`，
+  custom=absRoot basename）；不符就丢弃并清掉 DB 句柄，不再恢复错句柄。
+- 设置页的授权状态同样校验名字；错句柄不再允许 `requestPermission` 或下钻创建。
+- 详情页/批量写操作按钮 **不再置灰**。点击时先走 `ensureWriteAccess()`：
+   · 正确句柄 + 权限 prompt → `requestPermission` 恢复；
+   · 没有句柄 / 句柄错误 / 权限被拒 → 直接弹目录选择，选中 `video-rod` 或上级
+     `Downloads` 后自动下钻、写回句柄，再继续原来的删除/移动确认。
+- `authorizeRoot()` 先弹选择器再做异步读取，避免 `await` 消耗用户手势导致
+  `showDirectoryPicker` 报「Must be handling a user gesture」。
+- `library-permission-e2e.py` 的断言改为：只读时写按钮**仍可点击**（点击触发授权）。
+
+验证：
+- 真实库已清除错句柄；只读态下 `pvMove/pvDelete` 均为 enabled，横幅提示
+  「当前为只读模式…点「授权素材目录」」。
+- 用 OPFS 句柄模拟选择器：点击 `pvDelete` → 自动授权 → 弹出删除确认框
+  （随后取消，未删文件），证明按钮链路已通。
+- `library-permission-e2e.py --port 9480` → **8/8 PASS**（只读态）。
+- 设置页无句柄时显示「未授权写入（可选）」，不再误报「已选过目录」。
+
+注意：已清除真实库里名为 `download` 的错句柄。下次点「授权素材目录」
+（或直接点删除/移动）时，选择 `D:\personal\Downloads\video-rod` 或它的上级
+`D:\personal\Downloads` 一次即可。

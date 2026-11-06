@@ -385,9 +385,13 @@
         var base = state.detectedRoot
             ? (String(state.detectedRoot).replace(/\/+$/, '') + '/' + sub)
             : '';
+        var parent = state.detectedRoot ? baseNameOf(state.detectedRoot) : '';
         var h = null;
         try { h = await root.VRDB.getHandle('root'); } catch (e) { /* 忽略 */ }
         if (!h) { try { h = await idbGet('root'); } catch (e) { /* 忽略 */ } }
+        /* 旧版本可能存了错目录的句柄（如 download）。只接受本目录或它的上级，
+         * 否则「授权写入」会去申请一个错句柄，恢复完仍然不能写。 */
+        if (h && h.name !== sub && (!parent || h.name !== parent)) { h = null; }
         if (h) {
             try {
                 /* 先对已有句柄申请权限，再下钻子目录；顺序反了会在 prompt 状态
@@ -420,9 +424,14 @@
         try {
             var picked = await root.showDirectoryPicker({ mode: 'readwrite' });
             if (picked.name !== sub) {
+                if (!parent || picked.name !== parent) {
+                    text('vrLibAuthMsg', '请选择「' + sub + '」文件夹' +
+                        (parent ? ('，或它的上级「' + parent + '」') : ''), '#c0392b');
+                    return;
+                }
                 try { picked = await picked.getDirectoryHandle(sub, { create: true }); }
                 catch (e2) {
-                    text('vrLibAuthMsg', '请选择「' + sub + '」文件夹，或包含它的下载目录', '#c0392b');
+                    text('vrLibAuthMsg', '无法打开或创建「' + sub + '」文件夹', '#c0392b');
                     return;
                 }
             }
@@ -449,6 +458,13 @@
         if (!h) {
             msg.textContent = '未授权写入（可选）；下载和浏览不受影响';
             msg.style.color = '';
+            return;
+        }
+        var sub = cleanSeg(($('vrLibSubdir') && $('vrLibSubdir').value) || (state && state.subdir));
+        var parent = state.detectedRoot ? baseNameOf(state.detectedRoot) : '';
+        if (h.name !== sub && (!parent || h.name !== parent)) {
+            msg.textContent = '当前授权的是「' + h.name + '」，不是「' + sub + '」；点「授权写入」重新选择';
+            msg.style.color = '#b26a00';
             return;
         }
         var st = 'granted';

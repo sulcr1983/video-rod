@@ -660,11 +660,12 @@
             $('#selectBtn').classList.remove('is-on');
             $('#batchbar').classList.add('hidden'); render();
         });
-        on('batchTrash', function () {
+        on('batchTrash', async function () {
             /* 原实现是「批量删除将在 R5 接入真实回收站」的假按钮，但回收站（js/library/trash.js）
              * 早就做完了 —— 单条删除走的是它，批量却只弹一句提示。这里直接接同一套 API。 */
             var list = FILES.filter(function (f) { return S.sel.has(f.id); });
             if (!list.length) { toast('先选素材'); return; }
+            if (!(await ensureWriteAccess())) { return; }
             ask('把选中的 ' + list.length + ' 项移入回收站？文件还能恢复。', async function () {
                 if (!root.VRTrash) { toast('回收站模块没加载'); return; }
                 try {
@@ -779,14 +780,90 @@
     }
 
     /* ---------- M5：只读 / 授权状态 ---------- */
+    function rootBaseName(absRoot) {
+        var p = String(absRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        var segs = p.split('/').filter(Boolean);
+        return segs.length ? segs[segs.length - 1] : '';
+    }
+    function rootParentName(absRoot) {
+        var p = String(absRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        var segs = p.split('/').filter(Boolean);
+        return segs.length >= 2 ? segs[segs.length - 2] : '';
+    }
+
+    /** 选择一个真正指向当前库根的目录（video-rod），并写入句柄。 */
+    async function authorizeRoot() {
+        if (typeof root.showDirectoryPicker !== 'function') {
+            toast('此浏览器不支持目录授权，请到完整设置页操作');
+            return false;
+        }
+        /* 先弹选择器，再做异步读取：目录选择要求用户手势，
+         * 中间插太多 await 会丢掉 transient activation。 */
+        var h = null;
+        try {
+            h = await root.showDirectoryPicker({ mode: 'readwrite' });
+        } catch (e) {
+            if (e && e.name === 'AbortError') { return false; }
+            toast('授权失败：' + ((e && e.message) || e));
+            return false;
+        }
+        var rr = null;
+        try { rr = await root.VRIndex.resolveRoot(); } catch (e) { rr = null; }
+        var expected = rr && rr.absRoot ? rootBaseName(rr.absRoot) : '';
+        var parent = rr && rr.absRoot ? rootParentName(rr.absRoot) : '';
+        if (expected && h.name !== expected) {
+            var child = null;
+            try { child = await h.getDirectoryHandle(expected); } catch (e2) { child = null; }
+            if (!child && parent && h.name === parent) {
+                try { child = await h.getDirectoryHandle(expected, { create: true }); }
+                catch (e3) { child = null; }
+            }
+            if (!child) {
+                toast('请选择「' + expected + '」文件夹' + (parent ? ('，或它的上级「' + parent + '」') : ''));
+                return false;
+            }
+            h = child;
+        }
+        try {
+            await root.VRIndex.setRoot(h, rr && rr.absRoot, rr && rr.prefix);
+        } catch (e) {
+            toast('写入授权失败：' + ((e && e.message) || e));
+            return false;
+        }
+        toast('已授权素材目录');
+        try { await refreshPermState(); } catch (e) { /* 忽略 */ }
+        return true;
+    }
+
+    /** 写操作前的统一入口：能用原句柄恢复就恢复，否则直接弹目录选择。 */
+    async function ensureWriteAccess() {
+        if (window.__vrPerm && window.__vrPerm.writable) { return true; }
+        var p = window.__vrPerm;
+        if (p && p.handle && !p.rootInvalid && p.permState === 'prompt') {
+            try {
+                var st = await p.handle.requestPermission({ mode: 'readwrite' });
+                if (st === 'granted') {
+                    var rr0 = await root.VRIndex.resolveRoot();
+                    await root.VRIndex.setRoot(p.handle, rr0.absRoot, rr0.prefix);
+                    toast('已恢复写入权限');
+                    await refreshPermState();
+                    return true;
+                }
+            } catch (e) { /* 落到重新选择 */ }
+        }
+        return await authorizeRoot();
+    }
+
     async function refreshPermState() {
         var banner = $('#permBanner'), txt = $('#permText'), auth = $('#permAuth');
         var rr = null;
         try { if (root.VRIndex && root.VRIndex.resolveRoot) { rr = await root.VRIndex.resolveRoot(); } } catch (e) { rr = null; }
         var handle = rr && rr.handle ? rr.handle : null;
+        var expectedName = rr && rr.absRoot ? rootBaseName(rr.absRoot) : '';
+        var rootInvalid = !!(handle && expectedName && handle.name !== expectedName);
         var writable = false;
         var permState = '';
-        if (handle) {
+        if (handle && !rootInvalid) {
             if (typeof handle.queryPermission !== 'function') { writable = true; permState = 'granted'; }
             else {
                 try {
@@ -805,17 +882,9 @@
         } catch (e) { fileAccess = true; }
 
         var issues = [];
-        /* 旧版本可能留下“能读但指向错误目录”的句柄（例如句柄名 download、
-         * 实际素材库却是 video-rod）。只查 queryPermission 会误判为可写，
-         * 移动/删除必然在文件系统层失败，因此再核一次目录名。 */
-        var rootInvalid = false;
-        if (handle && writable && rr && rr.absRoot) {
-            var expectedName = String(rr.absRoot).replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop();
-            if (expectedName && handle.name !== expectedName) { rootInvalid = true; writable = false; }
-        }
         if (!writable) {
             issues.push(rootInvalid
-                ? '素材目录句柄与当前素材库路径不一致：请重新授权「' + ((rr && rr.absRoot) || '') + '」。'
+                ? ('当前授权句柄指向「' + (handle && handle.name) + '」，不是「' + expectedName + '」；点「重新授权」选择正确的素材库根目录。')
                 : (handle
                     ? (permState === 'prompt'
                         ? '已选过素材目录，但浏览器在刷新后收回了写入权限，当前为只读；点「恢复写入」即可，不用重新选目录。'
@@ -828,20 +897,24 @@
         if (banner) { banner.classList.toggle('hidden', issues.length === 0); }
         if (txt) { txt.textContent = issues.join(' '); }
         if (auth) {
-            auth.textContent = writable ? '查看设置' : (handle ? '恢复写入' : '授权素材目录');
-            auth.title = writable ? '打开设置' : (handle ? '沿用已选目录，重新申请写入权限' : '选择素材库根目录（video-rod）并授权读写');
+            auth.textContent = writable ? '查看设置' : (rootInvalid ? '重新授权' : (handle ? '恢复写入' : '授权素材目录'));
+            auth.title = writable ? '打开设置'
+                : (rootInvalid ? ('当前句柄是「' + (handle && handle.name) + '」，需要重新选择「' + expectedName + '」')
+                    : (handle ? '沿用已选目录，重新申请写入权限' : '选择素材库根目录并授权读写'));
         }
 
-        /* 写操作按钮：没有可写句柄时直接禁用，避免“点了才失败” */
+        /* 写操作按钮不再置灰：点击时会先走 ensureWriteAccess（恢复权限/弹目录选择），
+         * 置灰等于「点了没反应」，正是用户反馈的删除/移动按钮失效。 */
         ['batchMove', 'batchTrash', 'pvDelete', 'pvMove'].forEach(function (id) {
             var b = document.getElementById(id);
-            if (!b) { return; }
-            b.disabled = !writable;
-            if (!writable) { b.title = '需要先授权素材目录'; }
-            else if (b.title === '需要先授权素材目录') { b.removeAttribute('title'); }
+            if (b) { b.disabled = false; b.removeAttribute('title'); }
         });
         try {
-            window.__vrPerm = { handle: handle, writable: writable, permState: permState, fileAccess: fileAccess, issues: issues };
+            window.__vrPerm = {
+                handle: handle, writable: writable, permState: permState,
+                fileAccess: fileAccess, issues: issues,
+                rootInvalid: rootInvalid, expectedName: expectedName
+            };
         } catch (e) { /* 忽略 */ }
     }
 
@@ -1188,12 +1261,9 @@
         }, true);
 
         on('pvRename', function () { openRename(curPreview()); });
-        on('pvDelete', function () {
+        on('pvDelete', async function () {
             var f = curPreview(); if (!f) { return; }
-            if (!window.__vrPerm || !window.__vrPerm.writable) {
-                toast('删除需要先授权素材目录');
-                return;
-            }
+            if (!(await ensureWriteAccess())) { return; }
             ask('把「' + (f.title || f.fileName) + '」移入回收站？文件还能恢复。', async function () {
                 if (!root.VRTrash) { toast('回收站模块没加载'); return; }
                 try {
@@ -1228,76 +1298,35 @@
                 toast('已打开所在文件夹');
             } catch (e) { toast('打开路径失败：' + ((e && e.message) || '未知')); }
         });
-        on('pvMove', function () {
+        on('pvMove', async function () {
             var f = curPreview(); if (!f) { return; }
             if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
+            if (!(await ensureWriteAccess())) { return; }
             root.VRMovePicker.open([f], moveHooks());
         });
         var permAuth = byId('permAuth');
         if (permAuth) {
             permAuth.addEventListener('click', async function () {
                 if (!window.__vrPerm || window.__vrPerm.writable) { openOptions(); return; }
-                /* 已经选过目录：优先沿用现有句柄申请写入权限。
-                 * 浏览器的目录权限在页面刷新/一段时间后会退回 prompt，
-                 * 让用户再选一次目录既反直觉也不安全。 */
+                if (window.__vrPerm.rootInvalid) { await authorizeRoot(); return; }
+                /* 已有正确句柄：先沿用句柄申请权限；失败/没有句柄再弹目录选择。 */
                 var saved = window.__vrPerm.handle;
                 if (saved && typeof saved.requestPermission === 'function') {
                     try {
                         var st = await saved.requestPermission({ mode: 'readwrite' });
                         if (st === 'granted') {
                             var rr0 = await root.VRIndex.resolveRoot();
-                            var want = rr0.absRoot
-                                ? String(rr0.absRoot).replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()
-                                : String(rr0.prefix || '');
-                            if (want && saved.name !== want) {
-                                try { saved = await saved.getDirectoryHandle(want); }
-                                catch (e3) { saved = null; }
-                            }
-                            if (saved) {
-                                await root.VRIndex.setRoot(saved, rr0.absRoot, rr0.prefix);
-                                toast('已恢复写入权限');
-                                await refreshPermState();
-                                return;
-                            }
+                            await root.VRIndex.setRoot(saved, rr0.absRoot, rr0.prefix);
+                            toast('已恢复写入权限');
+                            await refreshPermState();
+                            return;
                         }
                     } catch (e) { /* 落到重新选择 */ }
                 }
-                if (typeof root.showDirectoryPicker !== 'function') {
-                    toast('此浏览器不支持目录授权，请到完整设置页操作');
-                    openOptions();
-                    return;
-                }
-                try {
-                    /* 用户点按钮时直接调 picker，保住 user gesture；
-                     * 选择素材库根目录（video-rod），再写回 handle/absRoot/prefix。 */
-                    var h = await root.showDirectoryPicker({ mode: 'readwrite' });
-                    var rr = await root.VRIndex.resolveRoot();
-                    var expected = rr.absRoot
-                        ? String(rr.absRoot).replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()
-                        : String(rr.prefix || '');
-                    if (!expected) {
-                        toast('素材库路径为空，请先在设置页填写保存位置');
-                        return;
-                    }
-                    if (h.name !== expected) {
-                        /* 允许用户选中父目录（如 Downloads），自动下钻到 video-rod，
-                         * 但必须真的存在这个子目录；选错空目录直接拒绝。 */
-                        try {
-                            h = await h.getDirectoryHandle(expected);
-                        } catch (e2) {
-                            toast('请选择素材库根目录「' + expected + '」，当前选的是「' + h.name + '」');
-                            return;
-                        }
-                    }
-                    await root.VRIndex.setRoot(h, rr.absRoot, rr.prefix);
-                    toast('已授权素材目录');
-                    await refreshPermState();
-                } catch (e) {
-                    if (e && e.name === 'AbortError') { return; }
-                    toast('授权失败：' + ((e && e.message) || '未知'));
-                }
+                await authorizeRoot();
             });
         }
+
         on('pvHelpBtn', function () {
             var k = byId('keysheet'); if (k) { k.classList.add('show'); }
         });
@@ -1469,10 +1498,11 @@
 
         var bmBtn = $('#batchMove');
         if (bmBtn) {
-            bmBtn.addEventListener('click', function () {
+            bmBtn.addEventListener('click', async function () {
                 var list = FILES.filter(function (f) { return S.sel.has(f.id); });
                 if (!list.length) { toast('先选素材'); return; }
                 if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
+                if (!(await ensureWriteAccess())) { return; }
                 root.VRMovePicker.open(list, moveHooks());
             });
         }

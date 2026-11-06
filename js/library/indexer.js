@@ -175,14 +175,31 @@
                 if (handle) { source = 'db'; }
             } catch (e) { /* 忽略 */ }
         }
+        /* 句柄必须真的指向当前库根。历史上出现过句柄名是 download、
+         * absRoot 却是 …/video-rod 的情况：恢复权限后所有写操作都会落到错目录。
+         * 名字不符就丢弃并清掉 DB 句柄，让用户重新授权，而不是「恢复」一个错句柄。 */
+        var expectedHandleName = '';
+        if (String(st.mode || 'system') === 'custom') {
+            if (absRoot) { expectedHandleName = absRoot.split('/').pop(); }
+        } else {
+            expectedHandleName = String(prefix || st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
+        }
+        if (handle && expectedHandleName && handle.name !== expectedHandleName) {
+            if (source === 'db' && dbReady() && typeof root.VRDB.setHandle === 'function') {
+                try { await root.VRDB.setHandle('root', null); } catch (e) { /* 忽略 */ }
+            }
+            if (source === 'memory') { memHandle = null; }
+            handle = null;
+            source = '';
+        }
         /* 旧授权库（vr-lib-handle）也复用：
          * 之前「选择文件夹并授权」只写这里，system 模式完全读不到 → 用户明明选过目录，
          * 库页仍提示只读。system 模式只接受名字与当前子目录一致的句柄，避免旧句柄指错目录。 */
         if (!handle) {
             var lh = await legacyHandle();
             if (lh) {
-                var expected = String(prefix || '').replace(/^\/+|\/+$/g, '');
-                if (st.mode === 'custom' || !expected || lh.name === expected) {
+                var expected = String(expectedHandleName || prefix || '').replace(/^\/+|\/+$/g, '');
+                if (!expected || lh.name === expected) {
                     handle = lh;
                     source = 'legacy';
                 }

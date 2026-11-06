@@ -113,7 +113,9 @@ def main():
         else:
             check("只读时显示提示条", hidden is False, s)
             check("只读提示说明原因", ("只读" in text) or ("授权" in text), text)
-            check("只读时移动/删除按钮禁用", all(v is True for v in disabled.values()), disabled)
+            # 只读时写操作按钮保持可点击：点击会先恢复权限或弹目录选择，
+            # 置灰会让用户觉得「按钮坏了」（2026-11-06 反馈）。
+            check("只读时移动/删除按钮仍可点击", all(v is False for v in disabled.values()), disabled)
 
         if perm.get("fileAccess") is False:
             check("file:// 不可用时给出提示", "未允许访问本地文件" in text, text)
