@@ -84,42 +84,51 @@
       <p class="section-desc">下载文件按「平台 / 博主 / 类型」落到本地目录，并自动进入资源库索引。这里负责位置、索引与迁移维护。</p>
 
       <div class="card">
-        <h3 class="card-title">位置与模式</h3>
+        <h3 class="card-title">保存位置</h3>
+        <p class="card-hint">选一次就能用。默认存到「系统下载目录 / video-rod」，也可以选自己的文件夹；已有素材只扫描入库，不移动、不改名。</p>
 
-        <div class="field">
-          <div class="field-label">当前根目录</div>
-          <div class="field-control">
-            <code id="vrLibRoot" class="path-code">未探测（点下方「校验落盘」）</code>
-          </div>
+        <div class="loc-options">
+          <label class="loc-opt" id="vrLibOptSystem">
+            <input type="radio" name="vrLibLoc" id="vrLibModeSystem" value="system" checked />
+            <span class="loc-check" aria-hidden="true"></span>
+            <span class="loc-body">
+              <span class="loc-title">默认位置 <span class="loc-tag">推荐</span></span>
+              <span class="loc-desc">系统下载目录下的子目录，首次下载时自动创建</span>
+              <code id="vrLibRoot" class="path-code">正在识别…</code>
+            </span>
+          </label>
+
+          <label class="loc-opt" id="vrLibOptCustom">
+            <input type="radio" name="vrLibLoc" id="vrLibModeCustom" value="custom" />
+            <span class="loc-check" aria-hidden="true"></span>
+            <span class="loc-body">
+              <span class="loc-title">自选文件夹</span>
+              <span class="loc-desc" id="vrLibCustomName">未选择</span>
+            </span>
+          </label>
         </div>
 
-        <div class="field">
-          <div class="field-label">子目录名</div>
-          <div class="field-control field-inline">
-            <input type="text" id="vrLibSubdir" value="video-rod" class="input-sm" />
-            <button type="button" id="vrLibSaveSubdir" class="button2">保存</button>
-            <span id="vrLibSubdirMsg" class="explain"></span>
-          </div>
+        <div class="loc-subdir" id="vrLibSubdirBox">
+          <span class="loc-subdir-label">子目录名</span>
+          <input type="text" id="vrLibSubdir" value="video-rod" class="input-sm" />
+          <span class="explain">默认 video-rod，一般不用改</span>
         </div>
 
-        <div class="field">
-          <div class="field-label">落盘模式</div>
-          <div class="field-control">
-            <select id="vrLibMode" class="select">
-              <option value="system">系统下载目录下的子目录（推荐，零拷贝）</option>
-              <option value="custom">自定义文件夹（下载后搬移）</option>
-            </select>
-          </div>
+        <div class="loc-custom" id="vrLibCustomBox" hidden>
+          <button type="button" id="vrLibPickDir" class="button2">选择文件夹…</button>
+          <span id="vrLibCustomMsg" class="explain"></span>
+          <details class="loc-adv">
+            <summary>预览路径（自动识别失败时才需要填）</summary>
+            <input type="text" id="vrLibCustomRoot" placeholder="例如 E:\素材\video-rod" class="input-md" />
+            <span class="explain">只用于预览和「在文件夹中定位」；不填也能入库和下载。</span>
+          </details>
         </div>
 
-        <div class="field">
-          <div class="field-label">自定义目录</div>
-          <div class="field-control field-inline">
-            <input type="text" id="vrLibCustomRoot" placeholder="例如 E:\test\video-rod\download" class="input-md" />
-            <button type="button" id="vrLibPickDir">选择文件夹并授权</button>
-            <span id="vrLibCustomMsg" class="explain"></span>
-          </div>
+        <div class="loc-actions">
+          <button type="button" id="vrLibSaveSubdir" class="button2 loc-save">保存并使用</button>
+          <span id="vrLibSaveMsg" class="explain"></span>
         </div>
+        <p class="loc-note">切换位置不会搬动已有文件；之前入库的条目仍保留，随时可以切回来。</p>
       </div>
 
       <div class="card">

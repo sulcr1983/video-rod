@@ -122,42 +122,47 @@
     }
 
     async function generate(entry) {
-        if (!entry || !entry.absPath || entry.state === 'missing') { return null; }
-        if (!root.VRPath || !root.VRPath.toFileUrl) { return null; }
+        if (!entry || entry.state === 'missing') { return null; }
         if (entry.type !== 'image' && entry.type !== 'video') { return null; }
+        /* 自选文件夹没有绝对路径；VRFile 会用目录句柄读文件并生成 object URL。
+         * 用完必须 revoke，否则每次重扫都漏一个 Blob URL。 */
+        var resolved = root.VRFile ? await root.VRFile.resolve(entry) : null;
+        if (!resolved || !resolved.url) { return null; }
 
-        var url = root.VRPath.toFileUrl(entry.absPath);
         var source;
         var w = 0;
         var h = 0;
-
-        if (entry.type === 'image') {
-            source = await loadImage(url);
-            w = source.naturalWidth;
-            h = source.naturalHeight;
-        } else {
-            source = await loadVideoFrame(url);
-            w = source.videoWidth;
-            h = source.videoHeight;
-        }
-        if (!w || !h) { return null; }
-
-        var canvas = toCanvas(source, w, h);
-        var blob = await canvasToBlob(canvas);
-        if (!blob) { return null; }
-
-        var thumbKey = 't:' + entry.relPath;
-        if (dbReady()) {
-            await root.VRDB.putThumb(thumbKey, blob, canvas.width, canvas.height);
-            /* F1 分辨率回写：这里是唯一能拿到「原始宽高」的时刻（解码文件时），
-               错过之后要重解码全库才能补，所以顺手写进条目（DB 白名单已在 mergeEntry 保留） */
-            var patch = { thumbKey: thumbKey, width: w, height: h };
-            if (entry.type === 'video' && source && source.duration) {
-                patch.duration = Math.round(source.duration * 10) / 10;
+        try {
+            if (entry.type === 'image') {
+                source = await loadImage(resolved.url);
+                w = source.naturalWidth;
+                h = source.naturalHeight;
+            } else {
+                source = await loadVideoFrame(resolved.url);
+                w = source.videoWidth;
+                h = source.videoHeight;
             }
-            try { await root.VRDB.patchFile(entry.relPath, patch); } catch (e) { /* 忽略 */ }
+            if (!w || !h) { return null; }
+
+            var canvas = toCanvas(source, w, h);
+            var blob = await canvasToBlob(canvas);
+            if (!blob) { return null; }
+
+            var thumbKey = 't:' + entry.relPath;
+            if (dbReady()) {
+                await root.VRDB.putThumb(thumbKey, blob, canvas.width, canvas.height);
+                /* F1 分辨率回写：这里是唯一能拿到「原始宽高」的时刻（解码文件时），
+                   错过之后要重解码全库才能补，所以顺手写进条目（DB 白名单已在 mergeEntry 保留） */
+                var patch = { thumbKey: thumbKey, width: w, height: h };
+                if (entry.type === 'video' && source && source.duration) {
+                    patch.duration = Math.round(source.duration * 10) / 10;
+                }
+                try { await root.VRDB.patchFile(entry.relPath, patch); } catch (e) { /* 忽略 */ }
+            }
+            return { blob: blob, w: canvas.width, h: canvas.height, thumbKey: thumbKey };
+        } finally {
+            if (resolved.revoke) { resolved.revoke(); }
         }
-        return { blob: blob, w: canvas.width, h: canvas.height, thumbKey: thumbKey };
     }
 
     function pump() {

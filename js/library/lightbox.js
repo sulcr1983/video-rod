@@ -24,7 +24,7 @@
         douyin: { label: '抖音', dot: '#25C8D4' }, weibo: { label: '微博', dot: '#E6506D' },
         youtube: { label: 'YouTube', dot: '#FF0000' }, instagram: { label: 'Instagram', dot: '#C13584' },
         bilibili: { label: 'B站', dot: '#FB7299' }, tiktok: { label: 'TikTok', dot: '#25F4EE' },
-        web: { label: '网页', dot: '#8B93A1' }
+        web: { label: '网页', dot: '#8B93A1' }, untracked: { label: '未整理', dot: '#C9A227' }
     };
     var KIND_LABEL = { video: '视频', image: '图片', anim: '动图', audio: '音频', other: '其他' };
 
@@ -137,8 +137,21 @@
     }
 
     function urlOf(f) {
+        if (f && f._fileUrl) { return f._fileUrl; }
         if (!f || !f.absPath || !root.VRPath) { return ''; }
         try { return root.VRPath.toFileUrl(f.absPath); } catch (e) { return ''; }
+    }
+
+    /* 自选文件夹没有绝对路径时，用目录句柄读出 Blob URL。切换条目/关闭时回收。 */
+    var lastShown = null;
+
+    function releaseUrl(f) {
+        if (!f) { return; }
+        if (typeof f._revokeUrl === 'function') {
+            try { f._revokeUrl(); } catch (e) { /* 忽略 */ }
+        }
+        f._fileUrl = '';
+        f._revokeUrl = null;
     }
     function fmtDur(sec) {
         var s = Math.round(Number(sec) || 0);
@@ -493,15 +506,29 @@
     function render() {
         var f = S.list[S.idx];
         if (!f) { return; }
+        if (lastShown && lastShown !== f) { releaseUrl(lastShown); }
+        lastShown = f;
         renderStage(f);
         paintInfo(f);
         paintFilm();
+        /* 没有绝对路径（自选文件夹）→ 用句柄解析出 Blob URL 后再画一次 */
+        if (!f.absPath && !f._fileUrl && root.VRFile) {
+            root.VRFile.resolve(f).then(function (r) {
+                if (!r || !r.url) { return; }
+                if (S.list[S.idx] !== f) { if (r.revoke) { r.revoke(); } return; }
+                f._fileUrl = r.url;
+                f._revokeUrl = r.revoke || null;
+                renderStage(f);
+            }).catch(function () { /* 保留「没有本地路径」提示 */ });
+        }
     }
 
     function close() {
         if (el.preview) { el.preview.classList.add('hidden'); }
         document.body.style.overflow = '';
         destroyPlayer();
+        releaseUrl(lastShown);
+        lastShown = null;
         var stage = $('#pvMedia'); if (stage) { stage.innerHTML = ''; }
         videoEl = null;
         imgEl = null; imgScale = 1; imgRot = 0; imgBaseW = 0; imgBaseH = 0; imgX = 0; imgY = 0;

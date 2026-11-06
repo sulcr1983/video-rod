@@ -19,7 +19,8 @@
         instagram: { name: 'Instagram', dot: '#C13584', label: 'Instagram' },
         bilibili: { name: 'B站', dot: '#FB7299', label: 'B站' },
         tiktok: { name: 'TikTok', dot: '#25F4EE', label: 'TikTok' },
-        web: { name: '网页', dot: '#8B93A1', label: '网页' }
+        web: { name: '网页', dot: '#8B93A1', label: '网页' },
+        untracked: { name: '未整理', dot: '#C9A227', label: '未整理' }
     };
 
     /* ---------- 状态 ---------- */
@@ -98,7 +99,8 @@
             /* 保留 downloads 记录 ID：详情页「定位」要靠它打开系统文件夹，
              * 而不是在浏览器里打开 file:// 目录。 */
             downloadId: (e.downloadId != null ? e.downloadId : null),
-            plat: (e.platform || parsed.platform || 'web'),
+            plat: e.untracked ? 'untracked' : (e.platform || parsed.platform || 'web'),
+            untracked: !!e.untracked,
             author: author,
             authorId: authorId,
             title: title,
@@ -187,8 +189,13 @@
     /* ---------- 侧栏编号树 ---------- */
     function buildTree() {
         var c = counts();
-        var keys = Object.keys(c.platforms).sort(function (a, b) { return c.platforms[b] - c.platforms[a]; });
+        var keys = Object.keys(c.platforms).filter(function (k) { return k !== 'untracked'; })
+            .sort(function (a, b) { return c.platforms[b] - c.platforms[a]; });
         var rows = [{ kind: 'root', label: '全部资源', count: c.all }];
+        /* 「未整理」是入口不是平台：固定放在「全部资源」下面，点击直接筛出来。 */
+        if (c.platforms.untracked) {
+            rows.push({ kind: 'untracked', label: '未整理', count: c.platforms.untracked });
+        }
         var pi = 0;
         keys.forEach(function (p) {
             pi++;
@@ -218,6 +225,11 @@
                 return '<button class="tree-node' + (S.plat === 'all' ? ' active' : '') + '" style="--pct:' + pct + '%">' +
                     '<span class="ix">00</span><span class="label">' + esc(t.label) + '</span>' +
                     '<span class="count">' + c.all + '</span></button>';
+            }
+            if (t.kind === 'untracked') {
+                return '<button class="tree-node plat untracked' + (S.plat === 'untracked' ? ' active' : '') + '" data-plat="untracked" style="--pct:' + pct + '%;--pc:' + PLAT.untracked.dot + '">' +
+                    '<span class="ix">--</span><span class="label">' + esc(t.label) + '</span>' +
+                    '<span class="count">' + t.count + '</span></button>';
             }
             if (t.kind === 'plat') {
                 var open = !!treeOpen[t.key] || !!q;
@@ -469,16 +481,25 @@
         var pathEl = $('#rootBtn .rb-path');
         var hintEl = $('#rootBtn .rb-hint');
         if (!pathEl) { return; }
-        pathEl.textContent = '未探测';
+        pathEl.textContent = '正在识别…';
         if (hintEl) { hintEl.textContent = '点击更换目录'; }
         try {
             chrome.storage.local.get('vrLibSettings', function (o) {
                 var s = (o && o.vrLibSettings) || {};
-                /* custom 模式但 customRoot 为空是旧数据常态；不能因此把已授权的
-                 * 真实路径显示成「未探测」。退回 detectedRoot + subdir。 */
-                var base = s.mode === 'custom' && s.customRoot
-                    ? s.customRoot
-                    : (s.detectedRoot ? s.detectedRoot + '\\' + (s.subdir || 'video-rod') : '');
+                /* 自选文件夹可能没有绝对路径（FSA 只给句柄）：显示授权状态，
+                 * 不要退回系统下载目录，也别写「未探测」吓用户。 */
+                if (s.mode === 'custom') {
+                    var cbase = s.customRoot ? String(s.customRoot).replace(/\//g, '\\') : '';
+                    pathEl.textContent = cbase || '自选文件夹（已授权）';
+                    pathEl.title = cbase || '浏览器不提供绝对路径，预览走目录授权';
+                    return;
+                }
+                var base = s.detectedRoot ? s.detectedRoot + '\\' + (s.subdir || 'video-rod') : '';
+                if (!base) {
+                    pathEl.textContent = '系统下载目录\\' + (s.subdir || 'video-rod');
+                    pathEl.title = '首次下载时自动创建';
+                    return;
+                }
                 if (base) {
                     base = String(base).replace(/\//g, '\\');   // 统一成 Windows 反斜杠，别显示成 …/Downloads\video-rod
                     pathEl.textContent = base;
