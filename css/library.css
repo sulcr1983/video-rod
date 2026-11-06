@@ -150,6 +150,14 @@ main{min-width:0;padding:26px 28px 48px;max-width:1720px;width:100%;margin:0 aut
   font-family:inherit;font-size:10px;color:var(--muted);background:var(--surface-2);
   border:1px solid var(--line);border-radius:5px;padding:1px 5px;line-height:1.6;
 }
+/* 清除按钮：输入非空时才出现，点一下立刻清空并回到全部 */
+.sc-clear{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:17px;height:17px;flex:0 0 17px;border:0;border-radius:50%;
+  background:var(--surface-3);color:var(--muted);cursor:pointer;padding:0;
+}
+.sc-clear:hover{background:var(--line);color:var(--ink)}
+.sc-clear[hidden]{display:none}
 .actions{position:relative;display:flex;gap:7px;align-items:center}
 
 /* 按钮 */
@@ -283,9 +291,34 @@ h1 .pill{
 }
 .batchbar b{font-size:12px;font-weight:650;color:var(--accent-ink);margin-right:2px}
 .batchbar .spacer{flex:1}
+/* 按类型选择：select 复用 .btn 外观，去掉原生下拉箭头感 */
+.bb-type{
+  appearance:none;-webkit-appearance:none;
+  padding-right:20px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
+                   linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 9px) 50%,calc(100% - 5px) 50%;
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+}
+.bb-type option{background:var(--surface);color:var(--ink)}
 
 /* ---------------- 网格 & 卡片 ---------------- */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:14px}
+/* 首屏骨架：boot() 要串行等 favs→root→perm→load，约 2 秒白屏，
+ * 用户会以为库是空的。这里先铺占位卡片，render() 一跑就整体替换掉。 */
+.grid.loading{pointer-events:none}
+.sk{
+  border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;
+  background:var(--surface);display:flex;flex-direction:column;
+}
+.sk-cover{
+  aspect-ratio:4/3;background:linear-gradient(100deg,var(--surface-2) 30%,var(--surface-3) 50%,var(--surface-2) 70%);
+  background-size:200% 100%;animation:skShift 1.2s linear infinite;
+}
+.sk-line{height:9px;margin:9px 10px 0;border-radius:4px;background:var(--surface-3);opacity:.55}
+.sk-line.short{width:52%;margin-bottom:10px}
+@keyframes skShift{from{background-position:150% 0}to{background-position:-50% 0}}
+@media(prefers-reduced-motion:reduce){.sk-cover{animation:none}}
 .card{
   position:relative;display:flex;flex-direction:column;min-width:0;
   background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
@@ -1128,26 +1161,8 @@ a.pi-item:hover dd .go{opacity:1}
 .dw-empty .i{width:28px;height:28px;opacity:.4;margin-bottom:8px}
 
 /* ---------- 右键菜单 ---------- */
-.ctx{
-  position:fixed;z-index:90;min-width:186px;padding:5px;
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
-  box-shadow:var(--sh-3);opacity:0;pointer-events:none;transform:scale(.97);
-  transform-origin:top left;transition:opacity .1s,transform .1s;
-}
-.ctx.on{opacity:1;pointer-events:auto;transform:none}
-.ctx button{
-  display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;
-  border-radius:6px;font-size:11.5px;font-weight:520;color:var(--ink);text-align:left;
-}
-.ctx button:hover{background:var(--surface-2);color:var(--ink)}
-.ctx button .i{width:13px;height:13px;color:var(--ink-2);flex:0 0 13px;opacity:.75}
-.ctx button:hover .i{opacity:1}
-.ctx button .kbd{margin-left:auto;font-size:9.5px;color:var(--faint)}
-.ctx hr{margin:4px 6px;border:none;border-top:1px solid var(--line-2)}
-.ctx button.danger{color:var(--danger)}
-.ctx button.danger .i{color:var(--danger);opacity:.85}
-.ctx button.danger:hover{background:var(--danger-soft);color:var(--danger)}
-.ctx button.danger:hover .i{color:var(--danger);opacity:1}
+/* 老版 .ctx 菜单（#ctx）已删除：实际生效的是 ctx-menu.js 渲染的 .vr-ctx。
+ * 样式见文件末尾的 .vr-ctx 区块。 */
 
 /* ============================================================
    模态：重命名 / 确认（对应代码 libRenameMask / libConfirmMask）
@@ -1552,6 +1567,14 @@ kbd{
   opacity:0;pointer-events:none;transition:all .2s var(--ease);
 }
 .toast.on{opacity:1;transform:translate(-50%,0)}
+/* 撤销等内联动作：toast 从 pointer-events:none 放开按钮本身 */
+.toast{display:flex;align-items:center;gap:10px}
+.toast.on{pointer-events:auto}
+.toast #toastAct{
+  border:0;border-left:1px solid rgba(0,0,0,.18);background:transparent;
+  color:inherit;font:inherit;font-weight:700;padding:0 0 0 10px;cursor:pointer;
+}
+.toast #toastAct:hover{text-decoration:underline}
 
 /* 主题切换（原型专用） */
 /* 响应式 */
@@ -1675,6 +1698,7 @@ kbd{
 .brand .logo{background:linear-gradient(145deg,#F0C878,#C98A2E);color:#1A0C05}
 .searchbox kbd{background:#272320}
 .toast{background:#E8E3DA;color:#100F0E}
+.toast #toastAct{border-left-color:rgba(0,0,0,.18)}
 .card:hover{background:#1B1816;border-color:#383028}
 .searchbox{background:#191715;border-color:#2B2620}
 .btn{background:#1A1714;border-color:#2B2620;color:#C8C0B2}
@@ -1682,7 +1706,6 @@ kbd{
 .btn.primary{background:linear-gradient(145deg,#F0C878,#C98A2E);border-color:transparent;color:#1A0C05; box-shadow:0 4px 16px rgba(232,176,75,.3);}
 .drawer{background:#131110;border-left-color:#26221D}
 .modal{background:#191715;border-color:#2B2620}
-.ctx{background:#191715;border-color:#2B2620}
 .favpop{background:#191715;border-color:#2B2620}
 body{background:radial-gradient(110% 70% at 50% 0%, #171410 0%, #100F0E 62%) fixed}
 .card:hover{box-shadow:0 12px 32px rgba(0,0,0,.55),0 0 0 1px rgba(232,176,75,.30)}
@@ -1810,10 +1833,21 @@ h1 {
 }
 
 /* 移动：应用内文件夹选择 */
-.mv-path{
+/* 面包屑：每段可点，替代原来的单行纯文本路径 */
+.mv-crumbs{
+  display:flex;flex-wrap:wrap;align-items:center;gap:2px;
   margin-bottom:8px;font-size:11.5px;color:var(--muted);
+}
+.mv-crumb{
+  border:0;background:transparent;color:var(--muted);font:inherit;
+  padding:2px 5px;border-radius:5px;cursor:pointer;max-width:180px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
+.mv-crumb:hover{background:var(--surface-3);color:var(--ink)}
+.mv-crumb.on{color:var(--ink);font-weight:600}
+.mv-sep{color:var(--faint);opacity:.7}
+.mv-search{margin-bottom:8px;border-radius:7px !important}
+.mv-search:focus{border-radius:7px !important}
 .mv-list{
   max-height:300px;overflow:auto;
   border:1px solid var(--line);border-radius:var(--r-sm);

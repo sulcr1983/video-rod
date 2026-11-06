@@ -35,12 +35,52 @@
     function targetRel() {
         return M.stack.map(function (x) { return x.name; }).join('/');
     }
+    /** 面包屑：每一段都能点，直接跳回那一层。
+     *  原来只有一句纯文本 + 「上一级」，几十个目录时要一层层退回去。 */
     function paintPath() {
-        var p = $('movePath');
-        if (!p) { return; }
-        var target = targetRel();
-        p.textContent = '资源库根目录' + (target ? (' / ' + target.replace(/\//g, ' / ')) : '');
-        p.title = target || '资源库根目录';
+        var box = $('moveCrumbs');
+        if (!box) { return; }
+        var segs = [];
+        segs.push('<button type="button" class="mv-crumb' + (M.stack.length ? '' : ' on') + '" data-mv-crumb="-1">资源库根目录</button>');
+        M.stack.forEach(function (x, i) {
+            segs.push('<span class="mv-sep">/</span>');
+            segs.push('<button type="button" class="mv-crumb' + (i === M.stack.length - 1 ? ' on' : '') +
+                '" data-mv-crumb="' + i + '">' + esc(x.name) + '</button>');
+        });
+        box.innerHTML = segs.join('');
+        box.title = targetRel() || '资源库根目录';
+    }
+
+    async function listDirs(handle) {
+        var dirs = [];
+        try {
+            for await (var entry of handle.entries()) {
+                var name = entry[0], h = entry[1];
+                if (h.kind !== 'directory') { continue; }
+                if (!name || name.charAt(0) === '.' || SKIP[name]) { continue; }
+                dirs.push({ name: name, handle: h });
+            }
+        } catch (e) { /* 某层读不了就跳过，不影响其它结果 */ }
+        dirs.sort(function (a, b) { return a.name.localeCompare(b.name, 'zh'); });
+        return dirs;
+    }
+
+    /** 递归找匹配的文件夹（限深 3 层）：库里目录常常是「平台/作者/类型」三级，
+     *  只搜当前层的话，搜「视频」根本找不到深层目录。 */
+    async function searchDeep(handle, q, depth, trail) {
+        var out = [];
+        var dirs = await listDirs(handle);
+        for (var i = 0; i < dirs.length; i++) {
+            var path = trail.concat([dirs[i].name]);
+            if (dirs[i].name.toLowerCase().indexOf(q) >= 0) {
+                out.push({ path: path, handle: dirs[i].handle });
+            }
+            if (depth > 1) {
+                var sub = await searchDeep(dirs[i].handle, q, depth - 1, path);
+                for (var j = 0; j < sub.length; j++) { out.push(sub[j]); }
+            }
+        }
+        return out;
     }
 
     async function render() {
@@ -50,30 +90,41 @@
         if (!cur) { list.innerHTML = '<div class="mv-empty">目录未授权</div>'; return; }
         list.innerHTML = '<div class="mv-empty">读取中…</div>';
         var rows = [];
-        if (M.stack.length) {
-            rows.push('<button class="mv-row" data-mv-up="1"><svg class="i"><use href="#i-chevron-up"/></svg><span class="mv-name">上一级</span></button>');
-        }
         var dirs = [];
-        try {
-            for await (var entry of cur.entries()) {
-                var name = entry[0], h = entry[1];
-                if (h.kind !== 'directory') { continue; }
-                if (!name || name.charAt(0) === '.' || SKIP[name]) { continue; }
-                dirs.push({ name: name, handle: h });
+        var q = String(M.filter || '').trim().toLowerCase();
+
+        if (q) {
+            /* 搜索态：递归匹配，直接列出完整路径，点一下就能进到那一层 */
+            var hits = await searchDeep(cur, q, 3, M.stack.map(function (x) { return x.name; }));
+            dirs = hits.map(function (h) {
+                return { name: h.path.join('/'), handle: h.handle, trail: h.path };
+            });
+            if (!dirs.length) {
+                list.innerHTML = '<div class="mv-empty">没有匹配「' + esc(q) + '」的文件夹</div>';
+                list._dirs = [];
+                paintPath();
+                return;
             }
-        } catch (e) {
-            list.innerHTML = '<div class="mv-empty">读取目录失败：' + esc((e && e.message) || e) + '</div>';
-            return;
-        }
-        dirs.sort(function (a, b) { return a.name.localeCompare(b.name, 'zh'); });
-        dirs.forEach(function (d) {
-            rows.push('<button class="mv-row" data-mv-dir="' + esc(d.name) + '">' +
-                '<svg class="i"><use href="#i-folder"/></svg>' +
-                '<span class="mv-name">' + esc(d.name) + '</span>' +
-                '<span class="mv-sub">进入</span></button>');
-        });
-        if (!dirs.length && !M.stack.length) {
-            rows.push('<div class="mv-empty">这个目录下还没有文件夹，可以点左下角新建</div>');
+            dirs.forEach(function (d) {
+                rows.push('<button class="mv-row" data-mv-dir="' + esc(d.name) + '">' +
+                    '<svg class="i"><use href="#i-folder"/></svg>' +
+                    '<span class="mv-name">' + esc(d.name) + '</span>' +
+                    '<span class="mv-sub">跳转</span></button>');
+            });
+        } else {
+            if (M.stack.length) {
+                rows.push('<button class="mv-row" data-mv-up="1"><svg class="i"><use href="#i-chevron-up"/></svg><span class="mv-name">上一级</span></button>');
+            }
+            dirs = await listDirs(cur);
+            dirs.forEach(function (d) {
+                rows.push('<button class="mv-row" data-mv-dir="' + esc(d.name) + '">' +
+                    '<svg class="i"><use href="#i-folder"/></svg>' +
+                    '<span class="mv-name">' + esc(d.name) + '</span>' +
+                    '<span class="mv-sub">进入</span></button>');
+            });
+            if (!dirs.length && !M.stack.length) {
+                rows.push('<div class="mv-empty">这个目录下还没有文件夹，可以点左下角新建</div>');
+            }
         }
         list.innerHTML = rows.join('');
         list._dirs = dirs;
@@ -112,16 +163,25 @@
         };
         var getEntry = typeof H.getEntry === 'function' ? H.getEntry : function () { return null; };
         var okN = 0, failN = 0, skipN = 0;
+        var failures = [];
+        var total = M.items.length;
+        var progress = function (n) {
+            /* 大目录移动可能要几十秒；没有进度时用户会以为卡死并重复点。 */
+            if (n === 1 || n % 5 === 0 || n === total) {
+                toast('正在移动 ' + n + '/' + total + '…');
+            }
+        };
+        toast('正在移动 0/' + total + '…');
 
         for (var i = 0; i < M.items.length; i++) {
             var f = M.items[i];
             var name = String(f.relPath).split('/').pop();
             var toFs = target ? (target + '/' + name) : name;
             var newRel = (pfx ? pfx + '/' : '') + toFs;
-            if (newRel === f.relPath) { skipN++; continue; }
-            if (getEntry(newRel)) { failN++; continue; }
+            if (newRel === f.relPath) { skipN++; progress(i + 1); continue; }
+            if (getEntry(newRel)) { failN++; failures.push(name + '（目标已存在）'); progress(i + 1); continue; }
             var fromFs = stripPfx(f.relPath);
-            if (fromFs === toFs) { skipN++; continue; }
+            if (fromFs === toFs) { skipN++; progress(i + 1); continue; }
 
             var moved = false, dbWritten = false;
             try {
@@ -147,15 +207,24 @@
                     catch (e2) { /* 回滚失败，保留失败计数 */ }
                 }
                 failN++;
+                failures.push(name + '（' + (e && e.message ? String(e.message).slice(0, 20) : '失败') + '）');
             }
+            progress(i + 1);
         }
 
         M.busy = false;
         show(false);
-        toast('移动完成：' + okN + ' 项' +
+        var msg = '移动完成：' + okN + ' 项' +
             (skipN ? ('，跳过 ' + skipN) : '') +
-            (failN ? ('，失败 ' + failN) : ''));
-        try { if (typeof H.onDone === 'function') { await H.onDone(); } } catch (e) { /* 忽略 */ }
+            (failN ? ('，失败 ' + failN) : '');
+        if (failures.length) { msg += '（' + failures.slice(0, 2).join('、') + (failures.length > 2 ? ' 等' : '') + '）'; }
+        toast(msg);
+        try { if (typeof H.onDone === 'function') { await H.onDone(); } }
+        catch (e) {
+            /* 移动已经落盘，但调用方的收尾（重载列表/清空选择）失败：
+             * 界面会停在旧状态，用户以为没移动成功。至少要留痕。 */
+            console.warn('[move] 收尾回调失败：', e && e.message);
+        }
     }
 
     /**
@@ -193,6 +262,8 @@
 
         var row = $('moveNewRow'); if (row) { row.classList.add('hidden'); }
         var inp = $('moveNewName'); if (inp) { inp.value = ''; }
+        M.filter = '';
+        var sBox = $('moveSearch'); if (sBox) { sBox.value = ''; }
         show(true);
         var hint = $('moveHint');
         if (hint) { hint.textContent = '将移动 ' + items.length + ' 项；选好目标文件夹后点「移动到这里」。'; }
@@ -224,6 +295,39 @@
                 if (e.key === 'Enter') { e.preventDefault(); createFromInput(); }
             });
         }
+        /* 面包屑：点任意一段直接回到那一层 */
+        var crumbBox = $('moveCrumbs');
+        if (crumbBox) {
+            crumbBox.addEventListener('click', function (e) {
+                var b = e.target.closest('[data-mv-crumb]');
+                if (!b) { return; }
+                var idx = Number(b.getAttribute('data-mv-crumb'));
+                if (isNaN(idx)) { return; }
+                M.stack = M.stack.slice(0, idx + 1);
+                M.filter = '';
+                var inp0 = $('moveSearch'); if (inp0) { inp0.value = ''; }
+                render();
+            });
+        }
+        /* 搜索框：输入即过滤（不必回车），回车跳到第一个结果 */
+        var sInp = $('moveSearch');
+        if (sInp) {
+            var sTimer = 0;
+            sInp.addEventListener('input', function () {
+                clearTimeout(sTimer);
+                sTimer = setTimeout(function () {
+                    M.filter = sInp.value || '';
+                    render();
+                }, 150);
+            });
+            sInp.addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter') { return; }
+                e.preventDefault();
+                var list = $('moveList');
+                var first = list && list.querySelector('[data-mv-dir]');
+                if (first) { first.click(); }
+            });
+        }
         var list = $('moveList');
         if (list) {
             list.addEventListener('click', function (e) {
@@ -234,11 +338,19 @@
                 var name = row.getAttribute('data-mv-dir');
                 var dirs = list._dirs || [];
                 for (var i = 0; i < dirs.length; i++) {
-                    if (dirs[i].name === name) {
-                        M.stack.push({ name: dirs[i].name, handle: dirs[i].handle });
+                    if (dirs[i].name !== name) { continue; }
+                    if (dirs[i].trail) {
+                        /* 搜索结果：直接把整条路径压栈，并清空搜索回到普通浏览 */
+                        M.stack = dirs[i].trail.map(function (n) { return { name: n, handle: null }; });
+                        M.stack[M.stack.length - 1].handle = dirs[i].handle;
+                        M.filter = '';
+                        var inp1 = $('moveSearch'); if (inp1) { inp1.value = ''; }
                         render();
                         return;
                     }
+                    M.stack.push({ name: dirs[i].name, handle: dirs[i].handle });
+                    render();
+                    return;
                 }
             });
         }
@@ -251,5 +363,24 @@
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); }
     else { init(); }
 
-    root.VRMovePicker = { open: open };
+    root.VRMovePicker = {
+        open: open,
+        /* 自动化测试用：跳过权限检查，给定句柄直接挂载并渲染。
+         * 正常流程一律走 open()，这个入口不会在 UI 上暴露。 */
+        _testMount: async function (handle, filter) {
+            M.handle = handle;
+            M.prefix = '';
+            M.absRoot = '';
+            M.stack = [];
+            M.items = [{ relPath: 'x/probe.jpg' }];
+            M.busy = false;
+            M.filter = filter || '';
+            show(true);
+            await render();
+            return M.filter;
+        },
+        _state: function () {
+            return { filter: M.filter, depth: M.stack.length, items: M.items.length };
+        }
+    };
 })(typeof self !== 'undefined' ? self : this);

@@ -191,7 +191,9 @@
 
     /* ---------------- 删除 ---------------- */
 
-    async function remove(relPaths) {
+    async function remove(relPaths, opt) {
+        var o = opt || {};
+        var onProgress = typeof o.onProgress === 'function' ? o.onProgress : null;
         var batch = stamp();
         var batchRel = TRASH + '/' + batch;
         var list = (relPaths || []).filter(Boolean);
@@ -206,15 +208,27 @@
         for (var i = 0; i < list.length; i++) {
             var rel = list[i];
             var fsRel = stripPrefix(rel, rr.prefix);
+            /* 进度必须在每次进入下一条之前报一次。原来只有「正常走完」才报，
+             * 而「文件已不存在」「只减引用」两条分支是 continue，会漏报，
+             * 大批量下进度条卡住不动（2026-11-06 自查）。 */
+            function tick() {
+                if (!onProgress) { return; }
+                try { onProgress({ done: i + 1, total: list.length, relPath: rel }); } catch (e2) { /* 忽略 */ }
+            }
             try {
                 if (!(await exists(rr.handle, fsRel))) {
                     if (dbReady()) { await root.VRDB.deleteFiles([rel]); }
                     cleaned++;
+                    tick();
                     continue;
                 }
                 var entry = null;
                 if (dbReady()) {
-                    try { entry = await root.VRDB.getFile(rel); } catch (e) { /* 忽略 */ }
+                    try { entry = await root.VRDB.getFile(rel); }
+                    catch (e) {
+                        /* 拿不到条目就拿不到 sha256/引用数，后面只能按普通删除走 */
+                        console.warn('[trash] 读取条目失败：', rel, e && e.message);
+                    }
                 }
                 // F5 R1：删除 = 只减引用。同指纹还有别的引用时，物理文件留在原地不动
                 // （只把这一条移到回收站）；最后一条引用被清空时才真正删物理文件。
@@ -230,15 +244,21 @@
                                 isRefOnly: true,
                                 refRemaining: cnt - 1
                             }));
+                            tick();
                             continue;
                         }
-                    } catch (e) { /* 判重失败按普通删除 */ }
+                    } catch (e) {
+                        /* 判重失败会退回「普通删除」，可能把别的引用还在用的物理文件删掉。
+                         * 静默吞掉等于丢数据无痕，这里至少留一条可追的日志。 */
+                        console.warn('[trash] 引用计数失败，按普通删除处理：', rel, e && e.message);
+                    }
                 }
                 await moveFile(rr.handle, fsRel, batchRel + '/' + fsRel);
                 items.push(entry || { relPath: rel, fileName: split(rel).pop(), state: 'ok' });
             } catch (e) {
                 failed.push({ relPath: rel, code: errCode(e), message: e.message || '' });
             }
+            tick();
         }
 
         if (items.length) {
@@ -424,6 +444,29 @@
         return { purged: 1, failed: [] };
     }
 
+    /** 恢复前预检：只读，不移动任何文件。
+     *  返回待恢复总数与「原位置已有同名文件」的冲突清单。
+     *  restore() 遇到冲突会把该条记进 failed，用户事先不知道会恢复不了几条，
+     *  所以「全部恢复」前必须先跑这一步并告知（2026-11-06 UX 审查 P0-3）。 */
+    async function preflightRestore() {
+        var rr = await resolveRoot();
+        if (!rr.handle) { return { total: 0, conflicts: [], batches: 0 }; }
+        var batches = await list();
+        var total = 0;
+        var conflicts = [];
+        for (var i = 0; i < batches.length; i++) {
+            var items = batches[i].items || [];
+            for (var j = 0; j < items.length; j++) {
+                total++;
+                var fsRel = stripPrefix(items[j].relPath, rr.prefix);
+                try {
+                    if (await exists(rr.handle, fsRel)) { conflicts.push(items[j].relPath); }
+                } catch (e) { /* 单条读不了按无冲突处理，restore 里仍会兜住 */ }
+            }
+        }
+        return { total: total, conflicts: conflicts, batches: batches.length };
+    }
+
     async function empty() {
         var rr = await resolveRoot();
         await ensureRW(rr.handle);
@@ -451,6 +494,7 @@
         purge: purge,
         empty: empty,
         resolveRoot: resolveRoot,
+        preflightRestore: preflightRestore,
         /* app.js 的「移动到…」需要；原实现调用未导出的 moveFile，必然失败。 */
         moveFile: moveFile,
         exists: exists

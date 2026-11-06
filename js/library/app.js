@@ -318,16 +318,25 @@
     }
 
     /* ---------- 空态 ---------- */
-    function renderEmpty(n) {
+    function renderEmpty(n, over) {
         var el = $('#empty');
         if (!el) { return; }
         if (n > 0) { el.classList.add('hidden'); return; }
         el.classList.remove('hidden');
-        var filtering = !!(S.q || S.type !== 'all' || S.plat !== 'all');
-        var noData = FILES.length === 0;
+        var v = over || {};
+        var filtering = (v.filtering != null) ? !!v.filtering : !!(S.q || S.type !== 'all' || S.plat !== 'all');
+        var noData = (v.noData != null) ? !!v.noData : (FILES.length === 0);
+        /* 三种空态要给不同出路：授权没做好时让用户去点「扫描」只会一直失败，
+         * 必须先告诉他去授权（2026-11-06 UX 审查 P1-8）。 */
+        var unauth = (v.unauth != null) ? !!v.unauth : !!(window.__vrPerm && !window.__vrPerm.handle);
         var ico = function (h) { var i = $('#emptyIco'); if (i) { i.innerHTML = '<svg class="i"><use href="#' + h + '"/></svg>'; } };
         var title = $('#emptyTitle'), text = $('#emptyText'), act = $('#emptyAction');
-        if (noData) {
+        if (noData && unauth) {
+            ico('i-folder');
+            title.textContent = '还没有授权素材目录';
+            text.innerHTML = '资源库需要先拿到一个本地文件夹的读写权限。<br>授权后这里会显示已有素材，之后下载的东西也会自动进来。';
+            act.textContent = '授权素材目录'; act.dataset.act = 'auth';
+        } else if (noData) {
             ico('i-folder');
             title.textContent = '这个目录里还没有素材';
             text.innerHTML = '在网页上抓到的东西会自动存进来。<br>也可以先扫一遍目录里已有的文件。';
@@ -416,11 +425,23 @@
         paintWindow();
     }
 
+    /** 首屏骨架：boot() 串行等 favs→root→perm→load 约 2 秒，期间先铺占位卡片。
+     *  render() 一跑就整体替换，不会残留。 */
+    function renderSkeleton(n) {
+        var grid = $('#grid');
+        if (!grid) { return; }
+        var count = Math.max(4, Math.min(12, Number(n) || 8));
+        var one = '<div class="sk"><div class="sk-cover"></div><div class="sk-line"></div><div class="sk-line short"></div></div>';
+        grid.className = 'grid loading';
+        grid.innerHTML = new Array(count + 1).join(one);
+    }
+
     function render() {
         var rows = sorted(filtered());
         S.list = rows;
         S.rows = rows;
         var grid = $('#grid');
+        grid.classList.remove('loading');
         grid.className = 'grid' + (S.view === 'list' ? ' list' : '') + (S.select ? ' selecting' : '');
 
         /* 小库：保持原路径（一次铺满，滚动追加），行为与以前完全一致 */
@@ -567,13 +588,35 @@
 
     /* ---------- toast ---------- */
     var toastTimer = 0;
-    function toast(msg) {
+    /**
+     * 提示条。action 可选：{ label, onClick, ms }
+     * 删除后给「撤销」是防丢数据的关键：用户误删时第一反应是找撤销，
+     * 只有「回收站」这条暗路的话，新用户会以为文件真没了。
+     */
+    function toast(msg, action) {
         var el = $('#toast');
         if (!el) { return; }
-        el.textContent = msg;
+        var textEl = document.getElementById('toastText');
+        var actEl = document.getElementById('toastAct');
+        if (textEl) { textEl.textContent = msg; } else { el.textContent = msg; }
+        if (actEl) {
+            actEl.onclick = null;
+            if (action && action.label) {
+                actEl.textContent = action.label;
+                actEl.hidden = false;
+                actEl.onclick = function () {
+                    el.classList.remove('on');
+                    clearTimeout(toastTimer);
+                    try { action.onClick(); } catch (e) { /* 忽略 */ }
+                };
+            } else {
+                actEl.hidden = true;
+            }
+        }
         el.classList.add('on');
         clearTimeout(toastTimer);
-        toastTimer = setTimeout(function () { el.classList.remove('on'); }, 2200);
+        var ms = (action && action.ms) || (action ? 8000 : 2200);
+        toastTimer = setTimeout(function () { el.classList.remove('on'); }, ms);
     }
     window.toast = toast;
 
@@ -791,7 +834,65 @@
             });
         }
         var search = $('#search');
-        if (search) { search.addEventListener('input', function (e) { S.q = e.target.value.trim().toLowerCase(); render(); }); }
+        if (search) {
+            /* 每敲一个字符就全量重渲染：5000 条时实测 64ms/键，连续打字明显掉帧；
+             * 中文输入法组字时每个拼音都会触发，更糟。
+             * 这里做两件事：① 150ms 防抖；② 组字期间不渲染，compositionend 再补。 */
+            var qTimer = 0;
+            var composing = false;
+            var clearBtn = document.getElementById('searchClear');
+            var syncClear = function () {
+                if (clearBtn) { clearBtn.hidden = !search.value; }
+            };
+            var apply = function () {
+                clearTimeout(qTimer);
+                qTimer = 0;
+                S.q = search.value.trim().toLowerCase();
+                syncClear();
+                render();
+            };
+            search.addEventListener('compositionstart', function () {
+                composing = true;
+                clearTimeout(qTimer);
+            });
+            search.addEventListener('compositionend', function () {
+                composing = false;
+                apply();
+            });
+            search.addEventListener('input', function () {
+                if (composing) { return; }
+                /* 清除按钮即时反映输入内容，不等防抖 */
+                syncClear();
+                clearTimeout(qTimer);
+                /* 后台标签页的 setTimeout 会被浏览器节流到 ~1s，防抖反而变成延迟。
+                 * 页面不可见时没有「打字掉帧」问题，直接同步渲染最稳。 */
+                if (document.hidden) { apply(); return; }
+                qTimer = setTimeout(apply, 150);
+            });
+            /* 清除按钮：一次点击回到「全部」 */
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function () {
+                    search.value = '';
+                    S.q = '';
+                    clearTimeout(qTimer);
+                    syncClear();
+                    render();
+                    search.focus();
+                });
+            }
+            /* Esc 清空并立即生效（用户按 Esc 时期望马上看到全部） */
+            search.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && search.value) {
+                    e.preventDefault();
+                    search.value = '';
+                    S.q = '';
+                    clearTimeout(qTimer);
+                    syncClear();
+                    render();
+                }
+            });
+            syncClear();
+        }
         var sort = $('#sort');
         if (sort) {
             if (sort.value) { S.sort = sort.value; }
@@ -816,6 +917,22 @@
         on('batchInvert', function () {
             var nx = new Set(); S.list.forEach(function (f) { if (!S.sel.has(f.id)) { nx.add(f.id); } }); S.sel = nx; render();
         });
+        /* 批量条「按类型…」：想「只删视频」时不必手点每张卡片。
+         * 语义是「在已选基础上追加该类型」，清空选择请用「清除」按钮。 */
+        var byType = document.getElementById('batchByType');
+        if (byType) {
+            byType.addEventListener('change', function () {
+                var k = byType.value;
+                byType.value = '';
+                if (!k) { return; }
+                var n = 0;
+                S.list.forEach(function (f) {
+                    if (f.kind === k) { S.sel.add(f.id); n++; }
+                });
+                render();
+                toast(n ? ('已按类型选中 ' + n + ' 项') : '当前列表里没有这类素材');
+            });
+        }
         on('batchExit', function () {
             S.select = false; S.sel.clear();
             $('#selectBtn').classList.remove('is-on');
@@ -824,19 +941,61 @@
         on('batchTrash', async function () {
             /* 原实现是「批量删除将在 R5 接入真实回收站」的假按钮，但回收站（js/library/trash.js）
              * 早就做完了 —— 单条删除走的是它，批量却只弹一句提示。这里直接接同一套 API。 */
+            if (S.batchBusy) { return; }
             var list = FILES.filter(function (f) { return S.sel.has(f.id); });
             if (!list.length) { toast('先选素材'); return; }
             markWritePending();
             if (!(await ensureWriteAccess())) { return; }
             ask('把选中的 ' + list.length + ' 项移入回收站？文件还能恢复。', async function () {
                 if (!root.VRTrash) { toast('回收站模块没加载'); return; }
+                /* 批量操作期间锁住按钮：没有进行中状态时用户会以为卡死并重复点击，
+                 * 结果弹出多个确认框、重复删除同一批。 */
+                S.batchBusy = true;
+                var btn = document.getElementById('batchTrash');
+                if (btn) { btn.disabled = true; }
                 try {
-                    await root.VRTrash.remove(list.map(function (f) { return f.relPath; }));
+                    toast('正在移入回收站 0/' + list.length + '…', { ms: 600000 });
+                    /* 逐条拿结果：批量里有些是「文件已不存在」被清理（cleaned），
+                     * 不该混进「已删除 N 项」里虚报。 */
+                    var rr = await root.VRTrash.remove(list.map(function (f) { return f.relPath; }), {
+                        onProgress: function (p) {
+                            if (!p) { return; }
+                            if (p.done === 1 || p.done % 5 === 0 || p.done === p.total) {
+                                toast('正在移入回收站 ' + p.done + '/' + p.total + '…', { ms: 600000 });
+                            }
+                        }
+                    });
                     S.sel.clear(); S.select = false;
                     await load();
-                    toast('已移入回收站：' + list.length + ' 项');
+                    var movedN = (rr && rr.moved) || 0;
+                    var failedN = (rr && rr.failed && rr.failed.length) || 0;
+                    var msg = '已移入回收站：' + movedN + ' 项';
+                    if (failedN) {
+                        /* 失败不能只说个数：用户不知道是哪几条，也就无从处理。 */
+                        var names = (rr.failed || []).slice(0, 2).map(function (x) {
+                            return String(x.relPath || '').split('/').pop();
+                        }).filter(Boolean);
+                        msg += '，失败 ' + failedN + ' 项' + (names.length ? '（' + names.join('、') + (failedN > 2 ? ' 等' : '') + '）' : '');
+                    }
+                    if (rr && rr.batch && movedN > 0) {
+                        toast(msg, {
+                            label: '撤销', ms: 8000,
+                            onClick: async function () {
+                                try {
+                                    await root.VRTrash.restore(rr.batch);
+                                    toast('已撤销删除（' + movedN + ' 项）');
+                                    await load(); await refreshDrawer();
+                                } catch (e2) { toast('撤销失败：' + ((e2 && e2.message) || '未知')); }
+                            }
+                        });
+                    } else {
+                        toast(msg);
+                    }
                 } catch (e) {
                     toast('批量删除失败：' + ((e && e.message) || '未知'));
+                } finally {
+                    S.batchBusy = false;
+                    if (btn) { btn.disabled = false; }
                 }
             });
         });
@@ -915,6 +1074,11 @@
         if (emptyAct) {
             emptyAct.addEventListener('click', async function () {
                 var act = emptyAct.dataset.act;
+                if (act === 'auth') {
+                    var okA = await ensureWriteAccess();
+                    if (okA) { await autoIndex(); await load(); }
+                    return;
+                }
                 if (act === 'scan') { toast('正在扫描目录…'); await autoIndex(); await load(); }
                 else { S.q = ''; S.type = 'all'; S.plat = 'all'; if ($('#search')) { $('#search').value = ''; } render(); }
             });
@@ -932,6 +1096,56 @@
 
     function openOptions() {
         try { chrome.runtime.openOptionsPage(); } catch (e) { location.href = 'options.html'; }
+    }
+
+    /** 「定位」统一入口。
+     *  有绝对路径：交给系统打开所在文件夹（downloads.show 优先，其次 file://）。
+     *  没有绝对路径：自选文件夹模式下浏览器不提供绝对路径，这不是错误，
+     *  但原来只回一句「没有本地路径，无法定位」，用户既不知道原因也不知道能做什么。
+     *  这里说清原因，并给一个立刻可用的替代动作（复制相对路径）。 */
+    function revealFile(f) {
+        if (!f) { return; }
+        var abs = String(f.absPath || '').trim();
+        var openFolder = function (folder) {
+            var url = '';
+            try {
+                url = root.VRPath && root.VRPath.toFileUrl
+                    ? root.VRPath.toFileUrl(folder)
+                    : ('file:///' + folder.split(String.fromCharCode(92)).join('/'));
+                if (url.charAt(url.length - 1) !== '/') { url += '/'; }
+            } catch (e) { toast('路径无法打开：' + ((e && e.message) || '未知')); return; }
+            try {
+                if (chrome.tabs && chrome.tabs.create) {
+                    chrome.tabs.create({ url: url }, function () {
+                        if (chrome.runtime.lastError) { window.open(url, '_blank'); }
+                    });
+                } else { window.open(url, '_blank'); }
+                toast('已打开所在文件夹');
+            } catch (e) { toast('打开路径失败：' + ((e && e.message) || '未知')); }
+        };
+
+        /* 有 downloadId 就先让浏览器自己定位，最准 */
+        if (f.downloadId != null && chrome.downloads && chrome.downloads.show) {
+            try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
+        }
+        if (abs) {
+            openFolder(abs.replace(new RegExp('[' + String.fromCharCode(92) + '/][^' + String.fromCharCode(92) + '/]+$'), ''));
+            return;
+        }
+        /* 走不通时给可操作出路，而不是一句结论 */
+        toast('这条素材没记录绝对路径（自选文件夹模式浏览器不提供），可用「复制相对路径」自己找', {
+            label: '复制路径', ms: 10000,
+            onClick: function () {
+                var rel = String(f.relPath || '');
+                if (!rel) { toast('这条没有路径信息'); return; }
+                var done = function () { toast('已复制：' + rel); };
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(rel).then(done, function () { toast(rel); });
+                    } else { toast(rel); }
+                } catch (e) { toast(rel); }
+            }
+        });
     }
 
     /* ---------- M5：只读 / 授权状态 ---------- */
@@ -1168,7 +1382,21 @@
         }
     }
     function saveFavs() {
-        try { root.VRDB.setSetting('vrFavs', FAVS); } catch (e) { /* 忽略 */ }
+        try {
+            /* setSetting 是异步的：这里原来只 catch 同步异常，
+             * 真正的写失败（配额满/库被关）会变成未处理的 rejection，
+             * 用户加完收藏刷新一下全没了，且控制台什么都没有。 */
+            var r = root.VRDB.setSetting('vrFavs', FAVS);
+            if (r && typeof r.then === 'function') {
+                r.then(null, function (e) {
+                    console.warn('[favs] 保存收藏夹失败：', e && e.message);
+                    toast('收藏夹保存失败，刷新后可能丢失');
+                });
+            }
+        } catch (e) {
+            console.warn('[favs] 保存收藏夹异常：', e && e.message);
+            toast('收藏夹保存失败，刷新后可能丢失');
+        }
     }
     /** 按 id 找收藏夹；`fav-star` 是虚拟的「已加星标」夹，不在 FAVS 里。 */
     function findFav(id) {
@@ -1283,8 +1511,17 @@
             if (root.VRTrash) { var st = await root.VRTrash.status(); tc = st.count || 0; }
         } catch (e) { tc = 0; }
         setVal('sdTrashVal', tc ? (tc + ' 项 · 可恢复') : '空');
-        setVal('dwCnt', tc);
-        var tcnt = $('#trashCnt'); if (tcnt) { tcnt.textContent = tc; }
+        /* 计数徽标不再写死初值：为空时整块隐藏，避免首帧闪一个错误数字。 */
+        var dcnt = document.getElementById('dwCnt');
+        if (dcnt) {
+            dcnt.textContent = tc;
+            dcnt.hidden = !tc;
+        }
+        var tcnt = document.getElementById('trashCnt');
+        if (tcnt) {
+            tcnt.textContent = tc;
+            tcnt.hidden = !tc;
+        }
     }
 
     async function doScan() {
@@ -1388,14 +1625,11 @@
         on('renameCancel', closeRename);
         var rmask = byId('renameMask');
         if (rmask) { rmask.addEventListener('click', function (e) { if (e.target === rmask) { closeRename(); } }); }
-        on('renameOk', async function () {
-            var inp = byId('renameInput');
-            var v = String((inp && inp.value) || '').trim();
-            if (!v) { toast('文件名不能为空'); return; }
-            /* ADR-050 R2 口径：重命名只改显示名（displayName），物理文件名不动。
-             * 原来的实现走 VRRename 做「复制→校验→删源」的物理改名，
-             * 没有目录授权时必然失败——用户点了只看到「重命名失败」，
-             * 等于这个功能没做。改成写 displayName：无需授权、可回退、不动磁盘。 */
+        /* ADR-050 R2 口径：重命名只改显示名（displayName），物理文件名不动。
+         * 原来的实现走 VRRename 做「复制→校验→删源」的物理改名，
+         * 没有目录授权时必然失败——用户点了只看到「重命名失败」，
+         * 等于这个功能没做。改成写 displayName：无需授权、可回退、不动磁盘。 */
+        async function commitRename(v) {
             if (!root.VRDB || !root.VRDB.patchFile) { toast('数据层没就绪，请重新加载扩展'); return; }
             try {
                 await root.VRDB.patchFile(renRel, { displayName: v });
@@ -1407,6 +1641,29 @@
             } catch (e) {
                 toast('重命名失败：' + ((e && e.message) || '未知'));
             }
+        }
+
+        on('renameOk', async function () {
+            var inp = byId('renameInput');
+            var v = String((inp && inp.value) || '').trim();
+            if (!v) { toast('文件名不能为空'); return; }
+            /* 重名校验：库里两张卡片显示同一个名字时，用户无法区分是哪一张，
+             * 再想改回来也找不到（批量改名成「旅行」这类场景特别容易撞）。
+             * 只比显示名，不比物理文件名——重命名本来就不动磁盘。 */
+            var dup = FILES.filter(function (f) {
+                if (!f || f.relPath === renRel) { return false; }
+                return String(f._title || '').trim() === v;
+            });
+            if (dup.length) {
+                var d0 = dup[0];
+                toast('已有同名素材：' + (d0.author ? (d0.author + ' · ') : '') + String(d0.relPath).split('/').slice(-1)[0] +
+                    '；换个名字或点「仍然重命名」', {
+                    label: '仍然重命名', ms: 12000,
+                    onClick: function () { commitRename(v); }
+                });
+                return;
+            }
+            commitRename(v);
         });
 
         /* ---- 预览层右侧按钮 ---- */
@@ -1490,37 +1747,27 @@
             ask('把「' + (f.title || f.fileName) + '」移入回收站？文件还能恢复。', async function () {
                 if (!root.VRTrash) { toast('回收站模块没加载'); return; }
                 try {
-                    await root.VRTrash.remove([f.relPath]);
+                    var rr0 = await root.VRTrash.remove([f.relPath]);
                     if (root.VRPreview) { root.VRPreview.close(); }
-                    toast('已移入回收站');
                     await load();
+                    if (rr0 && rr0.moved > 0 && rr0.batch) {
+                        toast('已移入回收站', {
+                            label: '撤销', ms: 8000,
+                            onClick: async function () {
+                                try {
+                                    await root.VRTrash.restore(rr0.batch);
+                                    toast('已撤销删除');
+                                    await load(); await refreshDrawer();
+                                } catch (e2) { toast('撤销失败：' + ((e2 && e2.message) || '未知')); }
+                            }
+                        });
+                    } else {
+                        toast('已移入回收站');
+                    }
                 } catch (e) { toast('删除失败：' + ((e && e.message) || '未知')); }
             });
         });
-        on('pvReveal', function () {
-            var f = curPreview(); if (!f) { return; }
-            var abs = String(f.absPath || '').trim();
-            if (!abs) { toast('这条没有本地路径，无法定位'); return; }
-            /* 「定位」是打开路径，不是复制。优先用 downloads 记录让系统打开
-             * 所在文件夹；FSA 下载没有 downloadId，就打开 file:// 文件夹。 */
-            if (f.downloadId != null && chrome.downloads && chrome.downloads.show) {
-                try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
-            }
-            var folder = abs.replace(/[\\/][^\\/]+$/, '');
-            var url = '';
-            try {
-                url = root.VRPath && root.VRPath.toFileUrl ? root.VRPath.toFileUrl(folder) : ('file:///' + folder.replace(/\\/g, '/'));
-                if (url.charAt(url.length - 1) !== '/') { url += '/'; }
-            } catch (e) { toast('路径无法打开：' + ((e && e.message) || '未知')); return; }
-            try {
-                if (chrome.tabs && chrome.tabs.create) {
-                    chrome.tabs.create({ url: url }, function () {
-                        if (chrome.runtime.lastError) { window.open(url, '_blank'); }
-                    });
-                } else { window.open(url, '_blank'); }
-                toast('已打开所在文件夹');
-            } catch (e) { toast('打开路径失败：' + ((e && e.message) || '未知')); }
-        });
+        on('pvReveal', function () { revealFile(curPreview()); });
         on('pvMove', async function () {
             var f = curPreview(); if (!f) { return; }
             if (!root.VRMovePicker) { toast('移动模块没加载，请刷新页面'); return; }
@@ -1532,25 +1779,7 @@
         if (typeof initCtxMenu === 'function') {
             initCtxMenu({
                 rename: function (f) { openRename(f); },
-                reveal: function (f) {
-                    if (!f || !f.absPath) { toast('这条没有本地路径，无法定位'); return; }
-                    if (f.downloadId != null && chrome.downloads && chrome.downloads.show) {
-                        try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
-                    }
-                    var BS = String.fromCharCode(92);
-                    var folder = String(f.absPath).replace(new RegExp('[' + BS + '/][^' + BS + '/]+$'), '');
-                    var url = '';
-                    try {
-                        url = root.VRPath && root.VRPath.toFileUrl
-                            ? root.VRPath.toFileUrl(folder)
-                            : ('file:///' + folder.split(String.fromCharCode(92)).join('/'));
-                        if (url.charAt(url.length - 1) !== '/') { url += '/'; }
-                    } catch (e) { toast('路径无法打开'); return; }
-                    try {
-                        if (chrome.tabs && chrome.tabs.create) { chrome.tabs.create({ url: url }); }
-                        else { window.open(url, '_blank'); }
-                    } catch (e) { /* 忽略 */ }
-                },
+                reveal: function (f) { revealFile(f); },
                 remove: async function (f) {
                     if (!f) { return; }
                     if (typeof ensureWriteAccess === 'function' && !(await ensureWriteAccess())) { return; }
@@ -1837,11 +2066,44 @@
         }); }
         var dwRestoreAll = $('#dwRestoreAll');
         if (dwRestoreAll) { dwRestoreAll.addEventListener('click', async function () {
+            if (S.batchBusy) { return; }
             try {
-                var batches = await root.VRTrash.list();
-                for (var i = 0; i < batches.length; i++) { await root.VRTrash.restore(batches[i].batch); }
-                toast('已全部恢复'); await load(); await refreshDrawer(); openTrash();
-            } catch (e) { toast('恢复失败：' + (e && e.message || '未知')); }
+                /* 「全部恢复」是破坏性操作：原来直接循环恢复，没有确认也没有冲突预检。
+                 * 若原位置已有同名文件，restore() 会逐条失败，用户事先完全不知情。 */
+                var pf = root.VRTrash.preflightRestore
+                    ? await root.VRTrash.preflightRestore()
+                    : { total: 0, conflicts: [] };
+                if (!pf.total) { toast('回收站是空的'); return; }
+                var warn = '';
+                if (pf.conflicts.length) {
+                    warn = '\n\n注意：' + pf.conflicts.length + ' 项原位置已有同名文件，会被跳过（不会覆盖）。\n例：' +
+                        String(pf.conflicts[0]).split('/').pop();
+                }
+                S.batchBusy = true;
+                ask('恢复回收站里的全部 ' + pf.total + ' 项？文件会回到原来的相对路径。' + warn, async function () {
+                    try {
+                        var batches = await root.VRTrash.list();
+                        var okN = 0, failN = 0;
+                        for (var i = 0; i < batches.length; i++) {
+                            toast('正在恢复 ' + (i + 1) + '/' + batches.length + ' 批…', { ms: 600000 });
+                            var r = await root.VRTrash.restore(batches[i].batch);
+                            okN += (r && r.restored) || 0;
+                            failN += (r && r.failed && r.failed.length) || 0;
+                        }
+                        var msg = '已恢复 ' + okN + ' 项';
+                        if (failN) { msg += '，' + failN + ' 项因同名被跳过'; }
+                        toast(msg);
+                        await load(); await refreshDrawer(); openTrash();
+                    } catch (e) {
+                        toast('恢复失败：' + (e && e.message || '未知'));
+                    } finally {
+                        S.batchBusy = false;
+                    }
+                });
+            } catch (e) {
+                S.batchBusy = false;
+                toast('恢复失败：' + (e && e.message || '未知'));
+            }
         }); }
     }
 
@@ -1849,6 +2111,8 @@
     async function boot() {
         try { window.__vrBoot = ['start']; } catch (e) { /* 忽略 */ }
         try { installGlobalErrorGuard(); } catch (e) { /* 忽略 */ }
+        /* 立刻铺骨架，别让用户在 2 秒空窗里以为库是空的。 */
+        try { renderSkeleton(8); } catch (e) { /* 忽略 */ }
         try { bind(); window.__vrBoot.push('bind'); } catch (e) { window.__vrBoot.push('bind-ERR:' + e.message); throw e; }
         try { bindMissing(); window.__vrBoot.push('bindMissing'); } catch (e) { window.__vrBoot.push('bindMissing-ERR'); }
         try { initCtxMenu(); window.__vrBoot.push('ctx'); } catch (e) { window.__vrBoot.push('ctx-ERR:' + e.message); }
@@ -1874,6 +2138,13 @@
         reload: load,
         toast: toast,
         getFiles: function () { return FILES; },
+        /* 空态钩子：自动化测试用，直接按给定条件重绘空态，不改真实数据。 */
+        _renderEmpty: function (n, over) { renderEmpty(n, over); },
+        /* 定位钩子：自动化测试用，直接驱动 revealFile 的无路径分支。 */
+        _revealFile: function (f) { revealFile(f); },
+        render: function () { render(); },
+        /* 骨架屏钩子：只给自动化测试用，正常启动由 boot() 自己调用。 */
+        _renderSkeleton: function (n) { renderSkeleton(n); },
         /* 压测入口（B-14）：把合成条目塞进渲染链路，验证大库窗口化。
          * 只在显式调用时生效，不影响正常启动。 */
         _renderFake: function (n) {
