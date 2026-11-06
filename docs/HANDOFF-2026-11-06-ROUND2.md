@@ -595,3 +595,28 @@ B-22（原型同步）按苏哥意见**不做**：当前实现优于原型，不
 验证写操作时我用 OPFS 句柄模拟过授权，**会把库根指向浏览器私有文件系统**，
 表现为「下载成功但磁盘找不到文件」。测完必须清掉句柄
 （`VRDB.setHandle('root', null)` + 删 legacy `vr-lib-handle`）。
+
+## 22. 左侧资源树不再写死平台（2026-11-06 14:xx）
+
+用户反馈：左侧栏目写死了 9 个平台，pixabay 这类站点全挤进「网页」，
+要兼容无数网站、动态取站点名。
+
+### 改法（`js/library/app.js`）
+- 新增 `platLabel(key)`：字典里有的用中文名，**没有的直接用 key**，新平台不再显示成「网页」。
+- 新增 `webSiteOf(f)`：取站点标识，优先 `creatorFull`，其次 `relPath` 第二段。
+  （`buildRelDir` 早就把域名写进 creator 段，所以存量数据可直接用。）
+- `buildTree()`：`web` 平台的二级节点改为**按站点聚合**（原来是按作者），
+  其它平台保持按作者不变。
+- 卡片角标：`web` 类素材显示真实站点名（如 `huaban.com`），不再一律「网页」。
+
+### 为什么不用「解析 URL 取 hostname」
+资源库里存的是本地文件，`absPath` 是磁盘路径，**没有原始页面 URL**。
+真正的站点标识在入库时已由 `VRPath.buildRelDir` 写进 `creatorFull` / 目录名，
+直接复用即可，不需要也不应该再去解析 URL。
+
+### 验证
+- 注入 3 条不同站点（pixabay.com / zhihu.com / unsplash.com）的假数据，
+  左侧「网页」节点下**自动出现三个站点子节点**，无需改代码。
+- 卡片角标显示 `huaban.com` 而非「网页」。
+- 清理测试数据后库回到 39 条。
+- `e2e-all --isolated`：`stage-rewrite` 20/20、`e2e-buttons` 29/29。
