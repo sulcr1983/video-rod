@@ -187,6 +187,27 @@
     }
 
     /* ---------- 侧栏编号树 ---------- */
+    /** 平台显示名：字典里有的用中文名，没有的（新站点）直接用 key 本身 */
+    function platLabel(key) {
+        var d = PLAT[key];
+        if (d) { return d.name; }
+        return key || '网页';
+    }
+
+    /**
+     * 「网页」类站点按域名分组。
+     * 白名单平台（B站/YouTube/小红书…）保持单节点；
+     * 其他站点不写死——用库里已存的站点标识（creatorFull / relPath 第二段）聚合，
+     * 这样 pixabay、知乎、花瓣、任何新站点都会自动出现在左侧，无需改代码。
+     */
+    function webSiteOf(f) {
+        var c = String(f.author || '').trim();
+        if (c && c !== '—') { return c; }
+        var segs = String(f.relPath || '').split('/');
+        if (segs.length > 2 && segs[1] === '其他网页') { return segs[2] || ''; }
+        return '';
+    }
+
     function buildTree() {
         var c = counts();
         var keys = Object.keys(c.platforms).filter(function (k) { return k !== 'untracked'; })
@@ -200,14 +221,21 @@
         keys.forEach(function (p) {
             pi++;
             var num = pad(pi);
-            rows.push({ kind: 'plat', key: p, label: (PLAT[p] || PLAT.web).name, count: c.platforms[p], num: num });
+            rows.push({ kind: 'plat', key: p, label: platLabel(p), count: c.platforms[p], num: num });
             var creators = {};
             FILES.forEach(function (f) {
-                if (f.plat === p && f.author) { creators[f.author] = (creators[f.author] || 0) + 1; }
+                if (f.plat !== p) { return; }
+                var name = (p === 'web') ? webSiteOf(f) : f.author;
+                if (!name) { return; }
+                creators[name] = (creators[name] || 0) + 1;
             });
             var ck = Object.keys(creators).sort(function (a, b) { return creators[b] - creators[a]; });
             ck.forEach(function (name, i) {
-                rows.push({ kind: 'author', plat: p, label: name, count: creators[name], num: num + '·' + (i + 1) });
+                /* web 的二级节点是「站点」，用 data-site 区分于作者节点 */
+                rows.push({
+                    kind: 'author', plat: p, label: name, count: creators[name],
+                    num: num + '·' + (i + 1), site: (p === 'web')
+                });
             });
         });
         return rows;
@@ -251,6 +279,13 @@
     function card(f) {
         var isV = f.kind === 'video', isA = f.kind === 'anim', isAu = f.kind === 'audio';
         var p = PLAT[f.plat] || PLAT.web;
+        /* 网页类素材的角标显示真实站点名（pixabay / zhihu …），
+         * 而不是一律「网页」——否则一堆不同站点在卡片上长得一模一样。 */
+        var badgeLabel = p.label;
+        if (f.plat === 'web') {
+            var site = webSiteOf(f);
+            if (site) { badgeLabel = site.replace(/^\.+|\.+$/g, '').slice(0, 18); }
+        }
         var corner = isV ? (f.dur || '') : (isA ? f.ext : (isAu ? f.ext : ''));
         var icon = isV ? 'i-film' : (isA ? 'i-repeat-1' : (isAu ? 'i-volume-2' : 'i-image'));
         var tags = (f.tags || []).map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
@@ -258,7 +293,7 @@
             '<div class="thumb' + (isV ? ' is-video' : '') + (isA ? ' is-anim' : '') + (isAu ? ' is-audio' : '') + '">' +
             '<div class="cover" style="--h:' + f.h + '"><span class="fig"><svg class="i"><use href="#' + icon + '"/></svg></span></div>' +
             '<img alt="" loading="lazy" data-thumb="' + esc(f.relPath) + '">' +
-            '<span class="badge"><span class="dot" style="--pc:' + p.dot + '"></span>' + p.label + '</span>' +
+            '<span class="badge"><span class="dot" style="--pc:' + p.dot + '"></span>' + esc(badgeLabel) + '</span>' +
             (corner ? '<span class="duration' + (isA ? ' anim' : '') + '">' + esc(corner) + '</span>' : '') +
             (f.state === 'missing' ? '<span class="missing-tag">文件缺失</span>' : '') +
             (f.isRef ? '<span class="ref-tag" title="内容与另一条素材相同，物理文件只存一份">引用</span>' : '') +
@@ -271,7 +306,7 @@
             '<span class="nm">' + esc(f.author || '未知来源') + '</span></span>' +
             '<span class="size">' + fmt(f.size) + '</span>' +
             '</div>' +
-            '<span class="platcell" style="--pc:' + p.dot + '">' + p.label + '</span>' +
+            '<span class="platcell" style="--pc:' + p.dot + '">' + esc(badgeLabel) + '</span>' +
             '<span class="timecell">' + esc(shortDate(f.savedAt)) + '</span>' +
             (tags ? '<div class="tagrow">' + tags + '</div>' : '') +
             '</div>' +
