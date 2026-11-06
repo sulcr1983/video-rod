@@ -1488,6 +1488,13 @@ try {
             /^blob:/i.test(String(item.url || ''))) {
             vrPendingBiliName = null;
             const rel = String(bl.full).replace(/\\/g, '/');
+            /* 把元数据从「路径键」迁到真实 blob URL 上：入库链路是按下载记录的
+             * url 找预登记的，不迁等于没登记（B站详情页来源空白的老问题）。 */
+            if (bl.meta && self.VRLib && item.url) {
+                try {
+                    self.VRLib.record(String(item.url), Object.assign({}, bl.meta, { relPath: rel }));
+                } catch (e) { /* 忽略 */ }
+            }
             if (rel && !/^([a-zA-Z]:|\/)/.test(rel)) {
                 suggest({ filename: rel, conflictAction: 'uniquify' });
                 return;
@@ -3301,8 +3308,11 @@ async function vrBulkDownload(items, tabId) {
             let ok = false;
             let skipDup = false;
             if (it.site === 'x') {
-                // X CDN 允许 downloads；按媒体库平台/作者/类型落盘
-                const id = await vrDownloadWithName(it.url, vrMediaPath(it, name));
+                // X CDN 允许 downloads；按媒体库平台/作者/类型落盘。
+                // meta 必须显式传：FSA 直写不产生下载事件，只靠路径反解会丢
+                // 原帖地址（详情页「来源」整块空白，2026-11-06 反馈）。
+                const xRel = vrMediaPath(it, name);
+                const id = await vrDownloadWithName(it.url, xRel, { meta: vrBulkMeta(it, xRel) });
                 if (id !== null) {
                     const outcome = await vrWaitDownload(id, 15000);
                     if (outcome && outcome.state === 'interrupted') {
@@ -3858,8 +3868,35 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         return { ok: false, reason: 'no-bili-info' };
     }
 
-    // 记完整归档路径（含 video-rod/B站/<作者>/视频/），页面里的 <a download> 只认文件名
-    vrPendingBiliName = { full: full, at: Date.now() };
+    /* 记完整归档路径（含 video-rod/B站/<作者>/视频/），页面里的 <a download> 只认文件名。
+     * 同时带 meta：B站走页面内 blob 下载，没有预登记的话入库条目
+     * platform/type/pageUrl/title 全是空（详情页「来源」整块空白）。 */
+    let biliTabUrl = '';
+    try { const bt = await chrome.tabs.get(tabId); biliTabUrl = (bt && bt.url) || ''; } catch (e) { /* ignore */ }
+    let biliTitle = '';
+    try {
+        const pg = await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function () { return document.title || ''; }
+        });
+        biliTitle = String((pg && pg[0] && pg[0].result) || '').replace(/\s*-\s*哔哩哔哩.*$/, '').trim();
+    } catch (e) { /* ignore */ }
+    const biliMeta = {
+        platform: 'bilibili',
+        platformName: 'B站',
+        type: 'video',
+        title: biliTitle,
+        pageUrl: biliTabUrl,
+        relPath: full
+    };
+    vrPendingBiliName = { full: full, at: Date.now(), meta: biliMeta };
+    if (self.VRLib) {
+        try {
+            /* blob 下载没有可预登记的 URL（页面自己 createObjectURL），
+             * 用「路径键」登记一份，onDeterminingFilename 拿到真实 blob URL 后再补。 */
+            self.VRLib.record('vrblob:' + full, biliMeta);
+        } catch (e) { /* 入库失败不影响下载 */ }
+    }
     if (pick.kind === 'dash') {
         await chrome.scripting.executeScript({
             target: { tabId: tabId }, world: 'MAIN', files: ['lib/mp4box.all.min.js']

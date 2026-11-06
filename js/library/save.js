@@ -424,6 +424,13 @@
                 if (tmpUrl) { setTimeout(function () { URL.revokeObjectURL(tmpUrl); }, 30000); }
                 resolve(out);
             };
+            /* 下载器通道同样要预登记 meta：下载完成事件里页面上下文早没了，
+             * 不登记的话入库条目 platform/title/pageUrl 全空（详情页来源空白）。 */
+            if (opt && opt.meta && root.VRLib && typeof root.VRLib.record === 'function') {
+                try {
+                    root.VRLib.record(url, Object.assign({ relPath: relPath }, opt.meta));
+                } catch (e) { /* 入库失败不阻断下载 */ }
+            }
             try {
                 api.download(opts, function (id) {
                     var le = root.chrome.runtime && root.chrome.runtime.lastError;
