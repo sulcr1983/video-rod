@@ -1833,8 +1833,29 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
          * 冻结/丢弃就先 reload 唤醒，再注入；同时给注入加超时，绝不让 UI 无限等。 */
         var responded = false;
         var sendOnce = function (x) { if (!responded) { responded = true; sendResponse(x); } };
+        var best = null;          // 保留「只有 360p」的可用结果，重试失败时回退
+        var retriedQuality = false;
+        var finish = function (r) {
+            if (r && r.ok) { best = r; }
+            /* 只拿到 progressive 360p，或被风控拒绝：刷新一次页面再试。
+             * 实测刷新后 visitorData / 会话更新，VISIONOS 会重新给出 1080p 直链。 */
+            var needRetry = !retriedQuality && r && (
+                (r.ok && r.limited) ||
+                (!r.ok && (r.code === 'YT_E_LOGIN' || r.code === 'YT_E_BLOCKED'))
+            );
+            if (needRetry) {
+                retriedQuality = true;
+                chrome.tabs.reload(ytTabId, {}, function () {
+                    if (chrome.runtime.lastError) { sendOnce(best || r); return; }
+                    setTimeout(runInject, 3500);
+                });
+                return;
+            }
+            sendOnce(best || r || { ok: false, error: '页面没有返回数据' });
+        };
         var runInject = function () {
             var timer = setTimeout(function () {
+                if (best) { sendOnce(best); return; }
                 sendOnce({
                     ok: false, code: 'YT_E_TIMEOUT',
                     error: 'YouTube 页面无响应（可能被浏览器冻结）',
@@ -1850,15 +1871,14 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
                 }, function (res) {
                     clearTimeout(timer);
                     if (chrome.runtime.lastError) {
-                        sendOnce({ ok: false, error: chrome.runtime.lastError.message });
+                        finish({ ok: false, error: chrome.runtime.lastError.message });
                         return;
                     }
-                    var r = res && res[0] && res[0].result;
-                    sendOnce(r || { ok: false, error: '页面没有返回数据' });
+                    finish(res && res[0] && res[0].result || { ok: false, error: '页面没有返回数据' });
                 });
             } catch (e) {
                 clearTimeout(timer);
-                sendOnce({ ok: false, error: String((e && e.message) || e) });
+                finish({ ok: false, error: String((e && e.message) || e) });
             }
         };
         chrome.tabs.get(ytTabId, function (t) {
