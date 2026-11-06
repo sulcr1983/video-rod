@@ -126,7 +126,7 @@
     function cache() {
         ['preview', 'pvCrumb', 'pvCount', 'pvTitle', 'pvPlat', 'pvType', 'pvMedia',
             'pvPrev', 'pvNext', 'pvClose', 'pvBack', 'pvInfoBtn', 'pvFullBtn', 'pvFilm',
-            'pvAuthorRow', 'pvAvatar', 'pvAuthor', 'pvOpenTop', 'pvStateRow', 'pvState',
+            'pvAuthorRow', 'pvAvatar', 'pvAuthor', 'pvOpenTop', 'pvFav', 'pvStar', 'pvStateRow', 'pvState',
             'st1v', 'st2v', 'st3v', 'pvThirdRow', 'pvThirdK', 'pvThirdV',
             'pvSaved', 'pvPath', 'pvPathCopy', 'pvSrcBadge', 'pvPageRow', 'pvPageVal',
             'pvSrcMiss', 'pvWorkId', 'pvTags',
@@ -327,6 +327,21 @@
         setTxt('pvCount', (S.idx + 1) + ' / ' + S.list.length);
         setTxt('pvType', (KIND_LABEL[f.kind] || '媒体').toUpperCase());
         setTxt('pvTitle', f._title || f.title);
+        if (el.pvTitle) { el.pvTitle.title = f._title || f.title; }
+        var inFav = false;
+        try { inFav = !!(root.VRFav && root.VRFav.hasFavorite && root.VRFav.hasFavorite(f.relPath)); } catch (e) { inFav = false; }
+        if (el.pvFav) {
+            el.pvFav.classList.toggle('on', inFav);
+            el.pvFav.setAttribute('aria-pressed', inFav ? 'true' : 'false');
+            var favLabel = el.pvFav.querySelector('span');
+            if (favLabel) { favLabel.textContent = inFav ? '已收藏' : '收藏'; }
+        }
+        if (el.pvStar) {
+            el.pvStar.classList.toggle('on', !!f.starred);
+            el.pvStar.setAttribute('aria-pressed', f.starred ? 'true' : 'false');
+            var starLabel = el.pvStar.querySelector('span');
+            if (starLabel) { starLabel.textContent = f.starred ? '已星标' : '星标'; }
+        }
 
         if (el.pvPlat) {
             el.pvPlat.innerHTML = '<i class="dot" style="--pc:' + p.dot + '"></i>' + esc(p.label) + ' · ' + (KIND_LABEL[f.kind] || '');
@@ -501,6 +516,27 @@
     }
 
     function bind() {
+        if (el.pvFav) {
+            el.pvFav.addEventListener('click', function () {
+                var f = S.list[S.idx];
+                if (!f) { return; }
+                if (root.VRFav && root.VRFav.addToDefault) {
+                    root.VRFav.addToDefault(f.relPath);
+                    paintInfo(f);
+                }
+            });
+        }
+        if (el.pvStar) {
+            el.pvStar.addEventListener('click', async function () {
+                var f = S.list[S.idx];
+                if (!f) { return; }
+                if (root.VRFav && typeof root.VRFav.toggleStar === 'function') {
+                    var next = await root.VRFav.toggleStar(f.relPath);
+                    f.starred = !!next;
+                    paintInfo(f);
+                }
+            });
+        }
         if (el.vPlay) {
             el.vPlay.addEventListener('click', function () {
                 if (!videoEl) { return; }

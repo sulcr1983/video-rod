@@ -215,13 +215,13 @@
             var pct = t.kind === 'root' ? 100 : Math.max(2, Math.min(100, Math.round(t.count / total * 100)));
             if (t.kind === 'author' && !treeOpen[t.plat] && !q) { return ''; }
             if (t.kind === 'root') {
-                return '<button class="tree-node active" style="--pct:' + pct + '%">' +
+                return '<button class="tree-node' + (S.plat === 'all' ? ' active' : '') + '" style="--pct:' + pct + '%">' +
                     '<span class="ix">00</span><span class="label">' + esc(t.label) + '</span>' +
                     '<span class="count">' + c.all + '</span></button>';
             }
             if (t.kind === 'plat') {
                 var open = !!treeOpen[t.key] || !!q;
-                return '<button class="tree-node plat" data-plat="' + esc(t.key) + '" style="--pct:' + pct + '%;--pc:' + (PLAT[t.key] || PLAT.web).dot + '">' +
+                return '<button class="tree-node plat' + (S.plat === t.key ? ' active' : '') + '" data-plat="' + esc(t.key) + '" style="--pct:' + pct + '%;--pc:' + (PLAT[t.key] || PLAT.web).dot + '">' +
                     '<svg class="i i-sm chev" style="transform:rotate(' + (open ? 0 : -90) + 'deg)"><use href="#i-chevron-down"/></svg>' +
                     '<span class="ix">' + t.num + '</span><span class="label">' + esc(t.label) + '</span>' +
                     '<span class="count">' + t.count + '</span></button>';
@@ -451,6 +451,15 @@
         RAW = {};
         list.forEach(function (e) { RAW[e.relPath] = e; });
         FILES = list.map(toCardModel);
+        /* 收藏条目只保留仍在库里的 id；测试夹具/已删除文件不再占收藏夹。 */
+        try {
+            var changed = false;
+            FAVS.forEach(function (fav) {
+                var ids = (fav.ids || []).filter(function (id) { return !!RAW[id]; });
+                if (ids.length !== (fav.ids || []).length) { fav.ids = ids; changed = true; }
+            });
+            if (changed) { saveFavs(); }
+        } catch (e) { /* 忽略 */ }
         renderTree();
         render();
         renderRoot();
@@ -679,8 +688,19 @@
                     return;
                 }
                 if (n.dataset.plat) {
-                    treeOpen[n.dataset.plat] = !treeOpen[n.dataset.plat];
-                    renderTree(); return;
+                    var p = n.dataset.plat;
+                    treeOpen[p] = !treeOpen[p];
+                    /* 左侧平台节点也是筛选入口：旧代码只展开/收起，不写 S.plat，
+                     * 用户点平台看起来毫无反应（只有顶部 chip 能筛）。 */
+                    S.plat = (S.plat === p) ? 'all' : p;
+                    S.q = '';
+                    if ($('#search')) { $('#search').value = ''; }
+                    $$('#chips .chip').forEach(function (x) {
+                        x.classList.toggle('active', x.dataset.plat === S.plat);
+                    });
+                    render();
+                    renderTree();
+                    return;
                 }
                 $$('.tree-node').forEach(function (x) { x.classList.remove('active'); });
                 n.classList.add('active');
@@ -786,7 +806,7 @@
         }
 
         /* 写操作按钮：没有可写句柄时直接禁用，避免“点了才失败” */
-        ['batchMove', 'batchTrash', 'pvDelete', 'pvMove'].forEach(function (id) {
+        ['batchMove', 'batchTrash'].forEach(function (id) {
             var b = document.getElementById(id);
             if (!b) { return; }
             b.disabled = !writable;
@@ -813,8 +833,22 @@
     async function loadFavs() {
         try {
             var v = await root.VRDB.getSetting('vrFavs', []);
-            FAVS = Array.isArray(v) ? v : [];
+            FAVS = Array.isArray(v) ? v.filter(function (f) { return f && f.sys !== 'star'; }) : [];
         } catch (e) { FAVS = []; }
+        /* 用户 2026-11-06：收藏夹只需要一个，分类交给标签。
+         * 旧测试/误操作留下的多个文件夹合并到第一个，避免侧栏继续膨胀。 */
+        if (FAVS.length > 1) {
+            var keep = FAVS[0];
+            keep.name = '收藏';
+            keep.ids = keep.ids || [];
+            FAVS.slice(1).forEach(function (f) {
+                (f.ids || []).forEach(function (id) {
+                    if (keep.ids.indexOf(id) < 0) { keep.ids.push(id); }
+                });
+            });
+            FAVS = [keep];
+            saveFavs();
+        }
     }
     function saveFavs() {
         try { root.VRDB.setSetting('vrFavs', FAVS); } catch (e) { /* 忽略 */ }
@@ -840,17 +874,63 @@
         var cnt = $('#favSideCnt');
         if (cnt) { cnt.textContent = FILES.filter(function (f) { return f.starred; }).length; }
     }
-    function addToFav(ids) {
-        if (!ids.length) { toast('先选素材'); return; }
+    function oneFav() {
         var fav = FAVS.filter(function (f) { return f.sys !== 'star'; })[0];
         if (!fav) {
-            fav = { id: 'fav-' + Date.now(), name: '默认收藏夹', ids: [] };
-            FAVS.push(fav);
+            fav = { id: 'fav-default', name: '收藏', ids: [] };
+            FAVS = [fav];
         }
+        fav.name = '收藏';
         fav.ids = fav.ids || [];
+        return fav;
+    }
+    function addToFav(ids) {
+        if (!ids || !ids.length) { toast('先选素材'); return; }
+        var fav = oneFav();
         ids.forEach(function (id) { if (fav.ids.indexOf(id) < 0) { fav.ids.push(id); } });
         saveFavs(); renderFavs(); render();
-        toast('已加入「' + fav.name + '」');
+        toast('已加入收藏');
+    }
+    function hasFavorite(relPath) {
+        var fav = FAVS.filter(function (f) { return f.sys !== 'star'; })[0];
+        return !!(fav && (fav.ids || []).indexOf(relPath) >= 0);
+    }
+    function addToDefault(relPath) {
+        if (!relPath) { return false; }
+        var fav = oneFav();
+        var i = fav.ids.indexOf(relPath);
+        if (i >= 0) {
+            fav.ids.splice(i, 1);
+            saveFavs(); renderFavs(); render();
+            toast('已取消收藏');
+            return false;
+        }
+        fav.ids.push(relPath);
+        saveFavs(); renderFavs(); render();
+        toast('已收藏');
+        return true;
+    }
+
+    /** 详情页收藏按钮：切换星标，返回 0/1；页面与库页共用同一份 DB 字段。 */
+    async function toggleStar(relPath) {
+        var row = null;
+        for (var i = 0; i < FILES.length; i++) {
+            if (FILES[i].id === relPath) { row = FILES[i]; break; }
+        }
+        if (!row) { return 0; }
+        var next = row.starred ? 0 : 1;
+        try {
+            await root.VRDB.patchFile(relPath, { starred: next });
+        } catch (e) {
+            toast('收藏失败：' + (e && e.message || '数据库不可写'));
+            return row.starred ? 1 : 0;
+        }
+        row.starred = !!next;
+        if (RAW[relPath]) { RAW[relPath].starred = next; }
+        renderFavs();
+        render();
+        toast(next ? '已收藏' : '已取消收藏');
+        return next;
     }
 
     /* ---------- 设置抽屉（R7：真实动作） ---------- */
@@ -1063,6 +1143,10 @@
         on('pvRename', function () { openRename(curPreview()); });
         on('pvDelete', function () {
             var f = curPreview(); if (!f) { return; }
+            if (!window.__vrPerm || !window.__vrPerm.writable) {
+                toast('删除需要先授权素材目录');
+                return;
+            }
             ask('把「' + (f.title || f.fileName) + '」移入回收站？文件还能恢复。', async function () {
                 if (!root.VRTrash) { toast('回收站模块没加载'); return; }
                 try {
@@ -1493,4 +1577,5 @@
     }
 
     root.VRApp = { reload: load, toast: toast, getFiles: function () { return FILES; } };
+    root.VRFav = { toggleStar: toggleStar, addToFav: addToFav, addToDefault: addToDefault, hasFavorite: hasFavorite };
 })();

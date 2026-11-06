@@ -285,7 +285,7 @@ h1 .pill{
 .batchbar .spacer{flex:1}
 
 /* ---------------- 网格 & 卡片 ---------------- */
-.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:14px}
 .card{
   position:relative;display:flex;flex-direction:column;min-width:0;
   background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
@@ -294,7 +294,7 @@ h1 .pill{
 }
 .card:hover{transform:translateY(-3px);box-shadow:var(--sh-3);border-color:var(--surface-3)}
 .card.selected{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink),var(--sh-2)}
-.thumb{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--surface-2)}
+.thumb{position:relative;aspect-ratio:16/10;overflow:hidden;background:var(--surface-2)}
 .thumb .cover{position:absolute;inset:0;transition:transform .5s var(--ease)}
 .card:hover .thumb .cover{transform:scale(1.04)}
 .thumb.is-video .cover{filter:saturate(.9)}
@@ -754,7 +754,11 @@ a.src-row:not([href]) .src-go{display:none}
   letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
 }
 .pi-kicker .dot{width:6px;height:6px;border-radius:50%;background:var(--pc,var(--accent));display:inline-block}
-.pv-info h2{margin:0 0 11px;font-size:18px;line-height:1.35;font-weight:660;letter-spacing:-.35px}
+.pv-info h2{
+  margin:0 0 11px;font-size:18px;line-height:1.35;font-weight:660;letter-spacing:-.35px;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
+  overflow:hidden;max-height:4.05em;
+}
 .pi-author{
   display:flex;align-items:center;gap:8px;padding:5px 7px;margin:0 -7px 13px;
   border-radius:8px;font-size:12px;color:var(--ink-2);text-decoration:none;
@@ -781,6 +785,29 @@ a.pi-author:hover .go{color:var(--accent);opacity:1}
 .pi-specs b{font-weight:650;color:var(--ink)}
 .pi-specs .dim{color:var(--muted)}
 
+/* 详情页收藏：比普通操作更显眼，一键切换星标 */
+.pv-favrow{display:flex;gap:7px;margin:0 0 12px}
+.pv-fav{
+  flex:1;height:38px;display:flex;align-items:center;justify-content:center;gap:7px;
+  border-radius:8px;border:1px solid color-mix(in srgb,var(--accent) 38%,var(--line));
+  background:var(--accent-soft);color:var(--accent-ink);font-size:12px;font-weight:650;
+  transition:background .15s,color .15s,border-color .15s,transform .1s;
+}
+.pv-fav:hover{background:var(--accent);color:#1b150b;border-color:var(--accent);transform:translateY(-1px)}
+.pv-fav:active{transform:translateY(0)}
+.pv-fav .i{width:15px;height:15px}
+.pv-fav.on{background:var(--accent);color:#1b150b;border-color:var(--accent)}
+.pv-fav.on .i{fill:currentColor}
+.pv-star{
+  flex:0 0 84px;height:38px;display:flex;align-items:center;justify-content:center;gap:5px;
+  border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--muted);
+  font-size:11px;font-weight:600;transition:all .15s;
+}
+.pv-star:hover{color:var(--ink);border-color:var(--surface-3);background:var(--surface-2)}
+.pv-star.on{color:#E8B04B;border-color:#E8B04B;background:rgba(232,176,75,.12)}
+.pv-star.on .i{fill:currentColor}
+.pv-star .i{width:14px;height:14px}
+
 /* 主操作：一行三键 + 删除图标 */
 .pi-acts{display:flex;gap:6px;margin-bottom:16px}
 .pi-act{
@@ -790,7 +817,7 @@ a.pi-author:hover .go{color:var(--accent);opacity:1}
 }
 .pi-act:hover{background:var(--surface-2);border-color:var(--surface-3);color:var(--ink)}
 .pi-act .i{width:13px;height:13px}
-.pi-act.danger{flex:0 0 36px;color:var(--muted)}
+.pi-act.danger{flex:0 0 auto;padding:0 9px;color:var(--muted)}
 .pi-act.danger .i{width:14px;height:14px}
 .pi-act.danger:hover{color:var(--danger);background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 26%,var(--line))}
 
@@ -1528,9 +1555,9 @@ kbd{
 
 /* 主题切换（原型专用） */
 /* 响应式 */
-@media(max-width:1380px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1380px){.grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}}
 @media(max-width:1080px){
-  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pagehead{flex-direction:column;align-items:flex-start;gap:16px}
   .pv-info{display:none}
@@ -1765,3 +1792,6 @@ h1 {
 .perm-banner svg { width: 14px; height: 14px; color: #E8B04B; flex: 0 0 auto; }
 .perm-banner span { flex: 1; min-width: 0; }
 .perm-banner .btn { flex: 0 0 auto; }
+
+/* 收藏夹收敛：只保留一个「收藏」，分类用标签；隐藏新建收藏夹入口 */
+#favNewBtn,#favSaveFilter,#favPopNew,#favDrawerNew{display:none!important}
