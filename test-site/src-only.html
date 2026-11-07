@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>源码抓图测试</title></head>
+<body>
+  <!-- DOM 里只有 1 张 -->
+  <img src="/media/cover.jpg" width="640" height="480" alt="封面">
+  <script>
+    /* 模拟懒加载站点：真实大图只写在脚本/JSON 里，DOM 上还没有 <img>。
+       这正是星愿「图片下载器」用 body.innerHTML 正则要解决的问题。
+       同时混入相对路径与协议相对路径 —— 真实站点的 JSON 里这两种最常见。 */
+    window.__data = {
+      items: [
+        { img: "http://127.0.0.1:18080/media/original-1200.png" },
+        { img: "/media/srcset-1200.png" },
+        { img: "//127.0.0.1:18080/media/i5-unique.png" }
+      ]
+    };
+  </script>
+</body></html>

@@ -158,15 +158,23 @@
          * 前者的 `self.VRImageUtil` 对后者可见，所以按顺序串起来即可。 */
         return chrome.scripting.executeScript({
             target: { tabId: tabId },
-            func: o => ({ has: typeof self.VRImageUtil !== 'undefined' }),
+            func: o => ({
+                has: typeof self.VRImageUtil !== 'undefined',
+                hasScan: typeof self.VRDownloadScan !== 'undefined'
+            }),
             args: [opts]
         }).then(res => {
-            const has = res && res[0] && res[0].result && res[0].result.has;
-            if (has) { return null; }
-            // 缺失才注入，避免每帧都重复执行一遍（幂等但没必要）
+            const r = (res && res[0] && res[0].result) || {};
+            /* 两个模块各自判断，缺哪个补哪个。
+             * VRDownloadScan 是 2026-11-07 新增（抄星愿两个扩展的源码抓图），
+             * 老标签页里必然没有 —— 不补注入的话源码通道会静默失效。 */
+            const need = [];
+            if (!r.has) { need.push('js/lib-image-util.js'); }
+            if (!r.hasScan) { need.push('js/lib-download-scan.js'); }
+            if (!need.length) { return null; }
             return chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ['js/lib-image-util.js']
+                files: need
             });
         }).then(() => chrome.scripting.executeScript({
             target: { tabId: tabId },
@@ -181,6 +189,7 @@
                 }
                 let imgs = [];
                 let bgs = [];
+                let fromSrc = [];
                 try {
                     imgs = U.scanImages(document, {
                         minWidth: o.minSize,
@@ -197,6 +206,17 @@
                         });
                     } catch (e) { bgs = []; }
                 }
+                /* 源码通道（抄星愿「图片下载器」contentScript.js 的 body.innerHTML 正则）：
+                 * 懒加载站点把图片地址只写在脚本/JSON 里，DOM 上还没有 <img>，
+                 * 只扫标签会整批漏掉。抓到的地址没有尺寸信息，交给下面标 0 由 UI 显示「尺寸未知」。 */
+                if (o.srcScan) {
+                    try {
+                        const S = self.VRDownloadScan;
+                        if (S && S.extractUrlsFromHtml && document.body) {
+                            fromSrc = S.extractUrlsFromHtml(document.body.innerHTML || '', location.href, 400);
+                        }
+                    } catch (e) { fromSrc = []; }
+                }
                 const out = [];
                 const all = imgs.concat(bgs);
                 for (let i = 0; i < all.length; i++) {
@@ -212,6 +232,16 @@
                         bg: !!it.bg,
                         candidates: cands
                     });
+                }
+                /* 源码里多出来的地址（DOM 上还没有对应 <img>）追加在最后。
+                 * 已在 out 里的跳过，避免同一张图出现两次。 */
+                const have = Object.create(null);
+                for (let i = 0; i < out.length; i++) { have[out[i].url] = 1; }
+                for (let i = 0; i < fromSrc.length; i++) {
+                    const u = fromSrc[i];
+                    if (!u || have[u]) { continue; }
+                    have[u] = 1;
+                    out.push({ url: u, w: 0, h: 0, bg: false, srcOnly: true, candidates: [u] });
                 }
                 return out;
             },
@@ -231,7 +261,10 @@
                 /* 扫描门槛跟随「全部」档位：档位默认 0（全部），
                  * 不应再拿 imgMinSize(100) 去砍掉一截 —— 否则列表数与档位标注不符。 */
                 minSize: tierMin > 0 ? tierMin : 1,
-                bgScan: settings.imgBgScan !== false
+                bgScan: settings.imgBgScan !== false,
+                /* 源码通道（2026-11-07 抄星愿「图片下载器」）：
+                 * 懒加载站点把图只写在脚本/JSON 里，只扫 DOM 会整批漏掉。 */
+                srcScan: true
             });
             /* 内容脚本没注入（页面是扩展更新前打开的，或站点禁止注入）：
              * 直接说清楚「刷新一下」，而不是显示「0 张」让人以为页面真没图。 */
@@ -823,8 +856,13 @@
     function exportLinks(fmt) {
         const list = visibleItems().filter(it => selected.has(it.key));
         if (!list.length) { el.sum.textContent = '先勾选要导出的图片'; return; }
+        /* 文件名列不能留空：CSV 里一整列空着等于没有信息。
+         * 用 2026-11-07 抄自 Download Master 的推导链（丢弃 php/asp 这类动态脚本名、
+         * 去非法字符、截 200），与它 utils.getDownloadFilename 同口径。 */
+        const S = self.VRDownloadScan;
         const text = X.buildExport(list.map(it => ({
-            url: it.url, orig: it.orig, w: it.w, h: it.h, name: ''
+            url: it.url, orig: it.orig, w: it.w, h: it.h,
+            name: (S && S.downloadName) ? (S.downloadName(it.orig || it.url) || '') : ''
         })), fmt);
         const mime = fmt === 'csv' ? 'text/csv;charset=utf-8' : 'text/plain;charset=utf-8';
         // CSV 加 BOM：Excel 打开中文才不乱码（这是个老问题，不加就永远是乱码）

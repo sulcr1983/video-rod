@@ -182,6 +182,7 @@
       ],
       "js": [
         "js/lib-image-util.js",
+        "js/lib-download-scan.js",
         "js/site-name.js",
         "js/image-batch.js",
         "js/lib/floating-ui.core.umd.min.js",

@@ -128,6 +128,33 @@
 - [ ] 右键秒存、快捷键过
 - [ ] 面板无 JS 报错（控制台干净）
 
+### 4.2 图片侧边栏 / 下载扫描（2026-11-07 新增，69 条断言）
+
+改 `js/lib-image-util.js`、`js/lib-download-scan.js`、`js/image-page.js` 后跑：
+
+```bash
+node tools/test-download-scan.js   # 69  移植自星愿两扩展：扩展名合法性/文件名清洗/全链接扫描/源码正则抓图/自定义过滤
+node tools/test-image-util.js      # 108 图片扫描、候选链、尺寸档位、判定口径
+node tools/test-image-batch.js     # 27  批量条目收集与命名
+node tools/test-image-tier.js      # 57  尺寸档位统计
+node tools/test-image-settings.js  # 50  设置项默认值与合并
+node tools/test-img-filter.js      # 47  域名+正则过滤规则
+node tools/test-album-sites.js     # 52  五站图集适配与原图派生
+node tools/test-album-export.js    # 50  导出 txt/csv 与零依赖 ZIP
+```
+
+**源码抓图通道的验证页**（图片只写在脚本里，DOM 上没有 `<img>`）：
+
+```bash
+# 测试站起在 18080，然后打开
+http://127.0.0.1:18080/src-only.html
+```
+
+> 验收口径：该页 DOM 只有 1 张图，源码通道应额外抓出 3 张（`original-1200.png`、
+> `srcset-1200.png`、`i5-unique.png`）。少一张就说明正则又退回了「只认 `https?://`」的老写法
+> ——单斜杠 `/media/x.jpg` 与协议相对 `//host/x.jpg` 必须都能抓到。
+
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |
