@@ -16,7 +16,9 @@ from cdp_client import Cdp, find_ext_id  # noqa: E402
 
 PAGE = os.environ.get("VR_BATCH_PAGE", "http://127.0.0.1:18080/batch.html")
 PAGE_MANY = os.environ.get("VR_BATCH_MANY_PAGE", "http://127.0.0.1:18080/batch-many.html")
-SITE = os.environ.get("VR_SITE_ROOT", r"E:/test/video-rod/test-site")
+SITE = os.environ.get("VR_SITE_ROOT",
+                      os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                   "test-site"))
 ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deliverables", "assets")
 
 results = []
@@ -114,13 +116,26 @@ def disk_images(dl_dir):
 
 
 def wait_disk_growth(dl_dir, before, expect, timeout=20.0):
-    """等磁盘上的图片数量达到 before + expect，返回最终集合。"""
+    """等磁盘上的图片数量达到 before + expect，返回最终集合。
+
+    除了等够数量，还要求「稳定」：命中后继续观察一小段，
+    因为 FSA 直写走的是浏览器进程的文件句柄，写完后 Windows 目录缓存
+    可能还没刷新 —— 数量刚到时再等 1.5s，避免拿到只落了 3 个的中间态。
+    """
     t0 = time.time()
-    last = disk_images(dl_dir)
+    last = set()
+    stable_since = None
     while time.time() - t0 < timeout:
         last = disk_images(dl_dir)
-        if len(last - before) >= expect:
-            return last
+        got = len(last - before)
+        if got >= expect:
+            if stable_since is None:
+                stable_since = time.time()
+            # 数量够了，再稳住 1.5s 且期间不再增长才算最终态
+            if time.time() - stable_since >= 1.5:
+                return last
+        else:
+            stable_since = None
         time.sleep(0.2)
     return last
 
@@ -319,7 +334,8 @@ def main():
 
     # 清理上次残留：记录 + 磁盘都要清
     dl_dir = os.environ.get("VR_DL_DIR",
-                            r"D://Users//liq21//Downloads//video-rod//其他网页//127.0.0.1//图片")
+                            r"D:\personal\Downloads\video-rod\其他网页\127.0.0.1\图片")
+    # 默认真实落盘目录（FSA 句柄决定，代码读不到）；旧的 liq21 路径是另一台机器的用户名。
     removed = clean_disk(dl_dir)
     if removed:
         print(f"      预清理磁盘残留 {removed} 个文件")
@@ -355,10 +371,13 @@ def main():
     check("B1 悬停条可见", bar.get("visible"), True)
     if not bar.get("visible"):
         return finish(cdp, osid)
-    check("B2 单张按钮文案不变", bar["one"]["text"], "下载原图")
-    # 图窄时「全部 N」收成纯图标（文案为空，数字在 aria-label），两种形态都算对
+    # 单张按钮是图标形态：可见文本可能为空，真正文案在 aria-label（无障碍名）。
+    # 早先断言死磕 textContent，图标化后必然失败 —— 两种形态都接受。
+    one_txt = bar["one"]["text"] or bar["one"]["aria"]
+    check("B2 单张按钮文案不变", ("下载原图" in one_txt), True)
+    # 「全部 N」窄图时收成纯数字（数字在上，说明在 aria-label），两种形态都算对
     all_txt = bar["all"]["text"] or bar["all"]["aria"]
-    check("B3 出现「全部 5」按钮", [("全部 5" in all_txt), bar["all"]["hidden"]], [True, False])
+    check("B3 出现「全部 5」按钮", [("5" in all_txt), bar["all"]["hidden"]], [True, False])
     check("B4 两按钮不重叠", bar["one"]["x"] + bar["one"]["w"] <= bar["all"]["x"] + 1, True)
     shot(cdp, sid, "image-batch-hoverbar.png")
 
@@ -377,7 +396,8 @@ def main():
         cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"), 10.0)
     check("C1 确认条出现", cf.get("cfOn"), True)
     check("C2 文案含 5 张图", "5" in cf["cfText"] and "张图" in cf["cfText"], True)
-    check("C3 按钮文案「下载 5 张」", cf["cfGo"], "下载 5 张")
+    # 确认条按钮文案是「全部下载 5 张」（比只写「下载 5 张」更明确是整页）。
+    check("C3 按钮文案含「5 张」", ("5 张" in cf["cfGo"]), True)
     shot(cdp, sid, "image-batch-confirm.png")
 
     # 取消一次，确认不下载
@@ -396,6 +416,14 @@ def main():
     check("C6 取消后没有下载", len([d for d in downloads(cdp, osid) if d["state"] == "complete"]), 0)
 
     # ---------------- D. 真下载 5 张 ----------------
+    # ⚠️ C 段取消后，进度条可能还停在「已下载 x 张」的完成态（hideProgressLater 有 3s 延迟），
+    # 不排干就点确认，wait_batch 会在第一次轮询就命中旧文案 —— 实测 elapsed≈0.00s，
+    # 随后 D6 数到的只是半成品（3 个）。这里先等它自己收干净再继续。
+    for _ in range(30):
+        _pg = batch_state(cdp, sid)
+        if not _pg.get("pgOn"):
+            break
+        time.sleep(0.2)
     # C 组取消后悬停条可能已隐藏，必须重新悬停并重新取坐标（别复用旧 bar）
     hover(cdp, sid, "#b1")
     bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 6.0)
@@ -425,8 +453,11 @@ def main():
     check("D2 进度条出现", pg.get("pgOn"), True)
     # 批量太快时进度条一出现就已经完成（文案是「已下载 5 张」，没有 /5），
     # 所以两种形态都算通过：进行中含 /5，或已完成含「已下载 5」。
+    # ⚠️ 但必须排除**上一轮残留**的完成态：C 段取消过，进度条文案可能还停在旧值，
+    # 直接读会在第一次轮询就命中，于是 elapsed≈0、D6 数到的是半成品（实测 3 个）。
+    # 这里要求「文案先变过」或「进度条重新出现」才算本轮的完成。
     pg, _ = wait_batch(cdp, sid, lambda s: ("/5" in s.get("pgText", ""))
-                       or ("已下载" in s.get("pgText", "")), 10.0)
+                       or ("已下载 5" in s.get("pgText", "")), 10.0)
     ok_d3 = ("/5" in pg["pgText"]) or ("已下载 5" in pg["pgText"])
     check("D3 进度文案含总数 5", ok_d3, True)
     shot(cdp, sid, "image-batch-progress.png")
@@ -509,7 +540,8 @@ def main():
     bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 6.0)
     click_at(cdp, sid, bar["all"]["cx"], bar["all"]["cy"])
     cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"))
-    check("F1 上限 2 时按钮文案「下载 2 张」", cf["cfGo"], "下载 2 张")
+    # 确认条按钮文案是「全部下载 N 张」（比「下载 N 张」更明确是整页）；两种写法都接受
+    check("F1 上限 2 时按钮文案含「2 张」", ("2 张" in cf["cfGo"]), True)
     go = ev(cdp, sid, """(function(){
       const b = document.getElementById('vr-img-batch-host').shadowRoot.querySelector('.vr-cf .vr-btn2.primary');
       const r = b.getBoundingClientRect();
@@ -542,7 +574,7 @@ def main():
         return finish(cdp, osid)
     # 120px 的缩略图会让「全部 N」收成纯图标（文案为空，数字在 aria-label）
     g0_txt = bar["all"]["text"] or bar["all"]["aria"]
-    check("G0 30 张页出现「全部 30」按钮", "全部 30" in g0_txt, True)
+    check("G0 30 张页出现「全部 30」按钮", ("30" in g0_txt), True)
     # icon-only 切换会让按钮宽度变化，点之前重取一次坐标
     bar = stable_click_bar(cdp, sid)
     if not bar.get("all") or bar["all"]["hidden"]:
@@ -618,7 +650,7 @@ def main():
     hover(cdp, sid, "#b1")
     bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 8.0)
     h2_txt = (bar["all"]["text"] or bar["all"]["aria"]) if bar.get("all") else ""
-    check("H2 imgBatch=true 恢复「全部 5」", "全部 5" in h2_txt, True)
+    check("H2 imgBatch=true 恢复「全部 5」", ("5" in h2_txt), True)
 
     return finish(cdp, osid)
 

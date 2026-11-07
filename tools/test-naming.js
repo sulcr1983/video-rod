@@ -297,6 +297,35 @@ console.log('\n===== 页面识别：抖音 =====');
         '抖音文件名 昵称(@UID)_描述');
 }
 
+/* ================= N9 AIX / Fatkun 风格占位符 ================= */
+
+console.log('\n===== N9 AIX 占位符（{NO001}/{PAGETITLE}/{DATE}） =====');
+{
+    const V = { title: '某页标题', author: '某人', site: 'weibo', index: '7', date: '20261106', ext: 'jpg' };
+
+    eq(Naming.fillTemplate('pic_{NO}.{EXT}', V), 'pic_7.jpg', '{NO}/{EXT} 归一');
+    eq(Naming.fillTemplate('pic_{NO01}.{EXT}', V), 'pic_07.jpg', '{NO01} 补零到 2 位');
+    eq(Naming.fillTemplate('pic_{NO001}.{EXT}', V), 'pic_007.jpg', '{NO001} 补零到 3 位');
+    eq(Naming.fillTemplate('{PAGETITLE}_{NO001}', V), '某页标题_007', '{PAGETITLE} → title');
+    eq(Naming.fillTemplate('{DATE}_{NAME}', V), '20261106_某页标题', '{DATE}/{NAME}');
+    eq(Naming.fillTemplate('{author}_{NO}', V), '某人_7', '小写 AIX 占位符也认');
+    eq(Naming.fillTemplate('{FOO}_x', V), '{FOO}_x', '未知占位符原样保留');
+
+    /* 与项目模板混用：这是迁移用户最可能的写法 */
+    eq(Naming.fillTemplate('${author}_{NO001}.${ext}', V), '某人_007.jpg',
+        'AIX 与 ${} 混用');
+    /* 关键回归：${author} 不能被 {author} 的替换吃掉一个 $（曾打挂 11 条断言） */
+    eq(Naming.fillTemplate('${author}_${title}', V), '某人_某页标题',
+        '${...} 不被 AIX 替换误伤');
+    /* ${NO} 不是项目变量：既有的「未识别 ${...} 一律清空」规则会把它删掉。
+     * 这里断言的是**不会变成半截的 $7**（那才是误伤），而不是「原样保留」——
+     * 原样保留从来不是本项目语义（见 fillTemplate 的「残余变量清掉」）。 */
+    eq(Naming.fillTemplate('${NO}', V), '', '${NO} 不被 AIX 替换成半截 $7');
+
+    /* index 缺失时不留下孤零零的 {NO} */
+    eq(Naming.fillTemplate('pic_{NO}.jpg', { title: 't' }), 'pic_.jpg', 'index 缺失时 {NO} 为空');
+}
+
 /* ================= 汇总 ================= */
 
 console.log(`\n=========================================`);

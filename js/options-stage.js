@@ -159,4 +159,176 @@
         var a = (location.hash || '').replace(/^#/, '');
         if (a && mapped[a]) { show(mapped[a], a); }
     });
+
+    /* ==========================================================
+     * 图片过滤规则（域名 + 正则）
+     * 数据存在 chrome.storage.local.vrLibSettings.imgFilterRules，
+     * 与侧边栏图片页共用同一份 —— 在这里加的规则，清单里立刻生效。
+     * ========================================================== */
+    bindImgFilter();
+
+    function bindImgFilter() {
+        var listEl = document.getElementById('ImgFilterList');
+        var hostEl = document.getElementById('ImgFilterHost');
+        var reEl = document.getElementById('ImgFilterRe');
+        var addBtn = document.getElementById('ImgFilterAdd');
+        var expBtn = document.getElementById('ImgFilterExport');
+        var impBtn = document.getElementById('ImgFilterImport');
+        var fileEl = document.getElementById('ImgFilterFile');
+        var noteEl = document.getElementById('ImgFilterNote');
+        if (!listEl || !addBtn) { return; }
+
+        var F = self.VRImgFilter;
+        var rules = [];
+
+        function read() {
+            return new Promise(function (resolve) {
+                try {
+                    chrome.storage.local.get('vrLibSettings', function (o) {
+                        void chrome.runtime.lastError;
+                        var s = (o && o.vrLibSettings) || {};
+                        rules = F ? F.normalizeRules(s.imgFilterRules) : (s.imgFilterRules || []);
+                        resolve(rules);
+                    });
+                } catch (e) { rules = []; resolve([]); }
+            });
+        }
+
+        function write() {
+            return new Promise(function (resolve) {
+                try {
+                    chrome.storage.local.get('vrLibSettings', function (o) {
+                        var s = Object.assign({}, (o && o.vrLibSettings) || {});
+                        s.imgFilterRules = rules;
+                        chrome.storage.local.set({ vrLibSettings: s }, function () {
+                            void chrome.runtime.lastError;
+                            resolve();
+                        });
+                    });
+                } catch (e) { resolve(); }
+            });
+        }
+
+        function render() {
+            listEl.innerHTML = '';
+            if (!rules.length) {
+                noteEl.textContent = '还没有规则 —— 加一条就能把不想要的图永久挡在清单外';
+                return;
+            }
+            var on = rules.filter(function (r) { return r.enabled !== false; }).length;
+            noteEl.textContent = rules.length + ' 条规则，启用 ' + on + ' 条';
+
+            rules.forEach(function (r, i) {
+                var row = document.createElement('div');
+                row.className = 'vr-rule' + (r.enabled === false ? ' off' : '');
+
+                var ck = document.createElement('input');
+                ck.type = 'checkbox';
+                ck.checked = r.enabled !== false;
+                ck.title = '启用/停用这条规则';
+                ck.addEventListener('change', function () {
+                    rules[i].enabled = ck.checked;
+                    write().then(render);
+                });
+
+                var rh = document.createElement('span');
+                rh.className = 'rh';
+                rh.textContent = r.host === '*' ? '全网' : r.host;
+
+                var rr = document.createElement('span');
+                rr.className = 'rr';
+                rr.textContent = r.re ? r.re : '（所有图片）';
+                rr.title = r.re || '';
+
+                var del = document.createElement('button');
+                del.className = 'rdel';
+                del.type = 'button';
+                del.title = '删除这条规则';
+                del.textContent = '✕';
+                del.addEventListener('click', function () {
+                    rules.splice(i, 1);
+                    write().then(render);
+                });
+
+                row.appendChild(ck);
+                row.appendChild(rh);
+                row.appendChild(rr);
+                row.appendChild(del);
+                listEl.appendChild(row);
+            });
+        }
+
+        addBtn.addEventListener('click', function () {
+            var host = (hostEl.value || '').trim();
+            var re = (reEl.value || '').trim();
+            if (!host && !re) {
+                noteEl.textContent = '域名和正则至少填一个';
+                return;
+            }
+            if (F && re && !F.compilePattern(re)) {
+                // 正则写错就地提示，不写进存储（否则这条规则永远不生效还查不出原因）
+                noteEl.textContent = '正则写法有误：' + re + '（可写 ad_ 或 /\\.gif$/i）';
+                return;
+            }
+            var rule = F ? F.normalizeRule({ host: host, re: re, enabled: true })
+                         : { host: host || '*', re: re, enabled: true };
+            if (!rule) { noteEl.textContent = '域名和正则至少填一个'; return; }
+            rules.push(rule);
+            hostEl.value = '';
+            reEl.value = '';
+            write().then(render);
+        });
+
+        // 回车即添加（输入框里更顺手）
+        [hostEl, reEl].forEach(function (input) {
+            if (!input) { return; }
+            input.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); addBtn.click(); }
+            });
+        });
+
+        if (expBtn) {
+            expBtn.addEventListener('click', function () {
+                if (!rules.length) { noteEl.textContent = '还没有规则可导出'; return; }
+                var text = F ? F.exportRules(rules) : JSON.stringify({ rules: rules }, null, 2);
+                var blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'image-filter-rules.json';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function () {
+                    try { document.body.removeChild(a); } catch (e) { /* 忽略 */ }
+                    URL.revokeObjectURL(url);
+                }, 1500);
+                noteEl.textContent = '已导出 ' + rules.length + ' 条规则';
+            });
+        }
+
+        if (impBtn && fileEl) {
+            impBtn.addEventListener('click', function () { fileEl.click(); });
+            fileEl.addEventListener('change', function () {
+                var f = fileEl.files && fileEl.files[0];
+                if (!f) { return; }
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var out = F ? F.importRules(String(reader.result || ''))
+                                : { rules: [], skipped: 0, error: '规则模块未加载' };
+                    if (out.error) { noteEl.textContent = '导入失败：' + out.error; return; }
+                    if (!out.rules.length) { noteEl.textContent = '文件里没有可用的规则'; return; }
+                    rules = rules.concat(out.rules);
+                    write().then(function () {
+                        render();
+                        noteEl.textContent = '已导入 ' + out.rules.length + ' 条' +
+                            (out.skipped ? '，跳过 ' + out.skipped + ' 条无效' : '');
+                    });
+                };
+                reader.readAsText(f, 'utf-8');
+                fileEl.value = '';
+            });
+        }
+
+        read().then(render);
+    }
 })();

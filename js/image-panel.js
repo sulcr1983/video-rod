@@ -69,6 +69,8 @@
 
     function applySettings(s) {
         const was = enabled;
+        const prevMin = settings.imgMinSize;
+        const prevBg = settings.imgBgScan;
         settings = U.mergeSettings(s || {});
         enabled = settings.imgPanel !== false;
         // 设置页改了值也要同步到面板的控件上（两边共用一份存储）
@@ -81,6 +83,13 @@
             } else {
                 boot();
             }
+            return;
+        }
+        /* 已经在跑：数值变化（门槛/背景图开关）要**重算计数**，否则浮标数字停在旧值。
+         * 早先只在「关→开」时重建，改 imgMinSize 后浮标仍显示旧张数（实测 C2 用例）。
+         * 这里不重建 UI，只刷计数 —— 重建会丢掉用户当前的滚动位置与选中态。 */
+        if (settings.imgMinSize !== prevMin || settings.imgBgScan !== prevBg) {
+            scheduleCount();
         }
     }
 

@@ -1,0 +1,586 @@
+/* =========================================================================
+   侧边栏图片页 · image.html
+   token 与 DESIGN-SYSTEM-STAGE 一致（暖黑 + 舞台金），禁冷蓝黑
+   ========================================================================= */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg: #100F0E;
+    --surface: #191715;
+    --surface-2: #1F1C18;
+    --surface-3: #2B2620;
+    --line: #2B2620;
+    --line-2: #211E1A;
+    --ink: #EFEAE0;
+    --ink-2: #B0A89A;
+    --muted: #8C8478;
+    --faint: #5F5950;
+    --accent: #E8B04B;
+    --accent-2: #F0C878;
+    --accent-deep: #C98A2E;
+    --accent-soft: #2C2418;
+    --danger: #E86466;
+    --ok: #4FBF8B;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+}
+
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input { font: inherit; }
+
+#app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* ---------------- 头部 ---------------- */
+.ip-head {
+    flex: 0 0 auto;
+    padding: 11px 12px 9px;
+    background: linear-gradient(180deg, #171513, #121010);
+    border-bottom: 1px solid var(--line);
+}
+
+.ip-r1 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ip-site {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ip-cnt { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.ip-cnt b { color: var(--accent); font-family: var(--font-mono); font-size: 12.5px; }
+
+.ip-r2 { display: flex; align-items: center; gap: 6px; }
+
+.ip-sbox {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 9px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+}
+
+.ip-sbox:focus-within { border-color: var(--accent-deep); }
+.ip-sico { color: var(--faint); font-size: 11px; flex: 0 0 auto; }
+.ip-sbox input {
+    width: 100%;
+    border: none;
+    background: none;
+    outline: none;
+    color: var(--ink);
+    font-size: 11.5px;
+}
+.ip-sbox input::placeholder { color: var(--faint); }
+
+.ip-icb {
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--ink-2);
+    font-size: 12px;
+    transition: border-color .14s, color .14s;
+}
+.ip-icb:hover { border-color: var(--accent-deep); color: var(--accent); }
+.ip-icb:disabled { opacity: .45; cursor: default; }
+
+/* ---------------- 尺寸档位 ---------------- */
+.ip-tiers {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 5px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.ip-tiers::-webkit-scrollbar { display: none; }
+
+.ip-tier {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-2);
+    /* 字号 12px / 数字 11px：侧边栏里 11px 中文已经很吃力（用户实测反馈看不清），
+     * 且未选中态原用 --ink-2，在暖黑底上对比度不足。 */
+    font-size: 12px;
+    color: var(--ink);
+    white-space: nowrap;
+    transition: border-color .14s, color .14s, background .14s;
+}
+/* 数字原来的 --faint(#5F5950) 在深色底上几乎不可见，改用次级文字色 */
+.ip-tier .c { font-family: var(--font-mono); font-size: 11px; color: var(--ink-2); }
+.ip-tier:hover { border-color: var(--accent-deep); }
+.ip-tier.on {
+    background: var(--accent-soft);
+    border-color: var(--accent-deep);
+    color: var(--accent-2);
+}
+.ip-tier.on .c { color: var(--accent); }
+.ip-tier:disabled { opacity: .4; cursor: default; }
+
+/* ---------------- 网格区 ---------------- */
+.ip-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 12px 14px;
+}
+.ip-body::-webkit-scrollbar { width: 6px; }
+.ip-body::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+.ip-body::-webkit-scrollbar-track { background: transparent; }
+
+.ip-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.ip-cell {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color .14s, box-shadow .14s;
+}
+.ip-cell:hover { border-color: var(--accent-deep); }
+.ip-cell.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ip-cell.skip { opacity: .5; }
+.ip-cell.done::after {
+    content: "已下载";
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 9px;
+    color: var(--ok);
+    background: rgba(19, 42, 33, .9);
+    border: 1px solid rgba(79, 191, 139, .35);
+}
+
+.ip-thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    background: var(--surface-2);
+}
+.ip-cell.loadfail .ip-thumb { opacity: .25; }
+
+/* 勾选圈现在是**独立按钮**：点它只改勾选，点图本身看大图。
+ * 比原来 17px 再放大到 20px，否则侧边栏里太难点中（触控/高 DPI 都吃力）。 */
+.ip-ck {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, .55);
+    background: rgba(0, 0, 0, .42);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+    color: transparent;
+    cursor: pointer;
+    transition: background .14s, border-color .14s, transform .1s;
+}
+/* 命中区外扩 6px：视觉保持 20px，可点范围更大（不用改布局） */
+.ip-ck::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+}
+.ip-ck:hover { border-color: var(--accent-2); background: rgba(44, 36, 24, .9); }
+.ip-ck:active { transform: scale(.92); }
+.ip-cell.sel .ip-ck {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #141210;
+    font-weight: 700;
+}
+.ip-cell.skip .ip-ck { border-color: var(--danger); background: rgba(42, 22, 24, .8); }
+
+/* 点图看大图：整格给出手型光标，明确「这是可点的」 */
+.ip-cell { cursor: zoom-in; }
+
+.ip-badge {
+    position: absolute;
+    right: 5px;
+    top: 5px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 9px;
+    color: var(--ink-2);
+    background: rgba(0, 0, 0, .55);
+    pointer-events: none;
+}
+.ip-badge.orig {
+    color: var(--accent);
+    border: 1px solid rgba(232, 176, 75, .45);
+    background: rgba(44, 36, 24, .85);
+}
+
+.ip-dim {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 12px 6px 4px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: #EFEAE0;
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, .72));
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ip-zoom {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .62);
+    color: #EFEAE0;
+    font-size: 11px;
+    opacity: 0;
+    transition: opacity .14s;
+}
+.ip-cell:hover .ip-zoom { opacity: 1; }
+.ip-cell.done .ip-zoom { bottom: 5px; }
+
+/* 空状态 */
+.ip-empty { padding: 40px 16px; text-align: center; }
+.ip-empty-t { font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; }
+.ip-empty-s { font-size: 11px; color: var(--muted); line-height: 1.6; }
+
+/* ---------------- 底部批量栏 ---------------- */
+.ip-foot {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: linear-gradient(180deg, #151311, #100F0E);
+    border-top: 1px solid var(--line);
+}
+
+.ip-all {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--ink-2);
+    cursor: pointer;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+.ip-all input { position: absolute; opacity: 0; pointer-events: none; }
+.ip-bx {
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
+    border: 1.5px solid var(--faint);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: transparent;
+    transition: background .14s, border-color .14s;
+}
+.ip-all input:checked + .ip-bx {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #141210;
+    font-weight: 700;
+}
+.ip-all input:checked + .ip-bx::before { content: "✓"; }
+
+.ip-sum {
+    flex: 1;
+    min-width: 0;
+    font-size: 10.5px;
+    color: var(--muted);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ip-sum b { color: var(--accent); font-family: var(--font-mono); }
+
+.ip-dl {
+    flex: 0 0 auto;
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: #141210;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background .14s;
+}
+.ip-dl:hover { background: var(--accent-2); }
+.ip-dl:disabled { background: var(--surface-3); color: var(--faint); cursor: not-allowed; }
+
+/* ---------------- 进度条 ---------------- */
+.ip-prog {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--line-2);
+    font-size: 10.5px;
+    color: var(--ink-2);
+}
+.ip-prog[hidden] { display: none; }
+.ip-prog-t { flex: 0 0 auto; font-family: var(--font-mono); }
+.ip-prog-bar {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    overflow: hidden;
+}
+.ip-prog-bar i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+    transition: width .2s ease-out;
+}
+.ip-prog-x { flex: 0 0 auto; font-size: 10.5px; color: var(--muted); text-decoration: underline; }
+.ip-prog-x:hover { color: var(--danger); }
+
+/* ---------------- 大图预览层 ---------------- */
+.ip-lb {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(6, 5, 4, .95);
+}
+.ip-lb[hidden] { display: none; }
+
+.ip-lb-stage {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0B0A09;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.ip-lb-stage img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.ip-lb-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, .5);
+    color: #EFEAE0;
+    font-size: 18px;
+}
+.ip-lb-nav:hover { background: rgba(0, 0, 0, .8); color: var(--accent); }
+.ip-lb-nav.l { left: 0; border-radius: 0 4px 4px 0; }
+.ip-lb-nav.r { right: 0; border-radius: 4px 0 0 4px; }
+
+.ip-lb-bar {
+    flex: 0 0 auto;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ip-lb-info { flex: 1; min-width: 0; }
+.ip-lb-name { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ip-lb-url {
+    margin-top: 3px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ip-lb-chain {
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ip-lb-dl {
+    flex: 0 0 auto;
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 4px;
+    background: var(--accent);
+    color: #141210;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.ip-lb-dl:hover { background: var(--accent-2); }
+.ip-lb-dl:disabled { background: var(--surface-3); color: var(--faint); cursor: default; }
+
+.ip-lb-x {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink-2);
+    font-size: 14px;
+}
+.ip-lb-x:hover { border-color: var(--danger); color: var(--danger); }
+
+/* ---------------- 更多操作菜单 ---------------- */
+.ip-more {
+    position: absolute;
+    top: 62px;
+    right: 10px;
+    z-index: 40;
+    min-width: 172px;
+    padding: 5px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .6);
+}
+.ip-more[hidden] { display: none; }
+
+.ip-mi {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 7px 9px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    color: var(--ink-2);
+    text-align: left;
+    white-space: nowrap;
+}
+.ip-mi:hover { background: var(--surface-2); color: var(--accent-2); }
+.ip-mi-t { cursor: pointer; }
+.ip-mi-t input {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    flex: 0 0 14px;
+    border-radius: 3px;
+    border: 1.5px solid var(--faint);
+    background: transparent;
+    cursor: pointer;
+    position: relative;
+}
+.ip-mi-t input:checked { background: var(--accent); border-color: var(--accent); }
+.ip-mi-t input:checked::after {
+    content: "✓";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: #141210;
+    font-weight: 700;
+}
+.ip-msep { height: 1px; margin: 4px 6px; background: var(--line-2); }
+.ip-mnote {
+    padding: 5px 9px 6px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--faint);
+    white-space: normal;
+}
+
+/* 窄屏兜底：侧边栏被拖到极窄时单列 */
+@media (max-width: 300px) {
+    .ip-grid { grid-template-columns: 1fr; }
+    .ip-sum { display: none; }
+}

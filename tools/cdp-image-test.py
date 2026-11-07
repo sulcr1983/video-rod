@@ -18,7 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp, find_ext_id  # noqa: E402
 
 PAGE = os.environ.get("VR_IMG_PAGE", "http://127.0.0.1:18080/images.html")
-SITE = os.environ.get("VR_SITE_ROOT", r"E:/test/video-rod/test-site")
+SITE = os.environ.get("VR_SITE_ROOT",
+                      os.path.join(os.path.dirname(os.path.dirname(
+                          os.path.abspath(__file__))), "test-site"))
 ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deliverables", "assets")
 
 results = []
@@ -103,6 +105,8 @@ def button_state(cdp, sid):
       return {
         host:true, btn:true,
         text: b.textContent.trim(),
+        // 图标化后可见文本为空，真正文案在 aria-label（无障碍名）——两者取其一
+        aria: b.getAttribute('aria-label') || '',
         cls: b.className,
         disabled: !!b.disabled,
         visible: wrap ? getComputedStyle(wrap).display !== 'none' : false,
@@ -248,7 +252,9 @@ def main():
     # 悬停 300ms 出现
     img = hover(cdp, sid, "#big1")
     st = button_state(cdp, sid)
-    check("B3 悬停出现『下载原图』", [st.get("visible"), st.get("text")], [True, "下载原图"])
+    # 按钮是图标形态：可见文本为空，文案在 aria-label。两种形态都算对。
+    _txt = st.get("text") or st.get("aria") or ""
+    check("B3 悬停出现『下载原图』", [st.get("visible"), ("下载原图" in _txt)], [True, True])
     check("B4 按钮在 Shadow DOM 内", st.get("inShadow"), True)
     # I3 起悬停条里有两个按钮，位置断言看整组（wrap）的右边缘，不是单个按钮。
     # 必须读**当前**图片矩形：hover() 返回的是 scrollIntoView 之前的坐标，

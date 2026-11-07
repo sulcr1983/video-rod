@@ -4,11 +4,10 @@
   },
   "action": {
     "default_icon": "img/icon.png",
-    "default_title": "__MSG_catCatch__",
-    "default_popup": "popup.html"
+    "default_title": "__MSG_catCatch__"
   },
   "side_panel": {
-    "default_path": "popup.html"
+    "default_path": "image.html"
   },
   "description": "__MSG_description__",
   "icons": {
@@ -140,7 +139,9 @@
         "*://m.weibo.cn/*"
       ],
       "js": [
-        "js/bulk-profile.js"
+        "js/weibo-album-core.js",
+        "js/bulk-profile.js",
+        "js/weibo-backup.js"
       ],
       "run_at": "document_idle"
     },
@@ -185,7 +186,8 @@
         "js/lib/floating-ui.dom.umd.min.js",
         "js/image-hover.js",
         "js/image-panel.js",
-        "js/image-album.js"
+        "js/image-album.js",
+        "js/image-drag.js"
       ],
       "run_at": "document_idle",
       "all_frames": false

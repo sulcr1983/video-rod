@@ -15,8 +15,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp, find_ext_id  # noqa: E402
 
 PAGE = os.environ.get("VR_PANEL_PAGE", "http://127.0.0.1:18080/panel.html")
-SITE = os.environ.get("VR_SITE_ROOT", r"E:/test/video-rod/test-site")
-ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deliverables", "assets")
+# 夹具根目录：相对本脚本推导，别硬编码另一台机器的绝对路径
+# （早先是 E:/test/video-rod/test-site，本机不存在 → A2「夹具页存在」必然 False）。
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SITE = os.environ.get("VR_SITE_ROOT", os.path.join(ROOT_DIR, "test-site"))
+ASSETS = os.path.join(ROOT_DIR, "deliverables", "assets")
 
 results = []
 created_ids = []
@@ -257,7 +260,10 @@ def main():
     check("A2 夹具页存在", os.path.exists(os.path.join(SITE, "panel.html")), True)
 
     dl_dir = os.environ.get("VR_DL_DIR",
-                            r"D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\图片")
+                            r"D:\personal\Downloads\video-rod\其他网页\127.0.0.1\图片")
+    # 上一条默认路径曾硬编码成 D:\Users\liq21\...（另一台机器的用户名），
+    # 本机不存在 → 落盘断言永远 0，而文件其实已经写进 D:\personal\Downloads。
+    # 换机器/换授权目录时用 VR_DL_DIR 覆盖。
     # 全套连跑时磁盘删除累计会撞宿主安全删除阈值（SAFE_DELETE_BULK_CONFIRM_REQUIRED），
     # 整个套件会被直接拦掉。改用 downloads API 清理自己的记录与文件，绕开宿主的删除钩子。
     try:
@@ -278,6 +284,22 @@ def main():
     cdp.send("Page.enable", {}, osid)
     cdp.wait_js(osid, "!!chrome.downloads", 8)
     clear_seen(cdp, osid)
+    # 还要清**资源库记录**：vrImg.download 有内容级去重（vrCanonMediaUrl 只比 host+path），
+    # 反复跑套件时同一张 cover.jpg 已在库里 → 返回 duplicate 不落盘 → H2「落盘 2 个文件」假失败。
+    # 只删测试站的记录（relPath 含 127.0.0.1），不动用户真实数据。
+    try:
+        ev(cdp, osid, """new Promise(r => {
+          const DB = self.VRDB;
+          if (!DB || !DB.getAllFiles) { r(0); return; }
+          DB.getAllFiles().then(all => {
+            const hit = (all||[]).filter(e => (e.relPath||'').indexOf('127.0.0.1') >= 0)
+                                 .map(e => e.relPath);
+            if (!hit.length) { r(0); return; }
+            DB.deleteFiles(hit).then(() => r(hit.length));
+          }).catch(() => r(0));
+        })""")
+    except Exception:
+        pass
     # imgMinSize 显式设 100：面板扫描跟随这个设置项（不是悬停的 600 门槛），
     # 夹具页里 160×160 显示的小图也要被列出来。
     set_settings(cdp, osid, {"imgHover": True, "imgBatch": True, "imgPanel": True,
@@ -300,7 +322,15 @@ def main():
     cdp.send("Emulation.setDeviceMetricsOverride",
              {"width": 1280, "height": 900, "deviceScaleFactor": 1, "mobile": False}, sid)
     cdp.navigate(sid, PAGE)
-    cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 10.0)
+    # 清掉上次拖动留下的位置：A5 断言的是「**默认**距右下 16px」，
+    # 而位置会持久化在页面 localStorage 的 vrImgFloatPos，不清就会被上次的值污染
+    # （实测残留到 [1236,856]，看起来像布局 bug，其实是测试没重置）。
+    try:
+        ev(cdp, sid, "localStorage.removeItem('vrImgFloatPos'); 1")
+        cdp.reload(sid)
+        cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 10.0)
+    except Exception:
+        pass
     cdp.wait_js(sid, "!!document.getElementById('vr-img-panel-host')", 10.0)
     time.sleep(0.4)
 
@@ -315,9 +345,13 @@ def main():
       if (!f) { return null; }
       const cs = getComputedStyle(f);
       const r = f.getBoundingClientRect();
+      /* 用 clientWidth/clientHeight 而不是 innerWidth/innerHeight：
+       * inner* 含滚动条（本页有纵向滚动条，宽 15px），会把 right:16px 算成 31px，
+       * 看起来像「位置不对」，其实是度量口径错了。 */
+      const de = document.documentElement;
       return {right: cs.right, bottom: cs.bottom,
-              gapR: Math.round(window.innerWidth - r.right),
-              gapB: Math.round(window.innerHeight - r.bottom)};
+              gapR: Math.round(de.clientWidth - r.right),
+              gapB: Math.round(de.clientHeight - r.bottom)};
     })()""")
     check("A5 默认距右下 16px", [pos["gapR"], pos["gapB"]] if pos else None, [16, 16])
     shot(cdp, sid, "image-panel-float.png")

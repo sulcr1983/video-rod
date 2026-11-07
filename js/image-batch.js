@@ -369,15 +369,25 @@
             items = U.scanImages(document, {
                 minWidth: U.MIN_SIZE,
                 minHeight: U.MIN_SIZE,
+                /* minShow 必须显式传 PANEL_MIN_SHOW(48)。
+                 * 不传会落到默认值 MIN_SHOW(500)：那是**悬停按钮**的门槛，
+                 * 用来保证「页面上看着够大才冒按钮」。批量下载是用户主动点「全部 N」，
+                 * 门槛该与面板/侧边栏一致(48)，否则 320px 的正文配图会被静默漏掉 ——
+                 * 表现是「确认条说 5 张，实际只落 4 张」（实测 D6）。 */
+                minShow: U.PANEL_MIN_SHOW,
                 dedupe: true
             });
         } catch (e) { items = []; }
 
         const pageTitle = String(document.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-        const out = items.map(it => ({
+        /* 每张图必须带序号，否则批量下载会得到一串同名文件：
+         * 底层按 `<日期>_<标题>.<ext>` 命名，5 张同标题 → Chrome 只能加 (1)(2) 后缀，
+         * 用户在文件夹里根本分不清哪张是哪张，去重表也会因为文件名相同而互相覆盖。
+         * 与侧边栏 image-page.js 保持同一口径：`标题_01`、`标题_02`… */
+        const out = items.map((it, i) => ({
             url: it.url,
             candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url],
-            title: pageTitle
+            title: pageTitle + '_' + String(i + 1).padStart(2, '0')
         }));
         const truncated = out.length > max;
         return { items: out.slice(0, max), total: Math.min(out.length, max), truncated, max };

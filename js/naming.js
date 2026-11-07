@@ -247,9 +247,42 @@
             url: val('url')
         };
         let name = String(tpl || '${title}.${ext}');
+
+        /* AIX / Fatkun 风格占位符（2026-11-06 补）：
+         * 用户从那些扩展迁移过来时，模板里写的是 {NO001} / {PAGETITLE} / {DATE}。
+         * 直接不认会得到「{NO001}」这样的字面文件名，所以在这里先做一次归一。
+         *
+         * {NOnnn} 的补零位数要真的生效 —— 本项目 ${index} 固定 2 位，
+         * 表达不了 3 位，所以按占位符里 0 的个数就地格式化 index。
+         *
+         * ⚠️ 两条铁律（都踩过）：
+         *   1) 必须先替换 ${...}，再处理 AIX 的 {...}；
+         *      反过来 `{author}` 会命中 `${author}` 的花括号，留下孤零零的 `$`
+         *      （实测打挂 11 条既有断言）。
+         *   2) AIX 的正则必须加「前面不是 $」的负向后视 `(?<!\$)`；
+         *      否则 `${NO}` 会被 `{NO}` 命中变成 `$7`，同样是半截替换。
+         *      lookbehind 需要 Chrome 62+，本项目 minimum_chrome_version 是 93，安全。 */
+        name = name.replace(/(?<!\$)\{NO(\d{0,3})\}/gi, (m, zeros) => {
+            const raw = v.index;
+            if (raw === undefined || raw === null || raw === '') { return ''; }
+            const num = Number(raw);
+            if (!isFinite(num)) { return String(raw); }
+            const width = zeros ? zeros.length : 0;
+            return width > 0 ? String(num).padStart(width, '0') : String(num);
+        });
+
         for (const key of Object.keys(map)) {
             name = name.split('${' + key + '}').join(map[key]);
         }
+
+        /* 别名（大小写都认）。同样排除 `${...}` 的情况，避免二次误伤。 */
+        const alias = {
+            PAGETITLE: 'title', NAME: 'title', DATE: 'date', EXT: 'ext',
+            URL: 'url', AUTHOR: 'author', SITE: 'site', POST: 'post'
+        };
+        name = name.replace(/(?<!\$)\{(PAGETITLE|NAME|DATE|EXT|URL|AUTHOR|SITE|POST)\}/gi,
+            (m, key) => val(alias[String(key).toUpperCase()]));
+
         // 未替换的残余变量清掉；空段清理
         name = name.replace(/\$\{\w+\}/g, '');
         name = name.replace(/_+/g, '_').replace(/^_+|_+$/g, '');

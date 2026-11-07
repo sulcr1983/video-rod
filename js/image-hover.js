@@ -648,8 +648,25 @@
         var p = img && img.parentElement;
         for (var i = 0; i < 5 && p; i++, p = p.parentElement) {
             var t = String(p.innerText || p.textContent || '').replace(/\s+/g, ' ').trim();
-            /* 一路找到「含图片的整条内容卡片」，别停在图片网格那层 */
-            if (t.length >= 40 && t.length < 3000 && /[，。！？]/.test(t)) { return p; }
+            /* 一路找到「含图片的整条内容卡片」，别停在图片网格那层。
+             *
+             * 追加两条约束（2026-11-07 修）：
+             *   1) 不能是 body/html —— 否则整页说明文字会被当成「这条内容的正文」，
+             *      下载名变成一段 60 字的页面介绍（实测得到
+             *      「20261107_真实尺寸（按短边）：480_300_...→_06.jpg」）。
+             *   2) 卡片里必须**还有别的元素**（不是只有这一张图），
+             *      纯图片网格容器本身没有「正文」可言。 */
+            var tag = (p.tagName || '').toUpperCase();
+            if (tag === 'BODY' || tag === 'HTML') { return null; }
+            if (t.length >= 40 && t.length < 3000 && /[，。！？]/.test(t)) {
+                // 要求这个容器至少比图片高一层，避免把 grid 本身当卡片
+                var hasOther = false;
+                try {
+                    hasOther = p.querySelectorAll('img, picture, video').length >= 1 &&
+                        p !== img.parentElement;
+                } catch (e) { hasOther = false; }
+                if (hasOther) { return p; }
+            }
         }
         return null;
     }

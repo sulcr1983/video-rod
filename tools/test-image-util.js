@@ -117,6 +117,17 @@ eq('像图片 data png', U.isProbablyImage('data:image/png;base64,AA'), true);
 eq('像图片 data svg 否', U.isProbablyImage('data:image/svg+xml;utf8,<svg/>'), false);
 eq('像图片 相对地址否', U.isProbablyImage('media/a.png'), false);
 
+/* 无扩展名的「网页路径」必须排除（2026-11-07 花瓣实测：详情页被当成原图，
+ * 导致大图预览加载空白）。这类地址与真实的 hash 结尾 CDN 图必须能区分。 */
+eq('像图片 花瓣详情页否', U.isProbablyImage('https://huaban.com/pins/6019884'), false);
+eq('像图片 花瓣详情页带斜杠否', U.isProbablyImage('https://huaban.com/pins/6019884/'), false);
+eq('像图片 花瓣空间页否', U.isProbablyImage('https://huaban.com/huaban/space/273749334/1146/3'), false);
+eq('像图片 站根否', U.isProbablyImage('https://example.com/'), false);
+eq('像图片 搜索页否', U.isProbablyImage('https://example.com/search?q=a'), false);
+eq('像图片 花瓣真实CDN图是', U.isProbablyImage('https://gd-hbimg-edge.huaban.com/664203abc'), true);
+eq('looksLikePage 详情页', U.looksLikePage('https://huaban.com/pins/6019884'), true);
+eq('looksLikePage CDN图', U.looksLikePage('https://gd-hbimg-edge.huaban.com/664203abc'), false);
+
 /* ---------------- sizeOf ---------------- */
 const s1 = U.sizeOf(makeImg({ src: 'a.png', nw: 640, nh: 480 }));
 arr('尺寸 自然尺寸', [s1.w, s1.h], [640, 480]);

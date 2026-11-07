@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>钓鱼竿 · 图片侧边栏 四方案 v1</title>
+<style>
+/* =========================================================================
+   图片侧边栏 · 四方案对比
+   A 网格（AIX 式） B 行列表（AIX 下载管理器式） C 瀑布流（Fatkun 式） D 预览优先
+   全部按真实侧边栏宽度 380px 渲染；token 取自 DESIGN-SYSTEM-STAGE
+   ========================================================================= */
+*{box-sizing:border-box;margin:0;padding:0}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit}
+:root{
+  --bg:#100F0E; --surface:#191715; --surface-2:#1F1C18; --surface-3:#2B2620;
+  --line:#2B2620; --line-2:#211E1A;
+  --ink:#EFEAE0; --ink2:#B0A89A; --muted:#8C8478; --faint:#5F5950;
+  --accent:#E8B04B; --accent2:#F0C878; --accent-deep:#C98A2E; --accent-soft:#2C2418;
+  --ok:#4FBF8B; --ok-soft:#132A21; --danger:#E86466;
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Consolas,"Cascadia Code",monospace;
+}
+html,body{height:100%}
+body{font-family:var(--font-ui);background:#0A0908;color:var(--ink);overflow:hidden;-webkit-font-smoothing:antialiased}
+
+/* ---------- 顶部切换条 ---------- */
+.switchbar{
+  height:54px;display:flex;align-items:center;gap:18px;padding:0 20px;
+  background:#0E1014;color:#E8EAEE;position:relative;z-index:50;flex-wrap:nowrap;
+}
+.sw-brand{font-size:12.5px;font-weight:650;letter-spacing:-.1px;white-space:nowrap}
+.sw-brand em{font-style:normal;color:#7C8593;font-weight:400;margin-left:7px;font-size:11px}
+.sw-tabs{display:flex;gap:3px;background:#1A1D23;padding:3px;border-radius:9px}
+.sw-tabs button{padding:6px 14px;border-radius:7px;font-size:12px;color:#8B93A1;transition:background .14s,color .14s;white-space:nowrap}
+.sw-tabs button:hover{color:#D5DAE1}
+.sw-tabs button.on{background:#2C313A;color:#fff;font-weight:600}
+.sw-note{
+  margin-left:auto;font-size:11px;color:#6E7683;text-align:right;line-height:1.5;
+  min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sw-note b{color:#A9B1BD;font-weight:600}
+
+/* ---------- 舞台 ---------- */
+.stage{display:none;height:calc(100vh - 54px);overflow:auto}
+.stage.on{display:flex;justify-content:center;align-items:flex-start;gap:40px;padding:26px 28px 60px}
+
+/* ---------- 380px 侧边栏面板 ---------- */
+.panel{
+  width:380px;flex:0 0 380px;height:640px;background:var(--bg);
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+.panel-tag{
+  flex:0 0 auto;height:26px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--faint);
+  background:var(--surface-2);border-bottom:1px solid var(--line-2);
+}
+
+/* 头部 */
+.ph{flex:0 0 auto;padding:11px 12px 9px;background:linear-gradient(180deg,#171513,#121010);border-bottom:1px solid var(--line)}
+.ph-r1{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.site{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cnt{font-size:11px;color:var(--muted);white-space:nowrap}
+.cnt b{color:var(--accent);font-family:var(--font-mono);font-size:12.5px}
+.ph-r2{display:flex;gap:6px;align-items:center}
+.sbox{flex:1;display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;min-width:0}
+.sbox input{border:none;background:none;outline:none;width:100%;color:var(--ink);font-size:11.5px}
+.sbox input::placeholder{color:var(--faint)}
+.icb{width:26px;height:26px;flex:0 0 26px;border:1px solid var(--line);border-radius:4px;background:var(--surface-2);color:var(--ink2);font-size:12px;display:flex;align-items:center;justify-content:center}
+.icb:hover{border-color:var(--accent-deep);color:var(--accent)}
+
+/* 尺寸档位 */
+.tiers{flex:0 0 auto;display:flex;gap:5px;padding:8px 12px;border-bottom:1px solid var(--line-2);overflow-x:auto}
+.tier{flex:0 0 auto;display:flex;align-items:center;gap:5px;height:24px;padding:0 9px;border:1px solid var(--line);border-radius:999px;background:var(--surface-2);font-size:11px;color:var(--ink2);white-space:nowrap}
+.tier .c{font-family:var(--font-mono);font-size:10px;color:var(--faint)}
+.tier.on{background:var(--accent-soft);border-color:var(--accent-deep);color:var(--accent2)}
+.tier.on .c{color:var(--accent)}
+.tier:hover{border-color:var(--accent-deep)}
+
+/* 列表区 */
+.body{flex:1;min-height:0;overflow:auto;padding:10px 12px}
+.body::-webkit-scrollbar{width:6px}
+.body::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px}
+
+/* 假图（CSS 渐变伪造，离线可看） */
+.fi{position:relative;overflow:hidden;background:#222;flex:0 0 auto}
+.fi::after{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(34% 26% at 68% 16%,rgba(255,255,255,.24),transparent 72%),
+    radial-gradient(120% 90% at 22% 14%,hsl(var(--h) 58% 56%) 0%,transparent 58%),
+    radial-gradient(100% 82% at 82% 26%,hsl(calc(var(--h) + 44) 52% 46%) 0%,transparent 52%),
+    radial-gradient(90% 100% at 48% 110%,hsl(calc(var(--h) - 30) 44% 28%) 0%,transparent 64%),
+    linear-gradient(155deg,hsl(var(--h) 30% 24%),hsl(calc(var(--h) + 16) 36% 14%));
+}
+
+/* ---------- A 网格 ---------- */
+.gridA{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tile{position:relative;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--surface);cursor:pointer;transition:border-color .14s}
+.tile:hover{border-color:var(--accent-deep)}
+.tile.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.tile .fi{aspect-ratio:1/1;width:100%}
+.tile .ck{
+  position:absolute;left:6px;top:6px;width:17px;height:17px;border-radius:50%;
+  border:1.5px solid rgba(255,255,255,.55);background:rgba(0,0,0,.35);
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;
+}
+.tile.sel .ck{background:var(--accent);border-color:var(--accent);color:#141210;font-weight:700}
+.tile .dim{position:absolute;left:0;right:0;bottom:0;padding:12px 6px 4px;font-family:var(--font-mono);font-size:9.5px;color:#EFEAE0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.72))}
+.tile .badge{position:absolute;right:5px;top:5px;font-size:9px;padding:1px 4px;border-radius:2px;background:rgba(0,0,0,.55);color:var(--ink2)}
+.tile .badge.orig{color:var(--accent);border:1px solid rgba(232,176,75,.45);background:rgba(44,36,24,.85)}
+.tile .zoom{position:absolute;right:5px;bottom:5px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.62);color:#EFEAE0;font-size:11px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .14s}
+.tile:hover .zoom{opacity:1}
+.tile.skip{opacity:.5}
+.tile.skip .ck{border-color:var(--danger);background:rgba(42,22,24,.8)}
+
+/* ---------- B 行列表 ---------- */
+.listB{display:flex;flex-direction:column;gap:1px;background:var(--line-2)}
+.row{display:flex;gap:9px;align-items:center;padding:7px 8px;background:var(--surface);cursor:pointer;border-left:2px solid transparent}
+.row:hover{background:var(--surface-2)}
+.row.sel{background:var(--accent-soft);border-left-color:var(--accent)}
+.row .fi{width:52px;height:38px;border-radius:3px}
+.row .rmain{flex:1;min-width:0}
+.row .rname{font-size:11.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.sel .rname{color:var(--accent2)}
+.row .rmeta{font-family:var(--font-mono);font-size:9.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .rck{width:15px;height:15px;flex:0 0 15px;border-radius:3px;border:1.5px solid var(--faint);display:flex;align-items:center;justify-content:center;font-size:9px;color:transparent}
+.row.sel .rck{background:var(--accent);border-color:var(--accent);color:#141210;font-weight:700}
+.row .rzoom{flex:0 0 22px;width:22px;height:22px;border-radius:3px;color:var(--faint);font-size:11px;display:flex;align-items:center;justify-content:center}
+.row:hover .rzoom{color:var(--accent)}
+.row.skip{opacity:.5}
+.row .flag{font-family:var(--font-mono);font-size:9px;color:var(--danger);margin-left:4px}
+
+/* ---------- C 瀑布流 ---------- */
+.masonry{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
+.col{display:flex;flex-direction:column;gap:8px}
+.mcard{position:relative;border-radius:4px;overflow:hidden;background:var(--surface);cursor:pointer;border:1px solid transparent}
+.mcard.sel{border-color:var(--accent)}
+.mcard .fi{width:100%}
+.mcard .ck{position:absolute;left:6px;top:6px;width:18px;height:18px;border-radius:50%;border:1.5px solid rgba(255,255,255,.55);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff}
+.mcard.sel .ck{background:var(--accent);border-color:var(--accent);color:#141210;font-weight:700}
+.mcard .dim{position:absolute;right:5px;bottom:5px;font-family:var(--font-mono);font-size:9px;color:#EFEAE0;padding:1px 4px;border-radius:2px;background:rgba(0,0,0,.6)}
+
+/* ---------- D 预览优先 ---------- */
+.pvWrap{flex:1;min-height:0;display:flex;flex-direction:column}
+.pvBig{flex:1;min-height:0;position:relative;background:#0B0A09;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:8px}
+.pvBig .fi{width:100%;height:100%;max-width:100%;max-height:100%}
+.pvBadges{position:absolute;left:10px;top:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.pvB{font-family:var(--font-mono);font-size:9.5px;padding:2px 6px;border-radius:2px;background:rgba(0,0,0,.66);color:var(--ink2)}
+.pvB.orig{color:var(--accent);border:1px solid rgba(232,176,75,.45)}
+.pvArrow{position:absolute;top:50%;transform:translateY(-50%);width:30px;height:44px;background:rgba(0,0,0,.5);color:#EFEAE0;font-size:16px;display:flex;align-items:center;justify-content:center}
+.pvArrow:hover{background:rgba(0,0,0,.78);color:var(--accent)}
+.pvArrow.l{left:0;border-radius:0 4px 4px 0}
+.pvArrow.r{right:0;border-radius:4px 0 0 4px}
+.strip{flex:0 0 84px;display:flex;gap:6px;padding:8px 10px;overflow-x:auto;background:var(--surface);border-top:1px solid var(--line)}
+.strip::-webkit-scrollbar{height:6px}
+.strip::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:3px}
+.scard{position:relative;flex:0 0 auto;width:56px;height:64px;border-radius:3px;overflow:hidden;border:1px solid var(--line);cursor:pointer}
+.scard .fi{width:100%;height:100%}
+.scard.cur{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2)}
+.scard .ck{position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;border:1.5px solid rgba(255,255,255,.55);background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:8px;color:#fff}
+.scard.sel .ck{background:var(--accent);border-color:var(--accent);color:#141210;font-weight:700}
+
+/* ---------- 底部批量栏 ---------- */
+.foot{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 12px;background:linear-gradient(180deg,#151311,#100F0E);border-top:1px solid var(--line)}
+.foot .allck{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink2);cursor:pointer;white-space:nowrap}
+.foot .allck .bx{width:15px;height:15px;border-radius:3px;border:1.5px solid var(--accent);background:var(--accent);color:#141210;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700}
+.foot .allck .bx.off{background:transparent;border-color:var(--faint);color:transparent}
+.foot .sum{flex:1;min-width:0;font-size:10.5px;color:var(--muted);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.foot .sum b{color:var(--accent);font-family:var(--font-mono)}
+.btn-dl{flex:0 0 auto;height:30px;padding:0 14px;border-radius:4px;background:var(--accent);color:#141210;font-size:12px;font-weight:600;white-space:nowrap}
+.btn-dl:hover{background:var(--accent2)}
+.btn-dl:disabled{background:var(--surface-3);color:var(--faint);cursor:not-allowed}
+
+/* ---------- 右侧说明 ---------- */
+.notes{width:330px;flex:0 0 330px;padding-top:6px}
+.notes h2{font-size:19px;font-weight:600;letter-spacing:.02em;margin-bottom:4px}
+.notes h2 span{color:var(--accent);font-family:var(--font-mono);font-size:12px;margin-right:8px;vertical-align:2px}
+.notes .lead{font-size:11.5px;color:var(--muted);line-height:1.6;margin-bottom:14px}
+.notes ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+.notes li{font-size:11.5px;line-height:1.62;color:var(--ink2);padding-left:15px;position:relative}
+.notes li::before{content:"";position:absolute;left:0;top:8px;width:5px;height:5px;border-radius:50%;background:var(--accent-deep)}
+.notes li b{color:var(--accent2);font-weight:600}
+.notes .warn{color:var(--danger)}
+.notes code{font-family:var(--font-mono);font-size:10px;color:var(--accent);background:var(--surface-2);padding:1px 3px;border-radius:2px}
+.notes .verdict{margin-top:16px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-left:2px solid var(--accent);border-radius:4px;font-size:11.5px;line-height:1.62;color:var(--ink2)}
+.notes .verdict b{color:var(--accent2)}
+
+/* ---------- 大图预览层 ---------- */
+.lb{position:fixed;inset:0;background:rgba(6,5,4,.93);display:none;align-items:center;justify-content:center;z-index:100;flex-direction:column;gap:14px}
+.lb.on{display:flex}
+.lb-stage{position:relative;width:min(72vw,900px);height:min(62vh,540px);background:#0B0A09;border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;padding:10px}
+.lb-stage .fi{width:100%;height:100%}
+.lb-bar{width:min(72vw,900px);display:flex;align-items:center;gap:14px}
+.lb-info{flex:1;min-width:0}
+.lb-name{font-size:13px;color:var(--ink)}
+.lb-url{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-chain{font-family:var(--font-mono);font-size:10px;color:var(--accent);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-x{width:32px;height:32px;border-radius:4px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink2);font-size:15px}
+.lb-x:hover{border-color:var(--danger);color:var(--danger)}
+.lb-dl{height:32px;padding:0 16px;border-radius:4px;background:var(--accent);color:#141210;font-size:12.5px;font-weight:600}
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;background:rgba(0,0,0,.5);color:#EFEAE0;font-size:20px;display:flex;align-items:center;justify-content:center}
+.lb-nav:hover{background:rgba(0,0,0,.8);color:var(--accent)}
+.lb-nav.l{left:0;border-radius:0 4px 4px 0}
+.lb-nav.r{right:0;border-radius:4px 0 0 4px}
+</style>
+</head>
+<body>
+
+<div class="switchbar">
+  <div class="sw-brand">钓鱼竿<em>图片侧边栏 · 四方案 v1</em></div>
+  <div class="sw-tabs">
+    <button data-s="a" class="on">A 网格</button>
+    <button data-s="b">B 行列表</button>
+    <button data-s="c">C 瀑布流</button>
+    <button data-s="d">D 预览优先</button>
+  </div>
+  <div class="sw-note" id="swNote"><b>点缩略图 = 勾选 / 点 🔍 = 看大图</b> —— 四款都走同一条线：扫描 → 列表 → 预览确认 → 默认全选 → 下载选中</div>
+</div>
+
+<!-- ================= A 网格 ================= -->
+<section class="stage on" id="stage-a">
+  <div class="panel">
+    <div class="panel-tag">SIDE PANEL · 380 × 640</div>
+    <div class="ph">
+      <div class="ph-r1">
+        <span class="site">www.xiaohongshu.com/explore</span>
+        <span class="cnt">本页 <b>20</b> 张</span>
+      </div>
+      <div class="ph-r2">
+        <label class="sbox"><span style="color:var(--faint);font-size:11px">⌕</span><input placeholder="搜索 URL 关键词，支持 /正则/"></label>
+        <button class="icb" title="重新扫描">⟳</button>
+      </div>
+    </div>
+    <div class="tiers" id="tiersA"></div>
+    <div class="body"><div class="gridA" id="gridA"></div></div>
+    <div class="foot" id="footA"></div>
+  </div>
+  <div class="notes">
+    <h2><span>A</span>网格 · AIX 式</h2>
+    <div class="lead">照 AIX 智能下载器的 imagePage 抄：尺寸档位 + 卡片网格 + 底部批量栏。</div>
+    <ul>
+      <li>一屏看 <b>6–8 张</b>，密度和速度之间取平衡</li>
+      <li>点卡片即勾选，<b>悬停才出 🔍</b>，不点就不看大图 —— 快</li>
+      <li>尺寸档位直接显示<b>命中数量</b>，不用瞎填像素</li>
+      <li>被过滤的小图/条状图/重复图<b>仍然列出但置灰</b>，你能看见它们为什么没被选</li>
+    </ul>
+    <div class="verdict">最适合：<b>整页图多、想快速全选</b>。缺点是缩略图被裁成方块，竖图和横图看不出原始构图。</div>
+  </div>
+</section>
+
+<!-- ================= B 行列表 ================= -->
+<section class="stage" id="stage-b">
+  <div class="panel">
+    <div class="panel-tag">SIDE PANEL · 380 × 640</div>
+    <div class="ph">
+      <div class="ph-r1">
+        <span class="site">www.xiaohongshu.com/explore</span>
+        <span class="cnt">本页 <b>20</b> 张</span>
+      </div>
+      <div class="ph-r2">
+        <label class="sbox"><span style="color:var(--faint);font-size:11px">⌕</span><input placeholder="搜索文件名 / 域名，支持 /正则/"></label>
+        <button class="icb" title="按尺寸排序">⇅</button>
+      </div>
+    </div>
+    <div class="tiers" id="tiersB"></div>
+    <div class="body"><div class="listB" id="listB"></div></div>
+    <div class="foot" id="footB"></div>
+  </div>
+  <div class="notes">
+    <h2><span>B</span>行列表 · AIX 下载管理器式</h2>
+    <div class="lead">照 AIX 左侧「下载管理」的列表形态：一行一张，信息全展开。</div>
+    <ul>
+      <li>文件名 + <b>尺寸 + 大小 + 域名</b> 一列排开，能直接判断「这是不是我要的图」</li>
+      <li>专治 <span class="warn">下到的不是想要的</span>：同一张图常有 <code>?w=300</code> 小图和原图两条记录，列表里一眼看出谁是 2400×1600</li>
+      <li>整行点击即勾选，点右侧 🔍 看大图</li>
+      <li>一屏 9–10 行，比网格多，但看不到图</li>
+    </ul>
+    <div class="verdict">最适合：<b>按 URL / 尺寸挑图</b>，尤其是 CDN 降采样严重的站点（微博、小红书）。</div>
+  </div>
+</section>
+
+<!-- ================= C 瀑布流 ================= -->
+<section class="stage" id="stage-c">
+  <div class="panel">
+    <div class="panel-tag">SIDE PANEL · 380 × 640</div>
+    <div class="ph">
+      <div class="ph-r1">
+        <span class="site">www.xiaohongshu.com/explore</span>
+        <span class="cnt">本页 <b>20</b> 张</span>
+      </div>
+      <div class="ph-r2">
+        <label class="sbox"><span style="color:var(--faint);font-size:11px">⌕</span><input placeholder="搜索 URL 关键词"></label>
+        <button class="icb" title="重新扫描">⟳</button>
+      </div>
+    </div>
+    <div class="tiers" id="tiersC"></div>
+    <div class="body"><div class="masonry" id="masonryC"></div></div>
+    <div class="foot" id="footC"></div>
+  </div>
+  <div class="notes">
+    <h2><span>C</span>瀑布流 · Fatkun 式</h2>
+    <div class="lead">照 Fatkun 图片批量下载的网格：保持原始长宽比，双列错落。</div>
+    <ul>
+      <li><b>不裁切</b>：竖图就是竖的，横图就是横的，构图和原图一致</li>
+      <li>看图最真实，一眼分得清「封面大图」和「配图小图」</li>
+      <li>双列排布下 380px 里一张图仍有 ~170px 宽，够辨认内容</li>
+      <li>缺点是滚动更长，20 张要滚 2–3 屏</li>
+    </ul>
+    <div class="verdict">最适合：<b>图文笔记、相册页</b>——图就是内容本身，需要看清再选。</div>
+  </div>
+</section>
+
+<!-- ================= D 预览优先 ================= -->
+<section class="stage" id="stage-d">
+  <div class="panel">
+    <div class="panel-tag">SIDE PANEL · 380 × 640</div>
+    <div class="ph">
+      <div class="ph-r1">
+        <span class="site">www.xiaohongshu.com/explore</span>
+        <span class="cnt">本页 <b>20</b> 张</span>
+      </div>
+      <div class="ph-r2">
+        <label class="sbox"><span style="color:var(--faint);font-size:11px">⌕</span><input placeholder="搜索 URL 关键词"></label>
+        <button class="icb" title="切换为网格">▦</button>
+      </div>
+    </div>
+    <div class="pvWrap">
+      <div class="pvBig" id="pvBig">
+        <div class="fi" id="pvImg"></div>
+        <div class="pvBadges" id="pvBadges"></div>
+        <button class="pvArrow l" data-pv="-1">‹</button>
+        <button class="pvArrow r" data-pv="1">›</button>
+      </div>
+      <div class="strip" id="stripD"></div>
+    </div>
+    <div class="foot" id="footD"></div>
+  </div>
+  <div class="notes">
+    <h2><span>D</span>预览优先 · 本方案推荐</h2>
+    <div class="lead">上半屏始终是大图，下半屏是缩略图条。点条即换图，勾选和大图分开。</div>
+    <ul>
+      <li>直接命中你的诉求：<b>「有预览图，可以点选下载」</b></li>
+      <li>看大图 <b>零额外点击</b> —— 缩略图条本身就是预览导航</li>
+      <li>大图上标注 <b>「原图 2400×1600 / 当前显示 800×600」</b>，一眼知道会下到什么</li>
+      <li>勾选状态在缩略图条上，不遮挡大图</li>
+      <li>缺点：一次只看得到一张，图多时翻条比较累</li>
+    </ul>
+    <div class="verdict">最适合：<b>「先确认再下」</b>。若你更在意挑图准确率，选 D；若更在意扫得快，选 A。</div>
+  </div>
+</section>
+
+<!-- ================= 大图预览层（共用） ================= -->
+<div class="lb" id="lb">
+  <div class="lb-stage">
+    <div class="fi" id="lbImg"></div>
+    <button class="lb-nav l" id="lbPrev">‹</button>
+    <button class="lb-nav r" id="lbNext">›</button>
+  </div>
+  <div class="lb-bar">
+    <div class="lb-info">
+      <div class="lb-name" id="lbName"></div>
+      <div class="lb-url" id="lbUrl"></div>
+      <div class="lb-chain" id="lbChain"></div>
+    </div>
+    <button class="lb-dl" id="lbDl">下载这张</button>
+    <button class="lb-x" id="lbClose">✕</button>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   假数据：20 张，刻意包含真实站点常见的「坑」
+   pageW/pageH = 页面上实际显示的（可能是 CDN 降采样小图）
+   origW/origH = 候选链找到的原图
+   ========================================================= */
+const DATA = [
+  {id:1,  w:2400,h:1600, hue:14,  name:'封面_原图.jpg',        bytes:'1.8 MB', kind:'原图'},
+  {id:2,  w:1080,h:1440, hue:340, name:'竖图_02.jpg',          bytes:'742 KB', kind:'原图'},
+  {id:3,  w:1600,h:1200, hue:200, name:'配图_03.jpg',          bytes:'980 KB', kind:'原图', pageW:400, pageH:300, shrink:'?w=400'},
+  {id:4,  w:1200,h:120,  hue:40,  name:'顶部横幅_banner.png',  bytes:'38 KB',  kind:'条状图'},
+  {id:5,  w:48,  h:48,   hue:260, name:'icon_share.png',       bytes:'2 KB',   kind:'图标'},
+  {id:6,  w:64,  h:64,   hue:300, name:'avatar_64.png',        bytes:'4 KB',   kind:'图标'},
+  {id:7,  w:2000,h:1200, hue:100, name:'背景图_hero.webp',     bytes:'620 KB', kind:'背景图'},
+  {id:8,  w:1440,h:1080, hue:220, name:'配图_08.jpg',          bytes:'1.1 MB', kind:'原图', pageW:480, pageH:360, shrink:'?imageView2/2/w/480'},
+  {id:9,  w:900, h:1200, hue:20,  name:'竖图_09.jpg',          bytes:'640 KB', kind:'原图'},
+  {id:10, w:2400,h:1600, hue:14,  name:'封面_重复.jpg',        bytes:'1.8 MB', kind:'重复', dupOf:1},
+  {id:11, w:1600,h:900,  hue:180, name:'配图_11.jpg',          bytes:'860 KB', kind:'原图'},
+  {id:12, w:1200,h:1600, hue:280, name:'竖图_12.jpg',          bytes:'900 KB', kind:'原图'},
+  {id:13, w:1920,h:1080, hue:50,  name:'截图_13.png',          bytes:'1.4 MB', kind:'原图'},
+  {id:14, w:800, h:600,  hue:120, name:'配图_14.jpg',          bytes:'210 KB', kind:'原图'},
+  {id:15, w:3000,h:2000, hue:310, name:'大图_15.jpg',          bytes:'2.6 MB', kind:'原图', pageW:500, pageH:333, shrink:'?x-oss-process=image/resize,w_500'},
+  {id:16, w:600, h:400,  hue:90,  name:'配图_16.jpg',          bytes:'120 KB', kind:'原图'},
+  {id:17, w:1000,h:1000, hue:240, name:'方图_17.jpg',          bytes:'480 KB', kind:'原图'},
+  {id:18, w:2400,h:1350, hue:10,  name:'横图_18.jpg',          bytes:'1.6 MB', kind:'原图'},
+  {id:19, w:400, h:300,  hue:160, name:'配图_19.jpg',          bytes:'64 KB',  kind:'原图', done:true},
+  {id:20, w:1500,h:1000, hue:70,  name:'配图_20.jpg',          bytes:'780 KB', kind:'原图'}
+];
+
+const HOST = 'pic.xiaohongshu.com';
+const baseUrl = d => 'https://' + HOST + '/notes/' + d.id + '_' + d.name.replace(/\.[a-z]+$/, '') + '.jpg';
+const urlOf  = d => baseUrl(d) + (d.shrink || '');
+const origUrlOf = d => baseUrl(d);
+
+/* 默认选中口径：排除 图标 / 条状图 / 重复 / 已下载 */
+const SKIP_KINDS = ['图标','条状图','重复'];
+function autoSel(d){ return !d.done && !SKIP_KINDS.includes(d.kind); }
+const skipReason = d => d.done ? '已下载' : (d.dupOf ? '重复图' : (SKIP_KINDS.includes(d.kind) ? d.kind : ''));
+
+const sel = new Set(DATA.filter(autoSel).map(d => d.id));
+const shortSide = d => Math.min(d.w, d.h);
+
+/* ---------------- 尺寸档位 ---------------- */
+const TIERS = [
+  {k:'s', label:'小', min:100},
+  {k:'m', label:'中', min:500},
+  {k:'l', label:'大', min:1200},
+  {k:'xl',label:'超大', min:2000}
+];
+function tierCount(min){ return DATA.filter(d => shortSide(d) >= min).length; }
+function renderTiers(el){
+  el.innerHTML = TIERS.map(t =>
+    `<button class="tier${t.k==='s'?' on':''}" data-tier="${t.min}">${t.label} ≥${t.min}<span class="c">${tierCount(t.min)}</span></button>`
+  ).join('');
+}
+['tiersA','tiersB','tiersC'].forEach(id => renderTiers(document.getElementById(id)));
+
+/* ---------------- A 网格 ---------------- */
+function renderA(){
+  document.getElementById('gridA').innerHTML = DATA.map(d => {
+    const skipped = !autoSel(d);
+    const better = d.shrink ? `<span class="badge orig">可换原图</span>` : `<span class="badge${d.kind==='原图'?' orig':''}">${d.kind}</span>`;
+    return `<div class="tile${sel.has(d.id)?' sel':''}${skipped?' skip':''}" data-id="${d.id}" data-act="toggle" title="${d.name}${d.shrink?' · 页面只给了 '+d.pageW+'×'+d.pageH+', 可换 '+d.w+'×'+d.h:''}">
+      <div class="fi" style="--h:${d.hue}"></div>
+      <span class="ck">${sel.has(d.id)?'✓':''}</span>
+      ${better}
+      <span class="dim">${d.shrink ? d.pageW+'×'+d.pageH+' → '+d.w+'×'+d.h : d.w+' × '+d.h}</span>
+      <span class="zoom" data-act="zoom" data-id="${d.id}">⌕</span>
+    </div>`;
+  }).join('');
+}
+
+/* ---------------- B 行列表 ---------------- */
+function renderB(){
+  document.getElementById('listB').innerHTML = DATA.map(d => {
+    const skipped = !autoSel(d);
+    const rs = skipReason(d);
+    return `<div class="row${sel.has(d.id)?' sel':''}${skipped?' skip':''}" data-id="${d.id}" data-act="toggle">
+      <div class="fi" style="--h:${d.hue}"></div>
+      <div class="rmain">
+        <div class="rname">${d.name}${rs?'<span class="flag">· '+rs+'</span>':''}${d.shrink?'<span class="flag" style="color:var(--accent)">· 可换原图</span>':''}</div>
+        <div class="rmeta">${d.shrink ? d.pageW+'×'+d.pageH+' → '+d.w+'×'+d.h : d.w+'×'+d.h} · ${d.bytes} · ${HOST}</div>
+      </div>
+      <button class="rzoom" data-act="zoom" data-id="${d.id}" title="看大图">⌕</button>
+      <span class="rck">✓</span>
+    </div>`;
+  }).join('');
+}
+
+/* ---------------- C 瀑布流 ---------------- */
+function renderC(){
+  const cols = [[],[]];
+  DATA.forEach((d,i) => cols[i%2].push(d));
+  document.getElementById('masonryC').innerHTML = cols.map(col =>
+    `<div class="col">${col.map(d => `
+      <div class="mcard${sel.has(d.id)?' sel':''}${autoSel(d)?'':''}" data-id="${d.id}" data-act="toggle" title="${d.name}">
+        <div class="fi" style="--h:${d.hue};aspect-ratio:${d.w}/${d.h}"></div>
+        <span class="ck">${sel.has(d.id)?'✓':''}</span>
+        <span class="dim">${d.w}×${d.h}</span>
+      </div>`).join('')}</div>`
+  ).join('');
+}
+
+/* ---------------- D 预览优先 ---------------- */
+let pvCur = 1;
+function renderD(){
+  const d = DATA.find(x => x.id === pvCur) || DATA[0];
+  const el = document.getElementById('pvImg');
+  el.style.setProperty('--h', d.hue);
+  const dispW = 340, dispH = Math.round(dispW * d.h / d.w);
+  document.getElementById('pvBadges').innerHTML =
+    `<span class="pvB orig">原图 ${d.w} × ${d.h}</span>` +
+    (d.shrink
+      ? `<span class="pvB">页面只给 ${d.pageW} × ${d.pageH}</span><span class="pvB" style="color:var(--accent)">下载会取原图</span>`
+      : `<span class="pvB">当前显示 ${dispW} × ${dispH}</span>`) +
+    (d.kind!=='原图' ? `<span class="pvB">${d.kind}</span>` : '');
+
+  document.getElementById('stripD').innerHTML = DATA.map(x => `
+    <div class="scard${sel.has(x.id)?' sel':''}${x.id===pvCur?' cur':''}" data-id="${x.id}" data-act="pick" title="${x.name}">
+      <div class="fi" style="--h:${x.hue}"></div>
+      <span class="ck">${sel.has(x.id)?'✓':''}</span>
+    </div>`).join('');
+}
+
+/* ---------------- 底部批量栏 ---------------- */
+const AUTO_SKIP = DATA.filter(d => !autoSel(d)).length;
+function renderFoot(id){
+  const el = document.getElementById(id);
+  const total = DATA.length;
+  const n = sel.size;
+  const allOn = n === total;
+  el.innerHTML = `
+    <label class="allck" data-act="all"><span class="bx${allOn?'':' off'}">✓</span>全选</label>
+    <span class="sum">已选 <b>${n}</b> / ${total} · 自动跳过 ${AUTO_SKIP} 张（图标/条状/重复/已下载）</span>
+    <button class="btn-dl" data-act="dl" ${n?'':'disabled'}>下载选中 ${n}</button>`;
+}
+
+/* ---------------- 统一重绘（保留滚动位置） ---------------- */
+function renderAll(){
+  const keep = new Map();
+  document.querySelectorAll('.body, .strip').forEach(el => keep.set(el, el.scrollTop || el.scrollLeft));
+  renderA(); renderB(); renderC(); renderD();
+  ['footA','footB','footC','footD'].forEach(renderFoot);
+  keep.forEach((v, el) => { if (el.classList.contains('strip')) el.scrollLeft = v; else el.scrollTop = v; });
+}
+
+/* ---------------- 交互 ---------------- */
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-act]');
+  if (!t) return;
+  const act = t.dataset.act;
+
+  if (act === 'zoom'){ e.stopPropagation(); openLB(+t.dataset.id); return; }
+  if (act === 'toggle'){
+    const id = +t.dataset.id;
+    if (sel.has(id)) sel.delete(id); else sel.add(id);
+    renderAll(); return;
+  }
+  if (act === 'pick'){ pvCur = +t.dataset.id; renderD(); return; }
+  if (act === 'all'){
+    if (sel.size === DATA.length) sel.clear();
+    else DATA.forEach(d => sel.add(d.id));
+    renderAll(); return;
+  }
+  if (act === 'dl'){
+    if (!sel.size) return;
+    const n = sel.size;
+    t.disabled = true;
+    t.textContent = '正在下载…';
+    setTimeout(() => { t.textContent = '已提交 ' + n + ' 张'; }, 700);
+    setTimeout(() => { renderAll(); }, 1600);
+    return;
+  }
+});
+
+document.addEventListener('click', function(e){
+  const b = e.target.closest('.tier');
+  if (!b) return;
+  b.parentElement.querySelectorAll('.tier').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+}, true);
+
+document.querySelectorAll('[data-pv]').forEach(b => b.addEventListener('click', function(){
+  const i = DATA.findIndex(d => d.id === pvCur);
+  pvCur = DATA[(i + (+this.dataset.pv) + DATA.length) % DATA.length].id;
+  renderD();
+}));
+
+/* ---------------- 大图预览层 ---------------- */
+let lbCur = 1;
+function openLB(id){ lbCur = id; paintLB(); document.getElementById('lb').classList.add('on'); }
+function paintLB(){
+  const d = DATA.find(x => x.id === lbCur) || DATA[0];
+  const img = document.getElementById('lbImg');
+  img.style.setProperty('--h', d.hue);
+  document.getElementById('lbName').textContent = d.name + '   ' + d.w + ' × ' + d.h + '   ' + d.bytes;
+  document.getElementById('lbUrl').textContent = '页面地址：' + urlOf(d);
+  document.getElementById('lbChain').textContent = d.shrink
+    ? '候选链：' + origUrlOf(d) + '  → 已去掉 ' + d.shrink + '，将按 ' + d.w + '×' + d.h + ' 下载'
+    : '候选链：原图直链（无降采样参数）';
+}
+function closeLB(){ document.getElementById('lb').classList.remove('on'); }
+function stepLB(dir){
+  const i = DATA.findIndex(d => d.id === lbCur);
+  lbCur = DATA[(i + dir + DATA.length) % DATA.length].id;
+  paintLB();
+}
+document.getElementById('lbClose').addEventListener('click', closeLB);
+document.getElementById('lb').addEventListener('click', e => { if (e.target.id === 'lb') closeLB(); });
+document.getElementById('lbPrev').addEventListener('click', () => stepLB(-1));
+document.getElementById('lbNext').addEventListener('click', () => stepLB(1));
+document.getElementById('lbDl').addEventListener('click', function(){
+  const d = DATA.find(x => x.id === lbCur);
+  if (d){ sel.add(d.id); renderAll(); }
+  this.textContent = '已勾选 ✓';
+  setTimeout(() => { this.textContent = '下载这张'; closeLB(); }, 600);
+});
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lb').classList.contains('on')) return;
+  if (e.key === 'Escape') closeLB();
+  if (e.key === 'ArrowLeft') stepLB(-1);
+  if (e.key === 'ArrowRight') stepLB(1);
+});
+
+/* ---------------- 顶部方案切换 ---------------- */
+const NOTES = {
+  a: '<b>点缩略图 = 勾选 / 点 🔍 = 看大图</b> —— 四款都走同一条线：扫描 → 列表 → 预览确认 → 默认全选 → 下载选中',
+  b: '<b>一行一张，尺寸和域名全展开</b> —— 专门对付「CDN 给了小图、原图藏在另一条 URL」的情况',
+  c: '<b>保持原始长宽比，不裁切</b> —— 看图最真实，适合图文笔记和相册页',
+  d: '<b>上半屏大图 + 下半屏缩略图条</b> —— 看大图零额外点击，最贴合「先确认再下」'
+};
+document.querySelectorAll('.sw-tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sw-tabs button').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    const k = btn.dataset.s;
+    document.querySelectorAll('.stage').forEach(s => s.classList.remove('on'));
+    document.getElementById('stage-' + k).classList.add('on');
+    document.getElementById('swNote').innerHTML = NOTES[k];
+  });
+});
+
+renderAll();
+</script>
+</body>
+</html>

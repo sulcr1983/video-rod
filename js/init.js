@@ -148,7 +148,7 @@ G.OptionLists = {
     blockUrl: [],
     blockUrlWhite: false,
     maxLength: G.isMobile ? 999 : 9999,
-    sidePanel: false,   // 侧边栏
+    sidePanel: true,   // 侧边栏：默认让「点图标」直接开侧边栏图片页（苏哥 2026-11-06 需求）
     deepSearch: false, // 常开深度搜索
 
     // MQTT 配置
@@ -441,6 +441,18 @@ function contextMenusInit(visible = false) {
             id: "vr-image-save",
             title: "苏哥的钓鱼竿：保存这张图片",
             contexts: ["image"]
+        });
+        /* 这三种页面级入口对应 AIX 的「图像提取」右键菜单：
+         * 直接进侧边栏图片页 / 进下载管理，比先进 popup 再找按钮少一步。 */
+        chrome.contextMenus.create({
+            id: "vr-image-panel",
+            title: "苏哥的钓鱼竿：本页所有图片",
+            contexts: ["page"]
+        });
+        chrome.contextMenus.create({
+            id: "vr-downloads-page",
+            title: "苏哥的钓鱼竿：下载管理",
+            contexts: ["page"]
         });
     });
 }

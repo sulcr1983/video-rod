@@ -20,7 +20,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp, find_ext_id  # noqa: E402
 
 PAGE = os.environ.get("VR_ALBUM_PAGE", "http://127.0.0.1:18080/album.html")
-SITE = os.environ.get("VR_SITE_ROOT", r"E:/test/video-rod/test-site")
+SITE = os.environ.get("VR_SITE_ROOT",
+                      os.path.join(os.path.dirname(os.path.dirname(
+                          os.path.abspath(__file__))), "test-site"))
 ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deliverables", "assets")
 TOTAL_IMGS = 24
 

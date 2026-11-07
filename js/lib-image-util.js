@@ -113,7 +113,28 @@
     /**
      * 「大概是图片」：data:image/*、位图扩展名、或无扩展名的 http(s) 地址。
      * 明确非图（.html/.js/.mp4…）与 svg 返回 false。
+     *
+     * ⚠️ 无扩展名不能一概当成图片（2026-11-07 实测）：
+     * 花瓣的「详情页」地址 `https://huaban.com/pins/6019884` 也没有扩展名，
+     * 于是被判成图片，`bestCandidate` 取它当原图 → 大图预览**加载不出来**
+     * （用户截图里「候选链: https://huaban.com/pins/6019884…」就是这个）。
+     * 所以先按路径特征排除「明显的网页」，再退回「无扩展名当图片」的宽容策略。
      */
+    var PAGE_PATH_RE = /(^|\/)(?:pins?|photos?|notes?|status|posts?|articles?|detail|watch|video|album|board|user|profile|space|explore|discovery|search|tag|topic)(?:\/|$)/i;
+
+    function looksLikePage(url) {
+        var s = String(url || '');
+        var path = '';
+        try { path = new URL(s).pathname || ''; } catch (e) {
+            path = s.split(/[?#]/)[0];
+        }
+        if (!path || path === '/') { return true; }
+        /* 末段是纯数字 / uuid，通常就是详情页 id（/pins/6019884、/note/abc123） */
+        var last = path.split('/').filter(Boolean).pop() || '';
+        if (/^\d{3,}$/.test(last)) { return true; }
+        return PAGE_PATH_RE.test(path);
+    }
+
     function isProbablyImage(url) {
         var s = String(url || '').trim();
         if (!s) { return false; }
@@ -121,8 +142,10 @@
         if (!/^https?:\/\//i.test(s)) { return false; }
         if (isSvgUrl(s)) { return false; }
         var ext = extFromUrl(s);
-        if (!ext) { return true; }   // 动态图片地址（/img?id=1）无法从 URL 判断
-        return !!IMAGE_EXT[ext];
+        if (ext) { return !!IMAGE_EXT[ext]; }
+        /* 无扩展名：像网页路径的一律排除，其余按「动态图片地址」宽容放行 */
+        if (looksLikePage(s)) { return false; }
+        return true;   // 例如 /img?id=1、hbimg 的 hash 结尾
     }
 
     /* ---------------- srcset ---------------- */
@@ -585,19 +608,36 @@
 
         var out = [];
         var seen = Object.create(null);
+        var pending = 0;          // 未解码数量，供调用方决定要不要等
         for (var i = 0; i < list.length; i++) {
             var el = list[i];
             try {
-                // 未加载完/加载失败（natural 为 0）一律跳过：宽高属性可能只是占位
+                /* 未解码时 naturalWidth 为 0 —— 这在懒加载站点上是常态而不是异常：
+                 * 实测花瓣首页 557 张 <img> 里 540 张 naturalWidth=0（还没进视口）。
+                 * 早先一律 `continue`，于是「本页 80 张图」只能扫出 6 张。
+                 *
+                 * 处理原则：**没解码不等于不存在**。
+                 *   · 有 width/height 属性 → 用属性当尺寸依据（占位图常带真实宽高）
+                 *   · 两者都没有 → 记进 pending，仍把 URL 收进来（尺寸标 0），
+                 *     由调用方决定是否展示为「尺寸未知」，而不是直接丢掉。 */
                 var nw = Number(el.naturalWidth) || 0;
                 var nh = Number(el.naturalHeight) || 0;
-                if (nw <= 0 || nh <= 0) { continue; }
+                var undecoded = (nw <= 0 || nh <= 0);
+                if (undecoded) {
+                    var aw = Number(el.getAttribute('width')) || 0;
+                    var ah = Number(el.getAttribute('height')) || 0;
+                    if (aw > 0 && ah > 0) { nw = aw; nh = ah; }
+                    else { pending++; }
+                }
                 var url = absolutize(el.currentSrc || el.src || attr(el, 'src'), base);
                 if (!url) { continue; }
                 if (isDataUri(url) || isSvgUrl(url) || isPlaceholderUrl(url)) { continue; }
-                if (nw < minW || nh < minH) { continue; }
+                /* 尺寸已知才做门槛过滤；尺寸未知（懒加载且无属性）先放进来，
+                 * 否则长页面上大半张图会被无声吞掉。 */
+                var sized = (nw > 0 && nh > 0);
+                if (sized && (nw < minW || nh < minH)) { continue; }
                 // 显示尺寸过滤：小图标/按钮/表情不进列表（默认开，可传 checkShow:false 关掉）
-                if (o.checkShow !== false && !isWorthDownloading(el, {
+                if (sized && o.checkShow !== false && !isWorthDownloading(el, {
                     minNatural: minW, minShow: o.minShow, maxAspect: o.maxAspect
                 })) { continue; }
                 if (dedupe && seen[url]) { continue; }
@@ -608,6 +648,7 @@
                     w: nw,
                     h: nh,
                     ok: true,
+                    undecoded: !sized,
                     candidates: collectCandidates(el, doc)
                 });
                 if (limit > 0 && out.length >= limit) { break; }
@@ -753,7 +794,20 @@
          * 有人只想要大图（600 甚至更高），有人在密集图墙里想放宽到 200。
          * 注意与 imgMinSize 是两个东西：那个判**原始像素**（面板用），
          * 这个判**显示尺寸**（悬停用）。 */
-        imgHoverMinSize: 500   // 长边门槛（与 image-hover.worthSize 一致）
+        imgHoverMinSize: 600,  // 长边门槛（ADR 定为 600，与 image-hover 的判定一致）
+        /* 拖拽下载：把图拖到右下角接收区即存。默认开 —— 但只在真的开始拖图时才出 UI，
+         * 平时完全不占页面（与浮标那种常驻 UI 不同）。 */
+        imgDragDownload: true,
+        /* 框选下载：必须按住 Alt 才生效，避免和站点自己的拖拽/选文字打架。 */
+        imgBoxSelect: true,
+        /* 图片过滤规则（域名 + 正则，命中即不进清单）。结构与语义见 js/img-filter.js。 */
+        imgFilterRules: [],
+        /* WEBP/AVIF → JPG：只在打包 ZIP 时按需转，不改变单张下载的原始字节。 */
+        imgWebpToJpg: false,
+        /* 侧边栏图片页的尺寸档位（短边阈值）。0 = 「全部」。
+         * 与 imgMinSize(100) 是两个东西：那个是页面浮标/清单面板的门槛，
+         * 这个是侧边栏列表自身的筛选，默认全显示（懒加载站点大量图尺寸未知）。 */
+        imgTierMin: 0
     };
 
     /* 每个数值项的范围。超出就夹到边界，不静默丢弃（用户填 9999 应得到 4096 而不是 100）。 */
@@ -820,9 +874,17 @@
                 var def = DEFAULT_SETTINGS[k];
                 if (typeof def === 'boolean') {
                     out[k] = !!src[k];
-                } else {
+                } else if (typeof def === 'number') {
+                    /* 只有**数值型**默认值才做范围解析。
+                     * 早先对所有非布尔项一律 parseIntRange，结果新加的
+                     * 数组型 imgFilterRules 会被转成数字（规则全丢），
+                     * 字符串项也会被吞成 NaN。 */
                     var rg = RANGES[k] || [0, 999999];
                     out[k] = parseIntRange(src[k], rg[0], rg[1], def);
+                } else if (Array.isArray(def)) {
+                    out[k] = Array.isArray(src[k]) ? src[k].slice() : def.slice();
+                } else {
+                    out[k] = (src[k] === undefined || src[k] === null) ? def : src[k];
                 }
             } else {
                 out[k] = src[k];
@@ -862,6 +924,7 @@
         isSvgUrl: isSvgUrl,
         isPlaceholderUrl: isPlaceholderUrl,
         isProbablyImage: isProbablyImage,
+        looksLikePage: looksLikePage,
         extFromUrl: extFromUrl,
         extFromContentType: extFromContentType,
         pickLargestSrcset: pickLargestSrcset,

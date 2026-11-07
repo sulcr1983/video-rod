@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>本页图片</title>
+<link rel="stylesheet" href="css/image-page.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="ip-head">
+    <div class="ip-r1">
+      <span class="ip-site" id="ipSite">—</span>
+      <span class="ip-cnt">本页 <b id="ipCount">0</b> 张</span>
+    </div>
+    <div class="ip-r2">
+      <label class="ip-sbox">
+        <span class="ip-sico">⌕</span>
+        <input id="ipSearch" placeholder="搜索 URL 关键词，支持 /正则/" spellcheck="false">
+      </label>
+      <button class="ip-icb" id="ipRescan" title="重新扫描本页">⟳</button>
+      <button class="ip-icb" id="ipAlbum" title="图集翻页抓全">⧉</button>
+      <button class="ip-icb" id="ipLibrary" title="打开资源库（已下载的都在这里）">▤</button>
+      <button class="ip-icb" id="ipMore" title="更多操作">⋯</button>
+      <button class="ip-icb" id="ipOpenVideo" title="切换到视频嗅探">▶</button>
+    </div>
+  </header>
+
+  <div class="ip-tiers" id="ipTiers"></div>
+
+  <div class="ip-more" id="ipMoreMenu" hidden>
+    <button class="ip-mi" data-more="library">打开资源库</button>
+    <button class="ip-mi" data-more="downloads">下载管理</button>
+    <div class="ip-msep"></div>
+    <button class="ip-mi" data-more="txt">导出链接（txt）</button>
+    <button class="ip-mi" data-more="csv">导出链接（csv）</button>
+    <button class="ip-mi" data-more="zip">打包 ZIP 下载</button>
+    <div class="ip-msep"></div>
+    <label class="ip-mi ip-mi-t" data-more="webp">
+      <span>WEBP 转 JPG</span>
+      <input type="checkbox" id="ipWebp">
+    </label>
+    <div class="ip-mnote" id="ipMoreNote">转码在本地完成，不重新压缩 PNG（会丢透明通道）</div>
+  </div>
+
+  <div class="ip-body" id="ipBody">
+    <div class="ip-grid" id="ipGrid"></div>
+    <div class="ip-empty" id="ipEmpty" hidden>
+      <div class="ip-empty-t" id="ipEmptyT">本页没扫到可下载的图片</div>
+      <div class="ip-empty-s" id="ipEmptyS">试试放宽最小尺寸，或滚动加载后再扫描</div>
+    </div>
+  </div>
+
+  <footer class="ip-foot">
+    <label class="ip-all" title="全选 / 全不选">
+      <input type="checkbox" id="ipAll" checked>
+      <span class="ip-bx" aria-hidden="true"></span>
+      <span>全选</span>
+    </label>
+    <span class="ip-sum" id="ipSum">已选 <b>0</b> / 0</span>
+    <button class="ip-dl" id="ipDl" disabled>下载选中</button>
+  </footer>
+
+  <div class="ip-prog" id="ipProg" hidden>
+    <span class="ip-prog-t" id="ipProgT">正在下载…</span>
+    <span class="ip-prog-bar"><i id="ipProgBar"></i></span>
+    <button class="ip-prog-x" id="ipProgX" title="取消">取消</button>
+  </div>
+
+</div>
+
+<!-- 大图预览层 -->
+<div class="ip-lb" id="ipLb" hidden>
+  <div class="ip-lb-stage">
+    <img id="ipLbImg" alt="">
+    <button class="ip-lb-nav l" id="ipLbPrev" title="上一张">‹</button>
+    <button class="ip-lb-nav r" id="ipLbNext" title="下一张">›</button>
+  </div>
+  <div class="ip-lb-bar">
+    <div class="ip-lb-info">
+      <div class="ip-lb-name" id="ipLbName"></div>
+      <div class="ip-lb-url" id="ipLbUrl"></div>
+      <div class="ip-lb-chain" id="ipLbChain"></div>
+    </div>
+    <button class="ip-lb-dl" id="ipLbDl">下载这张</button>
+    <button class="ip-lb-x" id="ipLbClose" title="关闭">✕</button>
+  </div>
+</div>
+
+<script src="js/lib-image-util.js"></script>
+<script src="js/album-sites.js"></script>
+<script src="js/album-export.js"></script>
+<script src="js/img-filter.js"></script>
+<script src="js/image-page.js"></script>
+</body>
+</html>
