@@ -38,19 +38,57 @@
     function qa(doc, sel) { return doc && doc.querySelectorAll ? Array.from(doc.querySelectorAll(sel)) : []; }
 
     /** 文章页兜底提取：og:title → h1 → document.title，并剥网站名尾巴 */
+    /**
+     * 「无意义标题」识别：这类标题是站点的访客墙/登录墙/反爬页留下的，
+     * 不是内容标题，直接拿来命名会得到 `Sina Visitor System.mp4`、
+     * `Just a moment....mp4`、`登录 - 微博.mp4` 这种垃圾文件名。
+     *
+     * 实测（2026-11-07）：未登录访问 weibo.com/newlogin 会被 302 到
+     * passport.weibo.com/visitor/visitor，页面 <title> 就是 `Sina Visitor System`，
+     * 既无 og:title 也无 author —— 通用 extractArticle 的 doc.title 兜底就把它当标题了。
+     *
+     * 命中时返回 true，调用方应把标题留空，交给上层按 URL 末段/时间戳兜底命名。
+     */
+    const USELESS_TITLE_RE = new RegExp([
+        '^Sina Visitor System$',
+        '^Just a moment\\.*\\.?$',
+        '^Attention Required!',
+        '^Access Denied$',
+        '^Forbidden$',
+        '^404\\b', '^403\\b', '^500\\b',
+        '^无标题$', '^未命名$', '^新建网页',
+        '^(登录|登入|注册)\\s*[-_–—]',
+        '^Sign in\\s*[-_–—]',
+        '^Log in\\s*[-_–—]'
+    ].join('|'), 'i');
+
+    function isUselessTitle(title) {
+        const t = String(title || '').trim();
+        if (!t) { return true; }
+        if (USELESS_TITLE_RE.test(t)) { return true; }
+        /* 标题只剩扩展名/纯标点也算无意义（例如空模板兜底出来的 "mp4"） */
+        if (/^[\s\p{P}\p{S}]+$/u.test(t)) { return true; }
+        if (/^(mp4|webm|mov|jpg|jpeg|png|gif|webp)$/i.test(t)) { return true; }
+        return false;
+    }
+
     function extractArticle(doc, host) {
         let title = attrOf(q(doc, 'meta[property="og:title"]'), 'content')
             || textOf(q(doc, 'h1'))
             || (doc && doc.title ? doc.title.trim() : '');
         title = stripSiteTail(title, host);
+        /* 访客墙/登录墙页面没有内容标题：宁可留空让上层用 URL/时间戳兜底，
+         * 也不要把 `Sina Visitor System` 这种站点名当成作品名。 */
+        if (isUselessTitle(title)) { title = ''; }
         const author = attrOf(q(doc, 'meta[name="author"]'), 'content')
             || textOf(q(doc, '[rel="author"]'))
             || textOf(q(doc, '.author'))
             || textOf(q(doc, '.byline'))
             || '';
-        const post = attrOf(q(doc, 'meta[property="og:description"]'), 'content')
+        let post = attrOf(q(doc, 'meta[property="og:description"]'), 'content')
             || attrOf(q(doc, 'meta[name="description"]'), 'content')
             || '';
+        if (isUselessTitle(post)) { post = ''; }
         return { title, author, authorId: '', post, pageType: 'article' };
     }
 
@@ -410,7 +448,48 @@
         if (!filled.toLowerCase().endsWith('.' + ext.toLowerCase()) && !tpl.includes('${ext}')) {
             filled += '.' + ext;
         }
-        return sanitizeName(filled, { keepEmoji: o.keepEmoji, keepPath: true });
+        filled = sanitizeName(filled, { keepEmoji: o.keepEmoji, keepPath: true });
+
+        /* 模板变量全空时的兜底。
+         * 典型场景：未登录/访客墙页面 title 与 author 都取不到，
+         * `${author}_${title}` 填空后只剩扩展名 `mp4` —— 落盘得到一个叫 mp4 的文件。
+         * 这里按「URL 末段 → 时间戳」降级，保证文件名总有意义。 */
+        if (isDegenerateName(filled, ext)) {
+            filled = fallbackNameFromUrl(url, ext, o.date);
+        }
+        return filled;
+    }
+
+    /** 文件名是否退化（只有扩展名 / 只剩标点与连接符） */
+    function isDegenerateName(name, ext) {
+        const s = String(name || '').trim();
+        if (!s) { return true; }
+        const e = String(ext || 'mp4').toLowerCase();
+        let core = s;
+        /* 形如 "mp4"（没有点，本身就只是扩展名）也要算退化 */
+        if (core.toLowerCase() === e) { return true; }
+        if (core.toLowerCase().endsWith('.' + e)) { core = core.slice(0, -(e.length + 1)); }
+        core = core.replace(/[\s_\-–—·.]+/g, '').trim();
+        return core.length === 0;
+    }
+
+    /** 从 URL 末段取一个可读名字；取不到就用日期时间 */
+    function fallbackNameFromUrl(url, ext, date) {
+        const e = String(ext || 'mp4');
+        let base = '';
+        try {
+            const u = new URL(String(url || ''));
+            const segs = u.pathname.split('/').filter(Boolean);
+            base = segs.length ? decodeURIComponent(segs[segs.length - 1]) : '';
+            if (base.indexOf('.') > 0) { base = base.slice(0, base.lastIndexOf('.')); }
+        } catch (ev) { base = ''; }
+        base = cleanVar(base).replace(/[\s_\-–—·.]+$/g, '');
+        /* 纯哈希/纯数字的末段没有可读性，不如用时间戳 */
+        if (!base || /^[0-9a-f]{8,}$/i.test(base) || /^[0-9]+$/.test(base)) {
+            const d = date || new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+            base = 'media_' + d;
+        }
+        return sanitizeName(base + '.' + e, { keepEmoji: true, keepPath: true });
     }
 
     return {

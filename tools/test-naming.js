@@ -326,6 +326,48 @@ console.log('\n===== N9 AIX 占位符（{NO001}/{PAGETITLE}/{DATE}） =====');
     eq(Naming.fillTemplate('pic_{NO}.jpg', { title: 't' }), 'pic_.jpg', 'index 缺失时 {NO} 为空');
 }
 
+/* ================= 无意义标题与退化文件名兜底 ================= */
+
+{
+    /* 访客墙/登录墙/反爬页的标题不能当作品名。
+     * 实测 2026-11-07：未登录 weibo.com/newlogin 会 302 到 passport.weibo.com，
+     * <title> 是 Sina Visitor System，通用 doc.title 兜底就把它当标题了。 */
+    const mock = (title) => ({ title, querySelector: () => null, querySelectorAll: () => [] });
+
+    eq(Naming.extractPageInfo(mock('Sina Visitor System'), 'https://passport.weibo.com/visitor/visitor').title,
+        '', '访客页标题被清空');
+    eq(Naming.extractPageInfo(mock('Just a moment...'), 'https://example.com/a').title,
+        '', '反爬页标题被清空');
+    eq(Naming.extractPageInfo(mock('登录 - 微博'), 'https://weibo.com/login').title,
+        '', '登录页标题被清空');
+    eq(Naming.extractPageInfo(mock('正常内容标题'), 'https://example.com/p/1').title,
+        '正常内容标题', '正常标题不受影响');
+
+    /* 标题/作者都空时不能落成 "mp4" 这种只有扩展名的文件 */
+    const empty = mock('');
+    const u1 = 'https://f.video.weibocdn.com/o0/video123.mp4';
+    const n1 = Naming.buildNameFromInfo(Naming.extractPageInfo(empty, u1), u1,
+        { tpl: '${author}_${title}', ext: 'mp4' });
+    eq(n1, 'video123.mp4', '空标题按 URL 末段兜底');
+
+    const u2 = 'https://passport.weibo.com/visitor/visitor';
+    const n2 = Naming.buildNameFromInfo(Naming.extractPageInfo(empty, u2), u2,
+        { tpl: '${author}_${title}', ext: 'mp4' });
+    eq(n2, 'visitor.mp4', '无意义末段取路径末段');
+
+    /* 纯哈希/纯数字末段没有可读性 → 时间戳兜底 */
+    const u3 = 'https://f.video.weibocdn.com/o0/a1b2c3d4e5f6a7b8';
+    const n3 = Naming.buildNameFromInfo(Naming.extractPageInfo(empty, u3), u3,
+        { tpl: '${author}_${title}', ext: 'mp4', date: '20261107' });
+    eq(n3, 'media_20261107.mp4', '纯哈希末段用时间戳兜底');
+
+    /* 正常标题不该被兜底逻辑改写 */
+    const u4 = 'https://example.com/post';
+    const n4 = Naming.buildNameFromInfo(Naming.extractPageInfo(mock('正常内容标题'), u4), u4,
+        { tpl: '${author}_${title}', ext: 'mp4' });
+    eq(n4, '正常内容标题.mp4', '正常标题不触发兜底');
+}
+
 /* ================= 汇总 ================= */
 
 console.log(`\n=========================================`);
