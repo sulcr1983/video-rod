@@ -1713,3 +1713,71 @@ https://passport.weibo.com/visitor/visitor?entry=miniblog&url=...
 `tools/test-naming.js` 新增 8 条：访客页/反爬页/登录页标题被清空、
 正常标题不受影响、URL 末段兜底、纯哈希末段时间戳兜底。
 结果 **51/51 通过**（原 43 条无回归）。
+
+---
+
+## ADR-064 视频清晰度统一走「分辨率优先」，不再盲信「正在播放」（2026-11-07）
+
+- **日期**：2026-11-07 ｜ **状态**：✅ 已实施（57 条单测）
+- **触发**：苏哥报「微博最多还是 720p」「每个视频大小一样，只嗅探了一个」
+- **拆解总账**：`docs/COMPETITOR-EXTENSIONS.md`
+
+**根因（两处，都在 `vrVideoOptions`）**
+
+1. **排序把「正在播放」无条件置顶**
+   ```js
+   const ap = (playing && a.url === playing) ? 0 : 1;
+   return (ap - bp) || ((b.size || 0) - (a.size || 0));
+   ```
+   微博信息流默认播 720p → 一键下载永远拿 720p。而代码注释写的是
+   「通用站取体积最大的那条」，**注释与实现不一致**。
+2. **补入当前播放时用 `list.unshift()`**，又把它压回第一位，二次破坏排序。
+
+第三处：`VR_VIDEO_EXT` 不含 `m3u8`/`mpd`，HLS/DASH 流根本进不了候选列表。
+
+**决策：清晰度规则统一收敛到 `js/video-quality.js`（纯函数，可单测）**
+
+| 能力 | 来源扩展 | 做法 |
+|---|---|---|
+| `heightFromUrl` | 自研 + DownXVideo `parseDimensions` | `label=mp4_1080p` → `template=1922x1080` → `/1280x720/` → `hd/uhd` |
+| `sortCandidates` | DownXVideo `compareVariants` | **height 降序 → size 降序 → 最后才偏好当前播放** |
+| `parseHlsMaster` | Video Downloader Plus 4.0.0 | 解析 `RESOLUTION=` / `BANDWIDTH=`，相对地址补绝对 |
+| `parseDashMpd` | Video Downloader Pro 0.1.11 | 解析 `<Representation>` 的 width/height/bandwidth，跳过纯音频 |
+| `pickWeiboHdUrl` | 笃笃 0.16.14 | `mp4_hd_url > stream_url_hd > mp4_sd_url > stream_url` |
+
+**三条硬约束（踩过的坑）**
+
+1. **「正在播放」只能作最低优先级**：它代表「浏览器当前的省流选择」，不代表最高画质。
+2. **MPD 属性解析必须带词边界**：`width` 会匹配到 `bandwidth="..."` 里的 width（单测 G2 固定）。
+3. **微博 `statuses/show` 只对信息流有效**：`tv/show/1034:xxx` 的 id 传进去返回
+   `error_code: 20101「该微博不存在」`（实测）。失败必须静默回落，不能阻断下载。
+4. **小红书 `ci.xiaohongshu.com` 原图不能盲目优先**：实测同一域名下
+   `1040g2sg...aq9kb9fo` → **200**，`1040g2sg...adll5k` → **404**。
+   对方（小红书下载助手）靠 `probeImage` 逐个探测才没踩坑。
+   我们的处理：**首选保持原有可用地址**，原图只作候选，HEAD 探测 200 才升级。
+   不这么做等于每张图先白跑一次失败，比原来更慢（负优化）。
+5. **SSR 快路径必须带 `xsec_token`**：不带 token 请求同一 URL 时
+   `noteDetailMap[id]` 不存在（实测 `Cannot read properties of undefined`）。
+   失败要无痕回退到「开标签页」老路，不能让原本能下的变成下不了。
+
+**明确不抄**
+
+- **Tubly 的云端代理解析**：它用 `cookies` 权限把 YouTube 登录态发到自家服务器换取 4K/8K 直链。
+  Cookie 外传不可接受；我们本地已有 nsig/ssig 解密，能力上不需要。
+- **Tubly 之外的「分段下载」已实现**：Range 并发 4 段（Chrono 用 5，扩展上下文取 4），
+  仅在服务端声明 `Accept-Ranges` 且文件 ≥1MB 时启用，否则回退单次全量。
+  见 `js/offscreen-fetch.js` 与 `docs/VIDEO-XHS-ENHANCEMENT.md` §四。
+
+**YouTube 上限同步放开（苏哥 2026-11-07 拍板）**
+
+`js/yt/yt-download.js` 的 `MAX_HEIGHT` 从 1080 → **2160**，
+`MAX_TRACK_BYTES` 从 400MB → **700MB**，提示文案改为「最高支持 4K，8K 档位已隐藏」。
+**8K 仍不提供**：单轨常超 1GB，本机双轨合并必失败。
+
+> 这条原本是产品策略（2026-11-06 定 1080p），不是技术限制。
+> 记录在此避免以后有人误判成「我们拿不到 4K」。
+
+**测试**
+
+`tools/test-video-quality.js` **57/57**：分辨率解析（A）、排序（B）、同素材归组（C）、
+标签（D）、微博 mid 与高清挑选（E）、HLS master（F）、DASH MPD（G）。

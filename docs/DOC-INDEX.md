@@ -88,6 +88,8 @@
 | `STYLE-OPTIONS.md` | 界面风格四方向 |
 | `AUDIT-I5-WEIBO-PLAN.md` | 微博缺陷修复方案 |
 | `WEIBO-ALBUM-PLAN.md` | 微博相册备份方案（含「叫小微」源码拆解与平台实测；ADR-056） |
+| `COMPETITOR-EXTENSIONS.md` | **竞品扩展拆解总账**：Tubly/DownXVideo/Chrono/Video Downloader Plus/Pro/笃笃，逐条标注「抄/不抄」与落点 |
+| `VIDEO-XHS-ENHANCEMENT.md` | **视频清晰度 + 小红书增强技术实现**：排序规则、HLS/DASH 解析、SSR 快路径、Range 分段、实测数据 |
 | `IMAGE-AUTO-INDEX-RESEARCH.md` | 自动归类调研 |
 | `READINESS-20261104.md` | 就绪度评估 |
 | `MERGE-20261104.md` | 两线合并记录 |
