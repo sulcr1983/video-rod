@@ -155,3 +155,4 @@
 > 本轮对库页（`js/library/*.js`）新增的异常分支都带上下文日志或明确降级说明，未新增静默 `catch`。
 | B-30 | **站点名的真机交叉验证（自动抓取 vs 预置表）** | 已实测 10 个真实站点：花瓣网/知乎/豆瓣/GitHub/Pixso 靠抓取成功，Pixabay/Unsplash/Dribbble/Behance/500px 因 Cloudflare 或超时回退预置表。但还没在**扩展真机**（装进 Edge 后）复跑一遍，确认 service worker 的 fetch 与 Node 环境一致 | 扩展加载后打开 5 个站点各下载一次，看设置页「站点名称」是否出现真实站名（而非域名） | 真机走一遍，核对 vrSiteNames 实际写入内容与来源标记 |
 | B-31 | **预置表 381 条的站名准确性抽查** | 表内 host 与显示名的格式已全部校验通过，但「小众站点官方到底叫什么」没有逐条核实。错的显示名会直接变目录名 | 抽查 30 条（尤其中文小站）与官网对照 | 发现错误就改 `site-names-preset.js` 后跑 `node tools/check-site-names.js` |
+| B-36 | **全链接扫描未接 UI（模块已就绪）** | `js/lib-download-scan.js` 的 `collectLinks`（`a[href]` 全量 + `video/audio/source/embed/object`）已实现且有单测，但没接进侧边栏：我们的 `vrImgDownload` 会把 `VR_IMG_EXT_OK` 白名单外的扩展名**一律强转 `jpg`**，接上去等于列出 PDF 却存成 .jpg（曾加过菜单项，随即撤掉，不留死按钮） | **前置**：`vrImgDownload` 的 `type` 从硬编码 `'image'` 改为按扩展名推导，白名单外走通用 `vrDownloadWithName` | 改完后接 `data-more="files"` 菜单项 + 列表项 `kind` 支持 doc/media | `COMPETITOR-EXTENSIONS.md` §8.4、ADR-065 决策三 |
