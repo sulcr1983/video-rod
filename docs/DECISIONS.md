@@ -1781,3 +1781,75 @@ https://passport.weibo.com/visitor/visitor?entry=miniblog&url=...
 
 `tools/test-video-quality.js` **57/57**：分辨率解析（A）、排序（B）、同素材归组（C）、
 标签（D）、微博 mid 与高清挑选（E）、HLS master（F）、DASH MPD（G）。
+
+---
+
+## ADR-065 图片收集补「源码通道」：抄收集通道，不抄下载内核（苏哥 2026-11-07）
+
+- **日期**：2026-11-07 ｜ **状态**：✅ 已实施（69 条单测 + 实机验收）
+- **触发**：苏哥要求「直接完成扩展的内容」——把星愿浏览器新装的两个扩展拆完并落地
+- **拆解总账**：`docs/COMPETITOR-EXTENSIONS.md` §8.3 / §8.4
+
+**对象**
+
+| 扩展 | ID | 版本 |
+|---|---|---|
+| 图片下载器 | `flbolonkboilcbnohjlchlfgdalomdpl` | 4.0.0 |
+| Download Master | `ameobllgfelffdengghkfoeagpohnhjk` | 2026.10.14.0 |
+
+**核心发现：它们的下载内核极弱，值得抄的是「收集通道」**
+
+Download Master 零分段、零续传、状态存 SW 内存、重试只有 1 次（且只在
+`downloads.download` 同步拒绝时）。图片下载器只有单发 `downloads.download`。
+**我们已有 FSA 直写 + 候选链回退 + 离屏兜底，下载内核比它们强，不该反向抄。**
+
+真正缺的是它们「找地址」的广度。图片下载器的 `contentScript.js` 除
+`<img>` / `srcset` / `background-image` 之外，还拿 `document.body.innerHTML`
+跑一条正则，把**只写在脚本/JSON 里、DOM 上还没有 `<img>`** 的地址捞出来。
+懒加载站点正是这种情况。
+
+**决策一：移植源码正则通道（已落地）**
+
+`js/lib-download-scan.js` → `extractUrlsFromHtml`，接进 `image-page.js` 的
+`srcScan` 分支。抓到的地址标 `srcOnly:true`、尺寸记 0，由 UI 显示「尺寸未知」。
+
+**原式只认 `https?://`，实机测试页 3 张只抓到 1 张**。补了两条分支：
+
+1. `https?:` 前缀可选 → 兼容协议相对地址 `//cdn.x.com/a.jpg`
+2. 单斜杠 `\/(?!\/)` → 兼容站内绝对路径 `/media/x.jpg`（真实站点 JSON 里最常见）
+
+`(?!\/)` 保证不会把 `//host` 拆成单斜杠匹配，两个分支不打架。
+
+**实机验收**（`test-site/src-only.html`：DOM 1 张 + 脚本 3 张）：
+修正前 `srcCount=0`，修正后 **1 → 4 张**，`pass:true`。
+
+**决策二：移植文件名推导链，接进导出（已落地）**
+
+导出 CSV 的「文件名」列此前**恒为空字符串**（`buildExport` 收到 `name:''`），
+一整列没信息。改用该推导链：丢弃 `php/asp/aspx/jsp` 这类动态脚本名、
+非法字符转 `_`、去首尾点与空格、截 200。与 Download Master
+`utils.getDownloadFilename` 同口径。
+
+**决策三：全链接扫描只做模块，不接 UI（明确不做）**
+
+`collectLinks`（`a[href]` 全量 + `video/audio/source/embed/object`）已实现并有单测，
+但**没有接进侧边栏**。原因：我们的 `vrImgDownload` 会把白名单外的扩展名
+一律强转 `jpg`（`VR_IMG_EXT_OK`），接上去等于**列出 PDF 却存成 .jpg**。
+
+曾试探性地加过「扫描本页文件（PDF/压缩包/视频）」菜单项，随即撤掉——
+`image.html` 里有按钮、JS 里没实现，那是死按钮，比没有这个功能更糟。
+
+> 要做得先改 `vrImgDownload`：`type` 从硬编码 `'image'` 改为按扩展名推导，
+> 白名单外走通用 `vrDownloadWithName`。这牵动路径/入库/重命名三处，单独立项。
+
+**明确不抄**
+
+| 它有的 | 为什么不抄 |
+|---|---|
+| iframe 递归注入 + postMessage 收回 | 我们是 `all_frames:false` 的既有边界（B-29），单独立项 |
+| 图片上悬浮下载钮 | 我们走侧边栏清单；图上挂钮在长页面上会糊满屏幕 |
+| 全链接扫描直连 UI | 见决策三，会产出扩展名错误的文件 |
+
+**教训**：拆竞品要先分清「它比我强的地方」和「我比它强的地方」。
+这两个扩展的下载内核明显弱于我们，如果照着抄会把已有的 FBS 直写/候选回退丢掉。
+真正值钱的是那两行「别人没想到的收集渠道」。
