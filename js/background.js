@@ -3347,9 +3347,14 @@ async function vrTryPageDownload(tabId, url, name) {
  *  拿不到就返回 null，命名继续走 naming.js 的页面提取。 */
 /** 小红书详情页：只读当前笔记 __INITIAL_STATE__（MAIN world）。
  *  不调用签名接口、不自动翻页、不做任何写操作；只返回当前笔记媒体。 */
-function vrXhsScanInPage(noteId) {
+function vrXhsScanInPage(noteId, injectedState) {
     try {
-        const st = window.__INITIAL_STATE__;
+        /* injectedState：SSR 版把从详情页 HTML 里解出的 __INITIAL_STATE__ 直接传进来，
+         * 复用同一套解析，避免「开标签页」和「fetch HTML」两条路各写一份解析逻辑。
+         * 不传时仍读页面自己的 state（页面主世界调用）。
+         * typeof 判断：本函数也在 SW 里被复用，SW 没有 window。 */
+        const st = injectedState ||
+            ((typeof window !== 'undefined' && window) ? window.__INITIAL_STATE__ : null);
         const n = st && st.note;
         const map = n && n.noteDetailMap;
         if (!map) { return { ok: false, reason: 'no-state' }; }
@@ -3379,8 +3384,11 @@ function vrXhsScanInPage(noteId) {
          * location 可用）；最后才用 currentNoteId。 */
         let target = String(noteId || '');
         if (!target) {
-            const pm = String(location.pathname || '')
-                .match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/);
+            /* typeof 判断：本函数也被 SSR 版在 SW 里复用，SW 没有 location，
+             * 直接访问会 ReferenceError。 */
+            const loc = (typeof location !== 'undefined' && location) ? location : null;
+            const pm = loc ? String(loc.pathname || '')
+                .match(/\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/) : null;
             if (pm) { target = pm[1]; }
         }
         if (!target) {
@@ -3412,6 +3420,12 @@ function vrXhsScanInPage(noteId) {
         function xhsHttps(u) {
             return String(u || '').replace(/^http:\/\//i, 'https://');
         }
+
+        /* 小红书原图推导 / 扩展名 / 候选链，规则集中在 js/xhs-media.js
+         * （纯函数，tools/test-xhs-media.js 23 条单测）。这里只做适配，不再重复实现。 */
+        const xhsOriginalUrl = function (raw) {
+            return self.VRXhsMedia ? self.VRXhsMedia.originalUrl(raw) : '';
+        };
         (note.imageList || []).forEach(function (im, i) {
             /* 2026-11-06 实测：imageList.url 常为空；infoList 的 WB_DFT 才带
              * CDN 必需的 `!nd_dft_...` 后缀。旧代码把它当「尺寸后缀」剥掉，
@@ -3425,10 +3439,21 @@ function vrXhsScanInPage(noteId) {
             if (!raw) { return; }
             const url = xhsHttps(raw);
             const item = { kind: 'image', url: url, ext: xhsImgExt(url), index: i };
-            const fallback = xhsHttps(im.urlPre || im.url || '');
-            if (fallback && fallback !== url) {
-                item.urlFallback = fallback;
-                item.extFallback = xhsImgExt(fallback);
+
+            /* 原图候选（抄「小红书下载助手」v1.0.2 的 sourceImageUrl）。
+             * ⚠️ 2026-11-07 实测：ci.xiaohongshu.com 对部分素材 ID 返回 404
+             *    （例 1040g2sg3271c1gng6qdg491k3adll5k → 404 text/plain）。
+             *    对方之所以安全，是因为它用 probeImage 逐个探测后才排序。
+             * 所以这里**保持原有可用地址为首选**，原图只作额外候选；
+             * 由 VRXhsMedia.probeOriginal 探测通过后才升为首选（见 downloadQueue 前处理）。 */
+            const original = xhsOriginalUrl(url) || xhsOriginalUrl(im.urlDefault || im.url || '');
+            if (original && original !== url) {
+                item.xhsOriginalUrl = original;      // 候选，不直接当首选
+            }
+            const preFallback = xhsHttps(im.urlPre || im.url || '');
+            if (preFallback && preFallback !== url) {
+                item.urlFallback = preFallback;
+                item.extFallback = xhsImgExt(preFallback);
             }
             items.push(item);
         });
@@ -3513,6 +3538,65 @@ function vrXhsWaitTab(tabId, timeout) {
 }
 
 /** 详情页的 __INITIAL_STATE__ 是异步填充的；等待最多 ~7 秒，避免视频笔记首次扫描为空。 */
+/**
+ * 小红书：不开标签页，直接 fetch 详情页 HTML 解 SSR state。
+ *
+ * 抄「小红书下载助手」v1.0.2（background.js:467-483）的做法。
+ *
+ * 为什么值得抄：原实现每篇要 `tabs.create` + 等 18 秒 + 1.2 秒缓冲，
+ * 批量 20 篇就是 6 分钟起，且开页会挤占用户窗口、更容易触发风控。
+ * 直接 fetch HTML 一次往返就能拿到同样的 `__INITIAL_STATE__`。
+ *
+ * 技术要点（对方踩过的坑，照搬）：
+ *   · SSR 里的 state 是 hydration 过的 JS 字面量，含 `undefined` / `new Map([])`，
+ *     直接 JSON.parse 会失败 —— 必须先做文本替换再 parse。
+ *   · 必须 `credentials: 'include'`，否则拿不到登录态下的笔记。
+ *
+ * @param {string} noteId
+ * @param {string} xsecToken 可空
+ * @returns {Promise<object|null>} 与 vrXhsScanInPage 同形的结果
+ */
+async function vrXhsScanViaHtml(noteId, xsecToken) {
+    const id = String(noteId || '');
+    if (!id) { return null; }
+    const token = xsecToken
+        ? '?xsec_token=' + encodeURIComponent(xsecToken) + '&xsec_source=pc_user'
+        : '';
+    const url = 'https://www.xiaohongshu.com/explore/' + encodeURIComponent(id) + token;
+
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(function () { ctrl.abort(); }, 12000);
+        let html = '';
+        try {
+            const r = await fetch(url, {
+                credentials: 'include',
+                signal: ctrl.signal,
+                headers: { accept: 'text/html,application/xhtml+xml' }
+            });
+            if (!r.ok) { return null; }
+            html = await r.text();
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!html || html.length < 200) { return null; }
+
+        /* 解析逻辑统一在 js/xhs-ssr.js（26 条单测）。
+         * 那里处理了 SSR 的 JS 字面量（undefined / new Map([])），
+         * 且替换时不会误伤字符串里的同名字样。 */
+        const state = self.VRXhsSsr ? self.VRXhsSsr.parseState(html) : null;
+        if (!state) { return null; }
+
+        /* 复用页面版解析：传 state 进去，避免两套逻辑漂移。
+         * vrXhsScanInPage 依赖 location，但在 SW 里没有 location ——
+         * 它只在 target 为空时才读 location，这里已经显式传了 noteId。 */
+        const res = vrXhsScanInPage(id, state);
+        return (res && res.ok && res.items && res.items.length) ? res : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function vrXhsScanInTab(tabId, noteId) {
     let last = null;
     for (let i = 0; i < 12; i++) {
@@ -3542,6 +3626,40 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
         let tabId = null;
         let noteOk = false;
         try {
+            /* 快路径（抄「小红书下载助手」v1.0.2）：先直接 fetch 详情页 HTML 解 SSR，
+             * 成功就完全不开标签页 —— 省掉 18 秒等待 + 开页开销，也不占用户窗口。
+             * 失败（未登录/被风控/页面结构变化）则**无痕回退**到原来的开标签页路径，
+             * 所以这条快路径只可能加速，不会让原本能下的变成下不了。 */
+            let fastData = await vrXhsScanViaHtml(n.noteId, n.xsecToken);
+            if (fastData && fastData.ok && fastData.items && fastData.items.length) {
+                const fastItems = fastData.items.map(function (it) {
+                    return Object.assign({}, it, {
+                        site: 'xhs', title: fastData.title, author: fastData.author,
+                        authorId: fastData.authorId,
+                        pageUrl: 'https://www.xiaohongshu.com/explore/' + encodeURIComponent(fastData.noteId),
+                        key: 'xhs:' + fastData.noteId + ':' + it.kind + ':' + it.index + ':' + it.url
+                    });
+                });
+                const fastRes = await vrBulkDownload(fastItems, sourceTabId);
+                files += (fastRes && fastRes.done) || 0;
+                skipped += (fastRes && fastRes.skipped) || 0;
+                if (fastRes && fastRes.paused) { stopped = fastRes.reason || '下载连续失败'; }
+                noteOk = !!((fastRes && (fastRes.done || fastRes.skipped)) || (fastRes && fastRes.paused));
+                if (!noteOk) { errors++; }
+                done++;
+                if (noteOk) { errors = 0; }
+                if (sourceTabId != null) {
+                    try {
+                        chrome.tabs.sendMessage(sourceTabId, {
+                            Message: 'vrXhsAutoProgress',
+                            done: done, files: files, skipped: skipped,
+                            errors: errors, total: list.length, via: 'ssr'
+                        });
+                    } catch (e) { /* 页面关了 */ }
+                }
+                continue;      // 快路径成了，不开标签页
+            }
+
             const token = n.xsecToken
                 ? '?xsec_token=' + encodeURIComponent(n.xsecToken) + '&xsec_source=pc_user'
                 : '';
@@ -3972,7 +4090,23 @@ async function vrBulkDownload(items, tabId) {
                     it.ext = savedExt;
                     return r || null;
                 };
-                let r = await attempt(it.url, it.ext);
+                /* 原图升级（抄「小红书下载助手」的做法，但不盲目）：
+                 * 先用 HEAD 探一下 ci.xiaohongshu.com 那条原图地址是否真的存在。
+                 * 实测有素材 ID 在 ci 上是 404（1040g2sg... 样本），
+                 * 不探测就优先原图 = 每张图先白跑一次失败。
+                 * 探测通过才用原图，否则完全保持原来的路径 —— 只可能更好，不会更差。 */
+                let firstUrl = it.url;
+                let firstExt = it.ext;
+                if (it.xhsOriginalUrl && self.VRXhsMedia && self.VRXhsMedia.probeOriginal) {
+                    try {
+                        const hasOriginal = await self.VRXhsMedia.probeOriginal(it.xhsOriginalUrl, 3000);
+                        if (hasOriginal) {
+                            firstUrl = it.xhsOriginalUrl;
+                            firstExt = 'jpg';           // ci 域回原始 jpeg
+                        }
+                    } catch (e) { /* 探测失败就当没有原图 */ }
+                }
+                let r = await attempt(firstUrl, firstExt);
                 if ((!r || !r.ok) && it.urlFallback) { r = await attempt(it.urlFallback, it.extFallback); }
                 if (r && r.skipped) { skipDup = true; }
                 ok = !!(r && r.ok);

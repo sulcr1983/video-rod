@@ -36,12 +36,16 @@
         openDir: document.getElementById('openDir')
     };
 
-    /* 画质硬上限：1080p。
-     * 4K/2K 单体动辄 300MB~700MB，双轨全量进内存再合并，普通机器必崩；
-     * 苏哥 2026-11-06 定：1080p 够用，超过的不提供。 */
-    var MAX_HEIGHT = 1080;
-    /* 单条轨道内存上限：超过就明确报错，不硬撑（避免页面被 OOM 杀掉）。 */
-    var MAX_TRACK_BYTES = 400 * 1024 * 1024;
+    /* 画质上限：4K（2160p）。
+     * 苏哥 2026-11-07 拍板放开：之前限 1080p 是担心 4K 双轨全量进内存再合并会崩，
+     * 但用户明确要更高档。改成「放开 + 内存护栏」：
+     *   · 4K 及以上档位列出来，并在条目上标注体积
+     *   · 单轨超过 MAX_TRACK_BYTES 时仍然拒绝（明确报错，不硬撑 OOM）
+     *   · 8K（4320p）不列出：单轨常超 1GB，本机合并必失败 */
+    var MAX_HEIGHT = 2160;
+    /* 单条轨道内存上限：超过就明确报错，不硬撑（避免页面被 OOM 杀掉）。
+     * 4K 单轨常见 200~500MB，留到 700MB 以覆盖多数 4K 片源。 */
+    var MAX_TRACK_BYTES = 700 * 1024 * 1024;
 
     var state = {
         formats: [],
@@ -305,8 +309,8 @@
             el.qc.parentNode.insertBefore(capNote, el.qc);
         }
         capNote.textContent = state.overCap
-            ? '这个视频只有超过 1080p 的档位；为避免超大文件合并失败，仍可下载，但可能较慢。'
-            : ('最高支持 1080p（更高的档位已隐藏）');
+            ? '这个视频只有超过 4K 的档位；为避免超大文件合并失败，仍可下载，但可能较慢。'
+            : ('最高支持 4K（2160p），8K 档位已隐藏');
 
         state.video.forEach(function (f, i) {
             var total = (f.size || 0) + (state.audio ? (state.audio.size || 0) : 0);
