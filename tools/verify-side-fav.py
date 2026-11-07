@@ -55,14 +55,13 @@ check("顶栏不再有收藏夹按钮", a["topbarBtn"] is False)
 check("四个预置栏目已清空", a["preset"] == 0, a["preset"])
 
 # 2. 面板：初始空态；新建夹子出现
+# 收藏区已改平铺（2026-11-07）：不再有 favMenuBtn/favMenu 弹层，直接读 #favList
 b = ev("""(()=>{
-  document.querySelector('#favMenuBtn').click();
-  const menu=document.querySelector('#favMenu');
-  const empty=menu.querySelector('.fav-empty')?menu.querySelector('.fav-empty').textContent:'';
-  document.querySelector('#favNewBtn').click();
-  const inp=document.querySelector('#favNewInput'); inp.value='我的精选';
+  const list=document.getElementById('favList');
+  const empty=list&&list.querySelector('.fav-empty')?list.querySelector('.fav-empty').textContent:'';
+  const inp=document.getElementById('favNewInput'); inp.value='我的精选';
   document.querySelector('#favNewOk').click();
-  const rows=[...menu.querySelectorAll('#favList .fav-row')].map(r=>r.innerText.replace(/\\n/g,''));
+  const rows=[...(list?list.querySelectorAll('.fav-row'):[])].map(r=>r.innerText.replace(/\\n/g,''));
   return {empty, rows};})()""")
 check("初始空态提示", '还没有收藏夹' in b["empty"], b["empty"])
 check("新建「我的精选」出现在列表", any('我的精选' in r for r in b["rows"]), b["rows"])

@@ -105,8 +105,12 @@
     }
 
     /**
-     * 从页面 URL 识别平台。
-     * 注意：优先传「页面 URL」，不要传媒体直链（CDN 域名会误判成 web）。
+     * 从页面 URL 识别平台（**保持旧语义：未收录返回 'web'**）。
+     *
+     * 为什么不在这里返回域名：
+     *   background.js 拿它当查重（vrFindExistingMedia）的 site 预筛条件，
+     *   历史记录存的都是 'web'；一旦改成域名，老素材的查重会整体失效。
+     *   「未收录站点叫什么」由 detectSite()/siteOf() 负责，与查重解耦。
      */
     function detectPlatform(url) {
         var host = hostOf(url);
@@ -184,38 +188,117 @@
     /* ---------------- 主入口 ---------------- */
 
     /**
+     * 站点段解析：**站名优先**，域名只做兜底。
+     *
+     * 顺序（与 site-registry.js 的优先级一致）：
+     *   registry.detect()（含 手改 > 预置 > 自动 ）
+     *   → 调用方刚抓到的 siteName
+     *   → 已知平台中文名
+     *   → 可注册域名
+     *
+     * 不直接依赖 registry：内容脚本只加载了 site-name.js，
+     * 拿不到 registry 时必须能降级工作，否则下载会整条失败。
+     */
+    function siteOf(o) {
+        var pageUrl = o.pageUrl || o.mediaUrl || '';
+        var hint = String(o.siteName || o.site || '').trim();
+
+        var R = root.VRSiteRegistry;
+        if (R && typeof R.detect === 'function') {
+            try {
+                var d = R.detect(pageUrl, hint);
+                if (d && d.dir) { return { key: d.key || '', dir: d.dir, name: d.name || '' }; }
+            } catch (e) { /* 落回下面的降级链 */ }
+        }
+
+        var host = hostOf(pageUrl);
+        if (hint) { return { key: host || hint, dir: cleanSeg(hint) || hint, name: hint }; }
+
+        var platform = o.platform || detectPlatform(pageUrl);
+        if (platform !== 'web') {
+            var zh = PLATFORM_DIR[platform] || platform;
+            return { key: platform, dir: zh, name: zh };
+        }
+        /* 未收录站点：一个网站一个目录，用可注册域名 */
+        var key = host || '其他网页';
+        try {
+            var SN = root.VRSiteName;
+            if (SN && SN.registrableDomain && host) { key = SN.registrableDomain(host) || host; }
+        } catch (e) { /* 用原 host */ }
+        return { key: key, dir: cleanSeg(key) || key, name: '' };
+    }
+
+    /** 对外：识别站点（页面 URL → {key, host, name, dir}） */
+    function detectSite(url, hint) {
+        return siteOf({ pageUrl: url, siteName: hint });
+    }
+
+    /**
      * 拼相对目录（不含文件名）
+     *
+     * 目录形态（2026-11-07 按用户要求调整）：
+     *   普通内容：  video-rod/<站点>/<作者>/<文件>
+     *   多P / 多集： video-rod/<站点>/<作者>/<分P名>/<文件>
+     *
+     * 为什么**不再写「视频 / 图片 / 音频」这一段**：
+     *   图片和视频本来就是同一条内容的两种形态，分开放会让同一作者
+     *   的素材散在两处。文件扩展名已足够区分，浏览时也更连贯。
+     *
      * @param {object} opt
-     *   pageUrl    页面 URL（优先，用于平台识别）
+     *   pageUrl    页面 URL（优先，用于站点识别）
      *   mediaUrl   媒体 URL（兜底）
-     *   site       naming.js 提取的站点名（兜底）
+     *   siteName   本次抓到的站名（下载链路会传）
+     *   site       naming.js 的站点名（旧字段，兼容）
      *   authorFull "昵称(@ID)"
      *   creatorId  博主 ID（可空）
-     *   type       video|image|audio|other（可空，用 ext 推断）
+     *   type       video|image|audio|other（仅用于判定，不再落目录）
      *   ext        扩展名
+     *   part       多P/多集名称（有则单独一层）
+     *   keepType   true 时仍写类型段（迁移/兼容老结构用）
      *   subdir     第一段子目录，默认 video-rod
-     * @returns {string} 例：video-rod/B站/影视飓风(@946974)/视频
+     * @returns {string} 例：video-rod/B站/影视飓风(@946974)
      */
     function buildRelDir(opt) {
         var o = opt || {};
         var sub = cleanSeg(o.subdir || 'video-rod') || 'video-rod';
         var pageUrl = o.pageUrl || o.mediaUrl || '';
-        var platform = o.platform || detectPlatform(pageUrl);
+        var site = siteOf(o);
         var type = typeOf(o);
-        var typeSeg = TYPE_DIR[type] || TYPE_DIR.other;
 
-        var creator;
-        if (platform === 'web') {
-            var host = hostOf(pageUrl) || cleanSeg(o.site || '');
-            creator = host ? cleanSeg(host) : creatorSegment(o.authorFull, o.creatorId);
-        } else {
-            creator = creatorSegment(o.authorFull, o.creatorId || creatorIdFromUrl(pageUrl));
+        var creator = creatorSegment(o.authorFull, o.creatorId || creatorIdFromUrl(pageUrl));
+        /* 拿不到作者时用域名兜底：否则一个站点的所有无主素材会平铺在同一层。
+         * 但站点段可能已经是同一个域名（未收录站点），重复写会得到
+         * 「example.com/example.com」这种两层同名的怪路径，所以要去重。 */
+        if (!creator) {
+            var host = hostOf(pageUrl);
+            if (host) {
+                var hSeg = cleanSeg(host);
+                if (hSeg && hSeg.toLowerCase() !== String(site.dir).toLowerCase()) {
+                    creator = hSeg;
+                }
+            }
         }
-        /* 实在拿不到博主，就用站点域名归类；「待整理」这个说法用户看不懂，
-         * 而且它其实没做任何整理。保留三级目录结构，parseRelPath 不受影响。 */
-        if (!creator) { creator = cleanSeg(hostOf(pageUrl) || o.site || '') || '网页'; }
 
-        return [sub, PLATFORM_DIR[platform] || PLATFORM_DIR.web, creator, typeSeg].join('/');
+        var dirs = [sub, site.dir];
+        if (creator) { dirs.push(creator); }
+
+        /* 网页/图集分组：同一网页的一批素材收进以标题命名的子文件夹。
+         * 用户 2026-11-07 明确要求「一个网页九张图，就建一个文件夹放进去」，
+         * 否则同题图会平铺在站点目录下，只能靠文件名分辨。
+         *
+         * 与站点名/作者名相同的分组名要跳过：豆瓣页面标题就是「豆瓣」，
+         * 再加一层会得到 豆瓣/豆瓣 这种重复结构。 */
+        if (o.part) {
+            var p = cleanSeg(o.part);
+            var dupOfSite = p && p.toLowerCase() === String(site.dir).toLowerCase();
+            var dupOfCreator = p && creator && p.toLowerCase() === String(creator).toLowerCase();
+            if (p && !dupOfSite && !dupOfCreator) { dirs.push(p); }
+        }
+
+        /* 类型段默认不写；迁移老结构或调用方显式要求时才保留 */
+        if (o.keepType && TYPE_DIR[type]) { dirs.push(TYPE_DIR[type]); }
+
+        return dirs.join('/');
     }
 
     /**
@@ -262,40 +345,117 @@
         return 'file:///' + out.replace(/^\/+/, '');
     }
 
-    /** 从相对路径反解（入库时补元数据用） */
+    /** 形如 huaban.com / pixso.cn / v.qq.com 的域名段 */
+    function looksLikeHost(seg) {
+        var s = String(seg || '');
+        if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(s)) { return false; }
+        return /[a-z]{2,}$/i.test(s);
+    }
+
+    /** 站名 → 站点 key（先问 registry，再查预置表；都认不出返回空） */
+    function siteKeyFromName(name) {
+        var n = String(name || '').trim();
+        if (!n) { return ''; }
+        var R = root.VRSiteRegistry;
+        if (R && typeof R.keyOfName === 'function') {
+            try { var k = R.keyOfName(n); if (k) { return k; } } catch (e) { /* 落回预置表 */ }
+        }
+        var PP = root.VRSiteNamesPreset;
+        if (PP && typeof PP.byName === 'function') {
+            try {
+                var it = PP.byName(n);
+                if (it && it.h && it.h.length) { return String(it.h[0]).toLowerCase(); }
+            } catch (e) { /* 认不出 */ }
+        }
+        return '';
+    }
+
+    function isTypeSeg(seg) {
+        var s = String(seg || '');
+        var t;
+        for (t in TYPE_DIR) { if (TYPE_DIR[t] === s) { return t; } }
+        var a = TYPE_ALIAS[s.toLowerCase()];
+        return a || '';
+    }
+
+    /**
+     * 从相对路径反解（入库时补元数据用）。
+     *
+     * 支持两种结构：
+     *   新：video-rod/<站名或域名>/<作者>/[<分P>/]<文件>
+     *   老：video-rod/<平台中文名>/<作者>/<图片|视频>/<文件>
+     *       video-rod/其他网页/<域名>/<类型>/<文件>
+     *       video-rod/xiaohongshu/<作者>/images/<文件>（英文别名）
+     *
+     * 关键行为：老结构里的「其他网页」会**继续看下一段域名**，把 platform
+     * 落到域名上 —— 这样历史素材重扫后能自动按站点分组，不必手工迁移。
+     */
     function parseRelPath(rel) {
         var segs = String(rel || '').split('/').filter(Boolean);
         var out = {
             subdir: segs[0] || '',
             platform: '', platformName: '',
+            siteHost: '',
             creatorFull: '', creatorId: '',
-            type: '', fileName: segs.length ? segs[segs.length - 1] : ''
+            type: '', part: '',
+            fileName: segs.length ? segs[segs.length - 1] : ''
         };
-        var pIdx = -1, k, i, t;
-        for (i = 1; i < segs.length && pIdx < 0; i++) {
-            /* ① 先按中文目录名（现行写入规则） */
+        var pIdx = -1, k, i;
+
+        /* ① 找站点段：跳过首段（subdir），最后一段是文件名 */
+        for (i = 1; i < segs.length - 1 && pIdx < 0; i++) {
+            var seg = segs[i];
+            var key = '', name = '';
+
+            /* 中文平台名（老结构的 B站/小红书/其他网页…，也是内置站名） */
             for (k in PLATFORM_DIR) {
-                if (PLATFORM_DIR[k] === segs[i]) { out.platform = k; out.platformName = segs[i]; pIdx = i; break; }
+                if (PLATFORM_DIR[k] === seg) { key = k; name = seg; break; }
             }
-            /* ② 再兼容英文/别名目录（早期特例：instagram/videos、douyin、weibo…） */
-            if (pIdx < 0) {
-                var alias = PLATFORM_ALIAS[String(segs[i]).toLowerCase()];
-                if (alias) {
-                    out.platform = alias;
-                    out.platformName = PLATFORM_DIR[alias] || segs[i];
-                    pIdx = i;
+            /* 英文别名（instagram / xiaohongshu / weibo…） */
+            if (!key) {
+                var alias = PLATFORM_ALIAS[String(seg).toLowerCase()];
+                if (alias) { key = alias; name = PLATFORM_DIR[alias] || seg; }
+            }
+            /* 域名形式（未收录站点直接以域名成目录） */
+            if (!key && looksLikeHost(seg)) { key = String(seg).toLowerCase(); name = seg; }
+            /* 站名反查（花瓣 / Pixso / 腾讯视频…） */
+            if (!key) {
+                var nk = siteKeyFromName(seg);
+                if (nk) { key = nk; name = seg; }
+            }
+            if (!key) { continue; }
+
+            /* 「其他网页」不是站点，只是老结构的兜底段：下一段域名才是站点 */
+            if (key === 'web') {
+                var nxt = segs[i + 1] || '';
+                if (looksLikeHost(nxt)) {
+                    key = String(nxt).toLowerCase();
+                    name = nxt;
+                    i = i + 1;
                 }
             }
+            out.platform = key;
+            out.platformName = name;
+            if (looksLikeHost(key)) { out.siteHost = key; }
+            pIdx = i;
         }
+
         if (pIdx > 0) {
-            out.creatorFull = segs[pIdx + 1] || '';
+            /* ② 站点段之后：过滤掉类型段，剩余依次是 作者、分P */
+            var rest = [];
+            for (var j = pIdx + 1; j < segs.length - 1; j++) {
+                if (isTypeSeg(segs[j])) { out.type = out.type || isTypeSeg(segs[j]); continue; }
+                rest.push(segs[j]);
+            }
+            out.creatorFull = rest[0] || '';
             var m = out.creatorFull.match(/\(@([^)]+)\)/);
             if (m) { out.creatorId = m[1]; }
-            var tSeg = String(segs[pIdx + 2] || '').toLowerCase();
-            for (t in TYPE_DIR) {
-                if (TYPE_DIR[t] === segs[pIdx + 2]) { out.type = t; break; }
-            }
-            if (!out.type && TYPE_ALIAS[tSeg]) { out.type = TYPE_ALIAS[tSeg]; }
+            if (rest.length > 1) { out.part = rest[1]; }
+        }
+
+        /* ③ 类型：目录里没写就用扩展名推断（新结构不再有类型段） */
+        if (!out.type) {
+            out.type = typeOf({ fileName: out.fileName });
         }
         return out;
     }
@@ -314,6 +474,10 @@
         TYPE_ALIAS: TYPE_ALIAS,
         MAX_REL_LEN: MAX_REL_LEN,
         detectPlatform: detectPlatform,
+        detectSite: detectSite,
+        siteOf: siteOf,
+        siteKeyFromName: siteKeyFromName,
+        looksLikeHost: looksLikeHost,
         typeOf: typeOf,
         creatorIdFromUrl: creatorIdFromUrl,
         creatorSegment: creatorSegment,
@@ -326,4 +490,5 @@
         toFileUrl: toFileUrl,
         checkLength: checkLength
     };
-})(typeof self !== 'undefined' ? self : this);
+    if (typeof module === 'object' && module.exports) { module.exports.VRPath = root.VRPath; }
+})(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this));

@@ -701,10 +701,21 @@
         return out;
     }
 
+    /**
+     * 本页站名（页面级缓存；取不到返回空串，绝不回退域名）。
+     * 只在内容脚本里读 DOM，不写 storage —— 落库统一交给后台，
+     * 避免每个打开的页面都去读写整张 vrSiteNames 表。
+     */
+    function pageSiteNameNow() {
+        try {
+            var S = self.VRSiteName;
+            return S && S.pageSiteName ? String(S.pageSiteName(document, location.href) || '') : '';
+        } catch (e) { return ''; }
+    }
+
     function pageTitle(img) {
         var t = '';
-        /* 苏哥 2026-11-05：微博主页 document.title 是「@某某 的个人主页」，
-         * 下载下来的图全叫这个名字。优先用「这张图所在那条内容」的正文当标题。 */
+        /* 苏哥 2026-11-05：微博主页 document.title 是「@某某 的个人主页」，         * 下载下来的图全叫这个名字。优先用「这张图所在那条内容」的正文当标题。 */
         try {
             var card = nearestCard(img);
             if (card) {
@@ -797,6 +808,9 @@
         const pageUrl = location.href;
         const title = pageTitle(img);
         const who = pageAuthor(img);
+        /* 站名只在「有 DOM 的这一刻」拿得到：下载后重扫磁盘没有页面可读。
+         * 取不到就是空串，后台会按缓存 → 预置 → 域名依次回退，绝不拿域名冒充。 */
+        const siteName = pageSiteNameNow();
         const candidates = U.collectCandidates(img, document);
         if (!candidates.length) {
             hotkeyBusy = false;
@@ -818,6 +832,7 @@
                     url: url,
                     candidates: candidates,
                     pageUrl: pageUrl,
+                    siteName: siteName,
                     title: title,
                     authorFull: who.authorFull,
                     creatorId: who.creatorId
@@ -845,6 +860,7 @@
         const pageUrl = location.href;
         const title = pageTitle(img);
         const who = pageAuthor(img);
+        const siteName = pageSiteNameNow();
         const candidates = U.collectCandidates(img, document);
         if (!candidates.length) { flashFail('IMG_E_NO_URL'); return; }
 
@@ -868,6 +884,7 @@
                 url: url,
                 candidates: candidates,
                 pageUrl: pageUrl,
+                siteName: siteName,
                 title: title,
                 authorFull: who.authorFull,
                 creatorId: who.creatorId

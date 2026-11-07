@@ -393,13 +393,20 @@
         return { items: out.slice(0, max), total: Math.min(out.length, max), truncated, max };
     }
 
+    /** 本页站名（页面级缓存；取不到返回空串，绝不回退域名） */
+    function pageSiteNameNow() {
+        try {
+            var S = self.VRSiteName;
+            return S && S.pageSiteName ? String(S.pageSiteName(document, location.href) || '') : '';
+        } catch (e) { return ''; }
+    }
+
     /**
      * 跑队列（面板与「全部 N」共用）。
      * items: [{url, candidates, title}]，调用方负责截断与去重。
      * 返回 Promise<{ok, succeeded, fail, canceled}>，进度同时走底部进度条。
      */
-    function runQueue(items, opts) {
-        const list = Array.isArray(items) ? items.slice() : [];
+    function runQueue(items, opts) {        const list = Array.isArray(items) ? items.slice() : [];
         const o = opts || {};
         return new Promise(resolve => {
             if (!list.length) { resolve({ ok: true, succeeded: 0, fail: 0, canceled: false }); return; }
@@ -424,6 +431,7 @@
                     items: list,
                     pageUrl: location.href,
                     pageTitle: String(document.title || '').slice(0, 120),
+                    siteName: pageSiteNameNow(),
                     concurrency: concurrency,
                     batchId: batch.batchId
                 }, res => {

@@ -666,7 +666,9 @@
             url: it.orig || it.url,
             candidates: it.candidates,
             title: title,
-            pageUrl: pageUrl
+            pageUrl: pageUrl,
+            /* 扩展页面无网页 DOM：带 tabId 让后台注入取站名。 */
+            tabId: tabId
         });
 
         btn.disabled = false;
@@ -728,6 +730,9 @@
             items: payload,
             pageUrl: pageUrl,
             pageTitle: pageTitle,
+            /* 本页是扩展页面，读不到网页 DOM，拿不到站名。
+             * 带上 tabId，由后台注入目标页取一次站名并落库。 */
+            tabId: tabId,
             concurrency: Number(settings.imgConcurrency) || 3,
             batchId: batchId
         });

@@ -146,7 +146,10 @@ p1.then(r => {
     ok('VRPath 已加载', !!(V && typeof V.parseRelPath === 'function'));
 
     const noPrefix = V.parseRelPath('微博/weibo.com/视频/a.mp4');
-    eq('入库路径缺前缀 → platform 反解失败（对照）', noPrefix.platform, '');
+    /* 2026-11-07：站点段改为「允许出现在任意位置」，所以缺前缀时
+     * weibo.com 也能被认出来（旧实现返回空）。这属于更宽容的识别，
+     * 不是回归 —— 老结构里本来就不该出现这种路径，认出来比丢掉好。 */
+    eq('入库路径缺前缀 → 仍能认出站点', noPrefix.platform, 'weibo.com');
 
     const withPrefix = V.parseRelPath('video-rod/微博/weibo.com/视频/a.mp4');
     eq('补齐前缀后 platform 正确', withPrefix.platform, 'weibo');
@@ -162,7 +165,14 @@ p1.then(r => {
 
     const swSrc = require('fs').readFileSync(
         path.join(__dirname, '..', 'js', 'library', 'sw-library.js'), 'utf8');
-    ok('sw-library.ingestDirect 保留 mediaUrl', /mediaUrl:\s*m\.mediaUrl/.test(swSrc));
+    /* ingestDirect 的 mediaUrl 现在走 pickSourceUrl()：
+     * sourceUrl / mediaUrl 互为兜底，且 blob: 一律不落库（存进去是死键）。
+     * 断言随之改为「字段仍在 + 有兜底逻辑」，不再死抠 m.mediaUrl 字面量。 */
+    ok('sw-library.ingestDirect 保留 mediaUrl 字段', /mediaUrl:\s*pickSourceUrl\(/.test(swSrc));
+    ok('sw-library mediaUrl 与 sourceUrl 互为兜底',
+        /mediaUrl:\s*pickSourceUrl\(\s*m\.mediaUrl\s*\|\|\s*m\.sourceUrl/.test(swSrc));
+    ok('sw-library 过滤 blob 源（pickSourceUrl 只认 http）',
+        /function pickSourceUrl[\s\S]{0,400}\^https\?:\/i\.test/.test(swSrc));
 
     /* ---------------- 汇总 ---------------- */
     console.log(`\n${pass} 通过 / ${fails.length} 失败`);

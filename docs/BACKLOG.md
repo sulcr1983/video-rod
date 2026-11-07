@@ -106,7 +106,7 @@
 |---|---|---|---|
 | B-07 溯源元数据 | P0 待批 | ✅ **已实现** | `sw-library.js` / `save.js` 均写入 `pageUrl/mediaUrl/sourceUrl`；`indexer.mergeEntry` 白名单已含 `pageUrl/mediaUrl` 等，重建索引不再丢 |
 | B-08 查看器 GIF | P0 已批待施工 | ✅ **已实现** | `js/library/anim.js` 用原生实现逐帧/暂停/倍速/循环；不引 gifuct-js（离线优先） |
-| B-10 标签 UI | P0 待做 | ✅ **已实现** | `library.html#pvTagAdd` + `lightbox.js` 增删标签并落库；`patchFile({tags})` |
+| B-10 标签 UI | P0 待做 | ✅ **已实现（2026-11-07 补齐左栏）** | 详情页 `#pvTagAdd` + `lightbox.js` 增删；**左栏标签区（默认折叠成一行，点开就地展开）**：点击筛选、Ctrl 叠加取交集、计数徽标、悬停出改名/删除。数据层 `counts()/countsInScope()` 均产出 tags 计数 |
 | B-11 分辨率回写 | P0 有时间窗 | ✅ **已实现** | `thumbs.js` 写 `width/height`；实测库内 **39/39 条都有宽高** |
 | B-12 内容去重引用 | P0 已批待施工 | ✅ **已实现** | `js/library/dedup.js`：SHA-256 + `isRef/refOf` + 引用计数删除；`app.js` 有双口径统计 |
 | B-14 大库渲染 | P0 | 🟡 **部分实现** | 首屏 120 条 + 滚动追加（`PAGE=120`、`appendMore`）+ 缩略图 IntersectionObserver 懒加载；**但不是虚拟滚动**，DOM 仍随滚动增长。5 万条压测未做 |
@@ -153,3 +153,5 @@
 | 上述 2 处日志补强 | **未执行**：`js/background.js` 本轮被另一会话持有写权（`workspace.write_conflict`） | 待该会话释放后按本表补上，不改逻辑、只加一行带上下文的 `console.warn` |
 
 > 本轮对库页（`js/library/*.js`）新增的异常分支都带上下文日志或明确降级说明，未新增静默 `catch`。
+| B-30 | **站点名的真机交叉验证（自动抓取 vs 预置表）** | 已实测 10 个真实站点：花瓣网/知乎/豆瓣/GitHub/Pixso 靠抓取成功，Pixabay/Unsplash/Dribbble/Behance/500px 因 Cloudflare 或超时回退预置表。但还没在**扩展真机**（装进 Edge 后）复跑一遍，确认 service worker 的 fetch 与 Node 环境一致 | 扩展加载后打开 5 个站点各下载一次，看设置页「站点名称」是否出现真实站名（而非域名） | 真机走一遍，核对 vrSiteNames 实际写入内容与来源标记 |
+| B-31 | **预置表 381 条的站名准确性抽查** | 表内 host 与显示名的格式已全部校验通过，但「小众站点官方到底叫什么」没有逐条核实。错的显示名会直接变目录名 | 抽查 30 条（尤其中文小站）与官网对照 | 发现错误就改 `site-names-preset.js` 后跑 `node tools/check-site-names.js` |

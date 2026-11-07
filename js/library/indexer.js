@@ -248,13 +248,14 @@
         var parsed = {};
         try { parsed = (root.VRPath && root.VRPath.parseRelPath(relPath)) || {}; } catch (e) { parsed = {}; }
         var fileName = parsed.fileName || splitRel(relPath).pop() || '';
-        return {
+        var item = {
             relPath: relPath,
             absPath: absPath ? normAbs(absPath) : '',
             platform: parsed.platform || '',
             platformName: parsed.platformName || '',
             creatorFull: parsed.creatorFull || '',
             creatorId: parsed.creatorId || '',
+            part: parsed.part || '',
             type: parsed.type || (root.VRPath ? root.VRPath.typeOf({ fileName: fileName }) : ''),
             fileName: fileName,
             size: size || 0,
@@ -269,13 +270,71 @@
              * 下载/快照来源会按平台重新计算，不由旧值继承。 */
             untracked: 0
         };
+        /* 站点标识与显示名统一在这里落定（含老 'web' 条目的自动纠正）。
+         * 作者名完全靠目录推断 —— 重扫时没有网页可读，不能依赖抓取。 */
+        return resolveSite(item);
     }
 
+    /**
+     * 站点标识 → 显示名。
+     *
+     * 优先级（与目录层一致）：
+     *   站点字典（手改 / 预置 / 自动学习，含域名归一）
+     *   → 内置平台中文名（B站 / 小红书…）
+     *   → 标识本身（域名或平台 key）
+     *
+     * 这一步只读本地数据，**不发网络请求** —— 资源库重扫时页面早就关了，
+     * 靠抓取补名字是不可能的；名字要么来自目录，要么来自已存的学习结果。
+     */
     function platformNameOf(p) {
         if (!p) { return ''; }
+        var R = root.VRSiteRegistry;
+        if (R && typeof R.nameOf === 'function') {
+            try {
+                var n = R.nameOf(p);
+                if (n) { return n; }
+            } catch (e) { /* 落回下面的字典 */ }
+        }
         try {
             return (root.VRPath && root.VRPath.PLATFORM_DIR && root.VRPath.PLATFORM_DIR[p]) || p;
         } catch (e) { return p; }
+    }
+
+    /**
+     * 条目落定站点标识与显示名。
+     *
+     * 老数据里 platform 可能还是 'web'（当年没有站点概念），
+     * 这里按「路径里的站点段」重新识别一次：
+     *   其他网页/huaban.com/图片/a.jpg → platform=huaban.com, platformName=花瓣
+     * 这样历史素材重扫后自动归到正确站点，不需要手工迁移。
+     */
+    function resolveSite(item) {
+        var plat = String(item.platform || '');
+        var R = root.VRSiteRegistry;
+        var path = String(item.relPath || '');
+        var host = '';
+
+        /* 先从路径第三段/域名段找线索（parseRelPath 已解析到 siteHost） */
+        var parsed = {};
+        try { parsed = (root.VRPath && root.VRPath.parseRelPath(path)) || {}; } catch (e) { parsed = {}; }
+        if (parsed.siteHost) { host = parsed.siteHost; }
+
+        var isDomainLike = plat && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(plat);
+        if (!plat || plat === 'web') {
+            /* 老 'web' 或空：改用路径里的真实站点 */
+            if (host) { plat = host; }
+            else if (parsed.platform) { plat = parsed.platform; }
+        }
+        if (!plat) { return item; }
+
+        item.platform = plat;
+        /* 域名形式的标识：尽量换了人话名字 */
+        if (!item.platformName || item.platformName === 'web' || isDomainLike) {
+            item.platformName = platformNameOf(plat) || parsed.platformName || plat;
+        }
+        item.siteHost = isDomainLike ? plat : (host || '');
+        item.untracked = 0;
+        return item;
     }
 
     function baseName(p) {
@@ -443,13 +502,18 @@
             if (!relPath || skipRel(relPath) || splitRel(relPath).indexOf('..') !== -1) { continue; }
             var relFromRoot = (pfx && relPath.indexOf(pfx) === 0) ? relPath.slice(pfx.length) : relPath;
             var item = entryFromRel(relPath, (absRoot ? absRoot + '/' + relFromRoot : ''), f.size, f.mtime);
-            if (f.platform) { item.platform = f.platform; item.platformName = platformNameOf(f.platform); }
+            if (f.platform) {
+                /* 快照里的平台也走同一条解析：老快照可能存的是 'web'，
+                 * 直接赋值会把 entryFromRel 按目录推断出的站点又盖回去。 */
+                item.platform = f.platform;
+                item.platformName = platformNameOf(f.platform);
+                item = resolveSite(item);
+            }
             if (f.creatorId) { item.creatorId = f.creatorId; }
             if (f.type) { item.type = f.type; }
             if (f.fileName) { item.fileName = f.fileName; }
             item.starred = f.starred ? 1 : 0;
             item.tags = Array.isArray(f.tags) ? f.tags : [];
-            item.untracked = item.platform ? 0 : 1;
             out.push(item);
             if (onProgress && i % 100 === 0) {
                 onProgress({ phase: 'snapshot', done: i + 1, total: files.length });
@@ -503,13 +567,14 @@
                 if (!item.absPath && d.filename) { item.absPath = d.filename; }
                 var plat = '';
                 try { plat = root.VRPath ? root.VRPath.detectPlatform(d.referrer || d.finalUrl || d.url || '') : ''; } catch (e2) { plat = ''; }
-                if (plat && (plat !== 'web' || !item.platform)) {
+                if (plat && plat !== 'web') {
                     item.platform = plat;
                     item.platformName = platformNameOf(plat);
                 }
             }
-            item.untracked = item.platform ? 0 : 1;
-            if (item.untracked) { item.platformName = ''; }
+            /* 不再覆盖 untracked：resolveSite() 已按路径判过。
+             * 旧代码在这里用 `item.platform ? 0 : 1` 会把「路径里有站点、
+             * 但下载记录认不出」的素材错判成未整理。 */
             out.push(item);
             if (onProgress && i % 50 === 0) {
                 onProgress({ phase: 'full', done: i + 1, total: raw.length });
@@ -740,6 +805,11 @@
         errCode: errCode,
         // 测试用：只清内存，不动已落库的句柄
         _resetRoot: function () { memHandle = null; memRoot = ''; memPrefix = ''; },
-        _skipRel: skipRel
+        _skipRel: skipRel,
+        /* 测试用：暴露纯函数，便于在 Node 里验证「按目录推断站点/作者」。
+         * 生产代码不调用这两个。 */
+        _entryFromRel: entryFromRel,
+        _platformNameOf: platformNameOf,
+        _resolveSite: resolveSite
     };
 })(typeof self !== 'undefined' ? self : this);

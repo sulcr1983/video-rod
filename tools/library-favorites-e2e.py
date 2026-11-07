@@ -117,9 +117,8 @@ def main():
         reload()
 
         # 1. 新建收藏夹
+        # 收藏区已改平铺（2026-11-07）：输入框常驻，不再需要先点 favNewBtn 展开
         name0 = "E2E收藏-%d" % int(time.time())
-        c.ev("document.getElementById('favNewBtn').click();1", sid)
-        time.sleep(0.4)
         c.ev("(()=>{const i=document.getElementById('favNewInput');i.value=%s;return 1})()" % json.dumps(name0), sid)
         c.ev("document.getElementById('favNewOk').click();1", sid)
         time.sleep(0.8)

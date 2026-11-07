@@ -223,6 +223,14 @@
         document.addEventListener('dragend', cleanup, true);
     }
 
+    /** 本页站名（页面级缓存；取不到返回空串，绝不回退域名） */
+    function pageSiteNameNow() {
+        try {
+            var S = self.VRSiteName;
+            return S && S.pageSiteName ? String(S.pageSiteName(document, location.href) || '') : '';
+        } catch (e) { return ''; }
+    }
+
     async function saveOne(url) {
         const pageTitle = String(document.title || '').replace(/\s+/g, ' ').trim().slice(0, 60) || '图片';
         try {
@@ -232,7 +240,8 @@
                 url: url,
                 candidates: [url],
                 title: pageTitle,
-                pageUrl: location.href
+                pageUrl: location.href,
+                siteName: pageSiteNameNow()
             }, res => {
                 void chrome.runtime.lastError;
                 toast((res && res.ok) ? '已保存：' + pageTitle : '保存失败，换个方式试试');
@@ -313,6 +322,7 @@
                 })),
                 pageUrl: location.href,
                 pageTitle: pageTitle,
+                siteName: pageSiteNameNow(),
                 concurrency: 2,
                 batchId: 'box-' + Date.now()
             }, res => {

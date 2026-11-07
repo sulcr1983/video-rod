@@ -224,26 +224,73 @@ h1 .pill{
 .stat b{display:block;font-size:17px;font-weight:670;letter-spacing:-.3px;line-height:1.1}
 .stat span{display:block;font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap}
 
-/* 收藏夹下拉菜单（苏哥 2026-11-04：侧栏常驻没必要，一个菜单入口即可） */
-.fav-menu-wrap{position:relative}
+/* 收藏区平铺（只有 2 行）；标签区**默认折叠成一行**，点开就地展开。
+ * 2026-11-07 苏哥反馈：标签常驻会把左栏撑满，必须收起。 */
 .fav-side{position:relative;margin-top:8px}
-.fav-side-btn{
-  display:flex;align-items:center;gap:7px;width:100%;padding:8px 10px;border-radius:9px;
-  background:var(--surface-2);color:var(--ink-2);font-size:12px;font-weight:600;
+.tag-side{position:relative;margin-top:8px}
+
+/* 折叠条：一行高度，和收藏区视觉一致但不占列表空间 */
+.tag-toggle{
+  display:flex;align-items:center;gap:7px;width:100%;padding:8px 10px;
+  border-radius:9px;background:var(--surface-2);color:var(--ink-2);
+  font-size:12px;font-weight:600;text-align:left;
 }
-.fav-side-btn:hover{background:var(--surface-3);color:var(--ink)}
-.fav-side-btn b{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;color:var(--faint)}
-.fav-side-btn .chev{margin-left:2px}
-.fav-menu{
-  display:none;position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:600;width:auto;
-  background:var(--surface);border:1px solid var(--line);border-radius:12px;
-  box-shadow:var(--sh-3);padding:4px;
+.tag-toggle:hover{background:var(--surface-3);color:var(--ink)}
+.tag-toggle .tt-label{flex:1;min-width:0}
+.tag-toggle b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--faint)}
+/* 收起时也让你看见「正在筛哪几个标签」，否则筛完不知道自己在看什么 */
+.tag-toggle .tt-sel{
+  font-size:10px;padding:1px 6px;border-radius:99px;
+  background:var(--accent-soft);color:var(--accent);font-weight:600;
+  max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.fav-menu.on{display:block}
-.fav-menu .side-fav{border:0;padding:2px}
-.fav-menu .fav-head{padding:6px 8px 4px}
-.fav-menu #favList{max-height:264px;overflow-y:auto}
-.fav-menu .fav-new{margin:4px 6px}
+.tag-toggle .chev{transition:transform .16s var(--ease, ease)}
+.tag-side.open .tag-toggle .chev{transform:rotate(180deg)}
+.tag-side.open .tag-toggle{background:var(--surface-3);color:var(--ink)}
+
+/* 展开体：默认不占位 */
+.tag-body{display:none;padding-top:6px}
+.tag-side.open .tag-body{display:block}
+
+#favList{max-height:200px;overflow-y:auto}
+#tagList{max-height:240px;overflow-y:auto}
+.fav-side .fav-new,.tag-side .fav-new{margin:4px 2px}
+.tag-note{
+  padding:5px 2px 0;font-size:10px;line-height:1.5;color:var(--faint);
+}
+/* 标签行：复用 fav-row 的骨架，只把图标换成 # */
+.tag-row{
+  display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+  padding:6px 8px;border-radius:var(--r-sm);
+  color:var(--ink-2);font-size:12px;position:relative;
+  transition:background .12s,color .12s;
+}
+.tag-row:hover{background:var(--surface-2);color:var(--ink)}
+/* 多选高亮：选中用金色描边，和「唯一激活」的收藏夹区分开 */
+.tag-row.active{background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.tag-row.active::before{
+  content:"";position:absolute;left:0;top:6px;bottom:6px;width:2px;
+  border-radius:2px;background:var(--accent);
+}
+.tag-row .hash{
+  font-family:var(--font-mono);font-size:11px;color:var(--faint);flex:0 0 auto;
+}
+.tag-row.active .hash{color:var(--accent)}
+.tag-row .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag-row .count{
+  font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums;
+  padding:0 5px;border-radius:99px;background:var(--surface-3);flex:0 0 auto;
+}
+.tag-row.active .count{background:var(--accent-soft);color:var(--accent)}
+/* 行尾的改名/删除：默认隐藏，悬停才出，避免左栏一片按钮 */
+.tag-row .tag-act{
+  flex:0 0 18px;width:18px;height:18px;display:none;place-items:center;
+  border-radius:4px;color:var(--faint);
+}
+.tag-row:hover .tag-act{display:grid}
+.tag-row .tag-act:hover{background:var(--surface-3);color:var(--ink)}
+.tag-row .tag-act.danger:hover{color:var(--danger)}
+.tag-empty{padding:8px 9px;font-size:11px;color:var(--faint)}
 
 /* 工具栏 */
 .toolbar{
@@ -1424,6 +1471,10 @@ a.pi-item:hover dd .go{opacity:1}
 /* 新建：内联输入，像文件管理器，不用弹窗 */
 .fav-new{display:none;align-items:center;gap:5px;padding:3px 6px}
 .fav-new.on{display:flex}
+/* 平铺模式下新建框必须常驻可见：原来靠「+」按钮切 .on 才展开，
+ * 那个按钮在平铺改造中被移除，若不同步这里，用户就再也新建不了收藏/标签。
+ * （实机上曾出现：元素存在但 display:none，脚本能赋值成功、人却看不见。） */
+.fav-side .fav-new,.tag-side .fav-new{display:flex}
 .fav-new input{
   flex:1;min-width:0;height:26px;padding:0 7px;font-size:11.5px;
   border:1px solid var(--accent);border-radius:6px;outline:none;
@@ -1651,6 +1702,10 @@ kbd{
 .tree-node.lv2 .ix{color:var(--faint);font-size:10px;min-width:32px}
 .tree-node.lv2{padding-left:28px}
 .tree-node.lv2::after{left:-4px}
+/* 2026-11-07 站点分组：「其他站点」是一个收纳节点，其成员缩进一级 */
+.tree-node.plat.group .ix{color:var(--faint)}
+.tree-node.plat.nested{padding-left:30px}
+.tree-node.plat.nested .ix{min-width:0;font-size:9.5px}
 /* ================= 苏哥 2026-11-04 二轮：标题行收纳一切 ================= */
 /* 致命伤修复：pagehead flex 下 ph-left 不撑满，整个标题区只占半屏宽，
    右上角按钮/搜索框全挤在屏幕中间。flex:1 后右边缘与 toolbar 对齐 */

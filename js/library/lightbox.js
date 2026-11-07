@@ -19,13 +19,18 @@
         return Math.round(n * 1024) + ' KB';
     }
 
-    var PLAT = {
-        x: { label: 'X', dot: '#8FA0B8' }, xiaohongshu: { label: '小红书', dot: '#FF2442' },
-        douyin: { label: '抖音', dot: '#25C8D4' }, weibo: { label: '微博', dot: '#E6506D' },
-        youtube: { label: 'YouTube', dot: '#FF0000' }, instagram: { label: 'Instagram', dot: '#C13584' },
-        bilibili: { label: 'B站', dot: '#FB7299' }, tiktok: { label: 'TikTok', dot: '#25F4EE' },
-        web: { label: '网页', dot: '#8B93A1' }, untracked: { label: '未整理', dot: '#C9A227' }
+    /* 只保留「已知平台的品牌色点」。
+     * 显示名一律走 platLabel()（站点字典：手改 > 预置 > 自动学习 > 域名），
+     * 这里不再维护第二份名称，避免两处文案漂移
+     * （2026-11-07：此前 lightbox / app / ui / path 各有一份 PLAT 字典）。 */
+    var PLAT_DOT = {
+        x: '#8FA0B8', xiaohongshu: '#FF2442',
+        douyin: '#25C8D4', weibo: '#E6506D',
+        youtube: '#FF0000', instagram: '#C13584',
+        bilibili: '#FB7299', tiktok: '#25F4EE',
+        web: '#8B93A1', untracked: '#C9A227'
     };
+    function dotOf(key) { return PLAT_DOT[key] || PLAT_DOT.web; }
     var KIND_LABEL = { video: '视频', image: '图片', anim: '动图', audio: '音频', other: '其他' };
 
     var S = { list: [], idx: 0, info: true, auto: true, rate: 1 };
@@ -129,6 +134,8 @@
             'pvAuthorRow', 'pvAvatar', 'pvAuthor', 'pvOpenTop', 'pvFav', 'pvStar', 'pvStateRow', 'pvState',
             'st1v', 'st2v', 'st3v', 'pvThirdRow', 'pvThirdK', 'pvThirdV',
             'pvSaved', 'pvPath', 'pvPathCopy', 'pvSrcBadge', 'pvPageRow', 'pvPageVal',
+            'pvHashRow', 'pvHashVal', 'pvHashCopy', 'pvRefRow', 'pvRefVal',
+            'pvRefFold', 'pvRefCount', 'pvRefItems',
             'pvSrcMiss', 'pvWorkId', 'pvTags',
             /* 这几项原先没进 cache：直链行因此永远显示默认「—」，同作者永远 0 项 */
             'pvStageEl', 'pvMediaRow', 'pvMediaVal', 'pvMoreCount', 'pvMoreGrid',
@@ -334,9 +341,22 @@
         }
     }
 
+    /** 站点显示名：统一走站点字典，未收录才回落内置表 */
+    function platLabel(key) {
+        var R = root.VRSiteRegistry;
+        if (R && typeof R.nameOf === 'function') {
+            try {
+                var n = R.nameOf(key);
+                if (n) { return n; }
+            } catch (e) { /* 落回内置表 */ }
+        }
+        var d = PLAT_DOT[key];
+        return (d && (d.label || d.name)) || key || '网页';
+    }
+
     function paintInfo(f) {
-        var p = PLAT[f.plat] || PLAT.web;
-        if (el.pvCrumb) { el.pvCrumb.innerHTML = '<b>' + esc(p.label) + '</b> / ' + esc(f.author || '未分类'); }
+        var p = { dot: dotOf(f.plat) };
+        if (el.pvCrumb) { el.pvCrumb.innerHTML = '<b>' + esc(platLabel(f.plat)) + '</b> / ' + esc(f.author || '未分类'); }
         setTxt('pvCount', (S.idx + 1) + ' / ' + S.list.length);
         setTxt('pvType', (KIND_LABEL[f.kind] || '媒体').toUpperCase());
         setTxt('pvTitle', f._title || f.title);
@@ -357,7 +377,7 @@
         }
 
         if (el.pvPlat) {
-            el.pvPlat.innerHTML = '<i class="dot" style="--pc:' + p.dot + '"></i>' + esc(p.label) + ' · ' + (KIND_LABEL[f.kind] || '');
+            el.pvPlat.innerHTML = '<i class="dot" style="--pc:' + p.dot + '"></i>' + esc(platLabel(f.plat)) + ' · ' + (KIND_LABEL[f.kind] || '');
         }
         if (el.pvAuthorRow) {
             var hasAuthor = !!f.author;
@@ -386,6 +406,40 @@
         }
         setTxt('pvSaved', f.savedAt || '—');
         setTxt('pvPath', f.relPath);
+        /* 存储指纹与引用：去重是这个库的护城河，但此前详情页完全看不到。
+         * sha256/isRef 数据层早就有，这里只补渲染，不改写入语义。 */
+        var hash = String(f.sha256 || '');
+        if (el.pvHashRow) { el.pvHashRow.classList.toggle('hidden', !hash); }
+        if (el.pvHashVal) {
+            el.pvHashVal.textContent = hash ? hash.slice(0, 12) : '—';
+            el.pvHashVal.title = hash || '';
+        }
+        var peers = [];
+        if (hash && root.VRApp && root.VRApp.getFiles) {
+            try {
+                peers = root.VRApp.getFiles().filter(function (x) { return x.sha256 === hash; });
+            } catch (e) { peers = []; }
+        }
+        var refs = peers.length > 1 ? peers.length - 1 : 0;
+        if (el.pvRefVal) {
+            el.pvRefVal.textContent = hash
+                ? (refs ? (refs + ' 条同内容引用（物理只存一份）') : '无同内容副本')
+                : '—';
+        }
+        if (el.pvRefFold) {
+            el.pvRefFold.classList.toggle('hidden', !refs);
+            setTxt('pvRefCount', refs);
+            if (el.pvRefItems) {
+                var others = peers.filter(function (x) { return x.relPath !== f.relPath; });
+                el.pvRefItems.innerHTML = others.map(function (x) {
+                    var pp = { dot: dotOf(x.plat) };
+                    return '<button class="pv-ref-item" data-rel="' + esc(x.relPath) + '">' +
+                        '<span class="ri-plat" style="--pc:' + pp.dot + '">' + esc(platLabel(x.plat)) + '</span>' +
+                        '<span class="ri-title">' + esc(x._title || x.title || x.relPath) + '</span>' +
+                        '<span class="ri-go">打开</span></button>';
+                }).join('');
+            }
+        }
         show('pvStateRow', f.state === 'missing');
         setTxt('pvState', f.state === 'missing' ? '文件缺失' : '正常');
 
@@ -691,6 +745,28 @@
                 }).catch(function () {
                     if (root.VRApp) { root.VRApp.toast('复制失败：窗口没聚焦或没给剪贴板权限'); }
                 });
+            });
+        }
+        if (el.pvHashCopy) {
+            el.pvHashCopy.addEventListener('click', function () {
+                var f = S.list[S.idx]; if (!f || !f.sha256) { return; }
+                navigator.clipboard.writeText(f.sha256).then(function () {
+                    if (root.VRApp) { root.VRApp.toast('SHA-256 已复制'); }
+                }).catch(function () {
+                    if (root.VRApp) { root.VRApp.toast('复制失败：窗口没聚焦或没给剪贴板权限'); }
+                });
+            });
+        }
+        /* 引用来源：点一条直接跳到那条素材（物理只存一份，但两条来源都该能回看） */
+        if (el.pvRefItems) {
+            el.pvRefItems.addEventListener('click', function (e) {
+                var b = e.target.closest('.pv-ref-item'); if (!b) { return; }
+                var rel = b.getAttribute('data-rel');
+                var all = [];
+                try { all = (root.VRApp && root.VRApp.getFiles) ? root.VRApp.getFiles() : []; } catch (err) { all = []; }
+                var t = null;
+                for (var i = 0; i < all.length; i++) { if (all[i].relPath === rel) { t = all[i]; break; } }
+                if (t) { open(t, all); }
             });
         }
 
