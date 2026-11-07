@@ -29,6 +29,11 @@
     var CDN = {
         large: 'https://wx3.sinaimg.cn/large/',
         original: 'https://wx3.sinaimg.cn/original/',
+        mw2000: 'https://wx3.sinaimg.cn/mw2000/',
+        mw690: 'https://wx3.sinaimg.cn/mw690/',
+        bmiddle: 'https://wx3.sinaimg.cn/bmiddle/',
+        orj360: 'https://wx3.sinaimg.cn/orj360/',
+        thumbnail: 'https://wx3.sinaimg.cn/thumbnail/',
         thumb: 'https://wx3.sinaimg.cn/orj360/'
     };
 
@@ -52,19 +57,56 @@
      */
     var TIER_ORDER = ['large', 'original'];
 
-    /** 档位名 → URL 前缀（large 优先；original 是实测等价的备份） */
+    /**
+     * 用户可选的「大 / 中 / 小」。
+     *
+     * 2026-11-07 实测同一个 pid 在各前缀下的真实尺寸（img.naturalWidth）：
+     *   large / original / mw2000 / mw1024 / orj960 → 744×913   ← 都是原图
+     *   mw690 / oslarge                             → 690×847
+     *   bmiddle                                     → 440×540
+     *   orj360                                      → 360×442
+     *   thumbnail                                   → 98×120
+     * 所以三档取「原图 / 440 / 360」，既区分得开、也都是真实存在的目录。
+     * 每档自带备份前缀：某个前缀偶发取不到时往同档下一个退，不会掉到别的尺寸。
+     */
+    var SIZE_TIERS = {
+        big: ['large', 'original', 'mw2000'],
+        mid: ['bmiddle', 'mw690'],
+        small: ['orj360', 'thumbnail']
+    };
+    var SIZE_ORDER = ['big', 'mid', 'small'];
+
+    /** 档位名 → URL 前缀；未知档位退回 large（绝不拼出空地址） */
     function tierPrefix(tier) {
-        if (tier === 'original') { return CDN.original; }
-        return CDN.large;
+        return CDN[tier] || CDN.large;
+    }
+
+    /** 某个尺寸档包含哪些前缀；未指定时按最大档 */
+    function tiersOfSize(size) {
+        return (SIZE_TIERS[size] || SIZE_TIERS.big).slice();
     }
 
     /**
-     * 由 pid 构造候选链；可指定首选档位（探测结果）。
-     * 指定档位排第一，其余按 TIER_ORDER 补齐，不丢任何一级。
+     * 由 pid 构造候选链。
+     *
+     * @param {string} pid
+     * @param {string} [firstTier] 探测出的首选档位，提到最前
+     * @param {string} [size]      'big' | 'mid' | 'small'，限定在该尺寸档内
+     *
+     * 指定 size 时**只在该档内回退**：用户选了「小」就是要省空间，
+     * 若失败还回退到原图，体积反而更大，等于把选择权骗走了。
      */
-    function candidates(pid, firstTier) {
-        var lead = TIER_ORDER.indexOf(firstTier) >= 0 ? firstTier : TIER_ORDER[0];
-        var order = [lead].concat(TIER_ORDER.filter(function (t) { return t !== lead; }));
+    function candidates(pid, firstTier, size) {
+        var order;
+        if (size && SIZE_TIERS[size]) {
+            order = SIZE_TIERS[size].slice();
+            if (firstTier && order.indexOf(firstTier) >= 0) {
+                order = [firstTier].concat(order.filter(function (t) { return t !== firstTier; }));
+            }
+        } else {
+            var lead = TIER_ORDER.indexOf(firstTier) >= 0 ? firstTier : TIER_ORDER[0];
+            order = [lead].concat(TIER_ORDER.filter(function (t) { return t !== lead; }));
+        }
         return order.map(function (t) { return tierPrefix(t) + pid + '.jpg'; });
     }
 
@@ -122,11 +164,16 @@
      * @param {string[]} [tiers] 默认 TIER_ORDER
      * @returns {Promise<{tier:string, ok:boolean, tried:number, probes:Array}>}
      */
-    async function probeTiers(pid, fetchFn, tiers) {
-        var order = Array.isArray(tiers) && tiers.length ? tiers : TIER_ORDER;
+    async function probeTiers(pid, fetchFn, tiers, size) {
+        /* 指定 size 时只在**该尺寸档内**探测：用户选「小」就不该把原图
+         * 当作备选悄悄下回去（体积更大，等于把选择权骗走）。 */
+        var order = Array.isArray(tiers) && tiers.length
+            ? tiers
+            : (size ? tiersOfSize(size) : TIER_ORDER);
         var probes = [];
+        var fallback = order[0] || TIER_ORDER[0];
         if (!pid || typeof fetchFn !== 'function') {
-            return { tier: TIER_ORDER[0], ok: false, tried: 0, probes: probes };
+            return { tier: fallback, ok: false, tried: 0, probes: probes };
         }
         for (var i = 0; i < order.length; i++) {
             var tier = order[i];
@@ -445,23 +492,25 @@
      * @param {string} [firstTier] 探测出的可用档位，作为每条的首选地址
      * @returns {Array} 条目数组
      */
-    function buildItems(collected, meta, firstTier) {
+    function buildItems(collected, meta, firstTier, size) {
         var m = meta || {};
         var lead = firstTier || TIER_ORDER[0];
         var arr = Array.isArray(collected) ? collected : [];
         var out = [];
         var seen = Object.create(null);
+        var sizeKey = (size && SIZE_TIERS[size]) ? size : '';
         for (var i = 0; i < arr.length; i++) {
             var it = arr[i];
             if (!it || !it.pid) { continue; }
             if (seen[it.pid]) { continue; }        // 翻页边界重复只收一次
             seen[it.pid] = 1;
-            var cands = candidates(it.pid, lead);
+            var cands = candidates(it.pid, lead, sizeKey);
             out.push({
                 site: 'weibo',
                 kind: 'image',
                 mediaId: it.pid,
                 ext: 'jpg',
+                size: sizeKey || 'big',
                 url: cands[0],
                 urls: cands,
                 thumb: thumbOf(it.pid),
@@ -483,6 +532,9 @@
         thumbOf: thumbOf,
         pidOf: pidOf,
         TIER_ORDER: TIER_ORDER,
+        SIZE_TIERS: SIZE_TIERS,
+        SIZE_ORDER: SIZE_ORDER,
+        tiersOfSize: tiersOfSize,
         tierPrefix: tierPrefix,
         candidates: candidates,
         candidatesFromUrl: candidatesFromUrl,

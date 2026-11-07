@@ -71,6 +71,58 @@ eq('A19 非 sinaimg 原样单元素', A.candidatesFromUrl('https://example.com/a
     ['https://example.com/a/b.jpg']);
 eq('A20 空输入空数组', A.candidatesFromUrl(''), []);
 
+/* ---------- A2. 尺寸档（大/中/小，苏哥 2026-11-07 要求可选） ---------- */
+/* 真实尺寸实测（同一 pid，img.naturalWidth）：
+ *   large/original/mw2000 → 744×913（原图）
+ *   bmiddle               → 440×540
+ *   orj360                → 360×442
+ *   thumbnail             → 98×120
+ */
+eq('A21 三档顺序', A.SIZE_ORDER, ['big', 'mid', 'small']);
+{
+    const b = A.candidates(PI, 'large', 'big');
+    ok('A22 大档首选 large', b[0].indexOf('/large/') > 0);
+    ok('A23 大档含 original 备份', b.some((u) => u.indexOf('/original/') > 0));
+    ok('A24 大档含 mw2000 备份', b.some((u) => u.indexOf('/mw2000/') > 0));
+}
+{
+    const m = A.candidates(PI, 'bmiddle', 'mid');
+    ok('A25 中档首选 bmiddle', m[0].indexOf('/bmiddle/') > 0);
+    ok('A26 中档不越级到原图', !m.some((u) => /\/large\/|\/original\//.test(u)));
+}
+{
+    const s = A.candidates(PI, 'orj360', 'small');
+    ok('A27 小档首选 orj360', s[0].indexOf('/orj360/') > 0);
+    /* 关键：选「小」若失败回退到原图，体积反而更大，等于把选择权骗走 */
+    ok('A28 小档绝不回退到原图', !s.some((u) => /\/large\/|\/original\/|\/mw2000\//.test(u)));
+}
+{
+    const s = A.candidates(PI, 'nonexistent', 'small');
+    ok('A29 非法首选仍留在本尺寸档', s[0].indexOf('/orj360/') > 0);
+}
+{
+    const x = A.candidates(PI, 'large', 'nope');
+    ok('A30 未知尺寸档退回大档行为', x[0].indexOf('/large/') > 0);
+    eq('A31 未知尺寸档仍是两级链', x.length, 2);
+}
+{
+    eq('A32 tiersOfSize(big) 覆盖原图三前缀', A.tiersOfSize('big'), ['large', 'original', 'mw2000']);
+    eq('A33 tiersOfSize(mid)', A.tiersOfSize('mid'), ['bmiddle', 'mw690']);
+    eq('A34 tiersOfSize(small)', A.tiersOfSize('small'), ['orj360', 'thumbnail']);
+    eq('A35 tiersOfSize 未知退回大档', A.tiersOfSize('nope'), ['large', 'original', 'mw2000']);
+}
+{
+    const items = A.buildItems([{ pid: 'p1' }], { author: 'a' }, 'orj360', 'small');
+    ok('A36 buildItems 带 size 时用该档前缀', items[0].url.indexOf('/orj360/') > 0);
+    eq('A37 buildItems 记录所选尺寸档', items[0].size, 'small');
+    ok('A38 该尺寸下候选链不越级', !items[0].urls.some((u) => /\/large\//.test(u)));
+}
+{
+    const items = A.buildItems([{ pid: 'p1' }], { author: 'a' }, 'large');
+    eq('A39 不传 size 时默认大档', items[0].size, 'big');
+    ok('A40 不传 size 时用 large', items[0].url.indexOf('/large/') > 0);
+}
+
 /* ---------- B. 条目收集（不再按月分桶） ---------- */
 {
     const out = [];

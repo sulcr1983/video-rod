@@ -38,6 +38,9 @@
     let phase = 'idle';             // idle | scanning | done | stopped | error
     let collected = [];             // [{pid, mid}]，按接口顺序（时间倒序）
     let picked = new Set();         // 已勾选的 pid
+    /* 尺寸档：big=原图 / mid≈440 / small≈360（实测见 weibo-album-core.js）。
+     * 用户 2026-11-07 反馈「不可选大中小」，此前是后台自动探测、用户无从选择。 */
+    let sizeTier = 'big';
     let pageCount = 0;
     let errText = '';
     let busyDownload = false;
@@ -215,13 +218,14 @@
 
     function buildItems(firstTier) {
         /* 条目构造放在 VRWeiboAlbum 里（Node 单测覆盖字段形状）：
-         * 这里只负责「当前选中的 pid + 当前博主的身份」。 */
+         * 这里只负责「当前选中的 pid + 当前博主的身份」。
+         * sizeTier 一并传下去：它决定候选链用哪一档前缀，而不是探测结果说了算。 */
         const chosen = collected.filter((it) => picked.has(it.pid));
         return A.buildItems(chosen, {
             author: author,
             authorId: uid,
             pageUrl: 'https://weibo.com/u/' + uid
-        }, firstTier);
+        }, firstTier, sizeTier);
     }
 
     /** 取一个样本 pid（选中的第一条），供档位探测 */
@@ -241,7 +245,8 @@
      * 「Chrome UA 且无 Referer」返回 403）。只读响应头，读完立即 cancel body。
      */
     async function probePreferredTier(pid) {
-        if (!pid) { return { tier: 'oslarge', ok: false, tried: 0 }; }
+        var fallbackTier = (A.tiersOfSize ? A.tiersOfSize(sizeTier)[0] : 'large');
+        if (!pid) { return { tier: fallbackTier, ok: false, tried: 0 }; }
         try {
             return await A.probeTiers(pid, async (url) => {
                 const ctrl = new AbortController();
@@ -263,9 +268,9 @@
                 } finally {
                     clearTimeout(timer);
                 }
-            });
+            }, null, sizeTier);
         } catch (e) {
-            return { tier: 'oslarge', ok: false, tried: 0 };
+            return { tier: fallbackTier, ok: false, tried: 0 };
         }
     }
 
@@ -388,6 +393,17 @@
             '.vr-wb-range button.vr-primary{background:#E8B04B;border-color:#E8B04B;',
             'color:#17130D;font-weight:600}',
             '.vr-wb-range button.vr-primary:hover{background:#F2C46E;color:#17130D}',
+            /* 尺寸档：大/中/小三段，默认「大」。
+               用户 2026-11-07 反馈「不可选大中小」——此前尺寸由后台自动探测，
+               用户完全无从选择，面板上也没有任何相关控件。 */
+            '.vr-wb-size{padding:9px 12px;border-bottom:1px solid #211E1A;background:#141210;',
+            'display:flex;flex-wrap:wrap;gap:6px;align-items:center}',
+            '.vr-wb-size-lab{color:#8C8478;font-size:11px;margin-right:2px}',
+            '.vr-wb-size button{border:1px solid #2B2620;background:#1F1C18;color:#C8C0B2;',
+            'border-radius:7px;padding:5px 9px;cursor:pointer;font-size:11px;font-variant-numeric:tabular-nums}',
+            '.vr-wb-size button:hover{border-color:#4A3A1D;color:#E8B04B}',
+            '.vr-wb-size button.on{background:#2C2418;border-color:#E8B04B;color:#E8B04B;font-weight:600}',
+            '.vr-wb-size[disabled] button{opacity:.55;cursor:not-allowed}',
             /* 块二：图片列表 */
             '.vr-wb-list{overflow:auto;flex:1;padding:4px 10px}',
             '.vr-wb-row{display:flex;gap:8px;align-items:center;padding:9px 4px;',
@@ -424,12 +440,18 @@
         panel = document.createElement('div');
         panel.className = 'vr-wb-panel';
         panel.innerHTML =
-            '<div class="vr-wb-head"><span>相册备份（按月）</span>' +
+            '<div class="vr-wb-head"><span>相册备份</span>' +
             '<span class="vr-wb-close" title="关闭">×</span></div>' +
             '<div class="vr-wb-range">' +
             '<label>最多取 <input type="number" data-k="limit" min="1" max="5000" step="50"></label> 张' +
             '<button type="button" data-act="scan" class="vr-primary">开始扫描</button>' +
             '<button type="button" data-act="stop">停止</button>' +
+            '</div>' +
+            '<div class="vr-wb-size">' +
+            '<span class="vr-wb-size-lab">尺寸</span>' +
+            '<button type="button" data-size="big" class="on">大 · 原图</button>' +
+            '<button type="button" data-size="mid">中 · 440</button>' +
+            '<button type="button" data-size="small">小 · 360</button>' +
             '</div>' +
             '<div class="vr-wb-list"></div>' +
             '<div class="vr-wb-foot">' +
@@ -449,6 +471,29 @@
         if (limitInput) { limitInput.value = String(DEFAULT_LIMIT); }
 
         panel.querySelector('.vr-wb-close').addEventListener('click', () => setOpen(false));
+
+        /* 尺寸档切换：只改「下载时用哪个前缀」，不影响已扫描到的 pid。
+         * 扫描中禁止切换 —— 中途换档会让同批文件尺寸不一致，用户很难察觉。 */
+        var sizeBox = panel.querySelector('.vr-wb-size');
+        function paintSize() {
+            if (!sizeBox) { return; }
+            [].forEach.call(sizeBox.querySelectorAll('button[data-size]'), (b) => {
+                b.classList.toggle('on', b.getAttribute('data-size') === sizeTier);
+            });
+        }
+        if (sizeBox) {
+            sizeBox.addEventListener('click', (e) => {
+                var b = e.target && e.target.closest && e.target.closest('button[data-size]');
+                if (!b) { return; }
+                if (phase === 'scanning') { setStatus('扫描中不能改尺寸，等扫完再切'); return; }
+                var v = b.getAttribute('data-size');
+                if (A.SIZE_ORDER.indexOf(v) < 0) { return; }
+                sizeTier = v;
+                paintSize();
+                render();
+            });
+        }
+        paintSize();
 
         panel.addEventListener('click', (e) => {
             const act = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
@@ -479,9 +524,20 @@
 
     function setOpen(v) {
         if (!panel) { return; }
+        /* 与「批量下载」面板互斥：两个都是全高右栏、同一 z-index，
+         * 同时打开会叠在一起互相遮挡（用户 2026-11-07 反馈「同时弹出 2 个页面」）。 */
+        if (v) { closeBulkPanel(); }
         panel.classList.toggle('vr-open', !!v);
         if (btn) { btn.hidden = !!v; }
         if (v) { render(); }
+    }
+
+    /** 关掉「批量下载」面板（点它自己的关闭按钮，避免两处状态不同步） */
+    function closeBulkPanel() {
+        const other = document.querySelector('.vr-bulk-panel.vr-open');
+        if (!other) { return; }
+        const c = other.querySelector('.vr-bulk-close');
+        if (c) { c.click(); }
     }
 
     /** 非个人主页时隐藏浮标与面板（SPA 切走也立即收起） */

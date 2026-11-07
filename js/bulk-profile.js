@@ -363,9 +363,21 @@
 
         function setBulkOpen(v) {
             open = !!v;
+            /* 与「相册备份」面板互斥：两个都是全高右栏、同一 z-index，
+             * 同时打开会叠在一起互相遮挡（用户 2026-11-07 反馈「同时弹出 2 个页面」）。
+             * 这里只做「打开前先关掉对方」，不改对方任何行为。 */
+            if (open) { closeWeiboAlbumPanel(); }
             panel.classList.toggle('vr-open', open);
             btn.style.display = open ? 'none' : '';
             if (open) { renderList(); }
+        }
+
+        /** 关掉微博相册备份面板（点它自己的关闭按钮，避免两处状态不同步） */
+        function closeWeiboAlbumPanel() {
+            const other = document.querySelector('.vr-wb-panel.vr-open');
+            if (!other) { return; }
+            const c = other.querySelector('.vr-wb-close');
+            if (c) { c.click(); }
         }
 
         panel = document.createElement('div');
