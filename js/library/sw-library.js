@@ -74,6 +74,23 @@
         });
     }
 
+    /* ---------- 来源字段 ---------- */
+
+    /**
+     * 挑一个「可作为查重键」的 URL。
+     *
+     * 为什么不能直接用 downloads 记录的 url：blob: 只有本次会话有效，
+     * 写进库后以后永远查不到重复（历史库里的 `blob:chrome-extension://…`
+     * 就是这么来的）。所以预登记 meta 的 http(s) 源优先，blob 一律丢弃。
+     */
+    function pickSourceUrl(metaUrl, dlUrl) {
+        var m = String(metaUrl || '').trim();
+        if (/^https?:/i.test(m)) { return m; }
+        var d = String(dlUrl || '').trim();
+        if (/^https?:/i.test(d)) { return d; }
+        return m || '';      // meta 里的 data:/其它非 http 源仍保留，便于人工追溯
+    }
+
     /* ---------- 相对路径换算 ---------- */
 
     function getRoot() {
@@ -136,10 +153,10 @@
             size: Number(m.size) || 0,
             mtime: Number(m.mtime) || Date.now(),
             mime: m.mime || '',
-            sourceUrl: m.sourceUrl || '',
-            /* mediaUrl 是查重的关键字段之一（另一个是 sourceUrl）。
-             * 漏掉它会让 vrFindExistingMedia 拿空串比对，永远查不到重复。 */
-            mediaUrl: m.mediaUrl || '',
+            /* sourceUrl / mediaUrl 都是查重键：只填了其中一个也要能命中，
+             * 所以互为兜底；blob: 一律不落库（存进去就是死键）。 */
+            sourceUrl: pickSourceUrl(m.sourceUrl || m.mediaUrl, ''),
+            mediaUrl: pickSourceUrl(m.mediaUrl || m.sourceUrl, ''),
             pageUrl: m.pageUrl || '',
             title: m.title || '',
             downloadId: 0,
@@ -214,7 +231,9 @@
                 size: d.fileSize || d.totalBytes || 0,
                 mtime: d.endTime ? Date.parse(d.endTime) : Date.now(),
                 mime: d.mime || '',
-                sourceUrl: d.url || '',
+                /* 预登记 meta 的 http(s) 源优先：d.url 可能是 blob:（B站/抖音合成、
+                 * 离屏 fetch 中转），写进库就是死键，以后永远查不到重复。 */
+                sourceUrl: pickSourceUrl(m.sourceUrl, d.url),
                 pageUrl: m.pageUrl || '',
                 title: m.title || '',
                 downloadId: d.id,

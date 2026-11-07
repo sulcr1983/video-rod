@@ -222,6 +222,65 @@
         });
     }
 
+    /* ---------- 绝对路径回填（内容指纹去重要用） ---------- */
+
+    var absRootCache = null;      // { prefix, path }；prefer 变化时随之重算
+
+    /**
+     * 「根句柄所在那一层」的绝对路径。
+     *
+     * 为什么需要：指纹去重靠 `VRPath.toFileUrl(absPath)` 读文件，
+     * FSA 直写原先入库时 `absPath: ''`，`dedup.hashFile` 直接返回空串
+     * → 内容级去重从未真正执行（2026-11-07 定位）。这里把句柄层路径补回去。
+     *
+     * 口径与 indexer 的 absRoot 一致：system 模式 = detectedRoot/subdir；
+     * custom 模式 = customRoot（自选文件夹可能拿不到绝对路径，此时返回空，
+     * 由调用方退化为「无指纹」，绝不伪造路径）。
+     *
+     * @param {string} prefix 句柄所在层的名字（rootPrefix / subdir）
+     * @returns {Promise<string>} 不带尾斜杠；拿不到为空串
+     */
+    function resolveAbsRoot(prefix) {
+        var pfx = String(prefix || '').replace(/^\/+|\/+$/g, '');
+        if (absRootCache && absRootCache.prefix === pfx) {
+            return Promise.resolve(absRootCache.path);
+        }
+        return new Promise(function (resolve) {
+            var finish = function (v) {
+                var path = String(v || '').replace(/\\/g, '/').replace(/\/+$/, '');
+                absRootCache = { prefix: pfx, path: path };
+                resolve(path);
+            };
+            var fromSettings = function (st) {
+                st = st || {};
+                if ((st.mode || 'system') === 'custom') { return finish(st.customRoot || ''); }
+                var base = String(st.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+                if (!base) { return finish(''); }
+                var sub = pfx || String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '') || 'video-rod';
+                finish(base + '/' + sub);
+            };
+            var readSettings = function () {
+                try {
+                    var storage = root.chrome && root.chrome.storage && root.chrome.storage.local;
+                    if (!storage) { return fromSettings(null); }
+                    storage.get('vrLibSettings', function (o) {
+                        fromSettings(o && o.vrLibSettings);
+                    });
+                } catch (e) { fromSettings(null); }
+            };
+            /* rootAbs 是索引器落定的「句柄层」绝对路径，最准；没有再按设置推 */
+            var db = root.VRDB;
+            if (db && typeof db.getSetting === 'function') {
+                db.getSetting('rootAbs', '').then(function (v) {
+                    if (v) { finish(v); return; }
+                    readSettings();
+                }).catch(readSettings);
+                return;
+            }
+            readSettings();
+        });
+    }
+
     /**
      * 探测可用通道。
      *
@@ -463,11 +522,18 @@
      * 入库（FSA 直写没有下载事件，必须显式补）
      * ========================================================== */
 
-    function ingest(relPath, size, mime, meta) {
+    /**
+     * @param {string} relPath 入库用相对路径（含前缀）
+     * @param {number} size
+     * @param {string} mime
+     * @param {object} meta 预登记元数据（platform/creator/type/title/pageUrl/sourceUrl/mediaUrl）
+     * @param {string} absPath 真实绝对路径；指纹去重靠它读文件，拿不到就给空串
+     */
+    function ingest(relPath, size, mime, meta, absPath) {
         var m = meta || {};
         var info = {
             relPath: relPath,
-            absPath: '',
+            absPath: absPath || '',
             platform: m.platform || '',
             platformName: m.platformName || '',
             creatorFull: m.creatorFull || '',
@@ -575,7 +641,13 @@
                          * （资源库不分组、查重也按 platform 预筛而失效）。
                          * 注意：这里**只影响入库元数据**，落盘路径仍用 relOut，不会多建目录。 */
                         var relForDb = (prefix ? prefix + '/' : '') + relOut;
-                        return ingest(relForDb, size, mime, o.meta).then(function () { return out; });
+                        /* 绝对路径回填：指纹去重要按它读文件。
+                         * 拿不到绝对路径（自选文件夹）就传空串 —— 降级为「无指纹」，
+                         * 绝不用「子目录 + 文件名」伪造一个不存在的路径。 */
+                        return resolveAbsRoot(prefix).then(function (absRoot) {
+                            var absFile = absRoot ? (absRoot + '/' + relOut) : '';
+                            return ingest(relForDb, size, mime, o.meta, absFile);
+                        }).then(function () { return out; });
                     }).catch(function (e) {
                         // 写失败不能让用户白等：回退下载器，但把 FSA 的真实原因带回去
                         var code = mapError(e);

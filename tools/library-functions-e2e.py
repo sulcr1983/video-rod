@@ -184,7 +184,9 @@ ev("""(()=>{const b=document.getElementById('batchExit');if(b)b.click()})()""")
 time.sleep(0.4)
 
 print("== F. 收藏夹 ==")
-check("F", "收藏菜单展开", ev("""(()=>{const b=document.getElementById('favMenuBtn');if(!b)return 'no-btn';b.click();const m=document.getElementById('favMenu');return m?m.classList.contains('on'):'no-menu'})()""", False), lambda a: a is True)
+# 收藏区已改平铺（2026-11-07）：不再有 favMenuBtn/favMenu 弹层，改为直接检查列表可见
+check("F", "收藏列表平铺可见", ev("""(()=>{const l=document.getElementById('favList');if(!l)return 'no-list';
+  const r=l.getBoundingClientRect();return (r.width>0&&r.height>=0&&getComputedStyle(l).display!=='none')?'visible':'hidden'})()""", False), lambda a: a == "visible")
 check("F", "收藏抽屉开", ev("""(()=>{const b=document.getElementById('favMore');if(!b)return 'no-btn';b.click();const d=document.getElementById('favDrawer');return d?d.classList.contains('show'):'no-drawer'})()""", False), lambda a: a is True)
 ev("""(()=>{const c=document.getElementById('favDrawerClose');if(c)c.click()})()""")
 

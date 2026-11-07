@@ -213,10 +213,10 @@ def main():
     time.sleep(0.5)
 
     # 6 收藏夹：新建 → 出现 → 删除
-    c.ev("document.getElementById('favNewBtn').click(); 1", sid)
-    time.sleep(0.6)
-    ck("收藏夹新建弹层打开", c.ev("!!document.querySelector('#favPopNew:not(.hidden), #favPopNew.on, #favPopNew.show')", sid), True)
-    c.ev("""(()=>{const el=document.getElementById('favNewInput'); if(el){el.value='测试夹'; el.dispatchEvent(new Event('input',{bubbles:true}));} return 1})()""", sid)
+    # 收藏区已改平铺（2026-11-07）：不再有 favNewBtn 弹层开关，输入框常驻可见
+    c.ev("""(()=>{const el=document.getElementById('favNewInput');
+      if(el){el.value='测试夹'; el.dispatchEvent(new Event('input',{bubbles:true}));} return 1})()""", sid)
+    time.sleep(0.3)
     c.ev("document.getElementById('favNewOk').click(); 1", sid)
     time.sleep(0.9)
     ck("收藏夹已建（出现测试夹）", c.ev("(document.body.innerText||'').indexOf('测试夹') >= 0", sid), True)

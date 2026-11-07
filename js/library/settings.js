@@ -28,6 +28,13 @@
 
     var state = null;
 
+    /* 站点名称面板的状态。**必须在这里声明**：init() 在 defer 脚本执行时
+     * 可能同步运行（document.readyState 已是 interactive），而 var 只提升
+     * 声明不提升赋值 —— 若写在 init 之后，首帧读到的是 undefined。
+     * （2026-11-07 实测：siteQuery.toLowerCase 直接抛错，面板空白） */
+    var siteRows = [];        // 当前展示的行（已筛选）
+    var siteQuery = '';
+
     function $(id) { return document.getElementById(id); }
 
     function text(id, msg, color) {
@@ -39,11 +46,31 @@
 
     /* ---------------- 存储 ---------------- */
 
+    /**
+     * 读设置。storage 不可用（旧浏览器/权限收回/本地直接打开页面）时必须
+     * 用默认值继续，**不能抛**：本函数在 defer 脚本末尾被 init() 同步调用，
+     * 一旦异常就会中断整个 IIFE，后面的 SRC_LABEL、root.VRSettings 全部
+     * 不会被赋值（2026-11-07 实测：站点名称面板空白 + VRSettings undefined）。
+     */
     function load(cb) {
-        chrome.storage.local.get(KEY, function (obj) {
-            state = Object.assign({}, DEFAULTS, obj && obj[KEY]);
-            cb(state);
-        });
+        var fallback = function () {
+            setTimeout(function () {
+                state = Object.assign({}, DEFAULTS);
+                cb(state);
+            }, 0);
+        };
+        try {
+            chrome.storage.local.get(KEY, function (obj) {
+                state = Object.assign({}, DEFAULTS, obj && obj[KEY]);
+                cb(state);
+            });
+        } catch (e) {
+            /* 必须异步回调：init() 在 defer 脚本末尾同步调用 load()，
+             * 若这里同步执行 cb，init 会在 IIFE 还没跑完时执行，
+             * 后面的 LIB_FIELDS / SRC_LABEL / root.VRSettings 全都没赋值
+             * （2026-11-07 实测：面板空白 + VRSettings undefined）。 */
+            fallback();
+        }
     }
 
     /**
@@ -802,6 +829,10 @@
 
     function init() {
         if (!$('anchorLibrary')) { return; }       // 不是 options 页
+        /* 站点名称面板只读 vrSiteNames，与 vrLibSettings 无关。
+         * 放在 load() 之前绑定：vrLibSettings 读取异常时（旧浏览器 / 权限收回）
+         * 不能让整块面板停在「正在读取…」。 */
+        bindSiteNames();
         load(function () {
             uiMode = state.mode === 'custom' ? 'custom' : 'system';
             render();
@@ -861,6 +892,259 @@
                 save(patch);
             });
         });
+    }
+
+    /* ---------------- 站点名称面板 ---------------- */
+
+    /** 一行 = 一个站点。手改/自动记录以 vrSiteNames 为准，预置表只做补充。 */
+    function collectSiteRows() {
+        var ST = root.VRSiteNameStore;
+        var PP = root.VRSiteNamesPreset;
+        var out = {};
+        var recall = (ST && ST.snapshot) ? ST.snapshot() : null;
+
+        /* 预置表：先铺底（source = preset） */
+        var presetList = (PP && PP.list) ? PP.list() : [];
+        presetList.forEach(function (it) {
+            (it.h || []).forEach(function (h) {
+                if (!out[h]) {
+                    out[h] = { host: h, name: it.n, src: 'preset', at: 0, manual: 0, cat: it.c };
+                }
+            });
+        });
+
+        /* 自动学习 / 手改：覆盖预置（source = learned / manual） */
+        if (recall && typeof recall === 'object') {
+            Object.keys(recall).forEach(function (h) {
+                var r = recall[h] || {};
+                if (!r.name) { return; }
+                out[h] = {
+                    host: h,
+                    name: r.name,
+                    src: r.manual ? 'manual' : (r.src || 'learned'),
+                    at: r.at || 0,
+                    manual: r.manual || 0,
+                    cat: (out[h] && out[h].cat) || ''
+                };
+            });
+        }
+        return Object.keys(out).map(function (h) { return out[h]; });
+    }
+
+    var SRC_LABEL = {
+        manual: '手改', preset: '预置', learned: '自动',
+        og: '自动', meta: '自动', manifest: '自动', jsonld: '自动', title: '自动',
+        page: '自动', tab: '自动', cache: '自动', import: '导入'
+    };
+
+    function srcBadge(src) {
+        var label = SRC_LABEL[src] || (src === 'preset' ? '预置' : '自动');
+        var cls = (src === 'manual' || src === 'import') ? 'manual'
+            : (src === 'preset' ? 'preset' : 'auto');
+        return '<span class="site-src site-src-' + cls + '">' + escHtml(label) + '</span>';
+    }
+
+    function fmtSiteTime(ts) {
+        if (!ts) { return '—'; }
+        var d = new Date(Number(ts));
+        if (isNaN(d.getTime())) { return '—'; }
+        var p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+
+    function renderSiteNames() {
+        var box = $('vrSiteNameList');
+        if (!box) { return; }
+        var q = siteQuery.toLowerCase().trim();
+        var rows = collectSiteRows().filter(function (r) {
+            if (!q) { return true; }
+            return (r.host || '').toLowerCase().indexOf(q) >= 0
+                || (r.name || '').toLowerCase().indexOf(q) >= 0;
+        });
+        /* 手改优先，其次自动，再预置；同类按域名排 */
+        var rank = { manual: 0, import: 0, learned: 1, preset: 2 };
+        rows.sort(function (a, b) {
+            var ra = rank[a.src] == null ? 1 : rank[a.src];
+            var rb = rank[b.src] == null ? 1 : rank[b.src];
+            if (ra !== rb) { return ra - rb; }
+            return String(a.host).localeCompare(String(b.host));
+        });
+        siteRows = rows;
+
+        var cnt = $('vrSiteNameCount');
+        if (cnt) {
+            var learned = rows.filter(function (r) { return r.src !== 'preset'; }).length;
+            cnt.textContent = '共 ' + rows.length + ' 个站点，其中 ' + learned + ' 个有手改或自动记录';
+        }
+
+        if (!rows.length) {
+            box.innerHTML = '<span class="explain">没有匹配的站点。下载任意网站的素材后，这里会自动出现。</span>';
+            return;
+        }
+
+        /* 只渲染前 300 行：全量 400+ 行一次性铺 DOM 会明显卡顿，搜索可缩小范围 */
+        var shown = rows.slice(0, 300);
+        box.innerHTML = shown.map(function (r) {
+            var host = escHtml(r.host);
+            /* 站名在前、域名在后：人认名字，不认域名。
+             * 名字为空时输入框显示空、用 placeholder 提示会回退域名。 */
+            return '<div class="site-name-row" data-host="' + host + '">' +
+                '<input type="text" class="site-name-input" data-host="' + host + '" ' +
+                    'value="' + escHtml(r.name) + '" placeholder="（未命名，将用域名）" />' +
+                '<code class="site-name-host" title="' + host + '">' + host + '</code>' +
+                srcBadge(r.src) +
+                '<span class="site-name-time">' + fmtSiteTime(r.at) + '</span>' +
+                '<button type="button" class="button2 site-name-reset" data-host="' + host + '" ' +
+                    (r.src === 'preset' ? 'disabled' : '') + '>还原</button>' +
+                '</div>';
+        }).join('') +
+        (rows.length > shown.length
+            ? '<div class="explain site-name-more">还有 ' + (rows.length - shown.length) + ' 个未显示，请在上方搜索缩小范围。</div>'
+            : '');
+    }
+
+    function bindSiteNames() {
+        var box = $('vrSiteNameList');
+        if (!box) { return; }
+        var msg = function (t, color) { text('vrSiteNameMsg', t, color); };
+        var ST = root.VRSiteNameStore;
+        if (!ST) {
+            msg('站点名称模块未加载', '#c0392b');
+            return;
+        }
+
+        /* 用 change 而不是 input：避免每敲一个字就写一次存储 */
+        box.addEventListener('change', function (ev) {
+            var el = ev.target;
+            if (!el || !el.classList.contains('site-name-input')) { return; }
+            var host = el.getAttribute('data-host');
+            var name = String(el.value || '').trim();
+            if (!name) {
+                /* 清空 = 还原成「没有记录」，回退预置或域名 */
+                ST.remove(host).then(function () {
+                    msg('已还原 ' + host + '（将使用预置名或域名）', '#2e7d32');
+                    renderSiteNames();
+                });
+                return;
+            }
+            if (!ST.normHost(host)) { return; }
+            ST.rename(host, name).then(function () {
+                msg('已保存：' + host + ' → ' + name, '#2e7d32');
+                renderSiteNames();
+            });
+        });
+
+        box.addEventListener('click', function (ev) {
+            var btn = ev.target;
+            if (!btn || !btn.classList || !btn.classList.contains('site-name-reset')) { return; }
+            var host = btn.getAttribute('data-host');
+            if (!host) { return; }
+            ST.remove(host).then(function () {
+                msg('已还原 ' + host, '#2e7d32');
+                renderSiteNames();
+            });
+        });
+
+        var search = $('vrSiteNameSearch');
+        if (search) {
+            search.addEventListener('input', function () {
+                siteQuery = search.value || '';
+                renderSiteNames();
+            });
+        }
+
+        /* 「输入域名 → 获取站名并加入」：跨域抓取必须走后台（CORS）。 */
+        var probeBtn = $('vrSiteNameProbe');
+        var probeInput = $('vrSiteNameAdd');
+        if (probeBtn && probeInput) {
+            var doProbe = function () {
+                var d = String(probeInput.value || '').trim();
+                if (!d) { text('vrSiteNameProbeMsg', '请先输入域名', '#b26a00'); return; }
+                probeBtn.disabled = true;
+                text('vrSiteNameProbeMsg', '正在抓取页面…', '#666');
+                try {
+                    chrome.runtime.sendMessage({ Message: 'vrSiteName.probe', action: 'vrSiteNameProbe', domain: d }, function (res) {
+                        probeBtn.disabled = false;
+                        void (chrome.runtime.lastError);
+                        if (!res) { text('vrSiteNameProbeMsg', '后台没有响应', '#c0392b'); return; }
+                        if (res.name) {
+                            text('vrSiteNameProbeMsg',
+                                '已加入：' + res.host + ' → ' + res.name + (res.preset ? '（与预置表一致）' : ''),
+                                '#2e7d32');
+                        } else if (res.ok) {
+                            text('vrSiteNameProbeMsg',
+                                '已加入 ' + res.host + '，但页面没有声明站名，请在列表里手填',
+                                '#b26a00');
+                        } else {
+                            text('vrSiteNameProbeMsg',
+                                '加入失败：' + (res.message || '未知原因'), '#c0392b');
+                        }
+                        ST.ready().then(function () { renderSiteNames(); });
+                        if (res.name) { probeInput.value = ''; }
+                    });
+                } catch (e) {
+                    probeBtn.disabled = false;
+                    text('vrSiteNameProbeMsg', '发送失败：' + e, '#c0392b');
+                }
+            };
+            probeBtn.addEventListener('click', doProbe);
+            probeInput.addEventListener('keydown', function (ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); doProbe(); }
+            });
+        }
+
+        var refresh = $('vrSiteNameRefresh');
+        if (refresh) {
+            refresh.addEventListener('click', function () {
+                ST.ready().then(function () { renderSiteNames(); msg('已刷新', '#666'); });
+            });
+        }
+
+        var exp = $('vrSiteNameExport');
+        if (exp) {
+            exp.addEventListener('click', function () {
+                ST.exportAll().then(function (data) {
+                    var keys = Object.keys(data || {});
+                    if (!keys.length) { msg('还没有自动学习到任何站名，无需导出', '#b26a00'); return; }
+                    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    var a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = 'vr-site-names-' + Date.now() + '.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(function () {
+                        URL.revokeObjectURL(a.href);
+                        a.remove();
+                    }, 1000);
+                    msg('已导出 ' + keys.length + ' 条', '#2e7d32');
+                });
+            });
+        }
+
+        var imp = $('vrSiteNameImport');
+        var impFile = $('vrSiteNameImportFile');
+        if (imp && impFile) {
+            imp.addEventListener('click', function () { impFile.click(); });
+            impFile.addEventListener('change', function () {
+                var f = impFile.files && impFile.files[0];
+                if (!f) { return; }
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var obj;
+                    try { obj = JSON.parse(String(reader.result || '')); }
+                    catch (e) { msg('JSON 解析失败', '#c0392b'); impFile.value = ''; return; }
+                    ST.importAll(obj).then(function (r) {
+                        msg('导入完成：新增 ' + r.added + ' 条，更新 ' + r.updated + ' 条', '#2e7d32');
+                        renderSiteNames();
+                        impFile.value = '';
+                    });
+                };
+                reader.onerror = function () { msg('文件读取失败', '#c0392b'); impFile.value = ''; };
+                reader.readAsText(f);
+            });
+        }
+
+        ST.ready().then(function () { renderSiteNames(); });
     }
 
     /* 与清单面板共用同一份 vrLibSettings；这里只做「把控件和存储对上」这件事。 */

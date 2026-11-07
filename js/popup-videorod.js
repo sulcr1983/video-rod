@@ -1988,7 +1988,9 @@
                 url: im.src,
                 title: names[i],
                 index: i,
-                pageUrl: (G && G.pageUrl) || ''
+                pageUrl: (G && G.pageUrl) || '',
+                /* 面板是扩展页面，无网页 DOM；带 tabId 让后台注入取站名。 */
+                tabId: (G && G.tabId) || -1
             }, function (r) {
                 if (chrome.runtime.lastError || !r || !r.ok) {
                     console.warn('[video-rod] 抓图落盘失败', chrome.runtime.lastError || r);

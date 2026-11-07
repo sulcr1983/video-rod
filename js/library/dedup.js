@@ -21,44 +21,134 @@
 
     var CHUNK = 131072;          // 128KB 一块，不整读进内存
     var HASH_FIELD = 'sha256';
+    var HASH_KIND_FIELD = 'hashKind';   // 'sha256' 完整 / 'sampled' 大文件采样
     var REF_FIELD = 'isRef';
     var DISPLAY_FIELD = 'displayName';
 
-    /* ---------------- 指纹计算 ---------------- */
+    /* 大文件策略：
+     *   ≤ FULL_LIMIT → 完整 SHA-256（一次 digest，内存上限可控）
+     *   >  FULL_LIMIT → 采样指纹（size + 首/中/尾各 4MB），标 hashKind='sampled'
+     *
+     * 为什么不做「增量 SHA-256」：WebCrypto 的 subtle.digest 不支持 update，
+     * 要增量就得手写 SHA-256（易错且慢）。采样已经达到目的——**不再把 1GB
+     * 视频整读进内存**，内存从「文件大小」降到约 12MB。
+     * 代价是弱指纹可能碰撞，所以它只用于「报告」、不自动合并（见 merge()）。 */
+    var FULL_LIMIT = 64 * 1024 * 1024;
+    var SAMPLE_BYTES = 4 * 1024 * 1024;
 
-    /** 分块读文件算 SHA-256；失败返回空串（绝不抛给调用方） */
-    async function hashFile(absPath) {
+    /** ArrayBuffer → 64 位小写 hex */
+    async function hexDigest(buf) {
+        var digest = await crypto.subtle.digest('SHA-256', buf);
+        var bytes = new Uint8Array(digest);
+        var out = '';
+        for (var i = 0; i < bytes.length; i++) {
+            out += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+        }
+        return out;
+    }
+
+    /** 纯 ASCII 字符串 → Uint8Array（不依赖 TextEncoder，vm/旧环境也能跑） */
+    function asciiBytes(s) {
+        var str = String(s);
+        var out = new Uint8Array(str.length);
+        for (var i = 0; i < str.length; i++) { out[i] = str.charCodeAt(i) & 0xff; }
+        return out;
+    }
+
+    /** 多个 ArrayBuffer/TypedArray 拼成一个（不依赖 Blob） */
+    function concatBytes(parts) {
+        var total = 0;
+        var i;
+        for (i = 0; i < parts.length; i++) { total += parts[i].byteLength; }
+        var out = new Uint8Array(total);
+        var off = 0;
+        for (i = 0; i < parts.length; i++) {
+            out.set(new Uint8Array(parts[i]), off);
+            off += parts[i].byteLength;
+        }
+        return out.buffer;
+    }
+
+    /**
+     * 打开文件为「可分区读取」的源。
+     *
+     * 两种形态都要支持：
+     *   - fetch 返回可按 slice 惰性读的 Blob（真实浏览器 / file://）→ 大文件只读需要的区间
+     *   - 只给 arrayBuffer 的实现（测试桩、老代码路径）→ 退化为整读
+     * 这样指纹逻辑不依赖全局 Blob/TextEncoder，Node 里也能直接测。
+     *
+     * @returns {Promise<{size:number, part:function, whole:function}|null>}
+     */
+    async function openSource(absPath) {
+        if (!absPath || !root.VRPath || !root.VRPath.toFileUrl) { return null; }
+        var url = root.VRPath.toFileUrl(absPath);
+        var resp = await fetch(url);
+        if (!resp || !resp.ok) { return null; }
+
+        if (typeof resp.blob === 'function') {
+            try {
+                var b = await resp.blob();
+                if (b && b.size) {
+                    return {
+                        size: Number(b.size),
+                        part: function (s, e) { return b.slice(s, e).arrayBuffer(); },
+                        whole: function () { return b.arrayBuffer(); }
+                    };
+                }
+            } catch (e) { /* 落到 arrayBuffer 兜底 */ }
+        }
+        var buf = await resp.arrayBuffer();
+        if (!buf || !buf.byteLength) { return null; }
+        return {
+            size: buf.byteLength,
+            part: function (s, e) { return Promise.resolve(buf.slice(s, e)); },
+            whole: function () { return Promise.resolve(buf); }
+        };
+    }
+
+    /**
+     * 算内容指纹。
+     * @returns {Promise<{hash:string, kind:string, size:number}>} 失败时 hash=''
+     */
+    async function fingerprint(absPath) {
         try {
-            if (!absPath || !root.VRPath || !root.VRPath.toFileUrl) { return ''; }
-            var url = root.VRPath.toFileUrl(absPath);
-            var resp = await fetch(url);
-            if (!resp.ok) { return ''; }
-            var buf = await resp.arrayBuffer();
-            if (!buf || !buf.byteLength) { return ''; }
-            var digest = await crypto.subtle.digest('SHA-256', buf);
-            var bytes = new Uint8Array(digest);
-            var out = '';
-            for (var i = 0; i < bytes.length; i++) {
-                out += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+            var src = await openSource(absPath);
+            if (!src || !src.size) { return { hash: '', kind: '', size: 0 }; }
+
+            if (src.size <= FULL_LIMIT) {
+                var whole = await src.whole();
+                if (!whole || !whole.byteLength) { return { hash: '', kind: '', size: 0 }; }
+                return { hash: await hexDigest(whole), kind: 'sha256', size: src.size };
             }
-            return out;
+
+            /* 采样：把 size 一起喂进摘要 —— 大小不同必然判不同，
+             * 避免「首尾相同但长度不同」的误判。 */
+            var midStart = Math.max(0, Math.floor(src.size / 2) - (SAMPLE_BYTES / 2));
+            var parts = [
+                asciiBytes('vr-sample-v1|' + src.size + '|'),
+                await src.part(0, Math.min(SAMPLE_BYTES, src.size)),
+                await src.part(midStart, Math.min(midStart + SAMPLE_BYTES, src.size)),
+                await src.part(Math.max(0, src.size - SAMPLE_BYTES), src.size)
+            ];
+            return { hash: await hexDigest(concatBytes(parts)), kind: 'sampled', size: src.size };
         } catch (e) {
-            return '';
+            return { hash: '', kind: '', size: 0 };
         }
     }
 
-    /** 给 Blob/ArrayBuffer 算指纹（页面上下文下载走这条） */
+    /** 分块/采样算指纹，返回 hex；失败返回空串（绝不抛给调用方） */
+    async function hashFile(absPath) {
+        var fp = await fingerprint(absPath);
+        return fp.hash;
+    }
+
+    /** 给 Blob/ArrayBuffer 算指纹（页面上下文下载走这条，内容已在内存里） */
     async function hashBlob(blob) {
         try {
             if (!blob || !blob.arrayBuffer) { return ''; }
             var buf = await blob.arrayBuffer();
-            var digest = await crypto.subtle.digest('SHA-256', buf);
-            var bytes = new Uint8Array(digest);
-            var out = '';
-            for (var i = 0; i < bytes.length; i++) {
-                out += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
-            }
-            return out;
+            if (!buf || !buf.byteLength) { return ''; }
+            return await hexDigest(buf);
         } catch (e) {
             return '';
         }
@@ -228,6 +318,37 @@
     }
 
     /** 统计口径：逻辑大小 vs 物理占用（去重后实际占盘） */
+    /**
+     * 全库重复扫描（只读）：按内容指纹分组，返回 ≥2 条的同内容组。
+     * 只报告，不删文件；合并仍由下载时的 afterDownload / 删除时的 onDelete 语义处理。
+     * @returns {Promise<{groups:Array, items:number, files:number, reclaimBytes:number}>}
+     */
+    async function scan() {
+        var out = { groups: [], items: 0, files: 0, reclaimBytes: 0 };
+        try {
+            if (!root.VRDB || !root.VRDB.getAllFiles) { return out; }
+            var all = await root.VRDB.getAllFiles();
+            out.files = (all || []).length;
+            var by = {};
+            (all || []).forEach(function (e) {
+                var h = e && e[HASH_FIELD];
+                if (!h) { return; }
+                (by[h] = by[h] || []).push(e);
+            });
+            Object.keys(by).forEach(function (h) {
+                var g = by[h];
+                if (g.length < 2) { return; }
+                out.groups.push({ hash: h, items: g });
+                out.items += g.length;
+                /* 物理只留一份，其余是引用：可回收 = (n-1) × 单条大小 */
+                out.reclaimBytes += (g.length - 1) * (Number(g[0].size) || 0);
+            });
+            return out;
+        } catch (e) {
+            return out;
+        }
+    }
+
     async function stats() {
         var out = { logicalBytes: 0, physicalBytes: 0, count: 0, uniqCount: 0, hashes: {} };
         try {
@@ -267,6 +388,7 @@
         afterDownload: afterDownload,
         onDelete: onDelete,
         renameDisplay: renameDisplay,
+        scan: scan,
         stats: stats,
         HASH_FIELD: HASH_FIELD,
         REF_FIELD: REF_FIELD,

@@ -28,6 +28,9 @@
     var FILES = [];    // 卡片模型
     var S = {
         type: 'all', plat: 'all', q: '', view: 'grid',
+        /* 选中的标签（多选=交集）。用数组而不是 Set：要按点击顺序稳定渲染，
+         * 且要能序列化进「智能收藏夹」。 */
+        tags: [],
         select: false, sel: new Set(), sort: 'new', fav: null, idx: 0, list: []
     };
     var treeOpen = {};
@@ -121,6 +124,7 @@
             sha256: e.sha256 || '',
             displayName: e.displayName || '',
             savedAt: fmtDate(e.mtime),
+            savedTs: Number(e.mtime) || 0,
             dlAt: fmtDate(e.mtime),
             workId: e.workId || '',
             pageUrl: e.pageUrl || '',
@@ -132,15 +136,106 @@
     }
 
     /* ---------- 统计 ---------- */
+    /**
+     * 统计口径：**按显示名归并**，不按原始 platform 字符串。
+     *
+     * 为什么：同一个站点在库里可能存着两种写法 —— 老条目是平台 key
+     * （`weibo`），新条目是域名（`weibo.com`）。若按原始字符串分组，
+     * 左栏就会出现两个「微博」。用户看到的是名字，分组也该按名字。
+     */
     function counts() {
-        var c = { all: FILES.length, image: 0, anim: 0, video: 0, audio: 0, other: 0, starred: 0, platforms: {}, creators: {} };
+        var c = { all: FILES.length, image: 0, anim: 0, video: 0, audio: 0, other: 0, starred: 0, platforms: {}, creators: {}, byPlat: {}, tags: {} };
         FILES.forEach(function (f) {
             c[f.kind] = (c[f.kind] || 0) + 1;
-            c.platforms[f.plat] = (c.platforms[f.plat] || 0) + 1;
+            var label = platLabel(f.plat);
+            var key = siteGroupKey(f.plat, label);
+            c.platforms[key] = (c.platforms[key] || 0) + 1;
+            /* 记录「哪个原始 platform 值归到这个组」，筛选时按组匹配 */
+            if (!c.byPlat[key]) { c.byPlat[key] = {}; }
+            c.byPlat[key][f.plat] = 1;
             if (f.author) { c.creators[f.author] = (c.creators[f.author] || 0) + 1; }
             if (f.starred) { c.starred++; }
+            /* 标签计数：booru 式的「这个标签有几张图」，左栏徽标直接用。
+             * 大小写不敏感归并，但保留首次出现的原始写法作为显示名。 */
+            var ts = Array.isArray(f.tags) ? f.tags : [];
+            for (var i = 0; i < ts.length; i++) {
+                var t = String(ts[i] || '').trim();
+                if (!t) { continue; }
+                var tk = t.toLowerCase();
+                if (!c.tags[tk]) { c.tags[tk] = { label: t, count: 0 }; }
+                c.tags[tk].count++;
+            }
+        });
+        lastCounts = c;
+        return c;
+    }
+
+    /**
+     * 只统计「当前站点范围内」的素材，用于顶部类型 tab 的数字。
+     *
+     * 为什么不能直接用 counts()：counts() 是全库口径。选中小红书后，
+     * tab 仍显示「视频 29」（全库），与实际筛出的 5 条对不上 ——
+     * 用户 2026-11-07 报的就是这个「左侧与上面不联动」。
+     *
+     * 口径：站点筛选 + 收藏夹 + 搜索词都算「范围」，**唯独不含类型筛选本身**，
+     * 否则点「视频」后「图片」会变 0，tab 就没法在类型之间来回切了。
+     */
+    function countsInScope() {
+        var c = { all: 0, image: 0, anim: 0, video: 0, audio: 0, other: 0, starred: 0, tags: {} };
+        FILES.forEach(function (f) {
+            if (S.fav) {
+                var fav = findFav(S.fav);
+                if (!fav || !favHas(fav, f)) { return; }
+            }
+            if (S.plat !== 'all') {
+                if (f.plat !== S.plat) {
+                    var gk = siteGroupKey(f.plat, platLabel(f.plat));
+                    if (gk !== S.plat) { return; }
+                }
+            }
+            if (S.q) {
+                var raw = S.q.replace(/^@/, '').toLowerCase().trim();
+                var terms = raw.split(/\s+/).filter(Boolean);
+                var must = terms.filter(function (t) { return t.charAt(0) !== '-'; });
+                var excl = terms.filter(function (t) { return t.charAt(0) === '-'; }).map(function (t) { return t.slice(1); }).filter(Boolean);
+                var hay = ((f._title || f.title || '') + ' ' + (f.title || '') + ' ' + (f.author || '') + ' ' + (f.authorId || '') + ' ' + f.id + ' ' + f.plat).toLowerCase();
+                if (must.length && !must.every(function (w) { return hay.indexOf(w) >= 0; })) { return; }
+                if (excl.length && excl.some(function (w) { return hay.indexOf(w) >= 0; })) { return; }
+            }
+            c.all++;
+            c[f.kind] = (c[f.kind] || 0) + 1;
+            if (f.starred) { c.starred++; }
+            /* 标签计数跟着「范围」联动：切到某平台后，左栏每个标签显示的是
+             * 「该平台下有几张图」。注意这里**不按 S.tags 过滤**——
+             * 否则选中「风景」后其它标签全变 0，就没法再叠加第二个标签了。 */
+            var ts2 = Array.isArray(f.tags) ? f.tags : [];
+            for (var j = 0; j < ts2.length; j++) {
+                var t2 = String(ts2[j] || '').trim();
+                if (!t2) { continue; }
+                var tk2 = t2.toLowerCase();
+                if (!c.tags[tk2]) { c.tags[tk2] = { label: t2, count: 0 }; }
+                c.tags[tk2].count++;
+            }
         });
         return c;
+    }
+
+    /**
+     * 站点分组键：优先用显示名（「微博」「B站」），
+     * 这样 `weibo` / `weibo.com` / `weibo.cn` 会落进同一组。
+     * 显示名拿不到时才退回原始 key。
+     */
+    function siteGroupKey(plat, label) {
+        var l = String(label || '').trim();
+        if (l && l !== '网页' && l !== plat) { return '@' + l; }
+        return String(plat || '');
+    }
+
+    /** 某个分组键包含的所有原始 platform 值（用于筛选） */
+    function platsOfGroup(c, groupKey) {
+        var m = c.byPlat && c.byPlat[groupKey];
+        if (!m) { return [groupKey]; }
+        return Object.keys(m);
     }
 
     /* ---------- 筛选 / 排序 ---------- */
@@ -155,7 +250,26 @@
                 if (!favHas(fav, f)) { return false; }
             }
             if (S.type !== 'all' && f.kind !== S.type) { return false; }
-            if (S.plat !== 'all' && f.plat !== S.plat) { return false; }
+            /* 标签筛选：多选时取**交集**（booru 用法）——
+             * 选「风景」+「竖图」= 同时带这两个标签的图。
+             * 大小写不敏感比对，与 counts() 的归并口径保持一致。 */
+            if (S.tags && S.tags.length) {
+                var mine = Array.isArray(f.tags) ? f.tags.map(function (x) {
+                    return String(x || '').trim().toLowerCase();
+                }) : [];
+                for (var ti = 0; ti < S.tags.length; ti++) {
+                    if (mine.indexOf(String(S.tags[ti]).toLowerCase()) < 0) { return false; }
+                }
+            }
+            if (S.plat !== 'all') {
+                /* 站点筛选按「分组键」比对：同一站点的不同原始写法
+                 * （weibo / weibo.com）要被当成一个节点，否则点「微博」
+                 * 只筛出一半素材。 */
+                if (f.plat !== S.plat) {
+                    var gk = siteGroupKey(f.plat, platLabel(f.plat));
+                    if (gk !== S.plat) { return false; }
+                }
+            }
             if (S.q) {
                 var raw = S.q.replace(/^@/, '').toLowerCase().trim();
                 var terms = raw.split(/\s+/).filter(Boolean);
@@ -178,6 +292,7 @@
             var d = 0;
             if (s === 'old') { d = (a.savedAt || '').localeCompare(b.savedAt || ''); }
             else if (s === 'size') { d = (b.size || 0) - (a.size || 0); }
+            else if (s === 'recent') { d = (b.savedTs || 0) - (a.savedTs || 0); }
             else if (s === 'name') {
                 /* 重命名写的是 displayName；卡片显示 _title，排序也必须用它，
                  * 否则改了名但 A-Z 仍按旧物理文件名排。 */
@@ -190,58 +305,123 @@
     }
 
     /* ---------- 侧栏编号树 ---------- */
-    /** 平台显示名：字典里有的用中文名，没有的（新站点）直接用 key 本身 */
-    function platLabel(key) {
-        var d = PLAT[key];
-        if (d) { return d.name; }
-        return key || '网页';
-    }
 
     /**
-     * 「网页」类站点按域名分组。
-     * 白名单平台（B站/YouTube/小红书…）保持单节点；
-     * 其他站点不写死——用库里已存的站点标识（creatorFull / relPath 第二段）聚合，
-     * 这样 pixabay、知乎、花瓣、任何新站点都会自动出现在左侧，无需改代码。
+     * 升为一级节点的门槛（素材条数）。
+     * 用户 2026-11-07 定的规则：素材多的站点单独成节点，长尾收进「其他站点」，
+     * 否则站点一多左栏会被小站淹没。
      */
-    function webSiteOf(f) {
-        var c = String(f.author || '').trim();
-        if (c && c !== '—') { return c; }
-        var segs = String(f.relPath || '').split('/');
-        if (segs.length > 2 && segs[1] === '其他网页') { return segs[2] || ''; }
-        return '';
+    var MIN_SITE = 5;
+
+    /** 站点显示名：先问站点字典（手改 / 预置 / 自动学习），再退内置表 */
+    function platLabel(key) {
+        var k = String(key || '');
+        /* 分组键形如「@微博」：直接返回名字本身（@ 是内部前缀，不给人看） */
+        if (k.charAt(0) === '@') { return k.slice(1); }
+        var R = root.VRSiteRegistry;
+        if (R && typeof R.nameOf === 'function') {
+            try {
+                var n = R.nameOf(k);
+                if (n) { return n; }
+            } catch (e) { /* 落回内置表 */ }
+        }
+        var d = PLAT[k];
+        if (d) { return d.name; }
+        return k || '网页';
+    }
+
+    /** 站点色点：分组键没有原始 key，退中性色；否则按已知平台取色 */
+    function platDot(key) {
+        var k = String(key || '');
+        if (k.charAt(0) === '@') {
+            /* 归并组：用它包含的第一个原始 platform 取色 */
+            var members = groupMembers(k);
+            for (var i = 0; i < members.length; i++) {
+                var d0 = PLAT[members[i]];
+                if (d0 && d0.dot) { return d0.dot; }
+            }
+            return PLAT.web.dot;
+        }
+        var d = PLAT[k];
+        return (d && d.dot) || PLAT.web.dot;
+    }
+
+    /** 分组键 → 原始 platform 列表（用最近一次 counts() 的结果） */
+    var lastCounts = null;
+    function groupMembers(gk) {
+        if (!lastCounts) { return []; }
+        var m = lastCounts.byPlat[gk];
+        return m ? Object.keys(m) : [];
+    }
+
+    /** 「huaban.com」这类域名段 —— 它出现在作者位说明当年没抓到作者，不是人名 */
+    function looksLikeHost(seg) {
+        var s = String(seg || '');
+        if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(s)) { return false; }
+        return /[a-z]{2,}$/i.test(s);
     }
 
     function buildTree() {
         var c = counts();
-        var keys = Object.keys(c.platforms).filter(function (k) { return k !== 'untracked'; })
+        var sites = Object.keys(c.platforms).filter(function (k) { return k !== 'untracked'; })
             .sort(function (a, b) { return c.platforms[b] - c.platforms[a]; });
+
         var rows = [{ kind: 'root', label: '全部资源', count: c.all }];
-        /* 「未整理」是入口不是平台：固定放在「全部资源」下面，点击直接筛出来。 */
+        /* 「未整理」是入口不是站点：固定放在「全部资源」下面，点击直接筛出来。 */
         if (c.platforms.untracked) {
             rows.push({ kind: 'untracked', label: '未整理', count: c.platforms.untracked });
         }
+
+        /* 站点分两档：≥MIN_SITE 单独成一级；其余归「其他站点」（可展开） */
+        var major = [], minor = [];
+        sites.forEach(function (k) {
+            (c.platforms[k] >= MIN_SITE ? major : minor).push(k);
+        });
+
         var pi = 0;
-        keys.forEach(function (p) {
+        major.forEach(function (p) {
             pi++;
-            var num = pad(pi);
-            rows.push({ kind: 'plat', key: p, label: platLabel(p), count: c.platforms[p], num: num });
+            pushSite(p, pad(pi), false);
+        });
+
+        if (minor.length) {
+            var sum = 0;
+            minor.forEach(function (k) { sum += c.platforms[k]; });
+            rows.push({
+                kind: 'others-head', label: '其他站点',
+                count: sum, sites: minor.length
+            });
+            minor.forEach(function (p) { pushSite(p, '·', true); });
+        }
+        return rows;
+
+        /**
+         * 追加一个站点节点 + 它的作者二级。
+         * 作者只认「真实名字」：空值、占位符、以及退化成域名的段都不生成二级，
+         * 避免出现「花瓣 / huaban.com」这种重复一层的空壳。
+         */
+        function pushSite(p, num, inOthers) {
+            rows.push({
+                kind: 'plat', key: p, label: platLabel(p),
+                count: c.platforms[p], num: num, inOthers: !!inOthers
+            });
             var creators = {};
+            var members = c.byPlat[p] || {};
             FILES.forEach(function (f) {
-                if (f.plat !== p) { return; }
-                var name = (p === 'web') ? webSiteOf(f) : f.author;
-                if (!name) { return; }
+                if (!members[f.plat]) { return; }
+                var name = String(f.author || '').trim();
+                if (!name || name === '—' || name === '未知来源') { return; }
+                if (looksLikeHost(name)) { return; }
                 creators[name] = (creators[name] || 0) + 1;
             });
             var ck = Object.keys(creators).sort(function (a, b) { return creators[b] - creators[a]; });
             ck.forEach(function (name, i) {
-                /* web 的二级节点是「站点」，用 data-site 区分于作者节点 */
                 rows.push({
                     kind: 'author', plat: p, label: name, count: creators[name],
-                    num: num + '·' + (i + 1), site: (p === 'web')
+                    num: num + '·' + (i + 1)
                 });
             });
-        });
-        return rows;
+        }
     }
 
     function renderTree() {
@@ -252,6 +432,15 @@
         var html = rows.filter(function (t) { return !q || String(t.label).toLowerCase().indexOf(q) >= 0; }).map(function (t) {
             var pct = t.kind === 'root' ? 100 : Math.max(2, Math.min(100, Math.round(t.count / total * 100)));
             if (t.kind === 'author' && !treeOpen[t.plat] && !q) { return ''; }
+            /* 「其他站点」未展开时，里面的站点不占位 */
+            if (t.kind === 'plat' && t.inOthers && !treeOpen.__others__ && !q) { return ''; }
+            if (t.kind === 'others-head') {
+                var open0 = !!treeOpen.__others__ || !!q;
+                return '<button class="tree-node plat group' + (S.plat === 'others' ? ' active' : '') + '" data-group="others" style="--pct:' + pct + '%;--pc:' + PLAT.web.dot + '">' +
+                    '<svg class="i i-sm chev" style="transform:rotate(' + (open0 ? 0 : -90) + 'deg)"><use href="#i-chevron-down"/></svg>' +
+                    '<span class="ix">··</span><span class="label">' + esc(t.label) + '</span>' +
+                    '<span class="count">' + t.count + '</span></button>';
+            }
             if (t.kind === 'root') {
                 return '<button class="tree-node' + (S.plat === 'all' ? ' active' : '') + '" style="--pct:' + pct + '%">' +
                     '<span class="ix">00</span><span class="label">' + esc(t.label) + '</span>' +
@@ -264,7 +453,9 @@
             }
             if (t.kind === 'plat') {
                 var open = !!treeOpen[t.key] || !!q;
-                return '<button class="tree-node plat' + (S.plat === t.key ? ' active' : '') + '" data-plat="' + esc(t.key) + '" style="--pct:' + pct + '%;--pc:' + (PLAT[t.key] || PLAT.web).dot + '">' +
+                /* 「其他站点」里的站点缩进一级，视觉上表明它属于收纳区 */
+                var cls = 'tree-node plat' + (t.inOthers ? ' nested' : '');
+                return '<button class="' + cls + (S.plat === t.key ? ' active' : '') + '" data-plat="' + esc(t.key) + '" style="--pct:' + pct + '%;--pc:' + platDot(t.key) + '">' +
                     '<svg class="i i-sm chev" style="transform:rotate(' + (open ? 0 : -90) + 'deg)"><use href="#i-chevron-down"/></svg>' +
                     '<span class="ix">' + t.num + '</span><span class="label">' + esc(t.label) + '</span>' +
                     '<span class="count">' + t.count + '</span></button>';
@@ -282,13 +473,11 @@
     function card(f) {
         var isV = f.kind === 'video', isA = f.kind === 'anim', isAu = f.kind === 'audio';
         var p = PLAT[f.plat] || PLAT.web;
-        /* 网页类素材的角标显示真实站点名（pixabay / zhihu …），
-         * 而不是一律「网页」——否则一堆不同站点在卡片上长得一模一样。 */
-        var badgeLabel = p.label;
-        if (f.plat === 'web') {
-            var site = webSiteOf(f);
-            if (site) { badgeLabel = site.replace(/^\.+|\.+$/g, '').slice(0, 18); }
-        }
+        /* 角标显示站点名：走站点字典拿人话名字（花瓣 / Pixso / 知乎），
+         * 未收录站点才显示域名本身。这样不同站点在卡片上一眼能分开。 */
+        var badgeLabel = platLabel(f.plat);
+        if (!badgeLabel) { badgeLabel = p.label; }
+        badgeLabel = String(badgeLabel).replace(/^\.+|\.+$/g, '').slice(0, 18);
         var corner = isV ? (f.dur || '') : (isA ? f.ext : (isAu ? f.ext : ''));
         var icon = isV ? 'i-film' : (isA ? 'i-repeat-1' : (isAu ? 'i-volume-2' : 'i-image'));
         var tags = (f.tags || []).map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
@@ -296,10 +485,10 @@
             '<div class="thumb' + (isV ? ' is-video' : '') + (isA ? ' is-anim' : '') + (isAu ? ' is-audio' : '') + '">' +
             '<div class="cover" style="--h:' + f.h + '"><span class="fig"><svg class="i"><use href="#' + icon + '"/></svg></span></div>' +
             '<img alt="" loading="lazy" data-thumb="' + esc(f.relPath) + '">' +
-            '<span class="badge"><span class="dot" style="--pc:' + p.dot + '"></span>' + esc(badgeLabel) + '</span>' +
+            '<span class="badge" data-site="' + esc(f.plat || '') + '" title="只看「' + esc(badgeLabel) + '」"><span class="dot" style="--pc:' + p.dot + '"></span>' + esc(badgeLabel) + '</span>' +
             (corner ? '<span class="duration' + (isA ? ' anim' : '') + '">' + esc(corner) + '</span>' : '') +
             (f.state === 'missing' ? '<span class="missing-tag">文件缺失</span>' : '') +
-            (f.isRef ? '<span class="ref-tag" title="内容与另一条素材相同，物理文件只存一份">引用</span>' : '') +
+            (f.isRef ? '<button type="button" class="ref-tag" data-refs="1" title="查看同内容的其它来源">引用</button>' : '') +
             '<div class="playbtn"><span><svg class="i"><use href="#i-' + (isV || isA || isAu ? 'play' : 'maximize') + '"/></svg></span></div>' +
             '</div>' +
             '<div class="body">' +
@@ -313,6 +502,7 @@
             '<span class="timecell">' + esc(shortDate(f.savedAt)) + '</span>' +
             (tags ? '<div class="tagrow">' + tags + '</div>' : '') +
             '</div>' +
+            '<button type="button" class="card-star' + (f.starred ? ' on' : '') + '" data-star="1" aria-pressed="' + (f.starred ? 'true' : 'false') + '" title="' + (f.starred ? '取消星标 (S)' : '加星标 (S)') + '"><svg class="i"><use href="#i-star"/></svg></button>' +
             '<input type="checkbox" class="selbox" aria-label="选择此素材"' + (S.sel.has(f.id) ? ' checked' : '') + '>' +
             '</article>';
     }
@@ -476,6 +666,7 @@
         observeThumbs();
 
         var c = counts();
+        var scope = countsInScope();
         var setTxt = function (sel, v) { var e = $(sel); if (e) { e.textContent = v; } };
         setTxt('#sCount', rows.length);
         setTxt('#sImg', c.image);
@@ -484,15 +675,19 @@
         setTxt('#fCount', rows.length);
         setTxt('#fSize', Math.round(rows.reduce(function (a, b) { return a + (b.size || 0); }, 0)) + ' MB');
         renderDedupStat(rows);
+        renderSyncStatus();
         setTxt('#treeTotal', FILES.length);
         setTxt('#batchCount', '已选 ' + S.sel.size + ' 项');
 
+        /* 类型 tab 的数字必须是「当前站点/搜索范围」内的，不是全库：
+         * 否则选中「小红书」后上面还显示全库的「视频 29」，与卡片数量对不上。 */
         $$('#typeTabs button').forEach(function (b) {
             var t = b.dataset.type;
-            var n = t === 'all' ? FILES.length : (c[t] || 0);
+            var n = t === 'all' ? scope.all : (scope[t] || 0);
             var badge = b.querySelector('b'); if (badge) { badge.textContent = n; }
         });
         renderFavs();
+        renderTags();
     }
 
     /* ---------- F7 分级加载（虚拟滚动轻量版） ---------- */
@@ -530,6 +725,80 @@
         if (measured > 0) { win.rowH = measured; }
         updateWindow(true);
     });
+
+    /* ---------- 索引状态：让「素材存全了没有」可回答 ----------
+     * 旧实现把「2 分钟前扫描完成」写死在 library.html 里，全仓库没有任何 JS
+     * 更新 #syncText —— 用户看到的时间永远不变，也看不到索引条数与待处理项。
+     * 这里改成真实状态：已索引 N · 上次扫描 时间 · 待处理 M（未整理）。 */
+    var LAST_SCAN = 0;
+
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+    function fmtScanTime(ts) {
+        var t = Number(ts) || 0;
+        if (!t) { return ''; }
+        var d = new Date(t);
+        var now = new Date();
+        var hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+        if (d.toDateString() === now.toDateString()) { return '今天 ' + hm; }
+        var y = new Date(now.getTime() - 86400000);
+        if (d.toDateString() === y.toDateString()) { return '昨天 ' + hm; }
+        var md = (d.getMonth() + 1) + '-' + d.getDate() + ' ' + hm;
+        return d.getFullYear() === now.getFullYear() ? md : (d.getFullYear() + '-' + md);
+    }
+
+    function renderSyncStatus() {
+        var el = $('#syncText');
+        if (!el) { return; }
+        var pending = 0;
+        FILES.forEach(function (f) { if (f.untracked) { pending++; } });
+        var txt = '已索引 ' + FILES.length;
+        txt += LAST_SCAN ? ' · 上次扫描 ' + fmtScanTime(LAST_SCAN) : ' · 尚未扫描';
+        if (pending) { txt += ' · 待处理 ' + pending; }
+        el.textContent = txt;
+        var note = el.closest ? el.closest('.scan-note') : null;
+        if (note) {
+            note.classList.toggle('stale', !LAST_SCAN);
+            note.classList.toggle('pending', pending > 0);
+            note.title = LAST_SCAN
+                ? ('上次扫描：' + new Date(LAST_SCAN).toLocaleString() + (pending ? ('\n未整理素材：' + pending + ' 项') : ''))
+                : '还没有完成过一次完整扫描';
+        }
+    }
+
+    function readLastScan() {
+        try {
+            chrome.storage.local.get('vrLibSettings', function (o) {
+                var s = (o && o.vrLibSettings) || {};
+                LAST_SCAN = Number(s.lastScanAt) || 0;
+                renderSyncStatus();
+            });
+        } catch (e) { renderSyncStatus(); }
+    }
+
+    async function recordScan() {
+        LAST_SCAN = Date.now();
+        renderSyncStatus();
+        try {
+            var s = await readLibSettings();
+            s.lastScanAt = LAST_SCAN;
+            s.indexedCount = FILES.length;
+            chrome.storage.local.set({ vrLibSettings: s });
+        } catch (e) { /* 记录失败不影响本次扫描结果 */ }
+    }
+
+    function showScan(msg, sub) {
+        var el = $('#scanState');
+        if (!el) { return; }
+        el.classList.remove('hidden');
+        var t = $('#scanText'); if (t) { t.textContent = msg || '正在扫描目录…'; }
+        var s = $('#scanSub'); if (s) { s.textContent = sub || '正在读取文件列表…'; }
+    }
+
+    function hideScan() {
+        var el = $('#scanState');
+        if (el) { el.classList.add('hidden'); }
+    }
 
     /* ---------- F5 去重统计：逻辑大小 vs 物理占用 ---------- */
     function renderDedupStat(rows) {
@@ -774,15 +1043,36 @@
     /* ---------- 首次自动索引 ---------- */
     async function autoIndex() {
         if (!root.VRIndex) { return false; }
+        /* 扫描过程要可见：以前只在 toast 里说一句「正在扫描」，长扫描没有任何
+         * 进度，用户会以为卡死。复用 HTML 里一直存在但从未被使用的 #scanState。 */
+        showScan('正在扫描目录…', '正在读取下载记录与本地文件');
+        var onProgress = function (p) {
+            if (!p) { return; }
+            var t = $('#scanText');
+            if (t) { t.textContent = '正在扫描目录…'; }
+            var s = $('#scanSub');
+            if (!s) { return; }
+            s.textContent = (p.phase === 'merge')
+                ? ('正在合并索引 ' + (p.total || 0) + ' 项')
+                : ('已扫描 ' + (p.done || 0) + '/' + (p.total || 0));
+        };
+        var ok = false;
         // ① 下载记录模式：**不需要目录授权**，能立刻把已下载的文件收进库。
         //    2026-11-05 事故：这里原来只试 full/snapshot，两者都要 FSA 授权，
         //    没授权就整个失败 → 资源库永远空白，用户看到「管理器里什么都没有」。
-        try { await root.VRIndex.build({ mode: 'downloads' }); return true; } catch (e) { /* 落到下一档 */ }
-        // ② 全量扫描：需要一次目录授权，好处是能发现「文件已被删」
-        try { await root.VRIndex.build({ mode: 'full' }); return true; } catch (e) { /* 落到下一档 */ }
-        // ③ 快照：同样是授权后的兜底
-        try { await root.VRIndex.build({ mode: 'snapshot' }); return true; }
-        catch (e2) { return false; }
+        try { await root.VRIndex.build({ mode: 'downloads', onProgress: onProgress }); ok = true; }
+        catch (e) {
+            // ② 全量扫描：需要一次目录授权，好处是能发现「文件已被删」
+            try { await root.VRIndex.build({ mode: 'full', onProgress: onProgress }); ok = true; }
+            catch (e2) {
+                // ③ 快照：同样是授权后的兜底
+                try { await root.VRIndex.build({ mode: 'snapshot', onProgress: onProgress }); ok = true; }
+                catch (e3) { ok = false; }
+            }
+        }
+        hideScan();
+        if (ok) { await recordScan(); }
+        return ok;
     }
 
     /* ---------- 事件 ---------- */
@@ -1005,6 +1295,45 @@
             grid.addEventListener('click', function (e) {
                 var c = e.target.closest('.card'); if (!c) { return; }
                 var id = c.dataset.id;
+                /* 引用角标是唯一一个「不打开素材、只看同内容来源」的入口：
+                 * 角标本身就在卡片里，必须先于卡片点击拦截，否则会被当成打开预览。 */
+                if (e.target.closest('[data-refs]')) {
+                    e.preventDefault();
+                    var rf = FILES.find(function (f) { return f.id === id; });
+                    if (!rf) { return; }
+                    openPreview(rf);
+                    setTimeout(function () {
+                        var d = document.getElementById('pvRefFold');
+                        if (!d) { return; }
+                        d.open = true;
+                        try { d.scrollIntoView({ block: 'nearest' }); } catch (err) { /* ignore */ }
+                    }, 40);
+                    return;
+                }
+                if (e.target.closest('[data-star]')) {
+                    e.preventDefault();
+                    var sf = FILES.find(function (f) { return f.id === id; });
+                    if (sf) { starCard(sf); }
+                    return;
+                }
+                /* 站点徽标 = 快捷筛选：点「花瓣」直接只看花瓣的素材。
+                 * 比先去左侧树里找节点快一步，且卡片和左栏口径完全一致。 */
+                var badgeEl = e.target.closest('[data-site]');
+                if (badgeEl) {
+                    e.preventDefault();
+                    var sk = badgeEl.getAttribute('data-site');
+                    if (sk) {
+                        S.plat = (S.plat === sk) ? 'all' : sk;
+                        S.q = ''; S.type = 'all';
+                        if ($('#search')) { $('#search').value = ''; }
+                        $$('#typeTabs button').forEach(function (x) {
+                            x.classList.toggle('active', x.dataset.type === 'all');
+                        });
+                        render();
+                        renderTree();
+                    }
+                    return;
+                }
                 if (S.select) {
                     if (S.sel.has(id)) { S.sel.delete(id); } else { S.sel.add(id); }
                     render(); return;
@@ -1017,7 +1346,7 @@
         if (tree) {
             tree.addEventListener('click', function (e) {
                 var n = e.target.closest('.tree-node'); if (!n) { return; }
-                if (!n.dataset.plat && !n.dataset.author) {
+                if (!n.dataset.plat && !n.dataset.author && !n.dataset.group) {
                     /* 根节点「全部资源」：之前只加 active 不重置筛选，点了等于没点 */
                     S.q = ''; S.plat = 'all'; S.type = 'all';
                     if ($('#search')) { $('#search').value = ''; }
@@ -1025,6 +1354,13 @@
                         x.classList.toggle('active', x.dataset.type === 'all');
                     });
                     render();
+                    return;
+                }
+                if (n.dataset.group === 'others') {
+                    /* 「其他站点」只负责展开/收起，不做筛选：
+                     * 它不是一个真实站点，点它却筛出全部长尾会很反直觉。 */
+                    treeOpen.__others__ = !treeOpen.__others__;
+                    renderTree();
                     return;
                 }
                 if (n.dataset.plat) {
@@ -1313,6 +1649,27 @@
         toast('预览器 R5 接入中');
     }
 
+    /** 卡片/键盘共用的星标切换：先写库，成功后再更新 UI，失败不假装成功。 */
+    async function starCard(f) {
+        if (!f) { return; }
+        if (!root.VRFav || typeof root.VRFav.toggleStar !== 'function') {
+            toast('收藏模块没加载，刷新页面再试');
+            return;
+        }
+        try {
+            var next = await root.VRFav.toggleStar(f.relPath);
+            f.starred = !!next;
+            if (RAW[f.relPath]) { RAW[f.relPath].starred = next ? 1 : 0; }
+            render();
+            /* render 会重建卡片，把焦点还给同一张卡，S 键可以连续按。 */
+            var again = document.querySelector('#grid .card[data-id="' + String(f.id).replace(/"/g, '\\"') + '"]');
+            if (again && document.activeElement !== again) { try { again.focus(); } catch (e) { /* ignore */ } }
+            toast(next ? '已加星标' : '已取消星标');
+        } catch (e) {
+            toast('星标失败：' + ((e && e.message) || '未知'));
+        }
+    }
+
     /* ---------- 卡片右键菜单（VRCtxMenu 接线） ---------- */
     /* 复用已有实现：重命名 openRename / 移动 VRMovePicker / 删除确认 ask
      * 都在 bindMissing 的闭包里，所以这里只注册回调，具体函数在 bindMissing 内注入。 */
@@ -1439,6 +1796,186 @@
             cnt.textContent = Object.keys(seen).length;
         }
     }
+
+    /**
+     * 左栏标签区渲染。
+     *
+     * 设计要点（2026-11-07 苏哥拍板）：
+     *   · 计数徽标跟着「当前范围」走 —— 切到小红书后，标签显示的是该站下的张数
+     *   · 多选=交集，选中用金色描边；收藏夹那种「唯一激活」不适合标签
+     *   · 行尾改名/删除默认隐藏，悬停才出，避免左栏一片按钮
+     *   · 默认只列前 MAX 个，其余收进「显示全部」，防止标签一多把左栏撑爆
+     */
+    var TAG_SHOW = 12;
+    var tagExpanded = false;
+
+    function renderTags() {
+        var list = $('#tagList');
+        if (!list) { return; }
+        var c = countsInScope();
+        var tags = Object.keys(c.tags || {}).map(function (k) {
+            return { key: k, label: c.tags[k].label, count: c.tags[k].count };
+        }).sort(function (a, b) {
+            /* 选中的排最前（方便连续取消），其余按张数降序 */
+            var ai = S.tags.indexOf(a.key) >= 0 ? 0 : 1;
+            var bi = S.tags.indexOf(b.key) >= 0 ? 0 : 1;
+            if (ai !== bi) { return ai - bi; }
+            return b.count - a.count;
+        });
+
+        if (!tags.length) {
+            list.innerHTML = '<div class="tag-empty">还没有标签。打开任意素材，在右侧「标签」里添加。</div>';
+            var cnt0 = $('#tagSideCnt'); if (cnt0) { cnt0.textContent = '0'; }
+            paintTagSelBadge(tags);
+            return;
+        }
+
+        var shown = tagExpanded ? tags : tags.slice(0, TAG_SHOW);
+        var html = shown.map(function (t) {
+            var on = S.tags.indexOf(t.key) >= 0;
+            return '<div class="tag-row' + (on ? ' active' : '') + '" data-tag="' + esc(t.key) + '" title="' + esc(t.label) + '（' + t.count + '）">' +
+                '<span class="hash">#</span>' +
+                '<span class="label">' + esc(t.label) + '</span>' +
+                '<span class="count">' + t.count + '</span>' +
+                '<button class="tag-act" data-tag-rename="' + esc(t.key) + '" title="重命名标签"><svg class="i" style="width:10px;height:10px"><use href="#i-pencil"/></svg></button>' +
+                '<button class="tag-act danger" data-tag-del="' + esc(t.key) + '" title="删除标签（从所有素材移除）"><svg class="i" style="width:10px;height:10px"><use href="#i-x"/></svg></button>' +
+                '</div>';
+        }).join('');
+
+        if (tags.length > TAG_SHOW) {
+            html += '<button class="fav-more" id="tagMore">' +
+                (tagExpanded ? '收起' : '显示全部（' + tags.length + '）') + '</button>';
+        }
+        list.innerHTML = html;
+
+        var cnt = $('#tagSideCnt');
+        if (cnt) { cnt.textContent = String(tags.length); }
+        paintTagSelBadge(tags);
+    }
+
+    /**
+     * 折叠条上的「正在筛选」提示。
+     *
+     * 为什么要有：标签区默认收起，如果收起后完全看不出筛了什么，
+     * 用户会以为列表少了一半图却找不到原因。这里把已选标签名拼在折叠条上。
+     */
+    function paintTagSelBadge(tags) {
+        var badge = $('#tagSelBadge');
+        if (!badge) { return; }
+        if (!S.tags || !S.tags.length) {
+            badge.hidden = true;
+            badge.textContent = '';
+            return;
+        }
+        var byKey = {};
+        (tags || []).forEach(function (t) { byKey[t.key] = t.label; });
+        var names = S.tags.map(function (k) { return byKey[k] || k; });
+        badge.hidden = false;
+        badge.textContent = names.join(' + ');
+        badge.title = '正在筛选：' + names.join('、') + '（取交集）';
+    }
+
+    /** 标签名归一：去首尾空白、折叠内部空格、限长 */
+    function normTag(s) {
+        return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    }
+
+    /** 某个标签名是否已在这条素材上（大小写不敏感） */
+    function hasTag(f, name) {
+        var k = String(name).toLowerCase();
+        return (f.tags || []).some(function (x) { return String(x).trim().toLowerCase() === k; });
+    }
+
+    /**
+     * 新建标签：加到**当前勾选的素材**上。
+     *
+     * 标签没有独立注册表 —— 它只存在于素材条目的 tags 数组里（indexer 重建索引时
+     * 靠 mergeEntry 保住）。所以「新建一个没有任何素材的标签」在数据上不存在，
+     * 必须先选中素材。这也是 booru 系的语义：标签是对素材的描述。
+     */
+    async function createTag() {
+        var inp = $('#tagNewInput'); if (!inp) { return; }
+        var name = normTag(inp.value);
+        if (!name) { toast('标签名不能为空'); return; }
+        var targets = FILES.filter(function (f) { return S.sel.has(f.id); });
+        if (!targets.length) { toast('先在右侧勾选素材，再新建标签'); return; }
+
+        var n = 0;
+        for (var i = 0; i < targets.length; i++) {
+            var f = targets[i];
+            if (hasTag(f, name)) { continue; }
+            var next = (f.tags || []).slice();
+            next.push(name);
+            try {
+                await root.VRDB.patchFile(f.relPath, { tags: next });
+            } catch (e) { continue; }
+            f.tags = next;
+            n++;
+        }
+        inp.value = '';
+        render();
+        toast(n ? ('已给 ' + n + ' 项加上「' + name + '」') : '这些素材已经有该标签了');
+    }
+
+    /** 重命名标签：遍历带该标签的素材，就地改名（改名后同一条里可能重复，去重） */
+    async function renameTag(key) {
+        var c = counts();
+        var t = c.tags[key];
+        if (!t) { return; }
+        var nv = window.prompt('重命名标签', t.label);
+        if (nv === null) { return; }
+        nv = normTag(nv);
+        if (!nv || nv.toLowerCase() === key) { return; }
+
+        var hits = FILES.filter(function (f) { return hasTag(f, key); });
+        for (var i = 0; i < hits.length; i++) {
+            var f = hits[i];
+            var seen = {}, out = [];
+            (f.tags || []).forEach(function (x) {
+                var s = String(x).trim();
+                if (s.toLowerCase() === key) { s = nv; }
+                var k = s.toLowerCase();
+                if (seen[k]) { return; }
+                seen[k] = 1;
+                out.push(s);
+            });
+            try {
+                await root.VRDB.patchFile(f.relPath, { tags: out });
+            } catch (e) { continue; }
+            f.tags = out;
+        }
+        /* 选中的旧 key 跟着换，否则筛选项会指向一个已不存在的标签 */
+        var idx = S.tags.indexOf(key);
+        if (idx >= 0) { S.tags[idx] = nv.toLowerCase(); }
+        render();
+        toast('已重命名为「' + nv + '」');
+    }
+
+    /** 删除标签：从所有带它的素材上移除（素材本身不动，只清标签） */
+    async function deleteTag(key) {
+        var c = counts();
+        var t = c.tags[key];
+        if (!t) { return; }
+        if (!window.confirm('删除标签「' + t.label + '」？\n会从 ' + t.count +
+            ' 项素材上移除，素材本身不受影响。')) { return; }
+
+        var hits = FILES.filter(function (f) { return hasTag(f, key); });
+        for (var i = 0; i < hits.length; i++) {
+            var f = hits[i];
+            var out = (f.tags || []).filter(function (x) {
+                return String(x).trim().toLowerCase() !== key;
+            });
+            try {
+                await root.VRDB.patchFile(f.relPath, { tags: out });
+            } catch (e) { continue; }
+            f.tags = out;
+        }
+        var idx = S.tags.indexOf(key);
+        if (idx >= 0) { S.tags.splice(idx, 1); }
+        render();
+        toast('已删除标签「' + t.label + '」');
+    }
+
     function oneFav() {
         var fav = FAVS.filter(function (f) { return f.sys !== 'star'; })[0];
         if (!fav) {
@@ -1893,6 +2430,50 @@
             }
             return null;
         }
+
+        function cardElById(id) {
+            var cards = document.querySelectorAll('#grid .card');
+            for (var i = 0; i < cards.length; i++) {
+                if (cards[i].getAttribute('data-id') === id) { return cards[i]; }
+            }
+            return null;
+        }
+
+        /* 方向键在网格里移动焦点：Tab 逐个走太慢，素材一多就没法用。
+         * 目标还没渲染时，小库先追加分页；窗口化模式先按行高估位置滚动再重画。 */
+        function moveCardFocus(key) {
+            var cur = document.activeElement && document.activeElement.closest
+                ? document.activeElement.closest('#grid .card') : null;
+            if (!cur) { return false; }
+            var list = S.list || [];
+            var id = cur.getAttribute('data-id');
+            var idx = -1, i;
+            for (i = 0; i < list.length; i++) { if (list[i].id === id) { idx = i; break; } }
+            if (idx < 0) { return false; }
+            var grid = document.getElementById('grid');
+            var cols = grid ? (gridCols(grid) || 1) : 1;
+            var step = key === 'ArrowLeft' ? -1
+                : key === 'ArrowRight' ? 1
+                    : key === 'ArrowUp' ? -cols : cols;
+            var next = idx + step;
+            if (next < 0 || next >= list.length) { return false; }
+            var target = list[next];
+            var el = cardElById(target.id);
+            if (!el && !win.on) {
+                while (S.shown < next + 1 && S.shown < list.length) { appendMore(); }
+                el = cardElById(target.id);
+            } else if (!el && win.on) {
+                var row = Math.floor(next / cols);
+                var rowH = Math.max(120, win.rowH || 260);
+                var top = grid ? (grid.getBoundingClientRect().top + window.pageYOffset) : 0;
+                window.scrollTo(0, Math.max(0, top + row * rowH - 120));
+                updateWindow(true);
+                el = cardElById(target.id);
+            }
+            if (!el) { return false; }
+            try { el.focus(); el.scrollIntoView({ block: 'nearest' }); } catch (err) { /* ignore */ }
+            return true;
+        }
         document.addEventListener('keydown', function (e) {
             var el = document.activeElement;
             var tag = el ? el.tagName : '';
@@ -1920,6 +2501,17 @@
             if (e.key === 'F2') {
                 var rf = focusedCard() || (previewOpen ? curPreview() : null);
                 if (rf) { e.preventDefault(); openRename(rf); }
+                return;
+            }
+            if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                var sf = focusedCard() || (previewOpen ? curPreview() : null);
+                if (sf) { e.preventDefault(); starCard(sf); }
+                return;
+            }
+            /* 预览层内方向键另有语义（视频 ±5 秒 / 图片缩放），这里不接管 */
+            if (!previewOpen && (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+                e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                if (moveCardFocus(e.key)) { e.preventDefault(); }
                 return;
             }
             if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -2164,13 +2756,8 @@
     }
 
     function bindFavAndDrawer() {
-        var favBtn = $('#favMenuBtn');
-        if (favBtn) {
-            favBtn.addEventListener('click', function () {
-                var menu = $('#favMenu');
-                if (menu) { menu.classList.toggle('on'); }
-            });
-        }
+        /* 收藏区已改为平铺（2026-11-07）：不再有 favMenuBtn / favMenu 弹层。
+         * 原来那两行 toggle 现在会拿到 null，留着只会误导后来人。 */
         var favList = $('#favList');
         if (favList) {
             favList.addEventListener('click', function (e) {
@@ -2178,13 +2765,6 @@
                 var id = row.dataset.fav;
                 S.fav = (S.fav === id) ? null : id;
                 renderFavs(); render();
-            });
-        }
-        var newBtn = $('#favNewBtn');
-        if (newBtn) {
-            newBtn.addEventListener('click', function () {
-                var row = $('#favNewRow'); if (row) { row.classList.toggle('on'); }
-                var inp = $('#favNewInput'); if (inp) { inp.focus(); }
             });
         }
         function createFav() {
@@ -2200,6 +2780,49 @@
         var okBtn = $('#favNewOk'); if (okBtn) { okBtn.addEventListener('click', createFav); }
         var inp = $('#favNewInput');
         if (inp) { inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { createFav(); } }); }
+
+        /* ---------- 标签区（默认折叠） ---------- */
+        /* 展开/收起：就地展开，不弹层。收起时仍能看见当前筛了哪些标签，
+         * 否则用户筛完收起后不知道自己在看什么。 */
+        var tagToggle = $('#tagToggle');
+        if (tagToggle) {
+            tagToggle.addEventListener('click', function () {
+                var side = $('#tagSide');
+                if (!side) { return; }
+                var open = !side.classList.contains('open');
+                side.classList.toggle('open', open);
+                tagToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+        }
+        var tagList = $('#tagList');
+        if (tagList) {
+            tagList.addEventListener('click', function (e) {
+                /* 行尾的改名/删除按钮先拦下，别让它顺带触发筛选 */
+                var ren = e.target.closest('[data-tag-rename]');
+                if (ren) { e.stopPropagation(); renameTag(ren.getAttribute('data-tag-rename')); return; }
+                var del = e.target.closest('[data-tag-del]');
+                if (del) { e.stopPropagation(); deleteTag(del.getAttribute('data-tag-del')); return; }
+                if (e.target.closest('#tagMore')) {
+                    tagExpanded = !tagExpanded; renderTags(); return;
+                }
+                var row = e.target.closest('.tag-row'); if (!row) { return; }
+                var key = row.getAttribute('data-tag');
+                if (!key) { return; }
+                var i = S.tags.indexOf(key);
+                /* Ctrl/⌘ 点 = 叠加（取交集）；普通点 = 只留这一个，再点同一个则取消。
+                 * 这样「点一个换一个」是默认心智，「多选」才需要按住修饰键。 */
+                if (e.ctrlKey || e.metaKey) {
+                    if (i >= 0) { S.tags.splice(i, 1); } else { S.tags.push(key); }
+                } else {
+                    S.tags = (i >= 0 && S.tags.length === 1) ? [] : [key];
+                }
+                renderTags(); render();
+            });
+        }
+        var tagOk = $('#tagNewOk');
+        if (tagOk) { tagOk.addEventListener('click', createTag); }
+        var tagInp = $('#tagNewInput');
+        if (tagInp) { tagInp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { createTag(); } }); }
 
         var bmBtn = $('#batchMove');
         if (bmBtn) {
@@ -2471,6 +3094,7 @@
         try { initCtxMenu(); window.__vrBoot.push('ctx'); } catch (e) { window.__vrBoot.push('ctx-ERR:' + e.message); }
         try { bindConfirm(); window.__vrBoot.push('confirm'); } catch (e) { window.__vrBoot.push('confirm-ERR:' + e.message); }
         try { await loadFavs(); window.__vrBoot.push('favs'); } catch (e) { window.__vrBoot.push('favs-ERR:' + e.message); }
+        try { readLastScan(); } catch (e) { window.__vrBoot.push('scan-ERR'); }
         try { await ensureRoot(); window.__vrBoot.push('root'); } catch (e) { window.__vrBoot.push('root-ERR:' + e.message); }
         try { await refreshPermState(); window.__vrBoot.push('perm'); } catch (e) { window.__vrBoot.push('perm-ERR:' + e.message); }
         try { await load(); window.__vrBoot.push('load:' + FILES.length); } catch (e) { window.__vrBoot.push('load-ERR:' + e.message); }

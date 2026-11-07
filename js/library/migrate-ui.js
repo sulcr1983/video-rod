@@ -168,6 +168,18 @@
                 var s = root.VRSettings && root.VRSettings.get ? root.VRSettings.get() : {};
                 plan = await root.VRMigrate.planRebase(st.src, st.dst,
                     { targetMode: (s.mode === 'custom') ? 'custom' : 'system' });
+            } else if (kind === 'site-restructure') {
+                /* 整理历史目录：老「其他网页/域名/图片」→「站名/域名」。
+                 * 只出计划；执行仍走 run()（复制 → 校验 → 删源 → 日志 → 回滚）。 */
+                if (!st.src) { throw new Error('请先选择要整理的目录'); }
+                plan = await root.VRMigrate.planSiteRestructure(st.src);
+                renderPlan(plan);
+                var pend = (plan && plan.pending && plan.pending.length) || 0;
+                text('vrLibMigState',
+                    pend ? ('预演完成：' + pend + ' 个文件认不出站点，将保持原地，未改动任何文件')
+                         : '预演完成，未改动任何文件',
+                    pend ? '#b26a00' : '#2e7d32');
+                return;
             } else {
                 if (!st.src) { throw new Error('请先选择要整理的目录'); }
                 var hist = await new Promise(function (resolve) {
@@ -311,6 +323,8 @@
         if (p3) { p3.addEventListener('click', function () { pick('dst'); }); }
         var p4 = $('vrLibMigPickSrc2');
         if (p4) { p4.addEventListener('click', function () { pick('src'); }); }
+        var p5 = $('vrLibMigPickSrc3');
+        if (p5) { p5.addEventListener('click', function () { pick('src'); }); }
 
         var planBtn = $('vrLibMigPlan');
         if (planBtn) { planBtn.addEventListener('click', doPlan); }

@@ -68,6 +68,14 @@
         return m ? { user: m[1], statusId: m[2] } : null;
     }
 
+    /** 本页站名（页面级缓存；取不到返回空串，绝不回退域名） */
+    function pageSiteNameNow() {
+        try {
+            var S = self.VRSiteName;
+            return S && S.pageSiteName ? String(S.pageSiteName(document, location.href) || '') : '';
+        } catch (e) { return ''; }
+    }
+
     function tweetInfo(article) {
         try {
             // extractTwitter 接受任意带 querySelector 的对象 → article 元素即作用域
@@ -84,11 +92,12 @@
         const name = N.buildNameFromInfo(
             { title: i.title, post: i.title, authorFull: i.authorFull, site: 'x' },
             'https://x.com/', { tpl: settings.template, ext: ext });
-        // 目录：优先走三段结构（子目录/X/博主/类型）
+        // 目录：站名优先（siteName），未收录才回退域名
         if (self.VRPath && self.VRPath.buildRelDir) {
             try {
                 const dir = self.VRPath.buildRelDir({
                     pageUrl: location.href,
+                    siteName: pageSiteNameNow(),
                     authorFull: i.authorFull,
                     ext: ext,
                     subdir: settings.defaultDir || 'video-rod'
@@ -141,6 +150,10 @@
                     Message: 'vrQuickDownX',
                     user: ref.user, statusId: ref.statusId, mediaId: mediaId,
                     filename: filename,
+                    /* 站名只在有 DOM 的这一刻拿得到；后台收到后落库，
+                     * 供以后重扫磁盘（无页面可读）时复用。 */
+                    siteName: pageSiteNameNow(),
+                    pageUrl: location.href,
                     // 按钮一键 = 最高画质（XBD 同款手感）；省流档位留给面板里的批量下载设置
                     wantBest: true
                 },

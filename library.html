@@ -10,7 +10,11 @@
   <!-- 成熟开源播放器 Plyr 3.8.3（MIT），本地 vendored，离线可用、无外部请求 -->
   <link rel="stylesheet" type="text/css" href="lib/plyr/plyr.css" media="all" />
   <script src="lib/plyr/plyr.min.js" defer></script>
+  <script src="js/site-name.js" defer></script>
+  <script src="js/site-name-store.js" defer></script>
+  <script src="js/library/site-names-preset.js" defer></script>
   <script src="js/library/path.js" defer></script>
+  <script src="js/library/site-registry.js" defer></script>
   <script src="js/library/db.js" defer></script>
   <script src="js/library/localfile.js" defer></script>
   <script src="js/library/thumbs.js" defer></script>
@@ -90,7 +94,10 @@
     <button class="root-btn" id="rootBtn">
       <span class="rb-ico"><svg class="i i-sm"><use href="#i-folder"/></svg></span>
       <span class="rb-body">
-        <span class="rb-path">F:\download\video-rod</span>
+        <!-- 占位文本必须中性：真实路径由 renderRoot() 从设置里读出来覆盖。
+             早先这里写死 F:\download\video-rod（开发机路径），一旦初始化脚本
+             报错没跑到 renderRoot，用户就会看到这个假路径，以为下载目录在 F 盘。 -->
+        <span class="rb-path">正在识别…</span>
         <span class="rb-hint">点击更换目录</span>
       </span>
       <svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
@@ -107,17 +114,11 @@
     <nav class="tree" id="tree"></nav>
 
     <div class="fav-side">
-      <button class="fav-side-btn" id="favMenuBtn">
-        <svg class="i i-sm"><use href="#i-bookmark"/></svg><span>收藏夹</span>
-        <b id="favSideCnt">0</b>
-        <svg class="i i-sm chev"><use href="#i-chevron-up"/></svg>
-      </button>
-      <div class="fav-menu" id="favMenu">
-          <div class="side-fav">
-      <div class="fav-head">
-        <span>收藏夹</span>
-        <button class="fav-add" id="favNewBtn" title="新建收藏夹"><svg class="i"><use href="#i-bookmark-plus"/></svg></button>
-        <button class="fav-add" id="favSaveFilter" title="把当前筛选存为智能收藏夹"><svg class="i"><use href="#i-funnel"/></svg></button>
+      <!-- 平铺，不再向上弹层：收藏实际只有「已加星标」+「收藏」两行，
+           为 2 行内容做「点击→弹层→再点」三步是多余，弹层还会遮住资源树。
+           （代码里 2026-11-06 已定：收藏夹只留一个，分类交给标签） -->
+      <div class="side-label">
+        <span>收藏</span><span id="favSideCnt">0</span>
       </div>
       <nav id="favList"></nav>
       <div class="fav-new" id="favNewRow">
@@ -126,6 +127,26 @@
       </div>
       <button class="fav-more hidden" id="favMore">全部收藏夹（<span id="favMoreN">0</span>）</button>
     </div>
+
+    <!-- 标签区：默认**收起成一行**，点开就地展开。
+         为什么不常驻平铺（2026-11-07 苏哥反馈）：标签数量随素材增长，
+         常驻会把左栏撑满；收藏只有 2 行才适合平铺。
+         为什么不用向上弹层：标签是筛选主力，弹层会遮住资源树且要多点一次。 -->
+    <div class="tag-side" id="tagSide">
+      <button class="tag-toggle" id="tagToggle" aria-expanded="false">
+        <svg class="i i-sm"><use href="#i-tag"/></svg>
+        <span class="tt-label">标签</span>
+        <b id="tagSideCnt">0</b>
+        <span class="tt-sel" id="tagSelBadge" hidden></span>
+        <svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
+      </button>
+      <div class="tag-body" id="tagBody">
+        <nav id="tagList"></nav>
+        <div class="fav-new" id="tagNewRow">
+          <input id="tagNewInput" placeholder="新建标签，回车确认" autocomplete="off" spellcheck="false">
+          <button class="ok" id="tagNewOk">创建</button>
+        </div>
+        <div class="tag-note" id="tagNote">点标签筛选；按住 Ctrl 点可叠加（取交集）</div>
       </div>
     </div>
 

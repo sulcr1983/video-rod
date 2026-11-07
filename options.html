@@ -209,6 +209,7 @@
                     <option value="rename-subdir">改子目录名（同一父目录内）</option>
                     <option value="rebase">换根（源目录 → 目标目录，相对路径不变）</option>
                     <option value="restructure">整理旧文件（散文件 → 平台/博主/类型）</option>
+                    <option value="site-restructure">整理历史目录（→ 站点/作者，去类型层）</option>
                   </select>
                 </div>
               </div>
@@ -233,6 +234,13 @@
                 <div class="field-control field-inline">
                   <button type="button" id="vrLibMigPickSrc2" class="button2">选择要整理的目录</button>
                   <span class="explain">散落的媒体文件会按下载历史归入「子目录/平台/待整理/类型」</span>
+                </div>
+              </div>
+
+              <div class="field" data-kind="site-restructure" style="display:none">
+                <div class="field-control field-inline">
+                  <button type="button" id="vrLibMigPickSrc3" class="button2">选择要整理的目录</button>
+                  <span class="explain">把「其他网页/域名/图片」改成「站名/域名」，去掉类型层；认不出站点的原地不动</span>
                 </div>
               </div>
 
@@ -275,6 +283,54 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="card-title">站点名称</h3>
+        <p class="card-hint">
+          资源库左栏按「网站」分组，目录也用网站名。名字来源优先级：
+          <b>手改</b> &gt; <b>预置</b> &gt; <b>下载时自动获取</b> &gt; 域名。
+          下载新网站时会自动读取页面声明的站名（og:site_name / manifest 等），
+          这里可以覆盖或还原。
+        </p>
+
+        <div class="field">
+          <div class="field-label">添加站点</div>
+          <div class="field-control field-inline">
+            <input type="text" id="vrSiteNameAdd" placeholder="输入域名，如 huaban.com" class="input-md" />
+            <button type="button" id="vrSiteNameProbe" class="button2">获取站名并加入</button>
+            <span id="vrSiteNameProbeMsg" class="explain"></span>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">筛选</div>
+          <div class="field-control field-inline">
+            <input type="text" id="vrSiteNameSearch" placeholder="搜站名或域名…" class="input-md" />
+            <span id="vrSiteNameCount" class="explain"></span>
+          </div>
+        </div>
+
+        <div class="field field-top">
+          <div class="field-control">
+            <div id="vrSiteNameList" class="site-name-list">
+              <span class="explain">正在读取…</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field field-top">
+          <div class="field-label">批量</div>
+          <div class="field-control">
+            <div class="action-row">
+              <button type="button" id="vrSiteNameRefresh" class="button2">刷新</button>
+              <button type="button" id="vrSiteNameExport" class="button2">导出 JSON</button>
+              <button type="button" id="vrSiteNameImport" class="button2">导入 JSON</button>
+              <input type="file" id="vrSiteNameImportFile" accept=".json,application/json" hidden />
+            </div>
+            <div id="vrSiteNameMsg" class="explain field-hint"></div>
           </div>
         </div>
       </div>
@@ -1343,6 +1399,9 @@
   <script src="js/library/db.js" defer></script>
   <script src="js/library/indexer.js" defer></script>
   <script src="js/library/migrate.js" defer></script>
+  <script src="js/site-name.js" defer></script>
+  <script src="js/site-name-store.js" defer></script>
+  <script src="js/library/site-names-preset.js" defer></script>
   <script src="js/lib-image-util.js" defer></script>
   <script src="js/library/settings.js" defer></script>
   <script src="js/library/migrate-ui.js" defer></script>

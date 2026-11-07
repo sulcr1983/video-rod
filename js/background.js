@@ -6,10 +6,21 @@
 if (typeof G === 'undefined') {
     importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js",
         "/js/bili-whole.js", "/js/douyin.js",
+        "/js/site-name.js", "/js/site-name-store.js", "/js/library/site-names-preset.js",
         "/js/library/path.js", "/js/library/db.js", "/js/library/dedup.js", "/js/library/sw-library.js",
         "/js/lib-image-util.js", "/js/album-sites.js");
 }
 // 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用
+if (typeof self.VRSiteName === 'undefined') {
+    try { importScripts("/js/site-name.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+if (typeof self.VRSiteNameStore === 'undefined') {
+    try { importScripts("/js/site-name-store.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+/* 预置站名表：探测/解析时反爬站点（Cloudflare 403）的唯一兜底 */
+if (typeof self.VRSiteNamesPreset === 'undefined') {
+    try { importScripts("/js/library/site-names-preset.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
 if (typeof self.VRPath === 'undefined') {
     try { importScripts("/js/library/path.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
@@ -847,6 +858,171 @@ function vrImgExt(url, contentType) {
 }
 
 /**
+ * 从目标标签页取一次站名。
+ * 扩展页面（侧边栏 / 面板）读不到网页 DOM，只能注入一次去取。
+ */
+async function vrSiteNameFromTab(tabId) {
+    const empty = { name: '', src: '', host: '', manifest: '' };
+    if (!chrome.scripting || !(tabId > 0)) { return empty; }
+    /* 会被序列化丢进页面，不能引用外部变量 */
+    const probe = function () {
+        try {
+            var S = self.VRSiteName;
+            if (!S || !S.screen) { return null; }
+            var r = S.screen(document, location.href);
+            return { name: r.name || '', src: r.src || '', host: r.host || '', manifest: r.manifest || '' };
+        } catch (e) { return null; }
+    };
+    try {
+        /* 多数标签页已由 manifest 注入过 site-name.js，先直接试一次；
+         * 只有返回 null（旧标签页在扩展更新前打开）才补注入再试。 */
+        let res = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: probe });
+        let r = res && res[0] && res[0].result;
+        if (!r) {
+            await chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['js/site-name.js'] });
+            res = await chrome.scripting.executeScript({ target: { tabId: tabId }, func: probe });
+            r = res && res[0] && res[0].result;
+        }
+        return r || empty;
+    } catch (e) { return empty; }
+}
+
+/**
+ * 站名解析（三级回退，成本从低到高）：
+ *   ① 发送方已抓到 —— 网页内触发点，零额外开销
+ *   ② 注入目标页取一次 —— 扩展页面没有 DOM 时
+ *   ③ 本地缓存 —— 之前学过，重扫/迁移时唯一可用的一级
+ * 解析到就顺手落库，供以后无 DOM 的场景复用；已有记录（含手改）自动跳过。
+ * @returns {Promise<{name:string, src:string, host:string}>}
+ */
+async function vrResolveSiteName(msg) {
+    const pageUrl = String((msg && msg.pageUrl) || '');
+    const SN = self.VRSiteName;
+    const ST = self.VRSiteNameStore;
+    const host = (SN && SN.hostOf) ? SN.hostOf(pageUrl) : '';
+    let name = '', src = '';
+
+    try {
+        name = String((msg && msg.siteName) || '').trim();
+        if (name) { src = 'page'; }
+    } catch (e) { name = ''; }
+
+    /* 批量下载：入口已经解析并落库一次，子任务带 _siteResolved 直接复用，
+     * 不再逐张读改写整张 vrSiteNames 表（200 张图 × 全表读写不可接受）。 */
+    if (msg && msg._siteResolved) {
+        return { name: name, src: src || 'page', host: host };
+    }
+
+    if (!name && msg && Number(msg.tabId) > 0) {
+        const fromTab = await vrSiteNameFromTab(Number(msg.tabId));
+        if (fromTab.name) { name = fromTab.name; src = fromTab.src || 'tab'; }
+    }
+
+    if (!name && ST && host) {
+        try {
+            await ST.ready();
+            const rec = ST.peek(host);
+            if (rec && rec.name) { name = rec.name; src = rec.src || 'cache'; }
+        } catch (e) { /* 缓存读失败不阻断下载 */ }
+    }
+
+    if (name && ST && host) {
+        /* 落库失败不影响下载；已有记录（尤其 manual）由 store 自己跳过 */
+        try { ST.learn(host, name, src || 'learned'); } catch (e) { /* ignore */ }
+    }
+    return { name: name || '', src: src, host: host };
+}
+
+/**
+ * 站点名探测：给一个域名/网址，后台抓首页并解析站名。
+ *
+ * 为什么必须走后台：扩展页面（options / 侧边栏）的跨域 fetch 受 CORS 限制，
+ * 而 service worker 有 host_permissions（*://*）授权。设置页里「输入域名 →
+ * 获取站名并加入」靠的就是这条路径 —— 用户常常先知道域名、还没在这台机器
+ * 上下载过，只有这里能提前把名字拿到。
+ */
+async function vrSiteNameProbe(msg) {
+    const SN = self.VRSiteName;
+    const ST = self.VRSiteNameStore;
+    const raw = String((msg && (msg.domain || msg.url)) || '').trim();
+    if (!raw) { return { ok: false, message: '请输入域名', host: '', name: '' }; }
+    if (!SN) { return { ok: false, message: '站点名模块未加载', host: '', name: '' }; }
+
+    let input = raw;
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(input)) { input = 'https://' + input; }
+    let host = '';
+    let url = '';
+    try {
+        const u = new URL(input);
+        host = String(u.hostname || '').toLowerCase().replace(/^www\./, '');
+        url = u.origin + '/';
+    } catch (e) {
+        return { ok: false, message: '域名格式不对', host: '', name: '' };
+    }
+    if (!host) { return { ok: false, message: '域名格式不对', host: '', name: '' }; }
+
+    /* 归一成可注册域名再登记，保证与下载链路用同一把钥匙 */
+    let key = host;
+    try { key = SN.registrableDomain(host) || host; } catch (e) { key = host; }
+
+    /* 预置表已收录：先记下来，探测失败时可以兜底，且能告诉用户「本来就有」 */
+    const presetHit = (self.VRSiteNamesPreset && self.VRSiteNamesPreset.byHost)
+        ? self.VRSiteNamesPreset.byHost(key) : null;
+
+    let html = '';
+    let fetchErr = '';
+    try {
+        const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timer = ctl ? setTimeout(function () { ctl.abort(); }, 8000) : 0;
+        const res = await fetch(url, {
+            /* 不带 cookie：只要公开页面上的站名，避免把登录态送到第三方页面；
+             * 少数站点因此拿不到，会退回预置表或域名。 */
+            credentials: 'omit',
+            redirect: 'follow',
+            signal: ctl ? ctl.signal : undefined
+        });
+        if (timer) { clearTimeout(timer); }
+        if (!res || !res.ok) { throw new Error('HTTP ' + (res ? res.status : '?')); }
+        const text = await res.text();
+        /* 站名在 <head>，首页常常几百 KB 起：截断到 300KB 足够，别整页吞下 */
+        html = text.length > 300000 ? text.slice(0, 300000) : text;
+    } catch (e) {
+        fetchErr = String((e && e.message) || e || '');
+        if (/abort/i.test(fetchErr)) { fetchErr = '请求超时（8 秒）'; }
+    }
+
+    const info = html ? SN.parseHtmlInfo(html, url) : { host: key, name: '', src: '', title: '' };
+    let name = info.name || '';
+    let src = info.src || '';
+
+    /* 页面没声明就用预置名：比域名强，且与界面口径一致 */
+    if (!name && presetHit) { name = presetHit.n; src = 'preset'; }
+
+    if (ST) {
+        try {
+            if (name) {
+                /* override：用户主动点探测，期望刷新已有自动记录；
+                 * store 内部仍会保护 manual。 */
+                await ST.put(key, name, src || 'probe', { override: true });
+            } else {
+                /* 连名字都没拿到也登记域名，面板里能看到并手填 */
+                await ST.addHost(key, 'probe');
+            }
+        } catch (e) { /* 落库失败不影响返回探测结果 */ }
+    }
+
+    return {
+        ok: !!(name || !fetchErr),
+        host: key,
+        name: name,
+        src: src,
+        title: info.title || '',
+        preset: !!(presetHit && presetHit.n === name),
+        message: name ? '' : (fetchErr || '页面没有声明站名')
+    };
+}
+
+/**
  * 单张下载：命名 <日期>_<标题>.<ext>，落 video-rod/<平台>/<博主>/图片/
  * 走 vrDownloadWithName（ADR-027 文件名保护），并预登记资源库 meta。
  */
@@ -861,6 +1037,9 @@ async function vrImgDownload(msg) {
     }
 
     const pageUrl = String((msg && msg.pageUrl) || '');
+    /* 站名：消息里带的（网页内触发点）→ 注入目标页（扩展页面）→ 本地缓存。
+     * 解析到就顺手落库，供以后重扫磁盘（无 DOM）时复用。 */
+    const site = await vrResolveSiteName(msg);
     try {
         const plat = (P.detectPlatform ? P.detectPlatform(pageUrl) : '');
         const dupe = await vrFindExistingMedia({ site: plat, kind: 'image', url: url, pageUrl: pageUrl });
@@ -877,8 +1056,7 @@ async function vrImgDownload(msg) {
     // 宁可用「平台名」或 URL 末段，也不要用一个点开才能分辨的名字。
     const weak = (s) => !s || s.replace(/[\s\-_.·|:：]/g, '').length < 2;
     if (weak(title)) {
-        let alt = '';
-        try { alt = String((msg && msg.siteName) || ''); } catch (e) { alt = ''; }
+        let alt = site.name || '';
         if (weak(alt)) {
             try {
                 const u = new URL(pageUrl || url);
@@ -890,6 +1068,13 @@ async function vrImgDownload(msg) {
     }
     if (title.length > 60) { title = title.slice(0, 60); }
 
+    /* 分组文件夹名。同一网页的一批图收进这里，避免九张同题图平铺。
+     * 优先用调用方显式给的 part（多P/多集），其次用网页标题。 */
+    const partName = String((msg && (msg.part || msg.pageTitle)) || '');
+
+    /* 文件名维持原规则：日期_标题.ext。
+     * 用户 2026-11-07 明确要求不要用 01/02 默认序号：
+     * 没标题时沿用上面的回退（站点名 → URL 末段 → 「图片」），不额外造名字。 */
     const fileName = vrImgDate() + '_' + title + '.' + ext;
     const subdir = await vrImgSubdir();
     let relPath;
@@ -900,6 +1085,12 @@ async function vrImgDownload(msg) {
             ext: ext,
             fileName: fileName,
             subdir: subdir,
+            /* 网页/图集分组：一个网页的一批图收进以标题命名的子文件夹，
+             * 否则九张同题图会平铺在站点目录下，只能靠文件名分辨。 */
+            part: partName,
+            /* 站名（已解析：消息 → 注入 → 缓存）。路径层用它决定一级目录，
+             * 拿不到时路径层自行回退域名，不在这里兜底。 */
+            siteName: site.name || '',
             /* 苏哥 2026-11-05：图片之前拿不到博主，全落进「待整理」。
              * 现在 content script 会把这条内容的博主带过来，直接自动分类。 */
             authorFull: String((msg && msg.authorFull) || ''),
@@ -1023,6 +1214,9 @@ async function vrImgBatch(msg) {
     const conc = Math.max(1, Math.min(8, Number(msg && msg.concurrency) || VR_IMG_BATCH_CONC));
     const pageUrl = String((msg && msg.pageUrl) || '');
     const pageTitle = String((msg && msg.pageTitle) || '');
+    /* 批量只解析一次站名：把结果塞进每个子任务，避免逐张注入目标页。
+     * 单张 vrImgDownload 走第一级（消息里已带）即时返回，不再注入。 */
+    const site = await vrResolveSiteName(msg);
 
     const items = raw.slice(0, VR_IMG_BATCH_MAX);
     const state = { canceled: false, done: 0, ok: 0, fail: 0, total: items.length, lastEmit: 0, failures: [] };
@@ -1057,6 +1251,11 @@ async function vrImgBatch(msg) {
                     url: url,
                     candidates: it.candidates || [url],
                     pageUrl: pageUrl,
+                    siteName: site.name || '',
+                    _siteResolved: true,
+                    /* 同一网页的一批图收进以网页标题命名的子文件夹：
+                     * 用户要的是「九张图一个文件夹」，而不是九张平铺。 */
+                    pageTitle: pageTitle,
                     title: (it.title || pageTitle || '图片')
                 });
                 if (r && r.ok) {
@@ -2187,6 +2386,17 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         sendResponse({ ok: true, canceled: true });
         return true;
     }
+    /* 站点名探测：输入域名 → 后台抓网页 → 解析站名。
+     * 走后台而不是设置页，是因为扩展页面的跨域 fetch 受 CORS 限制，
+     * 而 SW 有 host_permissions（*://*&#47;*）授权。 */
+    if (Message && (Message.Message === 'vrSiteName.probe' || Message.action === 'vrSiteName.probe')) {
+        vrSiteNameProbe(Message).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, message: String(e), name: '', host: '' });
+        });
+        return true;
+    }
     // 图集扫描（I6 模式 A）：长任务，状态落 storage.session；滚动由 executeScript 到目标标签页
     if (Message && (Message.Message === 'vrImg.albumScan' || Message.action === 'vrImg.albumScan')) {
         const scanTabId = parseInt(Message.tabId, 10) || (sender && sender.tab ? sender.tab.id : 0);
@@ -2519,6 +2729,15 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message.Message == "vrQuickDownX") {
         const tabId = sender && sender.tab ? sender.tab.id : G.tabId;
         (async () => {
+            /* 站名：x-button 在页面内已取到，落库供以后重扫/迁移（无 DOM）复用。
+             * 失败不影响下载本身。 */
+            try {
+                await vrResolveSiteName({
+                    pageUrl: Message.pageUrl || 'https://x.com/',
+                    siteName: Message.siteName || '',
+                    tabId: tabId
+                });
+            } catch (e) { /* ignore */ }
             try {
                 const url = await fetchXVideo(
                     Message.user, Message.statusId, Message.mediaId, Message.wantBest !== false);
