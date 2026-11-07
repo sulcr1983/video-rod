@@ -18,8 +18,20 @@ ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 
 results = []
 created_ids = []
-DL_DIR = os.environ.get("VR_DL_DIR",
-                        r"D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\图片")
+
+# 下载目录。
+#
+# 这里的目标是「找得到测试产物」，不是「猜对用户的下载目录」：
+#   · 真正的落盘根目录由 FSA 目录句柄决定（句柄存在浏览器 IndexedDB 里），
+#     代码和注册表都读不到，所以无法可靠推断。
+#   · 本机实测根目录是 D:\personal\Downloads（不是 Windows 默认的
+#     C:\Users\<user>\Downloads —— 早先硬编码 D:\Users\liq21\...，
+#     那是另一台机器的用户名，本机不存在，导致 disk_images() 永远空集、
+#     I5 断言必然失败，而文件其实已经落盘）。
+#   · 换机器或换授权目录时，用 VR_DL_DIR 指向真实位置即可。
+DL_DIR = os.environ.get(
+    "VR_DL_DIR",
+    r"D:\personal\Downloads\video-rod\其他网页\127.0.0.1\图片")
 
 
 def check(name, got, expect):
@@ -550,6 +562,23 @@ def main():
     time.sleep(0.4)
 
     # 下载快捷键
+    # ⚠️ 必须换一个**真正不同的 path** 来避开内容级去重：
+    # 资源库的 vrCanonMediaUrl 只取 host+path、**忽略查询参数**，
+    # 所以加 ?uniq= 是无效的（实测仍返回 duplicate:true）。
+    # 这里用专用夹具 media/i5-unique.png —— 它在历史记录里没有，能真落盘。
+    # 只在这一步换（I5 在 D8 之后执行），不影响面板张数断言。
+    ev(cdp, sid, """(function(){
+      const e = document.getElementById('hoverbig');
+      if (!e) { return false; }
+      e.src = 'media/i5-unique.png';
+      return true;
+    })()""")
+    cdp.wait_js(sid, """(function(){
+      const e = document.getElementById('hoverbig');
+      return e && e.complete && e.naturalWidth > 0;
+    })()""", 8.0)
+    hover_img(cdp, sid, "#hoverbig", 1.0)
+
     files_before = disk_images(DL_DIR)
     r = ev(cdp, osid, """new Promise(r => chrome.tabs.sendMessage(%d,
       {Message:'vrImg.hotkey', action:'download'}, x => r(x)))""" % tab_id)

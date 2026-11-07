@@ -7,7 +7,7 @@ if (typeof G === 'undefined') {
     importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js",
         "/js/bili-whole.js", "/js/douyin.js",
         "/js/library/path.js", "/js/library/db.js", "/js/library/dedup.js", "/js/library/sw-library.js",
-        "/js/lib-image-util.js");
+        "/js/lib-image-util.js", "/js/album-sites.js");
 }
 // 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用
 if (typeof self.VRPath === 'undefined') {
@@ -22,6 +22,10 @@ if (typeof self.VRLib === 'undefined') {
 if (typeof self.VRImageUtil === 'undefined') {
     try { importScripts("/js/lib-image-util.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
+/* 图集站点适配表（纯 URL 规则）：分页模式靠它算下一页与原图 */
+if (typeof self.VRAlbumSites === 'undefined') {
+    try { importScripts("/js/album-sites.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
 /* VRSave 依赖 VRPath（算相对路径）与 VRLib（FSA 写完后主动入库），
  * 所以必须放在这两个之后加载。 */
 if (typeof self.VRSave === 'undefined') {
@@ -33,6 +37,41 @@ if (typeof self.VRSave === 'undefined') {
 // https://stackoverflow.com/questions/66618136/persistent-service-worker-in-chrome-extension/70003493#70003493
 chrome.webNavigation.onBeforeNavigate.addListener(function () { return; });
 chrome.webNavigation.onHistoryStateUpdated.addListener(function () { return; });
+
+/* 侧边栏「点图标即打开」——必须在 SW 顶层每次启动都设一遍。
+ *
+ * 踩过的坑（实测 Edge 156）：manifest 已去掉 action.default_popup，
+ * 但 cold start 后 chrome.sidePanel.getPanelBehavior() 读到的是
+ * {openPanelOnActionClick:false}，于是点图标**什么都不发生**。
+ * 原因是 init.js 里那次 setPanelBehavior 只跟着 InitOptions 走一次，
+ * 而 SW 被回收再唤醒时不会再执行那段逻辑。
+ *
+ * 所以这里独立于存储状态，无条件设 true：这是产品刚需（苏哥要「点一下就出图片列表」），
+ * 不该因为它依赖一个可能没跑到的初始化路径而失效。
+ * 用户若在设置里显式关掉（sidePanel:false），init.js 的 onChanged 仍会改回 false。 */
+try {
+    if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+        var __pb = { openPanelOnActionClick: true };
+        /* 返回值类型随版本而异：Chrome 先支持 callback，后加 Promise。
+         * 直接给返回值加 .catch 在老版本上会抛 TypeError，所以先判类型。 */
+        var __ret = chrome.sidePanel.setPanelBehavior(__pb);
+        if (__ret && typeof __ret.catch === 'function') {
+            __ret.catch(function () {
+                try {
+                    chrome.sidePanel.setPanelBehavior(__pb, function () {
+                        void chrome.runtime.lastError;
+                    });
+                } catch (e) { /* 忽略 */ }
+            });
+        }
+    }
+} catch (e) {
+    try {
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }, function () {
+            void chrome.runtime.lastError;
+        });
+    } catch (e2) { /* 忽略 */ }
+}
 chrome.runtime.onConnect.addListener(function (Port) {
     if (chrome.runtime.lastError || Port.name !== "HeartBeat") return;
     Port.postMessage("HeartBeat");
@@ -1213,6 +1252,190 @@ function vrAlbumCollectStep(min) {
 }
 
 /**
+ * 在目标页里找「下一页」候选（DOM 读取只能在页面侧做，SW 没有 DOM）。
+ * 只收集候选，**判定归 VRAlbumSites.pickNext** —— 纯函数才能单测。
+ */
+function vrAlbumNextStep() {
+    var out = [];
+    var as;
+    try { as = document.querySelectorAll('a[href]'); } catch (e) { return { href: location.href, candidates: [] }; }
+    for (var i = 0; i < as.length && out.length < 60; i++) {
+        var a = as[i];
+        var href = a.getAttribute('href') || '';
+        if (!href || href.charAt(0) === '#') { continue; }
+        if (/^javascript:/i.test(href)) { continue; }
+        var text = String(a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 20);
+        var rel = a.getAttribute('rel') || '';
+        // 只回传「像下一页」的，避免把几百个链接全塞进消息里
+        if (rel && /next/i.test(rel)) {
+            out.push({ href: href, text: text, rel: rel });
+            continue;
+        }
+        if (/^(下一页|下页|next|›|»|→)$/i.test(text) || /下一页/.test(text)) {
+            out.push({ href: href, text: text, rel: rel });
+        }
+    }
+    return { href: location.href, candidates: out };
+}
+
+/** 等某个标签页加载完成（导航后用），带超时；超时返回 false */
+function vrAlbumWaitLoad(tabId, timeout) {
+    return new Promise(function (resolve) {
+        var done = false;
+        var timer = setTimeout(function () { finish(false); }, timeout || 15000);
+        function finish(ok) {
+            if (done) { return; }
+            done = true;
+            clearTimeout(timer);
+            try { chrome.tabs.onUpdated.removeListener(onUpd); } catch (e) { /* 忽略 */ }
+            resolve(ok);
+        }
+        function onUpd(id, info) {
+            if (id !== tabId) { return; }
+            if (info && info.status === 'complete') { finish(true); }
+        }
+        try { chrome.tabs.onUpdated.addListener(onUpd); } catch (e) { finish(false); }
+    });
+}
+
+function vrAlbumCreateTab(url) {
+    return new Promise(function (resolve) {
+        try {
+            // active:false —— 翻页会在后台跑，绝不能把用户正在看的标签抢走或改掉
+            chrome.tabs.create({ url: url, active: false }, function (t) {
+                void chrome.runtime.lastError;
+                resolve((t && t.id) ? t.id : 0);
+            });
+        } catch (e) { resolve(0); }
+    });
+}
+
+/**
+ * 分页模式（B）：在**后台标签页**里逐页翻，每页采集一次。
+ *
+ * 为什么开新标签而不是复用用户的 tab：
+ *   · 复用会把用户正在看的页面导航走，翻 10 页就等于抢了 10 次；
+ *   · 用户翻到一半自己点链接，会和我们抢同一个标签，互相打断。
+ *   代价是多开一个后台标签（跑完即关），换来的是完全不打扰。
+ */
+async function vrAlbumPageLoop(taskId) {
+    if (VR_ALBUM_RUNNING.has(taskId)) { return; }
+    VR_ALBUM_RUNNING.add(taskId);
+    let workTab = 0;
+    try {
+        let task = await vrAlbumGet(taskId);
+        if (!task) { return; }
+        if (task.state !== 'scanning') { return; }
+
+        const seen = Object.create(null);
+        for (let i = 0; i < task.urls.length; i++) { seen[task.urls[i].url] = 1; }
+        const seenPage = Object.create(null);
+
+        let url = String(task.startUrl || '');
+        if (!url) {
+            task.state = 'error';
+            task.message = '拿不到起始页地址';
+            await vrAlbumPut(task); vrAlbumEmit(task, true);
+            return;
+        }
+        seenPage[url] = 1;
+
+        workTab = await vrAlbumCreateTab(url);
+        if (!workTab) {
+            task.state = 'error';
+            task.message = '无法创建翻页标签页';
+            await vrAlbumPut(task); vrAlbumEmit(task, true);
+            return;
+        }
+        task.workTabId = workTab;
+        await vrAlbumWaitLoad(workTab, 15000);
+        await vrAlbumSleep(VR_ALBUM_SETTLE_MS);
+
+        while (task.state === 'scanning') {
+            if (VR_ALBUM_STOP.has(taskId)) { task.state = 'stopped'; break; }
+            const live = await vrAlbumGet(taskId);
+            if (!live) { return; }
+            if (live.state !== 'scanning') { task.state = live.state; break; }
+            if (task.page >= task.maxPages) { task.state = 'done'; break; }
+
+            // ① 采集当前页
+            const got = await vrAlbumRunScript(workTab, vrAlbumCollectStep, [task.minSize]);
+            if (got.ok && Array.isArray(got.result)) {
+                for (let i = 0; i < got.result.length; i++) {
+                    const it = got.result[i];
+                    if (!it || !it.url || seen[it.url]) { continue; }
+                    seen[it.url] = 1;
+                    task.urls.push(it);
+                    if (task.urls.length >= VR_ALBUM_MAX_URLS) { break; }
+                }
+            }
+            task.page += 1;
+            await vrAlbumPut(task);
+            vrAlbumEmit(task);
+
+            if (task.urls.length >= VR_ALBUM_MAX_URLS) { task.state = 'done'; break; }
+
+            // ② 找下一页：页面给的链接 + 站点规则算参数
+            const nx = await vrAlbumRunScript(workTab, vrAlbumNextStep);
+            const cands = (nx.ok && nx.result && nx.result.candidates) ? nx.result.candidates : [];
+            const S = self.VRAlbumSites;
+            if (!S) { task.state = 'done'; task.message = '站点规则模块未加载'; break; }
+            const nextHref = S.pickNext(cands);
+            const next = S.nextPageUrl(url, S.matchSite(url), { nextHref: nextHref });
+
+            if (!next || next === url) {
+                task.state = 'done';
+                task.message = '没有下一页了（第 ' + task.page + ' 页）';
+                break;
+            }
+            if (seenPage[next]) {          // 防翻页环（站点把「下一页」指回自己）
+                task.state = 'done';
+                task.message = '分页出现循环，已停止';
+                break;
+            }
+            seenPage[next] = 1;
+            url = next;
+
+            // ③ 导航并等加载
+            try {
+                chrome.tabs.update(workTab, { url: url });
+            } catch (e) {
+                task.state = 'error';
+                task.message = '翻页导航失败：' + String((e && e.message) || e);
+                break;
+            }
+            const loaded = await vrAlbumWaitLoad(workTab, 15000);
+            if (!loaded) {
+                task.state = 'error';
+                task.message = '第 ' + (task.page + 1) + ' 页加载超时';
+                break;
+            }
+            await vrAlbumSleep(VR_ALBUM_SETTLE_MS);
+        }
+
+        task.message = task.message || '';
+        await vrAlbumPut(task);
+        vrAlbumEmit(task, true);
+    } catch (e) {
+        try {
+            const t = await vrAlbumGet(taskId);
+            if (t) {
+                t.state = 'error';
+                t.message = String((e && e.message) || e);
+                await vrAlbumPut(t);
+                vrAlbumEmit(t, true);
+            }
+        } catch (e2) { /* 收尾失败不影响已有数据 */ }
+    } finally {
+        VR_ALBUM_RUNNING.delete(taskId);
+        if (workTab) {
+            try { chrome.tabs.remove(workTab, function () { void chrome.runtime.lastError; }); }
+            catch (e) { /* 已关则忽略 */ }
+        }
+    }
+}
+
+/**
  * 扫描主循环。可重入：SW 被回收后由 albumProgress 的轮询再次拉起，从 task.page 接着滚。
  */
 async function vrAlbumLoop(taskId) {
@@ -1313,9 +1536,8 @@ async function vrAlbumLoop(taskId) {
 
 async function vrAlbumScan(msg, tabId) {
     const mode = String((msg && msg.mode) || 'scroll');
-    if (mode !== 'scroll') {
-        // B 模式（分页翻页）尚未实现：如实拒绝，不做「假装支持」
-        return { ok: false, code: 'IMG_E_UNSUPPORTED', message: '翻页模式尚未实现，请用滚动模式' };
+    if (mode !== 'scroll' && mode !== 'pages') {
+        return { ok: false, code: 'IMG_E_UNSUPPORTED', message: '只支持 scroll（滚动）或 pages（翻页）' };
     }
     const maxPages = Math.max(1, Math.min(50, Number(msg && msg.maxPages) || 10));
     const id = String((msg && msg.taskId) || vrAlbumNewId());
@@ -1325,16 +1547,32 @@ async function vrAlbumScan(msg, tabId) {
         return { ok: false, code: 'IMG_E_NO_TAB', message: '拿不到标签页 ID' };
     }
 
+    /* 翻页模式需要起始地址：优先用消息里带的，其次查标签页当前 URL。
+     * 必须在这里取定，不能进循环后再查——翻页会把后台标签导航走，
+     * 那时查到的已经是第 N 页，再也回不到起点。 */
+    let startUrl = String((msg && msg.startUrl) || '');
+    if (mode === 'pages' && !startUrl) {
+        startUrl = await new Promise(function (resolve) {
+            try {
+                chrome.tabs.get(tabId, function (t) {
+                    void chrome.runtime.lastError;
+                    resolve((t && t.url) ? t.url : '');
+                });
+            } catch (e) { resolve(''); }
+        });
+    }
+
     const task = {
         taskId: id,
         tabId: tabId,
-        mode: 'scroll',
+        mode: mode,
         maxPages: maxPages,
         minSize: min,
         page: 0,
         urls: [],
         state: 'scanning',
         message: '',
+        startUrl: startUrl,
         updatedAt: Date.now(),
         lastEmit: 0
     };
@@ -1342,8 +1580,8 @@ async function vrAlbumScan(msg, tabId) {
     await vrAlbumPut(task);
     vrAlbumEmit(task, true);
     // 不 await：扫描要跑几十秒，立刻回 taskId 让面板能开始轮询
-    vrAlbumLoop(id);
-    return { ok: true, taskId: id, maxPages: maxPages, state: 'scanning' };
+    if (mode === 'pages') { vrAlbumPageLoop(id); } else { vrAlbumLoop(id); }
+    return { ok: true, taskId: id, mode: mode, maxPages: maxPages, state: 'scanning' };
 }
 
 async function vrAlbumProgress(msg) {
@@ -1975,6 +2213,29 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         });
         return true;
     }
+    /* 侧边栏路径切换：image.html（图片清单） ↔ popup.html（嗅探列表）。
+     * 必须按 tabId 设 setOptions——不设 tabId 会覆盖整个窗口的默认路径。 */
+    if (Message && (Message.Message === 'vrImg.sidePanelPath' || Message.action === 'vrImg.sidePanelPath')) {
+        const targetTab = parseInt(Message.tabId, 10) || (sender && sender.tab ? sender.tab.id : 0);
+        const path = String(Message.path || 'image.html');
+        try {
+            if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+                const opts = { path: path + (targetTab > 0 ? '?tabId=' + targetTab : '') };
+                if (targetTab > 0) { opts.tabId = targetTab; }
+                chrome.sidePanel.setOptions(opts);
+            }
+        } catch (e) { /* 无侧边栏 API 时忽略 */ }
+        if (Message.open) {
+            try {
+                const openOpts = {};
+                if (Message.windowId) { openOpts.windowId = Message.windowId; }
+                else if (targetTab > 0) { openOpts.tabId = targetTab; }
+                chrome.sidePanel.open(openOpts).catch(function () { /* 需用户手势，失败正常 */ });
+            } catch (e) { /* 忽略 */ }
+        }
+        sendResponse({ ok: true, path: path, tabId: targetTab });
+        return true;
+    }
     if (!G.initLocalComplete || !G.initSyncComplete) {
         sendResponse("error");
         return true;
@@ -2463,7 +2724,9 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
     }
     try {
         if (chrome.sidePanel && chrome.sidePanel.setOptions) {
-            chrome.sidePanel.setOptions({ tabId: tabId, path: "popup.html?tabId=" + tabId });
+            // 侧边栏默认就是「本页图片清单」：点侧边栏/按 Alt+Shift+A 直接看到图，
+            // 不用先进嗅探列表再点「抓图」。嗅探列表仍在 popup.html，图片页右上角可切回。
+            chrome.sidePanel.setOptions({ tabId: tabId, path: "image.html?tabId=" + tabId });
         }
     } catch (e) { /* Edge/旧版无 sidePanel：忽略 */ }
 });
@@ -3962,7 +4225,8 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
             workId: (meta && meta.workId) || '',
             title: (meta && meta.title) || '',
             /* platform 必须按页面 URL 推断：meta.site 在通用分支是空的
-             * （微博视频走的是 generic），直接取值会让入库条目 platform/type 全空。 */
+             * （微博视频走的是 generic），直接取值会让入库条目 platform/type 全空，
+             * 既进不了资源库的站点分组，也削弱查重（查重会按 platform 预筛）。 */
             platform: (meta && meta.site) ||
                 (self.VRPath && typeof self.VRPath.detectPlatform === 'function'
                     ? self.VRPath.detectPlatform(pageUrl || '')
@@ -3981,8 +4245,10 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         let pageDl = null;
         /* FSA 直写成功时没有 downloadId，返回的是 {__fsa:true, path} —— 对象不是数字。
          * 原代码直接把对象丢给 vrWaitDownload，后者拿它当 downloads.search({id}) 的 id，
-         * Chrome 抛 "Invalid type: expected integer, found object"，触发 → 按钮收到 ok:false → 显示叹号。
-         * 而文件其实已经落盘成功。*/
+         * Chrome 抛 "Invalid type: expected integer, found object"，整个 vrVideoDownload
+         * 以 TypeError 结束 → 按钮收到 ok:false → 显示叹号。
+         * 而文件其实**已经落盘成功**（FSA 直写，无需下载器）—— 这就是「静默下好了却报失败」。
+         * 仓库里另外 5 处（905/931/2507/3457/3527）都判了 __fsa，唯独这条路径漏了。 */
         if (id && typeof id === 'object' && id.__fsa) {
             vrMarkDownloaded(filename);
             return finish({ ok: true, kind: 'fsa', filename: filename, path: id.path || filename });
@@ -4252,6 +4518,23 @@ const runCommands = (command, data) => {
         });
     } else if (command == "vr-video-save" || command == "vr-image-save") {
         vrSaveContextMedia(data, command == "vr-image-save");
+    } else if (command == "vr-image-panel") {
+        /* 右键 → 本页所有图片：直接把侧边栏切到 image.html 并打开。
+         * 必须按 tabId 设路径（不设会覆盖整个窗口的默认路径）。 */
+        const tId = (data && data.tabId) || G.tabId;
+        try {
+            if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+                chrome.sidePanel.setOptions({ tabId: tId, path: "image.html?tabId=" + tId });
+            }
+            if (chrome.sidePanel && chrome.sidePanel.open) {
+                const ret = chrome.sidePanel.open({ tabId: tId });
+                if (ret && typeof ret.catch === 'function') {
+                    ret.catch(function () { /* 无手势上下文时失败，可接受 */ });
+                }
+            }
+        } catch (e) { /* 无侧边栏 API：忽略 */ }
+    } else if (command == "vr-downloads-page") {
+        try { chrome.tabs.create({ url: "downloads.html" }); } catch (e) { /* 忽略 */ }
     }
 }
 chrome.downloads.onChanged.addListener(function (item) {
@@ -4279,7 +4562,24 @@ function vrImgHotkey(command, tab) {
         var st = (o && o.vrLibSettings) || {};
         if (st.imgHotkeys === false) { return; }              // 快捷键总开关
         if (action === 'download' && st.imgHover === false) { return; }
-        if (action === 'panel' && st.imgPanel === false) { return; }
+        /* panel：打开「本页图片清单」。
+         * 2026-11-06 改为直接打开侧边栏 image.html —— 批量入口已从页面浮标收进侧边栏，
+         * 旧逻辑要 imgPanel !== false 才生效，而 imgPanel 默认就是 false，
+         * 等于这个快捷键一直是死的（按了没反应）。 */
+        if (action === 'panel') {
+            try {
+                if (chrome.sidePanel && chrome.sidePanel.setOptions) {
+                    chrome.sidePanel.setOptions({ tabId: tab.id, path: 'image.html?tabId=' + tab.id });
+                }
+                if (chrome.sidePanel && chrome.sidePanel.open) {
+                    var ret = chrome.sidePanel.open({ tabId: tab.id });
+                    if (ret && typeof ret.catch === 'function') {
+                        ret.catch(function () { /* 无手势上下文时失败，可接受 */ });
+                    }
+                    return;
+                }
+            } catch (e) { /* 无侧边栏 API：退回页面浮标面板 */ }
+        }
         chrome.tabs.sendMessage(tab.id, { Message: 'vrImg.hotkey', action: action }, function () {
             void chrome.runtime.lastError;   // 页面上没有内容脚本（如 chrome://）属正常
         });
@@ -4297,6 +4597,37 @@ chrome.commands.onCommand.addListener(function (command, tab) {
     }
     runCommands(command);
 });
+
+/* 点工具栏图标 → 直接开侧边栏图片页。
+ *
+ * 为什么需要这一段：manifest 里已去掉 action.default_popup，正常情况下
+ * chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}) 就会接管点击。
+ * 但 Edge 旧版 / 用户手动关过侧边栏开关 / setPanelBehavior 失败时，点击会变成
+ * 「什么都不发生」——那正是苏哥报的「点不开」。这里用 onClicked 兜底：
+ * 只有当 setPanelBehavior 明确不可用时才介入，避免正常情况下被调用两次。
+ *
+ * 注意：有 default_popup 时 onClicked 根本不会触发（浏览器优先弹 popup），
+ * 所以本兜底与「去掉 default_popup」是配套的，缺一不可。 */
+if (chrome.action && chrome.action.onClicked) {
+    chrome.action.onClicked.addListener(function (tab) {
+        var tid = tab && tab.id;
+        if (!(tid > 0)) { return; }
+        try {
+            if (!chrome.sidePanel || !chrome.sidePanel.open) { return; }
+            if (chrome.sidePanel.setOptions) {
+                chrome.sidePanel.setOptions({ tabId: tid, path: 'image.html?tabId=' + tid });
+            }
+            var ret = chrome.sidePanel.open({ tabId: tid });
+            if (ret && typeof ret.catch === 'function') {
+                ret.catch(function () {
+                    /* 无用户手势上下文时会被拒（例如 SW 恢复场景）。
+                     * 这时退回 popup.html，总比什么都不发生好。 */
+                    try { chrome.action.openPopup && chrome.action.openPopup(); } catch (e) { /* 忽略 */ }
+                });
+            }
+        } catch (e) { /* 无侧边栏 API：什么都不做 */ }
+    });
+}
 
 /**
  * 监听 右键菜单事件

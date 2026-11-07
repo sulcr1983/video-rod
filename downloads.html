@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>下载管理</title>
+<link rel="stylesheet" href="css/downloads.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="dl-head">
+    <div class="dl-h1">
+      <h1>下载管理</h1>
+      <span class="dl-note" id="dlNote">—</span>
+      <button class="dl-icb" id="dlRefresh" title="刷新">⟳</button>
+    </div>
+    <div class="dl-h2">
+      <div class="dl-seg" id="dlSeg">
+        <button data-st="all" class="on">全部 <b id="cntAll">0</b></button>
+        <button data-st="progress">进行中 <b id="cntProg">0</b></button>
+        <button data-st="done">已完成 <b id="cntDone">0</b></button>
+        <button data-st="failed">失败 <b id="cntFail">0</b></button>
+      </div>
+      <label class="dl-sbox">
+        <span class="dl-sico">⌕</span>
+        <input id="dlSearch" placeholder="搜索文件名 / 网址" spellcheck="false">
+      </label>
+    </div>
+  </header>
+
+  <div class="dl-body" id="dlBody">
+    <div class="dl-list" id="dlList"></div>
+    <div class="dl-empty" id="dlEmpty" hidden>
+      <div class="dl-empty-t" id="dlEmptyT">还没有下载任务</div>
+      <div class="dl-empty-s" id="dlEmptyS">用侧边栏抓图、嗅探列表或右键菜单下载，任务会出现在这里。</div>
+    </div>
+  </div>
+
+  <footer class="dl-foot">
+    <span class="dl-sum" id="dlSum">—</span>
+    <button class="dl-btn ghost" id="dlOpenDir">打开下载目录</button>
+    <button class="dl-btn ghost danger" id="dlClearDone">清空已完成</button>
+  </footer>
+
+</div>
+<script src="js/downloads-page.js"></script>
+</body>
+</html>

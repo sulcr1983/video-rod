@@ -7,7 +7,11 @@
     body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; }
     h1 { font-size: 18px; }
     .grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
-    .grid img { width: 160px; height: 160px; object-fit: cover; border-radius: 8px; }
+    /* 显示尺寸必须 ≥ MIN_SHORT(200)：2026-11-05 起扫描按「短边 ≥200 且长边 ≥500」判
+     * 内容图，160×160 会被当成缩略图/图标挡掉（这正是产品想要的行为）。
+     * 夹具早于该规则写成 160，导致面板一张都扫不到 —— 这里调到 260，
+     * 让它代表「页面上的正文配图」，而不是缩略图列表里的小图。 */
+    .grid img { width: 260px; height: 260px; object-fit: cover; border-radius: 8px; }
     .note { color: #666; font-size: 13px; }
   </style>
 </head>

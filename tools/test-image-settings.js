@@ -24,8 +24,10 @@ function ok(name, got, expect) {
 const D = U.DEFAULT_SETTINGS;
 // 注意排序：imgHotkeys 在 imgHover 之前（大写 H 的码位小于小写 o）
 ok('A1 键齐全', Object.keys(D).sort(), [
-    'imgBatch', 'imgBatchLimit', 'imgBgScan', 'imgConcurrency', 'imgHotkeys', 'imgHover',
-    'imgHoverDelay', 'imgHoverMinSize', 'imgMinSize', 'imgPanel', 'imgPreferOriginal'
+    'imgBatch', 'imgBatchLimit', 'imgBgScan', 'imgBoxSelect', 'imgConcurrency',
+    'imgDragDownload', 'imgFilterRules', 'imgHotkeys', 'imgHover',
+    'imgHoverDelay', 'imgHoverMinSize', 'imgMinSize', 'imgPanel', 'imgPreferOriginal',
+    'imgTierMin', 'imgWebpToJpg'
 ]);
 // 悬停门槛可配：默认 600，与面板的 imgMinSize(100) 是两个独立口径
 ok('A1b 悬停门槛默认 600', D.imgHoverMinSize, 600);

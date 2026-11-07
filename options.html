@@ -12,6 +12,7 @@
   <script src="js/init.js" defer></script>
   <script src="js/function.js" defer></script>
   <script src="js/templates.js" defer></script>
+  <script src="js/img-filter.js" defer></script>
   <script src="js/options-stage.js" defer></script>
 </head>
 
@@ -1002,6 +1003,32 @@
 
           <div class="item">
             <div>
+              <div>拖拽下载</div>
+              <div class="about-muted">把页面上的图拖到右下角接收区即保存；只在拖动时出现，平时不占页面</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgDragDownload" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
+              <div>框选下载</div>
+              <div class="about-muted">按住 Alt 在页面上拖出矩形，框内的图一次性下载</div>
+            </div>
+            <div class="switch">
+              <label class="switchLabel switchRadius">
+                <input type="checkbox" id="ImgBoxSelect" class="switchInput" />
+                <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="item">
+            <div>
               <div>快捷键</div>
               <div class="about-muted">Alt+Shift+D 下载悬停图 / Alt+Shift+A 打开清单（可在 chrome://extensions/shortcuts 改键）</div>
             </div>
@@ -1011,6 +1038,33 @@
                 <span class="switchRound switchRadius"><em class="switchRoundBtn switchRadius"></em></span>
               </label>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图片过滤规则（AIX「图片过滤」的对应物）：域名 + 正则，命中即不进清单 -->
+      <div class="optionBox" id="ImgFilterOption" style="margin-top:14px;">
+        <div class="list loose">
+          <p class="about-muted" style="margin:0 0 8px;">
+            规则命中即**不显示**在图片清单里。域名留空或写 <code>*</code> 表示全网；
+            正则可写 <code>ad_</code> 或 <code>/\.gif$/i</code>，留空表示该域名下所有图片。
+            示例：域名 <code>sinaimg.cn</code> + 正则 <code>/avatar</code> → 屏蔽微博头像。
+          </p>
+
+          <div id="ImgFilterList" class="vr-rule-list"></div>
+
+          <div class="vr-rule-add">
+            <input id="ImgFilterHost" type="text" placeholder="域名，例：sinaimg.cn 或 *" spellcheck="false" />
+            <input id="ImgFilterRe" type="text" placeholder="正则，例：ad_ 或 /\.gif$/i" spellcheck="false" />
+            <button type="button" id="ImgFilterAdd" class="stage-back">添加</button>
+          </div>
+
+          <div class="vr-rule-foot">
+            <span class="about-muted" id="ImgFilterNote">还没有规则</span>
+            <span class="stage-spacer"></span>
+            <button type="button" id="ImgFilterExport" class="stage-back">导出</button>
+            <button type="button" id="ImgFilterImport" class="stage-back">导入</button>
+            <input type="file" id="ImgFilterFile" accept="application/json,.json" hidden />
           </div>
         </div>
       </div>

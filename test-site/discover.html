@@ -54,5 +54,17 @@
       <img id="plain" src="media/sprite.png" width="320" height="240" alt="无参数对照">
     </span>
   </div>
+
+  <h2>D：被 &lt;a href&gt; 包裹（href 是详情页，不是图片）</h2>
+  <p class="note">
+    候选链第 ① 级会先取 <code>a[href]</code>。若直接拿首项，预览和下载都会指向
+    <code>/detail.html</code> 这个网页而不是图片 —— 这是「下到的不是想要的」最常见的成因。
+    正确行为：跳过不像图片的地址，取 <code>media/big-square.png</code>。
+  </p>
+  <div class="row">
+    <a id="alink" href="detail.html">
+      <img id="wrapped" src="media/big-square.png" width="320" height="320" alt="被链接包裹的图">
+    </a>
+  </div>
 </body>
 </html>

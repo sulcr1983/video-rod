@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 P：分页图集夹具</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #f6f7f9; }
+    .grid { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+    .grid img { width: 320px; height: 320px; object-fit: cover; border-radius: 8px; }
+    nav a { margin-right: 12px; }
+  </style>
+</head>
+<body>
+  <h1 id="title">分页图集夹具</h1>
+  <p class="note">每页 2 张大图，共 3 页；第 3 页没有「下一页」链接。翻页靠 <code>?page=N</code>。</p>
+  <div class="grid" id="grid"></div>
+  <nav id="nav"></nav>
+  <p class="note">
+    img 显示 320×320，但 natural 是 1200×900 —— 扫描判**原始像素**，能进列表；
+    悬停判**显示尺寸**，这类图不会冒按钮。两套口径本来就不一样。
+  </p>
+  <script>
+    const TOTAL_PAGES = 3;
+    const page = Math.max(1, parseInt(new URLSearchParams(location.search).get('page'), 10) || 1);
+    const names = ['original-1200.png', 'srcset-1200.png'];
+
+    document.getElementById('title').textContent = '分页图集夹具 · 第 ' + page + ' 页';
+
+    const grid = document.getElementById('grid');
+    for (let i = 0; i < 2; i++) {
+      const img = document.createElement('img');
+      // 每页两个不同的查询串，保证 URL 不重复（否则会被 scanImages 去重）
+      img.src = 'media/' + names[i] + '?page=' + page + '&i=' + i;
+      img.width = 320;
+      img.height = 320;
+      img.alt = 'p' + page + '-' + i;
+      grid.appendChild(img);
+    }
+
+    const nav = document.getElementById('nav');
+    if (page < TOTAL_PAGES) {
+      const a = document.createElement('a');
+      a.href = 'album-page.html?page=' + (page + 1);
+      a.rel = 'next';
+      a.textContent = '下一页';
+      nav.appendChild(a);
+    }
+  </script>
+</body>
+</html>

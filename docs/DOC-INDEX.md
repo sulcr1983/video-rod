@@ -1,6 +1,6 @@
 # 文档索引与可信度分级
 
-> 更新：2026-11-06 ｜ 共 **67 份**文档
+> 更新：2026-11-06 晚 ｜ 共 **70 份**文档（新增 `IMAGE-SIDEBAR-AIX-ADOPT.md`）
 > 用途：接手时先看这份，知道**哪份能信、哪份只能当历史看**。
 
 ---
@@ -30,7 +30,7 @@
 | **`TEST-ASSETS.md`** | 实测素材登记 | 带真实 URL 与验证结果 |
 | **`TEST-BROWSER.md`** | 测试浏览器与登录态规则 | 操作步骤可复现 |
 | **`DESIGN-SYSTEM-STAGE.md`** | 设计 token 真源 | 改 UI 前必读 |
-| **`DECISIONS.md`** | 决策记录（55 条 ADR） | 每个「为什么」都有出处 |
+| **`DECISIONS.md`** | 决策记录（56 条 ADR） | 每个「为什么」都有出处 |
 
 ---
 
@@ -61,6 +61,7 @@
 | `DEPENDENCY-EVAL-FLOATING-UI.md` | 浮层定位依赖评估 | — |
 | `REF-YTB-TUBLY.md` | Tubly 拆包分析 | — |
 | `RESEARCH-COMPETITOR-IMAGE.md` | 竞品逆向 | — |
+| `IMAGE-SIDEBAR-AIX-ADOPT.md` | **图片侧边栏 + AIX/Fatkun 能力采纳清单**（ADR-058 配套：逆向对象、落地项、实测数字、踩坑） | S（2026-11-06 实测） |
 | `IMAGE-*-RESEARCH/PLAN/IMPL.md` | 图片下载系列（调研→方案→实现） | I1–I5 已实现 |
 | `INCIDENT-20261019-LIBRARY-DIR.md` | 媒体库目录限制复盘 | 教训仍有效 |
 | `INVENTORY-2026-11-06.md` | 全面盘点 | 快照，会过期 |
@@ -86,6 +87,7 @@
 | `S5B-BATCH-RENAME.md` | 批量选择 + 重命名 |
 | `STYLE-OPTIONS.md` | 界面风格四方向 |
 | `AUDIT-I5-WEIBO-PLAN.md` | 微博缺陷修复方案 |
+| `WEIBO-ALBUM-PLAN.md` | 微博相册备份方案（含「叫小微」源码拆解与平台实测；ADR-056） |
 | `IMAGE-AUTO-INDEX-RESEARCH.md` | 自动归类调研 |
 | `READINESS-20261104.md` | 就绪度评估 |
 | `MERGE-20261104.md` | 两线合并记录 |

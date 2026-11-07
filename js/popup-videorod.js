@@ -2137,4 +2137,88 @@
         var b = document.getElementById(id);
         if (b) { b.addEventListener('click', openMediaLibrary); }
     });
+
+    /* 顶栏「本页图片清单」：把侧边栏切到 image.html 再打开。
+     * 与 vrSidePanel 的区别：那个只是把当前 popup 挪到侧边栏，
+     * 这个直接进图片网格页（AIX imagePage 的对应物）。
+     *
+     * 两种情况要分开处理（踩过）：
+     *   · 本页已在侧边栏里 → sidePanel.open() 不需要也不该调（它要用户手势，
+     *     在已经打开的面板里调会静默失败），直接原地切 URL 最快最稳。
+     *   · 本页是独立的 popup 窗口 → 需要 setOptions + open 把它挪进侧边栏。 */
+    var btnImagePage = document.getElementById('vrOpenImagePage');
+    if (btnImagePage) {
+        btnImagePage.addEventListener('click', function () {
+            var tid = (window.G && G.tabId) || -1;
+            if (tid <= 0) { tip('拿不到当前标签页'); return; }
+
+            function goImagePage() {
+                try {
+                    location.href = chrome.runtime.getURL('image.html?tabId=' + tid);
+                } catch (e) { tip('打不开图片页：' + e); }
+            }
+
+            /* 是否已在侧边栏里：用显式 type 参数判断，不靠 innerWidth。
+             * popup.js 的约定是 type=tab / type=window 表示「用户主动开成了标签/窗口」，
+             * 没有 type 就是默认的侧边栏/工具栏弹窗形态。
+             * 早先用 innerWidth < 520 判，结果独立 popup 窗口（380px）也被误判成侧边栏。 */
+            var inSidePanel = false;
+            try {
+                var q = new URLSearchParams(location.search || '');
+                inSidePanel = !q.get('type');
+            } catch (e) { inSidePanel = true; }
+
+            if (inSidePanel) {
+                try {
+                    chrome.runtime.sendMessage({
+                        Message: 'vrImg.sidePanelPath',
+                        path: 'image.html',
+                        tabId: tid
+                    }, function () { void chrome.runtime.lastError; });
+                } catch (e) { /* 忽略 */ }
+                goImagePage();
+                return;
+            }
+
+            var finish = function (win) {
+                var wid = win && win.id;
+                if (wid === null || wid === undefined) { tip('打不开侧边栏：找不到窗口'); return; }
+                try {
+                    chrome.runtime.sendMessage({
+                        Message: 'vrImg.sidePanelPath',
+                        path: 'image.html',
+                        tabId: tid,
+                        windowId: wid,
+                        open: true
+                    }, function () { void chrome.runtime.lastError; });
+                } catch (e) { tip('打不开图片页：' + e); }
+            };
+            try {
+                chrome.windows.getCurrent(function (win) {
+                    if (!chrome.runtime.lastError && win && win.id !== undefined) { finish(win); return; }
+                    chrome.windows.getAll(function (wins) {
+                        finish(wins && (wins.filter(function (x) { return x.focused; })[0] || wins[0]));
+                    });
+                });
+            } catch (e) { tip('打不开图片页：' + e); }
+        });
+    }
+
+    /* 「下载管理」：独立窗口打开 downloads.html。
+     * 与「下载历史」的分工：
+     *   下载历史 = 我们自己的去重账本（下过什么，可删记录）
+     *   下载管理 = 浏览器下载器的实时任务（进度/暂停/继续/重试/取消） */
+    var btnDownloads = document.getElementById('vrOpenDownloads');
+    if (btnDownloads) {
+        btnDownloads.addEventListener('click', function () {
+            try {
+                var url = chrome.runtime.getURL('downloads.html');
+                if (chrome.windows && chrome.windows.create) {
+                    chrome.windows.create({ url: url, type: 'popup', width: 900, height: 680, focused: true });
+                } else {
+                    chrome.tabs.create({ url: url });
+                }
+            } catch (e) { tip('打不开下载管理：' + e); }
+        });
+    }
 })();
