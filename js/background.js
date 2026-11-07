@@ -8,9 +8,12 @@ if (typeof G === 'undefined') {
         "/js/bili-whole.js", "/js/douyin.js",
         "/js/site-name.js", "/js/site-name-store.js", "/js/library/site-names-preset.js",
         "/js/library/path.js", "/js/library/db.js", "/js/library/dedup.js", "/js/library/sw-library.js",
-        "/js/lib-image-util.js", "/js/album-sites.js");
+        "/js/lib-image-util.js", "/js/album-sites.js", "/js/video-quality.js");
 }
 // 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用
+if (typeof self.VRVideoQuality === 'undefined') {
+    try { importScripts("/js/video-quality.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
 if (typeof self.VRSiteName === 'undefined') {
     try { importScripts("/js/site-name.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
@@ -3188,6 +3191,9 @@ const VR_VIDEO_EXT = /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i;
  */
 const VR_STATIC_ASSET = /(web_login_static|\/static\/|\/assets\/|\/images?\/|\/icons?\/|\/sprites?\/|\.gif$|\.png$|\.jpe?g$|\.webp$|\.svg$)/i;
 
+/* 清晰度解析与候选排序统一放在 js/video-quality.js（纯函数，可 Node 单测）。
+ * 通用规则：分辨率优先 → 体积次之 → 「正在播放」仅作次要加权。 */
+
 /* ---------- 媒体 CDN 的 Referer 保护 ----------
  * 抖音直链不带 Referer 会 403（实测：无 Referer 403 text/html，带 Referer 206 video/mp4）。
  * CocoCut 的做法是下载前用 declarativeNetRequest 临时给媒体请求 set Referer/Origin。
@@ -4291,12 +4297,11 @@ async function vrVideoOptions(tabId) {
 
     let list = (cacheData[tabId] || []).filter(function (m) {
         return m && m.url && VR_VIDEO_EXT.test(m.ext || '') && !VR_STATIC_ASSET.test(m.url || '');
-    }).slice().sort(function (a, b) {
-        // 正在播的那条永远排第一；其余才按体积（单视频页面的老规则）
-        const ap = (playing && a.url === playing) ? 0 : 1;
-        const bp = (playing && b.url === playing) ? 0 : 1;
-        return (ap - bp) || ((b.size || 0) - (a.size || 0));
     });
+    /* 高清优先：先按 URL 里的分辨率档位，再按体积，最后才偏好「正在播放」。
+     * 旧规则把正在播放的无条件置顶 —— 微博信息流默认播 720p，
+     * 于是一键下载永远只拿到 720p（2026-11-07 实测）。 */
+    list = self.VRVideoQuality.sortCandidates(list, playing);
 
     /* Instagram 优先取 hydration JSON 的完整 progressive MP4。
      * 嗅探缓存里的 MSE 分片带 bytestart/byteend，单下只有 moof、没有 ftyp/moov，
@@ -4320,7 +4325,10 @@ async function vrVideoOptions(tabId) {
         !list.some(function (m) { return m.url === playing; })) {
         const pExt = (playing.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
         if (VR_VIDEO_EXT.test(pExt)) {
-            list.unshift({ url: playing, ext: pExt, size: 0 });
+            list.push({ url: playing, ext: pExt, size: 0 });
+            /* 补进来的这条也要参与同一套排序：不能置顶，
+             * 否则「正在播放」又压过更高清的档位。 */
+            list = self.VRVideoQuality.sortCandidates(list, playing);
         }
     }
 

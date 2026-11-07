@@ -53,6 +53,12 @@
     let typeFilter = 'all';
     let panel = null, btn = null, listEl = null, statusEl = null;
     let open = false;
+    /* 勾选状态必须**独立存在数据层**（按 key 记），不能只写在 DOM 上。
+     * 原来 renderList() 里硬编码 cb.checked = true，且 change 只处理 data-opt，
+     * 行内复选框从未被记录 —— 于是任何一次重渲染（滚动扫描每 600ms 就会 add()）
+     * 都把用户的选择冲回「全选」。用户反馈「选全不选只对可视范围生效」就是它。
+     * offKeys = 显式取消勾选的 key；默认状态是选中（与旧行为一致）。 */
+    const offKeys = new Set();
 
     function markDone(key) {
         if (!key) { return; }
@@ -111,7 +117,11 @@
         items.push(item);
         while (items.length > MAX_ITEMS) {
             const gone = items.shift();
-            seen.delete(gone.key || gone.url);
+            const gk = gone.key || gone.url;
+            seen.delete(gk);
+            /* 淘汰的条目要把勾选痕迹一并清掉，否则 offKeys 会无限增长，
+             * 而且 key 再次出现时会被当成「用户取消过」，莫名其妙不勾选。 */
+            offKeys.delete(gk);
         }
         renderCount();
         if (open) { renderList(); }
@@ -411,40 +421,68 @@
             setBulkOpen(false);
         });
         panel.addEventListener('change', function (e) {
-            const opt = e.target && e.target.getAttribute && e.target.getAttribute('data-opt');
+            const el = e.target;
+            if (!el) { return; }
+            /* 行内复选框：把选择写进数据层。
+             * 原来这里只处理 data-opt，行内勾选**从未被记录** —— 用户取消勾选后
+             * 只要面板重渲染（滚动扫描每 600ms 就会触发）就全部变回选中。 */
+            if (el.type === 'checkbox' && el.dataset && el.dataset.key) {
+                const key = el.dataset.key;
+                if (el.checked) { offKeys.delete(key); } else { offKeys.add(key); }
+                renderCount();
+                return;
+            }
+            const opt = el.getAttribute && el.getAttribute('data-opt');
             if (!opt) { return; }
-            if (opt === 'ignoreRt') { ignoreRt = !!e.target.checked; }
-            if (opt === 'ignoreDone') { ignoreDone = !!e.target.checked; }
-            if (opt === 'type') { typeFilter = e.target.value || 'all'; }
+            if (opt === 'ignoreRt') { ignoreRt = !!el.checked; }
+            if (opt === 'ignoreDone') { ignoreDone = !!el.checked; }
+            if (opt === 'type') { typeFilter = el.value || 'all'; }
             renderCount();
             renderList();
         });
         panel.addEventListener('click', function (e) {
             const act = e.target && e.target.getAttribute && e.target.getAttribute('data-act');
             if (!act) { return; }
+            /* 三个批量按钮作用于**当前可见的全部条目**，不是 DOM 里的那几行。
+             * 列表只渲染可见项，用户又只看到一屏，于是「全不选」看起来只对
+             * 可视范围生效（苏哥 2026-11-07 报的就是这个）。
+             * 判据统一走 visibleItems()，与「忽略已下载/转载/类型」的过滤口径一致。 */
             if (act === 'all' || act === 'none') {
                 const on = act === 'all';
-                listEl.querySelectorAll('input[type="checkbox"]').forEach(function (cb) { cb.checked = on; });
-            } else if (act === 'invert') {
-                listEl.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-                    cb.checked = !cb.checked;
+                visibleItems().forEach(function (x) {
+                    const k = x.it.key || x.it.url;
+                    if (!k) { return; }
+                    if (on) { offKeys.delete(k); } else { offKeys.add(k); }
                 });
+                renderList(); renderCount();
+                statusEl.textContent = (on ? '已全选 ' : '已全不选 ') +
+                    visibleItems().length + ' 项';
+            } else if (act === 'invert') {
+                visibleItems().forEach(function (x) {
+                    const k = x.it.key || x.it.url;
+                    if (!k) { return; }
+                    if (offKeys.has(k)) { offKeys.delete(k); } else { offKeys.add(k); }
+                });
+                renderList(); renderCount();
+                statusEl.textContent = '已反选，当前选中 ' + pickedCount() + ' 项';
             } else if (act === 'resetDone') {
                 doneKeys.clear();
                 try { chrome.storage.local.remove(doneKey); } catch (e) { /* ignore */ }
                 renderCount(); renderList();
                 statusEl.textContent = '已清除下载记录';
             } else if (act === 'clear') {
-                items.length = 0; seen.clear(); renderCount(); renderList();
-                statusEl.textContent = '';
+                items.length = 0; seen.clear(); offKeys.clear(); renderCount(); renderList();
+                statusEl.textContent = '已清空列表';
             } else if (act === 'down' || act === 'saveall') {
                 if (act === 'saveall') {
+                    /* 「一键保存本页」= 保存当前可见的全部，不受之前的手动取消影响 */
                     if (!visibleItems().length) {
                         statusEl.textContent = '先手动往下拉，记录媒体后再保存';
                         return;
                     }
-                    listEl.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-                        cb.checked = true;
+                    visibleItems().forEach(function (x) {
+                        const k = x.it.key || x.it.url;
+                        if (k) { offKeys.delete(k); }
                     });
                 }
                 downloadSelected();
@@ -461,8 +499,20 @@
         if (btn) { btn.textContent = '批量下载 (' + visibleItems().length + ')'; }
     }
 
+    /** 当前可见范围内被勾选的条数（用于状态栏文案） */
+    function pickedCount() {
+        let n = 0;
+        visibleItems().forEach(function (x) {
+            const k = x.it.key || x.it.url;
+            if (k && !offKeys.has(k)) { n++; }
+        });
+        return n;
+    }
+
     function renderList() {
         if (!listEl) { return; }
+        /* 先记下当前滚动位置，渲染完再还原（见函数末尾）。 */
+        const keepTop = listEl.scrollTop;
         const vis = visibleItems();
         if (!vis.length) {
             listEl.innerHTML = '<div class="vr-bulk-empty">' +
@@ -475,10 +525,17 @@
         const frag = document.createDocumentFragment();
         vis.forEach(function (x) {
             const it = x.it, i = x.i;
+            const key = it.key || it.url;
             const row = document.createElement('label');
             row.className = 'vr-bulk-row';
             const cb = document.createElement('input');
-            cb.type = 'checkbox'; cb.checked = true; cb.dataset.i = String(i);
+            cb.type = 'checkbox';
+            /* 勾选与否从数据层读，不硬编码。原来这里是 `cb.checked = true`，
+             * 配合「change 只处理 data-opt」，导致用户的选择根本存不下来：
+             * 滚动触发的扫描每 600ms 就 add() → renderList()，立刻冲回全选。 */
+            cb.checked = !offKeys.has(key);
+            cb.dataset.i = String(i);
+            cb.dataset.key = key;
             const thumb = document.createElement(
                 it.kind === 'image' || it.poster ? 'img' : 'div');
             if (it.kind === 'image') { thumb.src = it.thumb || it.url; thumb.loading = 'lazy'; }
@@ -497,6 +554,10 @@
         });
         listEl.innerHTML = '';
         listEl.appendChild(frag);
+        /* 保留滚动位置：扫描每 600ms 触发一次渲染，原来每次都把列表打回顶部，
+         * 用户看到的就是「取消勾选的下面几条又冒出来且是选中的」。
+         * 只恢复 scrollTop，不改任何选中状态。 */
+        listEl.scrollTop = keepTop;
     }
 
     function safePart(s, max) {
@@ -596,12 +657,13 @@
     }
 
     async function downloadSelected() {
+        /* 从**数据层**取选择，不从 DOM 读。
+         * 只读 DOM 会有两个错：① 只有渲染出来的行才有 checkbox，
+         * 没滚到的条目永远选不上；② 面板重渲染会冲掉用户的手动取消。 */
         let chosen = [];
-        listEl.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
-            if (cb.checked) {
-                const it = items[Number(cb.dataset.i)];
-                if (it) { chosen.push(it); }
-            }
+        visibleItems().forEach(function (x) {
+            const k = x.it.key || x.it.url;
+            if (k && !offKeys.has(k)) { chosen.push(x.it); }
         });
         if (!chosen.length) { statusEl.textContent = '没有选中媒体'; return; }
 
