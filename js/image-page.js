@@ -461,7 +461,13 @@
 
         const dim = document.createElement('span');
         dim.className = 'ip-dim';
-        dim.textContent = it.w && it.h ? (it.w + ' × ' + it.h) : '背景图';
+        /* 尺寸未知分两种来源，不能一律叫「背景图」：
+         *   · 背景图（it.bg）：确实没有 img 标签，本来就没有宽高
+         *   · 源码通道抓到的（srcOnly）：DOM 里还没 <img>，尺寸无从得知
+         * 早先一律写「背景图」，实测源码抓来的 3 张全被标成背景图（2026-11-07 端到端暴露）。 */
+        dim.textContent = (it.w && it.h)
+            ? (it.w + ' × ' + it.h)
+            : (it.bg ? '背景图' : '尺寸未知');
 
         /* 不再有悬停放大镜：点图本身就是看大图，
          * 再放一个 ⌕ 会让人以为「这里才能看」，而且侧边栏窄，多一个控件就多一份误触。 */
