@@ -167,7 +167,7 @@ button,
 }
 .more button {
   margin-left: 0.1rem;
-  font-size: 12px;
+  font-size: 13px;
 }
 #filter {
   flex-wrap: wrap;
@@ -273,3 +273,5 @@ label {
 .panel .confirm {
   text-align: center;
 }
+
+/* type-scale-bumped */

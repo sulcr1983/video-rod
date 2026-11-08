@@ -35,7 +35,7 @@ html, body {
     background: var(--bg);
     color: var(--ink);
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -53,8 +53,8 @@ input { font: inherit; }
 }
 
 .dl-h1 { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
-.dl-h1 h1 { font-size: 18px; font-weight: 600; letter-spacing: .02em; }
-.dl-note { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+.dl-h1 h1 { font-size: 19px; font-weight: 600; letter-spacing: .02em; }
+.dl-note { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
 
 .dl-icb {
     flex: 0 0 26px;
@@ -64,7 +64,7 @@ input { font: inherit; }
     border-radius: 4px;
     background: var(--surface-2);
     color: var(--ink-2);
-    font-size: 12px;
+    font-size: 13px;
 }
 .dl-icb:hover { border-color: var(--accent-deep); color: var(--accent); }
 
@@ -82,11 +82,11 @@ input { font: inherit; }
     display: flex; align-items: center; gap: 5px;
     padding: 4px 10px;
     border-radius: 3px;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--muted);
     white-space: nowrap;
 }
-.dl-seg button b { font-family: var(--font-mono); font-size: 10px; color: var(--faint); font-weight: 400; }
+.dl-seg button b { font-family: var(--font-mono); font-size: 11.5px; color: var(--faint); font-weight: 400; }
 .dl-seg button:hover { color: var(--ink-2); }
 .dl-seg button.on {
     background: var(--accent-soft);
@@ -104,8 +104,8 @@ input { font: inherit; }
     border-radius: 4px;
 }
 .dl-sbox:focus-within { border-color: var(--accent-deep); }
-.dl-sico { color: var(--faint); font-size: 11px; }
-.dl-sbox input { flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--ink); font-size: 11.5px; }
+.dl-sico { color: var(--faint); font-size: 12px; }
+.dl-sbox input { flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--ink); font-size: 12px; }
 .dl-sbox input::placeholder { color: var(--faint); }
 
 /* ---------------- 列表 ---------------- */
@@ -132,7 +132,7 @@ input { font: inherit; }
 
 .dl-main { flex: 1; min-width: 0; }
 .dl-name {
-    font-size: 12.5px;
+    font-size: 13.5px;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
@@ -141,7 +141,7 @@ input { font: inherit; }
 .dl-meta {
     margin-top: 3px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11.5px;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -171,7 +171,7 @@ input { font: inherit; }
     padding: 2px 7px;
     border-radius: 2px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11.5px;
     white-space: nowrap;
 }
 .dl-badge.st-progress { color: var(--accent); background: var(--accent-soft); }
@@ -185,14 +185,14 @@ input { font: inherit; }
     display: flex; align-items: center; justify-content: center;
     border-radius: 3px;
     color: var(--faint);
-    font-size: 12px;
+    font-size: 13px;
 }
 .dl-act:hover { background: var(--surface-2); color: var(--accent); }
 .dl-act.danger:hover { color: var(--danger); }
 
 .dl-empty { padding: 60px 20px; text-align: center; }
-.dl-empty-t { font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
-.dl-empty-s { font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+.dl-empty-t { font-size: 14px; color: var(--ink-2); margin-bottom: 6px; }
+.dl-empty-s { font-size: 12px; color: var(--muted); line-height: 1.6; }
 
 /* ---------------- 底栏 ---------------- */
 .dl-foot {
@@ -204,14 +204,14 @@ input { font: inherit; }
     background: linear-gradient(180deg, #151311, #100F0E);
     border-top: 1px solid var(--line);
 }
-.dl-sum { flex: 1; min-width: 0; font-size: 11px; color: var(--muted); }
+.dl-sum { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
 .dl-sum b { color: var(--accent); font-family: var(--font-mono); }
 
 .dl-btn {
     height: 28px;
     padding: 0 12px;
     border-radius: 4px;
-    font-size: 11.5px;
+    font-size: 12px;
     white-space: nowrap;
     border: 1px solid var(--line);
     background: var(--surface-2);
@@ -229,3 +229,5 @@ input { font: inherit; }
     .dl-meta { white-space: normal; }
     .dl-foot { padding: 10px 12px; }
 }
+
+/* type-scale-bumped */

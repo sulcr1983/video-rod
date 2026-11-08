@@ -31,7 +31,7 @@ html, body {
     background: var(--bg);
     color: var(--ink);
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 14px;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
 }
@@ -65,15 +65,15 @@ input { font: inherit; }
     flex: 1;
     min-width: 0;
     font-family: var(--font-mono);
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.ip-cnt { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.ip-cnt b { color: var(--accent); font-family: var(--font-mono); font-size: 12.5px; }
+.ip-cnt { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ip-cnt b { color: var(--accent); font-family: var(--font-mono); font-size: 13.5px; }
 
 .ip-r2 { display: flex; align-items: center; gap: 6px; }
 
@@ -91,14 +91,14 @@ input { font: inherit; }
 }
 
 .ip-sbox:focus-within { border-color: var(--accent-deep); }
-.ip-sico { color: var(--faint); font-size: 11px; flex: 0 0 auto; }
+.ip-sico { color: var(--faint); font-size: 12px; flex: 0 0 auto; }
 .ip-sbox input {
     width: 100%;
     border: none;
     background: none;
     outline: none;
     color: var(--ink);
-    font-size: 11.5px;
+    font-size: 12px;
 }
 .ip-sbox input::placeholder { color: var(--faint); }
 
@@ -113,7 +113,7 @@ input { font: inherit; }
     border-radius: 4px;
     background: var(--surface-2);
     color: var(--ink-2);
-    font-size: 12px;
+    font-size: 13px;
     transition: border-color .14s, color .14s;
 }
 .ip-icb:hover { border-color: var(--accent-deep); color: var(--accent); }
@@ -143,13 +143,13 @@ input { font: inherit; }
     background: var(--surface-2);
     /* 字号 12px / 数字 11px：侧边栏里 11px 中文已经很吃力（用户实测反馈看不清），
      * 且未选中态原用 --ink-2，在暖黑底上对比度不足。 */
-    font-size: 12px;
+    font-size: 13px;
     color: var(--ink);
     white-space: nowrap;
     transition: border-color .14s, color .14s, background .14s;
 }
 /* 数字原来的 --faint(#5F5950) 在深色底上几乎不可见，改用次级文字色 */
-.ip-tier .c { font-family: var(--font-mono); font-size: 11px; color: var(--ink-2); }
+.ip-tier .c { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
 .ip-tier:hover { border-color: var(--accent-deep); }
 .ip-tier.on {
     background: var(--accent-soft);
@@ -195,7 +195,7 @@ input { font: inherit; }
     bottom: 5px;
     padding: 1px 4px;
     border-radius: 2px;
-    font-size: 9px;
+    font-size: 11px;
     color: var(--ok);
     background: rgba(19, 42, 33, .9);
     border: 1px solid rgba(79, 191, 139, .35);
@@ -225,7 +225,7 @@ input { font: inherit; }
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1;
     color: transparent;
     cursor: pointer;
@@ -257,7 +257,7 @@ input { font: inherit; }
     top: 5px;
     padding: 1px 4px;
     border-radius: 2px;
-    font-size: 9px;
+    font-size: 11px;
     color: var(--ink-2);
     background: rgba(0, 0, 0, .55);
     pointer-events: none;
@@ -275,7 +275,7 @@ input { font: inherit; }
     bottom: 0;
     padding: 12px 6px 4px;
     font-family: var(--font-mono);
-    font-size: 9.5px;
+    font-size: 11px;
     color: #EFEAE0;
     background: linear-gradient(180deg, transparent, rgba(0, 0, 0, .72));
     pointer-events: none;
@@ -296,7 +296,7 @@ input { font: inherit; }
     border-radius: 50%;
     background: rgba(0, 0, 0, .62);
     color: #EFEAE0;
-    font-size: 11px;
+    font-size: 12px;
     opacity: 0;
     transition: opacity .14s;
 }
@@ -305,8 +305,8 @@ input { font: inherit; }
 
 /* 空状态 */
 .ip-empty { padding: 40px 16px; text-align: center; }
-.ip-empty-t { font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; }
-.ip-empty-s { font-size: 11px; color: var(--muted); line-height: 1.6; }
+.ip-empty-t { font-size: 13.5px; color: var(--ink-2); margin-bottom: 6px; }
+.ip-empty-s { font-size: 12px; color: var(--muted); line-height: 1.6; }
 
 /* ---------------- 底部批量栏 ---------------- */
 .ip-foot {
@@ -323,7 +323,7 @@ input { font: inherit; }
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--ink-2);
     cursor: pointer;
     white-space: nowrap;
@@ -338,7 +338,7 @@ input { font: inherit; }
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9px;
+    font-size: 11px;
     color: transparent;
     transition: background .14s, border-color .14s;
 }
@@ -353,7 +353,7 @@ input { font: inherit; }
 .ip-sum {
     flex: 1;
     min-width: 0;
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--muted);
     text-align: right;
     white-space: nowrap;
@@ -369,7 +369,7 @@ input { font: inherit; }
     border-radius: 4px;
     background: var(--accent);
     color: #141210;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
     transition: background .14s;
@@ -386,7 +386,7 @@ input { font: inherit; }
     padding: 8px 12px;
     background: var(--surface-2);
     border-top: 1px solid var(--line-2);
-    font-size: 10.5px;
+    font-size: 11.5px;
     color: var(--ink-2);
 }
 .ip-prog[hidden] { display: none; }
@@ -405,7 +405,7 @@ input { font: inherit; }
     background: var(--accent);
     transition: width .2s ease-out;
 }
-.ip-prog-x { flex: 0 0 auto; font-size: 10.5px; color: var(--muted); text-decoration: underline; }
+.ip-prog-x { flex: 0 0 auto; font-size: 11.5px; color: var(--muted); text-decoration: underline; }
 .ip-prog-x:hover { color: var(--danger); }
 
 /* ---------------- 大图预览层 ---------------- */
@@ -454,7 +454,7 @@ input { font: inherit; }
     justify-content: center;
     background: rgba(0, 0, 0, .5);
     color: #EFEAE0;
-    font-size: 18px;
+    font-size: 19px;
 }
 .ip-lb-nav:hover { background: rgba(0, 0, 0, .8); color: var(--accent); }
 .ip-lb-nav.l { left: 0; border-radius: 0 4px 4px 0; }
@@ -468,11 +468,11 @@ input { font: inherit; }
     gap: 10px;
 }
 .ip-lb-info { flex: 1; min-width: 0; }
-.ip-lb-name { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ip-lb-name { font-size: 13.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ip-lb-url {
     margin-top: 3px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11.5px;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -481,7 +481,7 @@ input { font: inherit; }
 .ip-lb-chain {
     margin-top: 2px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11.5px;
     color: var(--accent);
     white-space: nowrap;
     overflow: hidden;
@@ -495,7 +495,7 @@ input { font: inherit; }
     border-radius: 4px;
     background: var(--accent);
     color: #141210;
-    font-size: 12.5px;
+    font-size: 13.5px;
     font-weight: 600;
     white-space: nowrap;
 }
@@ -513,7 +513,7 @@ input { font: inherit; }
     border: 1px solid var(--line);
     background: var(--surface-2);
     color: var(--ink-2);
-    font-size: 14px;
+    font-size: 15px;
 }
 .ip-lb-x:hover { border-color: var(--danger); color: var(--danger); }
 
@@ -540,7 +540,7 @@ input { font: inherit; }
     width: 100%;
     padding: 7px 9px;
     border-radius: 4px;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--ink-2);
     text-align: left;
     white-space: nowrap;
@@ -566,14 +566,14 @@ input { font: inherit; }
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9px;
+    font-size: 11px;
     color: #141210;
     font-weight: 700;
 }
 .ip-msep { height: 1px; margin: 4px 6px; background: var(--line-2); }
 .ip-mnote {
     padding: 5px 9px 6px;
-    font-size: 10px;
+    font-size: 11.5px;
     line-height: 1.5;
     color: var(--faint);
     white-space: normal;
@@ -584,3 +584,5 @@ input { font: inherit; }
     .ip-grid { grid-template-columns: 1fr; }
     .ip-sum { display: none; }
 }
+
+/* type-scale-bumped */

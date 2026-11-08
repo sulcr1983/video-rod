@@ -58,11 +58,19 @@ B站 `#FB7299` ｜ X `#8FA0B8` ｜ 微博 `#E6506D` ｜ 小红书 `#FF2442` ｜ 
 
 | 用途 | 栈 | 规格 |
 |------|-----|------|
-| 正文/UI | `"Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif` | 13px / 1.5 |
+| 正文/UI | `"Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif` | **14px / 1.5** |
 | 标题/品牌/组头 | `"Noto Serif SC", "Source Han Serif SC", Georgia, "SimSun", serif` | **仅 ≥20px**（中文衬线小字发糊铁律）；字距 .06-.1em |
-| 数字/路径/编号 | `ui-monospace, "Cascadia Mono", Consolas, monospace` | 大数字 14-17px 600；元数据 10-11px；tabular |
+| 数字/路径/编号 | `ui-monospace, "Cascadia Mono", Consolas, monospace` | 大数字 15-18px 600；元数据 **11-12px**；tabular |
 
-三档制：大（衬线/等宽数字）— 正文 13 — 注 10.5-11。字重只用 400/500/600。
+三档制：大（衬线/等宽数字）— 正文 **14** — 注 **11-12**。字重只用 400/500/600。
+
+**字号下限 = 11px**（2026-11-07 调整）。原因：原最小字号到 8px/9.5px，在 1440+ 分辨率下
+实际不可读；400+ 处小字是「看不清」的主要来源。
+
+> 改动方式：`tools/bump-type-scale.js` 分层映射批量替换（小字抬得多、大字基本不动，
+> 避免统一乘系数压平视觉层级）。脚本带幂等标记，重复执行会拒绝而非二次放大。
+
+**图标基准 = 18px**（原 16px）。`.i` / `.i-sm`(16) / `.i-lg`(21) 三档同比放大。
 
 ## 3. 间距与栅格
 
