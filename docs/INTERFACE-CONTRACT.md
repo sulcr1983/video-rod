@@ -6,6 +6,17 @@
 
 ---
 
+### vrLib.saveOne（ADR-069 单写盘通道，2026-11-08）
+popup 批量下载统一入口：`{Message:'vrLib.saveOne', url, relPath, meta}` → SW `VRSave.saveFile`。
+返回 `{ok, mode:'fsa'|'downloads'|'none', path, downloadId, code}`。
+契约：兜底通道「先受理后异步失败」，popup 侧 20 秒看门狗 + interrupted 回滚兜住诚实性。
+
+### pendingArchive 字段（ADR-070，2026-11-08）
+下载器兜底导致文件落点与归档目录不符时，入库条目 `pendingArchive:1`、
+`relPath` 按实际落点记录；重扫（indexer）不得因此类条目判 `missing`。
+
+---
+
 ## 一、总图：数据怎么流
 
 ```

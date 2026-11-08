@@ -204,12 +204,22 @@
     function writeOne(meta, d, key) {
         return getRoot().then(function (rootDir) {
             var rel = relFromAbs(d.filename, rootDir);
+            var pendingArchive = 0;
             if (!rel && meta && meta.relPath) {
-                // 兜底：没有探测到下载根目录时，用预登记目录 + 实际文件名
-                // （实际文件名能反映 uniquify 改名后的 (1) 后缀）
-                var mDir = String(meta.relPath).split('/').slice(0, -1).join('/');
+                /* ADR-070：真实落点不在库根下（下载器兜底丢目录前缀）时，relPath
+                 * 只能记真实文件名，并标 pendingArchive —— 不许伪造归档目录。
+                 * 2026-11-08 实测：Chrome 147+ 兜底下载丢目录，旧逻辑仍按预登记
+                 * 目录记账，导致 37/50 条「文件缺失」。 */
                 var absFile = String(d.filename || '').split(/[\\\/]/).pop();
-                rel = mDir ? (mDir + '/' + absFile) : absFile;
+                if (rootDir && absFile) {
+                    rel = absFile;
+                    pendingArchive = 1;
+                } else {
+                    // 探测不到下载根目录：沿用预登记目录（行为不变），但如实标待归档
+                    var mDir = String(meta.relPath).split('/').slice(0, -1).join('/');
+                    rel = mDir ? (mDir + '/' + absFile) : absFile;
+                    pendingArchive = 1;
+                }
             }
             if (!rel || skippedRel(rel)) { return null; }
 
@@ -241,7 +251,7 @@
                 tags: [],
                 state: 'ok'
             };
-
+            if (pendingArchive) { item.pendingArchive = 1; }
             // F5 内容去重：先算指纹；命中已有条目就只写引用，不重复占盘。
             // 判重异常一律按普通文件处理（不影响下载与入库）。
             return Promise.resolve()
@@ -393,6 +403,35 @@
                 sendResponse({ ok: true, count: n });
             }).catch(function (e) {
                 sendResponse({ ok: false, code: 'LIB_E_DB', message: String(e) });
+            });
+            return true;
+        }
+        /* ADR-069 单写盘通道：popup 批量下载统一入口。
+         * 页面侧不再直调 chrome.downloads，而是逐条发这里，由 SW 走 VRSave
+         * （FSA 优先；兜底走下载器并如实标 pendingArchive）。 */
+        if (t === 'vrLib.saveOne') {
+            var save = root.VRSave;
+            if (!save || typeof save.saveFile !== 'function') {
+                sendResponse({ ok: false, code: 'LIB_E_NO_SAVE' });
+                return true;
+            }
+            save.saveFile({
+                relPath: Message.relPath || '',
+                blobOrUrl: Message.url,
+                mime: Message.mime || '',
+                meta: Message.meta || null,
+                referrer: Message.referrer || '',
+                prefer: 'auto'
+            }).then(function (r) {
+                sendResponse({
+                    ok: !!(r && r.ok),
+                    mode: (r && r.mode) || 'none',
+                    path: (r && r.path) || '',
+                    downloadId: (r && r.downloadId) || null,
+                    code: (r && r.code) || ''
+                });
+            }).catch(function (e) {
+                sendResponse({ ok: false, code: 'LIB_E_SAVE', message: String(e) });
             });
             return true;
         }

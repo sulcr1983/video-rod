@@ -52,9 +52,71 @@
     var XHS_BAD_DIR = /\/(?:avatars?|comments?|emoji|stickers?|icons?|sprites?)\//i;
     var XHS_GOOD_DIR = /\/(?:spectrum|notes?_pre_post|notes?_uhdr|note_pre_post_uhdr)\//i;
 
+    /* ---------- ADR-071 详情页白名单 ----------
+     * 小红书详情页（/explore/<id>、/discovery/item/<id>）的「相关推荐」封面
+     * 走同一 CDN 同一目录（spectrum），靠目录黑白名单分不清 —— 用页面
+     * __INITIAL_STATE__ 里笔记本体 imageList 的 id 做白名单。
+     * 铁律：只在「是详情页 且 state 拿得到 且 白名单非空」时才过滤；
+     * 其他情况全部回退现有逻辑（宁可混入，不可漏下）。
+     * 2026-11-08 QA 实测：A2 笔记 51 行里混入其他笔记封面且全用页面标题命名。 */
+    var XHS_DETAIL_RE = /^\/(?:explore|discovery\/item)\/([0-9a-f]{16,})/i;
+    var wlCache = { at: 0, done: false, ids: null };
+
+    /* 取「最后一个目录段后的 id」：spectrum/<id>!nd_... | /<hash>/<id>?imageView2...
+     * → <id>（去掉 !变换 后缀与 query） */
+    function xhsIdKey(u) {
+        var s2 = String(u || '').split('?')[0];
+        var seg = s2.split('/').pop() || '';
+        return seg.replace(/!.*$/, '').toLowerCase();
+    }
+
+    function buildNoteWhitelist() {
+        var ids = null;
+        try {
+            var m = XHS_DETAIL_RE.exec(location.pathname);
+            var st = window.__INITIAL_STATE__;
+            var map = st && st.note && st.note.noteDetailMap;
+            /* 只认「当前笔记 id」的条目：noteDetailMap 里会被预载追加
+             * 推荐笔记的数据，全量合并等于没过滤。取不到当前笔记 → null 回退。 */
+            var note = m && map && map[m[1]] && map[m[1]].note;
+            if (note && typeof note === 'object' && !Array.isArray(note) && Object.keys(note).length) {
+                ids = Object.create(null);
+                var imgs = note.imageList || [];
+                for (var i = 0; i < imgs.length; i++) {
+                    var it = imgs[i] || {};
+                    if (it.urlDefault) { ids[xhsIdKey(it.urlDefault)] = 1; }
+                    if (it.urlPre) { ids[xhsIdKey(it.urlPre)] = 1; }
+                    (it.urls || []).forEach(function (uu) { if (uu) { ids[xhsIdKey(uu)] = 1; } });
+                }
+                /* 视频笔记：本体流地址的 id 也进白名单（sns-video 域走 XHS_ANY_RE） */
+                var media = note.video && note.video.media;
+                if (media) {
+                    ['h264', 'h265', 'av1', 'h266'].forEach(function (k) {
+                        (media.stream && media.stream[k] || []).forEach(function (s) {
+                            if (s && s.masterUrl) { ids[xhsIdKey(s.masterUrl)] = 1; }
+                            if (s && s.backupUrls) { s.backupUrls.forEach(function (b) { if (b) { ids[xhsIdKey(b)] = 1; } }); }
+                        });
+                    });
+                }
+                if (!Object.keys(ids).length) { ids = null; }
+            }
+        } catch (e) { ids = null; }
+        wlCache = { at: Date.now(), done: !!ids, ids: ids };
+        return ids;
+    }
+
+    function noteWhitelist() {
+        if (!XHS_DETAIL_RE.test(location.pathname)) { return null; }   // 非详情页：不过滤
+        var now = Date.now();
+        if (wlCache.done || now - wlCache.at < 3000) { return wlCache.ids; }
+        return buildNoteWhitelist();
+    }
+
     function wantedXhsImage(u) {
         var s2 = String(u || '');
         if (XHS_BAD_DIR.test(s2)) { return false; }
+        var wl = noteWhitelist();
+        if (wl && !wl[xhsIdKey(s2)]) { return false; }   // 详情页白名单可用：只留本体图
         if (XHS_GOOD_DIR.test(s2)) { return true; }
         /* 裸形态：<32位hash>/<id>! 或带 imageView2 的缩放参数 */
         if (/\/[0-9a-f]{20,}\/[0-9a-zA-Z]{20,}[!?]/.test(s2)) { return true; }

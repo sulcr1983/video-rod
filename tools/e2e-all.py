@@ -129,6 +129,33 @@ def start_isolated(port):
     except Exception:
         pass
     os.makedirs(ISOLATED_PROFILE, exist_ok=True)
+
+    # 测试卫生（B-40 / ADR-068 边界延伸）：隔离实例的下载目录重定向到工作区，
+    # 禁止再往真实 Downloads 落测试文件（2026-11-08 实测教训：历轮 UUID 残渣 + 实测产物
+    # 直接进用户真实库）。Preferences 在浏览器启动时读取，必须在 Popen 之前写好。
+    try:
+        dl_dir = os.path.join(work_root(), "dl", "isolated")
+        os.makedirs(dl_dir, exist_ok=True)
+        pref_dir = os.path.join(ISOLATED_PROFILE, "Default")
+        os.makedirs(pref_dir, exist_ok=True)
+        pref_file = os.path.join(pref_dir, "Preferences")
+        prefs = {}
+        if os.path.exists(pref_file):
+            try:
+                with open(pref_file, "r", encoding="utf-8") as f:
+                    prefs = json.load(f) or {}
+            except Exception:
+                prefs = {}
+        prefs.setdefault("download", {})
+        prefs["download"]["default_directory"] = dl_dir.replace("/", os.sep)
+        prefs["download"]["prompt_for_download"] = False
+        prefs.setdefault("savefile", {})
+        prefs["savefile"]["default_directory"] = dl_dir.replace("/", os.sep)
+        with open(pref_file, "w", encoding="utf-8") as f:
+            json.dump(prefs, f)
+        log("[隔离] 下载目录已重定向：%s" % dl_dir)
+    except Exception as e:
+        log("[隔离] 下载目录重定向失败（测试会写真实 Downloads，仍继续）：%s" % e)
     args = [
         exe,
         "--user-data-dir=%s" % ISOLATED_PROFILE,

@@ -951,12 +951,15 @@
         batchIds = [];
         batchTotal = planned.length;
         batchDone = 0;
+        vrBatchPlan = planned.slice();     // ADR-069：交给单通道执行器
         return true;
     }
 
     var batchTotal = 0;
     var batchDone = 0;
     var batchFail = 0;
+    var vrBatchPlan = [];                  // ADR-069：待走 SW 单通道的条目
+    var vrSwPending = {};                  // ADR-069：兜底通道 downloadId -> {rel, d}（异步失败要回滚）
 
     /** 记录本批下载 id（monkey-patch chrome.downloads.download） */
     var batchIdNames = {};   // downloadId -> filename（失败回滚的独立依据，见 bindDownloadProgress）
@@ -997,9 +1000,120 @@
         } catch (e) { /* 找不到卡片就算了，去重表回滚不受影响 */ }
     }
 
+    /* ==================== ADR-069 单写盘通道 ==================== */
+
+    /** 批量是否可走 SW 单通道；aria2 / m3u8DL / m3u8 条目保持原通道。
+     *  注意：m3u8AutoDown 默认 true 但只影响 parsing=='m3u8' 的条目，
+     *  不能拿它整批排除（2026-11-08 实测踩坑：单通道被静默禁用）。 */
+    function vrCanSwBatch() {
+        try {
+            if (typeof G !== 'undefined' && G) {
+                if (G.enableAria2Rpc) { return false; }
+                if (G.m3u8dl) {
+                    for (var j = 0; j < vrBatchPlan.length; j++) {
+                        var pj = String(vrBatchPlan[j].parsing || '');
+                        if (pj === 'm3u8' || pj === 'mpd') { return false; }
+                    }
+                }
+            }
+            for (var i = 0; i < vrBatchPlan.length; i++) {
+                var p = String(vrBatchPlan[i].parsing || '');
+                if (p === 'm3u8' || p === 'mpd') { return false; }
+            }
+            return vrBatchPlan.length > 0;
+        } catch (e) { return false; }
+    }
+
+    /** 单条入库 meta：popup 只能给标题/页面/直链，平台与目录由 SW 路径引擎推导 */
+    function vrSaveMetaOf(d, pageUrl) {
+        var u = String(d.url || '');
+        return {
+            title: d.title || '',
+            pageUrl: pageUrl || d.pageUrl || '',
+            sourceUrl: u.indexOf('blob:') === 0 ? '' : u
+        };
+    }
+
+    /** 逐条经 SW VRSave 保存；如实汇总（已归档 / 待归档 / 失败） */
+    function vrRunBatchSw() {
+        var items = vrBatchPlan.slice();
+        vrBatchPlan = [];
+        var tabId = (typeof G !== 'undefined' && G && G.tabId) || -1;
+        new Promise(function (res) {
+            if (tabId > 0 && chrome.tabs && chrome.tabs.get) {
+                chrome.tabs.get(tabId, function (t) {
+                    void chrome.runtime.lastError;
+                    res((t && t.url) || '');
+                });
+            } else { res(''); }
+        }).then(function (pageUrl) {
+            var okN = 0, pendN = 0, failN = 0, firstErr = '';
+            var step = function (i) {
+                if (i >= items.length) { vrBatchSummary(okN, pendN, failN, firstErr); return; }
+                var d = items[i];
+                var rel = d.downFileName || vrFullPath(d);
+                var settled = false;
+                var finish = function (r) {
+                    if (settled) { return; }          // 看门狗与真实应答二选一，先到先得
+                    settled = true;
+                    if (!r || !r.ok) {
+                        failN++;
+                        if (!firstErr) { firstErr = String((r && (r.code || r.message)) || (r ? '未知' : 'timeout')); }
+                        // 失败回滚（与 DEF-01 同规则）：撤去重记录 + 撤销卡片假完成
+                        try {
+                            var key = hashKey(rel);
+                            if (downloaded[key]) { delete downloaded[key]; saveDownloaded(); }
+                        } catch (e0) { /* 回滚失败不阻断后续 */ }
+                        unmarkCardByFileName(rel);
+                    } else if (r.mode === 'fsa') {
+                        okN++;
+                        markCardDone(d, '已完成');
+                    } else {
+                        pendN++;
+                        markCardDone(d, '待归档');
+                        // 兜底通道先受理后落盘：记下 id，异步失败由
+                        // bindDownloadProgress 回滚（防 DEF-A 僵尸以新形态复发）
+                        if (r.downloadId) { vrSwPending[r.downloadId] = { rel: rel, d: d }; }
+                    }
+                    setTimeout(function () { step(i + 1); }, 120);
+                };
+                try {
+                    chrome.runtime.sendMessage({
+                        Message: 'vrLib.saveOne',
+                        url: d.url,
+                        relPath: rel,
+                        meta: vrSaveMetaOf(d, pageUrl)
+                    }, function (r) {
+                        void chrome.runtime.lastError;
+                        finish(r || null);
+                    });
+                    // 看门狗：单条 20 秒无应答按失败处理，不拖死整批
+                    setTimeout(function () { finish(null); }, 20000);
+                } catch (e1) {
+                    failN++;
+                    if (!firstErr) firstErr = String(e1.message || e1);
+                    setTimeout(function () { step(i + 1); }, 0);
+                }
+            };
+            step(0);
+        });
+    }
+
+    /** 单通道批量汇总：三个数字必须如实 */
+    function vrBatchSummary(okN, pendN, failN, errName) {
+        var msg = '批量完成：' + okN + ' 个已归档';
+        if (pendN) {
+            msg += '，' + pendN + ' 个已发起下载（未归档：文件将落系统下载目录；在资源库设置里授权素材目录后可自动归档）';
+        }
+        if (failN) {
+            msg += '，' + failN + ' 个失败（' + (errName || '未知') + '，可重试）';
+        }
+        tip(msg);
+        try { if (typeof updateCounts === 'function') updateCounts(); } catch (e) { /* 忽略 */ }
+    }
+
     /** 批量收尾汇总（成功/失败终点共用）：如实报数 + 兜底改名提示 */
-    function tipBatchSummary(doneN, failN, errName) {
-        var base = '批量完成：' + doneN + ' 个文件已保存' +
+    function tipBatchSummary(doneN, failN, errName) {        var base = '批量完成：' + doneN + ' 个文件已保存' +
             (failN ? '，' + failN + ' 个失败' +
                 (errName ? '（' + errName + '，可重试）' : '（可重试）') : '');
         try {
@@ -1032,6 +1146,7 @@
                 if (delta.state && delta.state.current === 'complete') {
                     if (data) { markCardDone(data); }
                     delete batchIdNames[delta.id];
+                    if (vrSwPending[delta.id]) { delete vrSwPending[delta.id]; }
                     if (batchIds.indexOf(delta.id) >= 0) {
                         batchDone++;
                         if (batchTotal && (batchDone + batchFail) >= batchTotal) {
@@ -1046,6 +1161,12 @@
                 if (delta.state && delta.state.current === 'interrupted') {
                     var errName = (delta.error && delta.error.current) || '未知原因';
                     var rollName = null;
+                    // ADR-069：兜底通道「先受理后异步失败」→ 回滚去重与卡片，迟到但诚实
+                    if (vrSwPending[delta.id]) {
+                        rollName = vrSwPending[delta.id].rel;
+                        unmarkCardByFileName(rollName);
+                        delete vrSwPending[delta.id];
+                    }
                     if (data) {
                         data.html.removeClass('done');
                         data.html.attr('data-vr-state', '失败');
@@ -1122,6 +1243,12 @@
                     e.stopPropagation();
                     e.preventDefault();
                     updateCounts();
+                } else if (ok === true && vrCanSwBatch()) {
+                    // ADR-069 单写盘通道：批量不再由猫抓 popup.js 直调 chrome.downloads，
+                    // 统一经 SW VRSave（FSA 优先，兜底如实标待归档）。特殊模式自动回退原通道。
+                    e.stopPropagation();
+                    e.preventDefault();
+                    vrRunBatchSw();
                 }
             }
         }, true);

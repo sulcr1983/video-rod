@@ -892,10 +892,19 @@
         });
 
         // 全量源扫不到的旧条目：标 missing，不删除（ADR-030）
+        // ADR-070 例外：下载器兜底条目（relPath 无目录层级 / pendingArchive）
+        // 本来就不在库根树里，扫描永远扫不到 —— 不得标「文件缺失」，保持「待归档」。
         var missing = 0;
         if (mode !== 'downloads' && opts.markMissing !== false) {
             oldFiles.forEach(function (f) {
                 if (!f || !f.relPath || seen[f.relPath]) { return; }
+                var rel = String(f.relPath).replace(/\\/g, '/');
+                if (f.pendingArchive || rel.indexOf('/') < 0) {
+                    if (f.state === 'missing' || !f.pendingArchive) {
+                        out.push(Object.assign({}, f, { pendingArchive: 1, state: 'ok' }));
+                    }
+                    return;
+                }
                 missing++;
                 if (f.state === 'missing') { return; }
                 out.push(Object.assign({}, f, { state: 'missing' }));
