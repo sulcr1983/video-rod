@@ -2057,3 +2057,28 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
   2. **无命中必须回退**当前嗅探逻辑（宁可混入，不可漏下）。
   3. 通用启发式（尺寸/视口/来源域过滤）仅作后续候选，不在本批实施。
 - **验收**：A2 真实页重测，下载行数=笔记实际图片数、0 推荐流封面；其他站点回归不受影响（e2e-popup/e2e-overlay 全绿）。
+
+---
+
+## ADR-072 下载命名以页面 state 为权威源（popup + 面板双通道）（2026-11-08）
+
+- **日期**：2026-11-08 ｜ **状态**：✅ 苏哥「开工」令执行 ｜ **来源**：`deliverables/reviews/2026-11-08-小红书三扩展拆解与修复方案.md` + `2026-11-08-小红书方案对抗性审计.md`（修正版 M-1/M-2/M-2b）
+- **背景**：naming.js 的 DOM 选择器在小红书哈希 class 下全抓空 → 作者退回域名、标题退回页面标题（「91 张同名」根因）；面板通道（vrImg.batch）从来只有 document.title，作者字段是空头支票。SW 的 `vrXhsScanInPage` 早已从 `__INITIAL_STATE__` 精确取到 nickname/redId/title，但 popup/面板两条链路都没接。
+- **决策**：
+  1. `vrXhsScan` 消息支持显式 `tabId`（popup 是扩展页 `sender.tab` 恒空）。
+  2. popup 批量（`vrRunBatchSw`）：详情页特征 URL 先取 state，**单点更新 `pageInfo.authorFull/creatorId/title`**，路径与文件名由既有链路自动继承；重算 downFileName 时**必须先清空**（vrFullPath 会把旧全路径当文件名套娃拼接——BUG-M2-1 fixture 实测抓出）并迁移去重键。
+  3. 面板批量（`vrImgBatch`）：SW 侧同用 `vrXhsScanInTab(tid, '')`（**第二参数不能省略**——executeScript args 拒收 undefined，M-2b 首版踩坑实测）把权威 title/authorFull 注入每张图的 relPath。
+  4. 边界：非详情页 / state 取不到 → 完整回退现状命名（不做半吊子猜测）。
+- **理由**：三家同类扩展（小金薯/小红薯）取数全部依赖 state 路线；DOM 选择器是维护性最差的一种。我们 SW 已有现成能力，缺的只是接线（审计结论：接线错误，不是模块该换）。
+- **验收**：`tools/qa-xhs-author-e2e.py` fixture 13/13（N2/N3b 双通道作者注入、N3c 标题文件名、N5 去重键迁移、N6 回退不污染）；真实 A2 页复测 ⬜ 待实例配额（NOT RUN，如实记录）。
+
+## ADR-073 图片面板默认「全部」档，尺寸未知不静默丢（2026-11-08）
+
+- **日期**：2026-11-08 ｜ **状态**：✅ 苏哥「开工」令执行 ｜ **来源**：同上（M-3）
+- **背景**：小红书首页懒加载图 `naturalWidth=0`，`tierCounts` 对未知尺寸直接 continue（连 total 都不计）+ 面板默认档 100 → 「扫到 70 张、四档全显示 0、没得选只能全下」（苏哥截图实测）。`scanImages` 早已遵循「没解码不等于不存在」，档位层与之自相矛盾。
+- **决策**：
+  1. `tierCounts` 新增 `unknown` 计数，`total` 含未知尺寸条目。
+  2. 面板默认档改为「全部」（tierMin=0，复用 `filterByTier` 既有 m<=0 早退分支——**不改 filterByTier 本体**，否则高档位会混入未知图）。
+  3. 新增「未知」档按钮（tierMin=-2 面板 `currentList` 特判），懒加载图可单独筛出勾选。
+  4. 「全部/未知」按钮计数走 `c.total/c.unknown` 特判（c 无 all 键）。
+- **验收**：test-image-tier D8/D9/D10 新断言 + 60/60 全过；fixture N7a/b/c 3/3（shadow DOM 内按钮存在、all=3、默认选中）；离线全量无回归（skin 20/20、buttons 32/32）。

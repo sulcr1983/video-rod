@@ -1492,3 +1492,5 @@ YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进�
 任何下载类测试禁止写真实 Downloads；跑下载类测试后必须核对该目录为空。
 **测后清场铁律**：真实库上的实测产物，当轮必须清理（快照 → 删记录 → 删文件 → 复核），
 「当作真实素材保留」是错误做法（2026-11-08 教训）。
+
+| qa-xhs-author-e2e | `python tools/qa-xhs-author-e2e.py --port 9490`（先 boot --keep-isolated） | ADR-072/073 双通道接线：popup 批量 state 作者注入、面板 vrImg.batch 权威 title/author、去重键迁移、非详情回退、面板全部/未知档。13/13（本地 fixture，零风控面） |

@@ -721,12 +721,16 @@
      * items: [{w, h}] 或 scanImages 结果；返回 { small: n, medium: n, large: n, huge: n, total: n }
      */
     function tierCounts(items) {
-        var out = { small: 0, medium: 0, large: 0, huge: 0, total: 0 };
+        var out = { small: 0, medium: 0, large: 0, huge: 0, unknown: 0, total: 0 };
         var arr = items || [];
         for (var i = 0; i < arr.length; i++) {
             var ss = shortSide(arr[i] && arr[i].w, arr[i] && arr[i].h);
-            if (!ss) { continue; }
+            /* 尺寸未知（懒加载未解码）也是**一条素材**：计入 total 与 unknown。
+             * 早先直接 continue 连 total 都不加，小红书首页 70 张懒加载图会让
+             * 四个档位全显示 0（面板看起来「一张都没有」，用户只能全下）。
+             * 与 scanImages「没解码不等于不存在」同一原则（2026-11-08 审计 M-3）。 */
             out.total++;
+            if (!ss) { out.unknown++; continue; }
             for (var j = 0; j < TIERS.length; j++) {
                 if (ss >= TIERS[j].min) { out[TIERS[j].key]++; }
             }

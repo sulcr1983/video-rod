@@ -1278,7 +1278,7 @@ function vrImgProgressThrottle(batchId, state) {
  * 批量下载：每张走 vrImgDownload（复用 I2 的落位与 DNR 补头）。
  * 失败不中断；取消只影响「还没开始的」任务。
  */
-async function vrImgBatch(msg) {
+async function vrImgBatch(msg, sender) {
     const batchId = String((msg && msg.batchId) || ('b-' + Date.now()));
     const raw = Array.isArray(msg && msg.items) ? msg.items : [];
     const conc = Math.max(1, Math.min(8, Number(msg && msg.concurrency) || VR_IMG_BATCH_CONC));
@@ -1287,6 +1287,22 @@ async function vrImgBatch(msg) {
     /* 批量只解析一次站名：把结果塞进每个子任务，避免逐张注入目标页。
      * 单张 vrImgDownload 走第一级（消息里已带）即时返回，不再注入。 */
     const site = await vrResolveSiteName(msg);
+
+    /* M-2b（2026-11-08 审计）：小红书详情页批量——面板消息只带 document.title，
+     * 作者从来没人传（content 注释是空头支票），路径层只能回退域名/待整理。
+     * 这里用 state 权威值覆盖标题并补作者；面板通道是 content→SW，
+     * sender.tab 可用（不像 popup 通道有 M-1 的 no-tab 坑）。
+     * 非详情页/解析失败 → xhs=null，完整维持现状。 */
+    let xhs = null;
+    if (/\/(?:explore|discovery\/item)\/[0-9a-f]{12,32}/i.test(pageUrl)) {
+        const tid = sender && sender.tab && sender.tab.id;
+        if (tid > 0) {
+            /* noteId 必须给空串不能给 undefined——executeScript args 序列化
+             * 拒收 undefined 直接 TypeError（消息通道同款写法 Message.noteId || ''）。
+             * 2026-11-08 fixture 实测：漏了这个参数，state 永远拿不到。 */
+            try { xhs = await vrXhsScanInTab(tid, ''); } catch (e) { xhs = null; }
+        }
+    }
 
     const items = raw.slice(0, VR_IMG_BATCH_MAX);
     const state = { canceled: false, done: 0, ok: 0, fail: 0, total: items.length, lastEmit: 0, failures: [] };
@@ -1325,8 +1341,13 @@ async function vrImgBatch(msg) {
                     _siteResolved: true,
                     /* 同一网页的一批图收进以网页标题命名的子文件夹：
                      * 用户要的是「九张图一个文件夹」，而不是九张平铺。 */
-                    pageTitle: pageTitle,
-                    title: (it.title || pageTitle || '图片')
+                    pageTitle: (xhs && xhs.ok && xhs.title) || pageTitle,
+                    title: (xhs && xhs.ok && xhs.title) || it.title || pageTitle || '图片',
+                    /* state 权威作者（格式与 popup 通道/路径引擎一致：昵称(@id)） */
+                    authorFull: (xhs && xhs.ok && xhs.author)
+                        ? String(xhs.author) + (xhs.authorId ? '(@' + String(xhs.authorId) + ')' : '')
+                        : '',
+                    creatorId: (xhs && xhs.ok) ? String(xhs.authorId || '') : ''
                 });
                 if (r && r.ok) {
                     state.ok++;
@@ -2583,7 +2604,7 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     }
     // 图片批量下载（I3）：并发池 + 进度广播 + 可取消
     if (Message && (Message.Message === 'vrImg.batch' || Message.action === 'vrImg.batch')) {
-        vrImgBatch(Message).then(function (res) {
+        vrImgBatch(Message, sender).then(function (res) {
             sendResponse(res);
         }).catch(function (e) {
             sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e), ok: 0, fail: 0 });
@@ -2864,7 +2885,11 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     }
     // 钓鱼竿：小红书详情页单篇（A 方案），只读当前笔记 state，不自动翻页
     if (Message.Message == "vrXhsScan") {
-        const tabId = sender && sender.tab ? sender.tab.id : null;
+        /* popup 是扩展页，sender.tab 恒空 —— 必须允许调用方显式传 tabId，
+         * 否则 popup 侧永远拿不到 state（2026-11-08 对抗性审计 M-1 实证）。 */
+        const tabId = (typeof Message.tabId === 'number' && Message.tabId > 0)
+            ? Message.tabId
+            : (sender && sender.tab ? sender.tab.id : null);
         if (tabId == null) { sendResponse({ ok: false, reason: 'no-tab' }); return true; }
         /* 单篇扫描必须带重试：页面 __INITIAL_STATE__ 是异步填的，
          * 目标笔记的 .note 一开始往往是空对象 {}。只调一次就返回的话，

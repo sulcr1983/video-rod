@@ -79,8 +79,15 @@ ok('D4 超大 1 张（2500）', c.huge, 1);
 // total 是「扫描到的全部张数」（含 80px 这种不达任何档的），
 // 各档位才是「达到该阈值的张数」——两者语义不同，别混
 ok('D5 total 含 80px 共 6 张', c.total, 6);
-ok('D6 空数组', U.tierCounts([]), { small: 0, medium: 0, large: 0, huge: 0, total: 0 });
-ok('D7 null 安全', U.tierCounts(null), { small: 0, medium: 0, large: 0, huge: 0, total: 0 });
+ok('D6 空数组', U.tierCounts([]), { small: 0, medium: 0, large: 0, huge: 0, unknown: 0, total: 0 });
+ok('D7 null 安全', U.tierCounts(null), { small: 0, medium: 0, large: 0, huge: 0, unknown: 0, total: 0 });
+// 2026-11-08 审计 M-3 语义修正：懒加载未解码（w/h=0）以前被 continue 掉，
+// 小红书首页 70 张会让四档全显示 0（面板看起来「一张都没有」，只能全下没得选）。
+const unknownItems = items.concat([{ url: 'u1', w: 0, h: 0 }, { url: 'u2', w: 0 }]);
+const cu = U.tierCounts(unknownItems);
+ok('D8 尺寸未知计入 unknown', cu.unknown, 2);
+ok('D9 尺寸未知计入 total（8 张）', cu.total, 8);
+ok('D10 尺寸未知不冒充任何档', [cu.small, cu.medium, cu.large, cu.huge], [5, 4, 2, 1]);
 
 /* ---------- E. filterByTier ---------- */
 ok('E1 下限 0 返回全部', U.filterByTier(items, 0).length, 6);

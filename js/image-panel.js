@@ -55,7 +55,7 @@
     let customErr = null;
 
     let items = [];                // 全量扫描结果
-    let tierMin = U.MIN_SIZE;      // 当前档位下限（短边）
+    let tierMin = 0;               // 默认「全部」：档位是二次筛选，不该一进来就吞掉懒加载图（2026-11-08 审计 M-3）
     let keyword = '';
     let sortMode = 'page';
     let selected = new Set();      // 选中的 URL
@@ -489,7 +489,11 @@
     /* ---------------- 面板 ---------------- */
 
     function currentList() {
-        let list = U.filterByTier(items, tierMin);
+        /* tierMin=-2 是面板专属的「未知尺寸」档（懒加载图 w/h=0）——
+         * 不进 U.filterByTier（它 m<=0 一律全放，表达不了"只要未知"），在此特判。 */
+        let list = tierMin === -2
+            ? items.filter(it => !U.shortSide(it && it.w, it && it.h))
+            : U.filterByTier(items, tierMin);
         list = U.filterByKeyword(list, keyword);
         return U.sortItems(list, sortMode);
     }
@@ -508,8 +512,10 @@
             const key = b.getAttribute('data-tier');
             const cnt = b.querySelector('.c');
             if (key === 'custom') { continue; }
-            if (cnt) { cnt.textContent = String(c[key] || 0); }
-            b.disabled = (c[key] || 0) === 0;
+            /* 「全部」档显示总数（含未知）——c 里没有 all 键，不特判会被显示 0 并禁用 */
+            const n = key === 'all' ? c.total : (c[key] || 0);
+            if (cnt) { cnt.textContent = String(n); }
+            b.disabled = n === 0;
         }
     }
 
@@ -808,12 +814,17 @@
         line1.appendChild(lbl1);
         tierRow = document.createElement('span');
         tierRow.style.cssText = 'display:inline-flex;gap:6px;flex-wrap:wrap;';
-        const tierDefs = U.TIERS.map(t => ({ key: t.key, label: t.label, min: t.min }));
+        /* 「全部」档必须打头且默认选中：懒加载站点（小红书首页）大量图尺寸未知，
+         * 任何下限都会把它们吞进 unknown，用户就只剩「全下」一条路（2026-11-08 实测）。
+         * 「未知」档（min=-2，面板 currentList 特判）让懒加载图可被单独筛出勾选。 */
+        const tierDefs = [{ key: 'all', label: '全部', min: 0 }]
+            .concat(U.TIERS.map(t => ({ key: t.key, label: t.label, min: t.min })));
+        tierDefs.push({ key: 'unknown', label: '未知', min: -2 });
         tierDefs.push({ key: 'custom', label: '自定义', min: -1 });
         for (const td of tierDefs) {
             const b = document.createElement('button');
             b.type = 'button';
-            b.className = 'vr-tier' + (td.min === U.MIN_SIZE ? ' on' : '');
+            b.className = 'vr-tier' + (td.key === 'all' ? ' on' : '');
             b.setAttribute('data-tier', td.key);
             b.setAttribute('data-min', String(td.min));
             // 自定义档还没选阈值时显示「…」，不要显示 0（0 会被读成「一张都没有」）
@@ -940,13 +951,13 @@
         resetBtn.className = 'vr-btn2';
         resetBtn.textContent = '重置条件';
         resetBtn.addEventListener('click', () => {
-            tierMin = U.MIN_SIZE;
+            tierMin = 0;
             keyword = '';
             kwInput.value = '';
             sortMode = 'page';
             sortSel.value = 'page';
             for (const x of tierRow.querySelectorAll('.vr-tier')) {
-                x.classList.toggle('on', x.getAttribute('data-tier') === 'small');
+                x.classList.toggle('on', x.getAttribute('data-tier') === 'all');
             }
             renderAll();
         });

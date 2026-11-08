@@ -1034,6 +1034,59 @@
         };
     }
 
+    /** M-2（2026-11-08 对抗性审计修正版）：小红书详情页批量下载前，把页面身份
+     *  换成 state 权威值。naming.js 的 DOM 选择器在哈希 class 下全抓空，作者退回
+     *  域名、标题退回页面标题（本轮「91 张同名」根因）。SW 的 vrXhsScanInPage 早
+     *  就从 note.user.nickname 精确取到——这里接上它。
+     *  边界（审计 D-2）：非详情页 / 取数失败 → 返回 false，完整维持现状命名。
+     *  注意：不 relabel、不 index 对齐（草稿 BUG-S1/S2）；只更新 pageInfo，
+     *  路径与文件名由既有 vrFullPath 链路（buildRelDir + ${title}_${index}）自动继承。 */
+    function vrApplyXhsAuthor(pageUrl, tabId) {
+        return new Promise(function (resolve) {
+            if (!pageInfo || !(tabId > 0)) { resolve(false); return; }
+            /* 判「详情页特征」而非域名：笔记 id 是 12-32 位 hex 的路径段。
+             * 真正的护栏在 SW——vrXhsScanInPage 拿不到 noteDetailMap 就回 false，
+             * 误判也无副作用；用域名匹配反而让本地 fixture 无法端到端测试。
+             * （2026-11-08 审计 M-2 实施注记） */
+            if (!/\/(?:explore|discovery\/item)\/[0-9a-f]{12,32}/i.test(String(pageUrl || ''))) {
+                resolve(false); return;
+            }
+            try {
+                chrome.runtime.sendMessage({ Message: 'vrXhsScan', tabId: tabId }, function (r) {
+                    void chrome.runtime.lastError;
+                    if (r && r.ok && r.author) {
+                        pageInfo.authorFull = String(r.author) +
+                            (r.authorId ? '(@' + String(r.authorId) + ')' : '');
+                        pageInfo.creatorId = String(r.authorId || '');
+                        if (r.title) { pageInfo.title = String(r.title).slice(0, 120); }
+                        resolve(true);
+                    } else { resolve(false); }
+                });
+            } catch (e) { resolve(false); }
+        });
+    }
+
+    /** state 生效后重算已定稿路径：重算 downFileName + 迁移去重键。
+     *  beforeBatchDownload 用旧命名记的账必须跟着搬，否则失败回滚找不到键。
+     *  ⚠️ 重算前必须清空 downFileName——它此时是「旧目录全路径」，
+     *  vrFullPath 会把非新目录前缀的整串当文件名拼到新目录下（路径套娃，
+     *  2026-11-08 fixture 实测抓出的 BUG-M2-1）。原始名在 data.name 里。 */
+    function vrReplanWithXhsAuthor(items) {
+        for (var i = 0; i < items.length; i++) {
+            var d = items[i];
+            var oldRel = d.downFileName;
+            var newRel;
+            d.downFileName = '';
+            try { newRel = vrFullPath(d); } catch (e) { newRel = null; }
+            d.downFileName = newRel || oldRel;   // 重算失败保持原值
+            if (!newRel || newRel === oldRel) { continue; }
+            try {
+                if (oldRel && downloaded[hashKey(oldRel)]) { delete downloaded[hashKey(oldRel)]; }
+                markDownloaded(newRel);
+            } catch (e0) { /* 迁移失败不阻断：最坏留旧记录，重试仍可用 */ }
+        }
+    }
+
     /** 逐条经 SW VRSave 保存；如实汇总（已归档 / 待归档 / 失败） */
     function vrRunBatchSw() {
         var items = vrBatchPlan.slice();
@@ -1047,6 +1100,8 @@
                 });
             } else { res(''); }
         }).then(function (pageUrl) {
+            return vrApplyXhsAuthor(pageUrl, tabId).then(function (fixed) {
+            if (fixed) { vrReplanWithXhsAuthor(items); }
             var okN = 0, pendN = 0, failN = 0, firstErr = '';
             var step = function (i) {
                 if (i >= items.length) { vrBatchSummary(okN, pendN, failN, firstErr); return; }
@@ -1096,6 +1151,7 @@
                 }
             };
             step(0);
+            });
         });
     }
 
