@@ -130,6 +130,7 @@
       ],
       "js": [
         "js/naming.js",
+        "js/video-quality.js",
         "js/video-overlay.js"
       ],
       "run_at": "document_idle"
