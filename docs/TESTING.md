@@ -155,6 +155,19 @@ http://127.0.0.1:18080/src-only.html
 > ——单斜杠 `/media/x.jpg` 与协议相对 `//host/x.jpg` 必须都能抓到。
 
 
+### 4.3 图片清单面板的 CSS 契约（2026-11-08 新增，11 条断言）
+
+改 `js/image-panel.js` 的面板样式后必须跑：
+
+```bash
+node tools/test-panel-css.js       # 11  pointer-events 契约 + 四个关闭入口
+```
+
+> 为什么要有这条：宿主 host 写了 `pointer-events:none`，而它是**继承属性**，
+> shadow 树里的面板会继承到 none —— 表现为「面板能打开，但 X、关闭、全选全都点不动」。
+> 这类缺陷不是 JS 逻辑，普通单测抓不到；真机验证又慢又怕风控，所以用文本契约钉住：
+> `.vr-panel.on` / `.vr-mask.on` 必须显式 `pointer-events:auto`。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |
