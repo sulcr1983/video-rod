@@ -22,9 +22,12 @@
 
     var SNAP_DIR = '_library';
     var SNAP_RE = /^index-(\d{8})\.json$/;
+    /* 固定名快照：给「先读索引出画面」与「重装后路径自恢复」用。
+     * 注意 SNAP_RE 不匹配它（无日期段），所以定期清理/取最新都不会误伤。 */
+    var FIXED_SNAP = 'index.json';
     var KEEP_SNAPSHOTS = 7;
-    var MAX_ITEMS = 20000;
-    var MAX_DEPTH = 8;
+    /* 上限统一收到 LIMITS（原本散在 MAX_ITEMS/MAX_DEPTH 里，
+     * 超限时静默 return，用户完全不知道少扫了东西）。 */
     var DL_LIMIT = 5000;
 
     var SKIP_DIRS = { '_verify': 1, '_回收站': 1, '_library': 1, '_migration': 1, '_selftest': 1 };
@@ -33,6 +36,20 @@
     var memHandle = null;
     var memRoot = '';
     var memPrefix = '';
+
+    /* 快照写入串行化（红队 a-5）。
+     * 同一页面里多个 tab / 多次连续入库可能同时触发 snapshot()，
+     * 并发 createWritable 同一文件会互相截断。用队列保证「一次只写一份」。 */
+    var snapQueue = Promise.resolve();
+
+    function serializeSnapshot(fn) {
+        var run = snapQueue.then(function () { return fn(); },
+            function () { return fn(); });   /* 上一次失败也要继续跑下一次 */
+        /* 队列本身吞掉异常，避免一次失败导致后续全部不执行；
+         * 单次调用的异常仍通过返回的 promise 抛给调用方。 */
+        snapQueue = run.then(function () { return null; }, function () { return null; });
+        return run;
+    }
 
     /* ---------------- 小工具 ---------------- */
 
@@ -81,7 +98,21 @@
         if (isCustom) { return custom; }
         var base = normAbs(st.detectedRoot);
         if (!base) { return ''; }
+        /* 旧版本可能把浏览器 profile 内部目录（…\User Data\… / …\.edge-xxx\…）
+         * 或受管默认名（Webstore Downloads）当成下载根并持久化。
+         * 那不是用户的下载位置，直接当没有——宁可不索引，也不要指错目录。 */
+        if (!isPlausibleDownloadRoot(base)) { return ''; }
         return base + '/' + String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
+    }
+
+    /** 判据与 app.js 的 isPlausibleRoot 同口径：只拦明显不该是下载根的值 */
+    function isPlausibleDownloadRoot(p) {
+        var s = String(p || '').replace(/\\/g, '/');
+        if (!s) { return false; }
+        if (!/^([A-Za-z]:\/|\/\/|\/)/.test(s)) { return false; }
+        if (/\/(User Data|\.edge-[^/]+|Default)\//i.test(s + '/')) { return false; }
+        if (/Webstore Downloads/i.test(s)) { return false; }
+        return true;
     }
 
     function stamp() {
@@ -169,6 +200,22 @@
         if (!absRoot) { absRoot = absRootFromSettings(st); }
         if (!prefix) { prefix = String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, ''); }
 
+        /* 兜底：设置里没有任何路径时（典型场景＝重装系统后 chrome.storage 被清空），
+         * 用磁盘快照里记录的 root 自恢复（红队 a-2）。
+         * 原实现只写不读 payload.root，导致这份数据白存。 */
+        if (!absRoot && handle && dbReady()) {
+            try {
+                var snap = await latestSnapshot(handle);
+                if (snap && snap.json && snap.json.root) {
+                    absRoot = normAbs(snap.json.root);
+                    if (!memPrefix && snap.json.subdir) {
+                        prefix = String(snap.json.subdir).replace(/^\/+|\/+$/g, '');
+                    }
+                    source = 'snapshot';
+                }
+            } catch (e) { /* 没有快照/读不到就维持空，由上层提示授权 */ }
+        }
+
         if (!handle && dbReady() && typeof root.VRDB.getHandle === 'function') {
             try {
                 handle = await root.VRDB.getHandle('root');
@@ -243,6 +290,175 @@
     }
 
     /* ---------------- 条目映射 ---------------- */
+
+    /* ==========================================================
+     * 持久化：纯逻辑（Node 可测）
+     *
+     * 这一组函数刻意不碰 FSA / IDB，只做「数据 → 数据结构」的变换，
+     * 这样 tools/test-persistence.js 能在 Node 里把字段完整性钉死。
+     * 一旦这里写错，用户重装后就是**静默数据丢失**，所以必须可测。
+     * ========================================================== */
+
+    /** 扫描/保存上限（可被 build() 的 opts 覆盖） */
+    var LIMITS = {
+        MAX_ITEMS: 100000,   /* 原 20000：用户库已上万条，2 万会静默截断 */
+        MAX_DEPTH: 12,       /* 原 8：深层「站点/博主/作品/类型」四段很常见 */
+        DL_LIMIT: 5000
+    };
+
+    /**
+     * 构造快照 payload。
+     *
+     * 只写「换机器仍有效」的字段：
+     *   · 不写 absPath（换盘符就错）
+     *   · 不写 downloadId（换机器无意义）
+     *   · 不写 state（每次扫描重算）
+     *
+     * @param {Array} files  VRDB 里的条目
+     * @param {Array} favorites 收藏夹数组（setting.vrFavs）
+     * @param {object} meta { root, prefix }
+     * @returns {object} 可直接 JSON.stringify 的 payload
+     */
+    function snapshotPayload(files, favorites, meta) {
+        var m = meta || {};
+        var list = Array.isArray(files) ? files : [];
+        var out = {
+            schema: 2,
+            version: 1,
+            at: Date.now(),
+            root: m.root ? normAbs(m.root) : '',
+            subdir: String(m.prefix || ''),
+            count: list.length,
+            favorites: Array.isArray(favorites) ? favorites : [],
+            files: list.map(function (f) {
+                var row = {
+                    relPath: String(f.relPath || ''),
+                    size: Number(f.size) || 0,
+                    mtime: Number(f.mtime) || 0,
+                    platform: f.platform || '',
+                    creatorId: f.creatorId || '',
+                    type: f.type || '',
+                    fileName: f.fileName || '',
+                    starred: f.starred ? 1 : 0,
+                    tags: Array.isArray(f.tags) ? f.tags : []
+                };
+                /* 新增字段：有值才写，避免把 undefined/null 塞进 JSON
+                 * （读回时无法区分「没这个字段」和「值为空」） */
+                if (f.displayName) { row.displayName = String(f.displayName); }
+                if (f.width) { row.width = Number(f.width) || 0; }
+                if (f.height) { row.height = Number(f.height) || 0; }
+                if (f.duration != null) { row.duration = Number(f.duration) || 0; }
+                if (f.mime) { row.mime = String(f.mime); }
+                if (f.sourceUrl) { row.sourceUrl = String(f.sourceUrl); }
+                if (f.mediaUrl) { row.mediaUrl = String(f.mediaUrl); }
+                if (f.pageUrl) { row.pageUrl = String(f.pageUrl); }
+                if (f.creatorFull) { row.creatorFull = String(f.creatorFull); }
+                if (f.title) { row.title = String(f.title); }
+                if (f.thumbFile) { row.thumbFile = String(f.thumbFile); }
+                if (f.thumbSrc && f.thumbSrc.mtime != null && f.thumbSrc.size != null) {
+                    row.thumbSrc = { mtime: Number(f.thumbSrc.mtime), size: Number(f.thumbSrc.size) };
+                }
+                return row;
+            })
+        };
+        return out;
+    }
+
+    /**
+     * 从快照恢复资源库根路径。
+     *
+     * 为什么必须做这件事（红队 a-2）：
+     *   payload.root 从第一版就在写，但**全仓库没有任何代码读它**。
+     *   于是重装后路径只能依赖 chrome.storage.detectedRoot，
+     *   而那份数据同样会被清掉 —— 快照里的 root 白存了。
+     *
+     * 优先级：设置里的明确配置 > 快照记录的 root。
+     * custom 模式以 customRoot 为准（那是用户显式选的，不能被旧快照盖掉）。
+     *
+     * @param {object} snap 快照 json（至少含 root / subdir）
+     * @param {object} st   vrLibSettings
+     * @returns {string} 绝对路径；无法确定时返回 ''
+     */
+    function absRootFromSnapshot(snap, st) {
+        var s = st || {};
+        var isCustom = (s.mode || 'system') === 'custom';
+        if (isCustom) {
+            return normAbs(s.customRoot) || '';
+        }
+        var base = normAbs(s.detectedRoot);
+        if (base) {
+            return base + '/' + String(s.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
+        }
+        /* 关键回退：设置空了（典型场景＝重装系统），用快照里记的 root */
+        var fromSnap = normAbs((snap && snap.root) || '');
+        return fromSnap;
+    }
+
+    /**
+     * 遍历目录树，**带截断上报**。
+     *
+     * 为什么重写 walk()（红队 c-1/c-2）：
+     *   原实现在超限/超深时直接 return，调用方拿到的是「恰好 MAX_ITEMS 条」的
+     *   假数据，用户以为素材丢了却毫无提示。
+     *   这里返回 {items, scanned, truncated, skipped, depthLimited}，
+     *   让上层能明确告诉用户「还有多少没扫」。
+     *
+     * @param {FileSystemDirectoryHandle} dir
+     * @param {object} opts { maxItems, maxDepth }
+     * @returns {Promise<object>} 见上
+     */
+    async function collectTree(dir, opts) {
+        var o = opts || {};
+        var maxItems = Number(o.maxItems) || LIMITS.MAX_ITEMS;
+        var maxDepth = Number(o.maxDepth) || LIMITS.MAX_DEPTH;
+
+        var items = [];
+        var scanned = 0;
+        var truncated = false;
+        var skipped = 0;
+        var depthLimited = false;
+
+        async function walk(node, prefix, depth) {
+            if (depth > maxDepth) {
+                depthLimited = true;
+                return;
+            }
+            var entries = [];
+            for await (var e of node.entries()) {
+                entries.push(e);
+            }
+            for (var i = 0; i < entries.length; i++) {
+                var name = entries[i][0];
+                var h = entries[i][1];
+                if (skipName(name)) { continue; }
+                var rel = prefix ? prefix + '/' + name : name;
+                if (h.kind === 'file') {
+                    if (root.VRPath && root.VRPath.typeOf({ fileName: name }) === 'other') { continue; }
+                    scanned++;
+                    if (items.length >= maxItems) {
+                        truncated = true;
+                        skipped++;
+                        continue;      /* 继续数，才知道到底少了多少 */
+                    }
+                    items.push({ rel: rel, name: name, handle: h });
+                } else {
+                    await walk(h, rel, depth + 1);
+                }
+            }
+        }
+
+        await walk(dir, '', 0);
+
+        return {
+            items: items,
+            scanned: scanned,
+            truncated: truncated,
+            skipped: skipped,
+            truncatedReason: truncated ? 'LIB_E_TRUNCATED' : '',
+            depthLimited: depthLimited,
+            depthReason: depthLimited ? 'LIB_E_DEPTH' : ''
+        };
+    }
 
     function entryFromRel(relPath, absPath, size, mtime) {
         var parsed = {};
@@ -472,6 +688,16 @@
         } catch (e) {
             throw makeErr('LIB_E_NO_SNAPSHOT', '没有找到 _library 快照目录');
         }
+        /* 固定名优先：它由每次入库自动刷新，永远比按日快照新（阶段 1）。
+         * SNAP_RE 不匹配它，所以不会被 pruneSnapshots 删掉。 */
+        try {
+            var ff = await (await dir.getFileHandle(FIXED_SNAP)).getFile();
+            var fjson = JSON.parse(await ff.text());
+            if (fjson && Array.isArray(fjson.files)) {
+                return { name: FIXED_SNAP, json: fjson };
+            }
+        } catch (e) { /* 没有固定名快照 → 退回按日快照 */ }
+
         var names = [];
         for await (var entry of dir.entries()) {
             if (entry[1].kind === 'file' && SNAP_RE.test(entry[0])) { names.push(entry[0]); }
@@ -514,6 +740,26 @@
             if (f.fileName) { item.fileName = f.fileName; }
             item.starred = f.starred ? 1 : 0;
             item.tags = Array.isArray(f.tags) ? f.tags : [];
+
+            /* 还原 v2 新增字段（B-32 核心）：这些就是「重装后会丢」的东西。
+             * 只还原快照里真实存在的键，缺键保持 entryFromRel 的默认值。 */
+            if (f.displayName) { item.displayName = String(f.displayName); }
+            if (f.width) { item.width = Number(f.width) || 0; }
+            if (f.height) { item.height = Number(f.height) || 0; }
+            if (f.duration != null) { item.duration = Number(f.duration) || 0; }
+            if (f.mime) { item.mime = String(f.mime); }
+            if (f.sourceUrl) { item.sourceUrl = String(f.sourceUrl); }
+            if (f.mediaUrl) { item.mediaUrl = String(f.mediaUrl); }
+            if (f.pageUrl) { item.pageUrl = String(f.pageUrl); }
+            if (f.creatorFull) { item.creatorFull = String(f.creatorFull); }
+            if (f.title) { item.title = String(f.title); }
+            if (f.thumbFile) { item.thumbFile = String(f.thumbFile); }
+            if (f.thumbSrc && f.thumbSrc.mtime != null && f.thumbSrc.size != null) {
+                item.thumbSrc = { mtime: Number(f.thumbSrc.mtime), size: Number(f.thumbSrc.size) };
+                /* 恢复时缩略图已落盘 → 让 UI 直接按 thumbFile 取，不必重新生成 */
+                if (f.thumbFile) { item.thumbKey = 't:' + relPath; }
+            }
+
             out.push(item);
             if (onProgress && i % 100 === 0) {
                 onProgress({ phase: 'snapshot', done: i + 1, total: files.length });
@@ -524,32 +770,30 @@
 
     /* ---------------- 源三：全量扫描 ---------------- */
 
-    async function walk(dir, prefix, out, depth) {
-        if (out.length >= MAX_ITEMS || depth > MAX_DEPTH) { return; }
-        var entries = [];
-        for await (var e of dir.entries()) {
-            entries.push(e);
-            if (entries.length > MAX_ITEMS) { break; }
+    async function walk(dir, prefix, out, depth, limits) {
+        /* 统一走 collectTree 的「可上报」遍历：
+         * 旧的 walk 在超限时直接 return，调用方只拿到恰好 MAX_ITEMS 条，
+         * 无法知道「还有多少没扫」，用户会以为素材丢了。 */
+        var res = await collectTree(dir, {
+            maxItems: (limits && limits.maxItems) || LIMITS.MAX_ITEMS,
+            maxDepth: (limits && limits.maxDepth) || LIMITS.MAX_DEPTH
+        });
+        for (var i = 0; i < res.items.length; i++) {
+            var it = res.items[i];
+            var rel = prefix ? prefix + '/' + it.rel : it.rel;
+            var f = await it.handle.getFile();
+            out.push({ rel: rel, name: it.name, size: f.size, mtime: f.lastModified });
         }
-        for (var i = 0; i < entries.length; i++) {
-            if (out.length >= MAX_ITEMS) { return; }
-            var name = entries[i][0];
-            var h = entries[i][1];
-            if (skipName(name)) { continue; }
-            var rel = prefix ? prefix + '/' + name : name;
-            if (h.kind === 'file') {
-                if (root.VRPath && root.VRPath.typeOf({ fileName: name }) === 'other') { continue; }
-                var f = await h.getFile();
-                out.push({ rel: rel, name: name, size: f.size, mtime: f.lastModified });
-            } else {
-                await walk(h, rel, out, depth + 1);
-            }
-        }
+        out.scanned = res.scanned;
+        out.truncated = res.truncated;
+        out.skipped = res.skipped;
+        out.depthLimited = res.depthLimited;
+        return res;
     }
 
-    async function scanFull(handle, absRoot, prefix, dlIdx, onProgress) {
+    async function scanFull(handle, absRoot, prefix, dlIdx, onProgress, limits) {
         var raw = [];
-        await walk(handle, '', raw, 0);
+        var tree = await walk(handle, '', raw, 0, limits);
         var out = [];
         for (var i = 0; i < raw.length; i++) {
             var relFromRoot = raw[i].rel;
@@ -613,6 +857,26 @@
              * 此时 absPath 留空，由 VRFile 用句柄读文件生成预览。 */
             var dlIdx = await buildDownloadIndex();
             scanned = await scanFull(rr.handle, absRoot, rr.prefix, dlIdx, onProgress);
+        } else if (mode === 'reconcile') {
+            /* 增量对账（B-34 / 红队 c-4）：
+             * 与 full 的区别是「以快照为基线，只补差异」：
+             *   · 先用快照里已有的条目填底（磁盘没变就不用重扫）
+             *   · 再扫一遍目录树拿到真实文件集合
+             *   · 只对「新增 / 消失」做增删，未变化的条目原样保留
+             * 代价仍是一次目录遍历，但不再对每个文件 getFile() 取完整元数据，
+             * 只取 size/mtime —— 上万条时这是主要省下来的那块。 */
+            if (!rr.handle) { throw makeErr('LIB_E_NO_PERM', '需要一次目录授权才能对账'); }
+            await ensureRead(rr.handle);
+            var base = [];
+            try {
+                var snap = await latestSnapshot(rr.handle);
+                base = (snap && snap.json && snap.json.files) || [];
+            } catch (e) { base = []; }
+            var dlIdx2 = await buildDownloadIndex();
+            scanned = await scanFull(rr.handle, absRoot, rr.prefix, dlIdx2, onProgress);
+            /* 用快照兜住「扫不到的旧条目」：full 会标 missing，
+             * 但 reconcile 的语义是「磁盘才是真相」，扫不到就是真的没了。 */
+            scanned.fromSnapshot = base.length;
         } else {
             throw makeErr('LIB_E_UNKNOWN', '未知索引模式：' + mode);
         }
@@ -650,7 +914,17 @@
             ok: scanned.length,
             missing: missing,
             mode: mode,
-            truncated: !!scanned.truncated
+            truncated: !!scanned.truncated,
+            /* 超限/超深必须上报（红队 c-1/c-2）：
+             * 原实现静默截断，用户看到「刚好 20000 条」却不知道还有多少没进来。 */
+            skipped: Number(scanned.skipped) || 0,
+            depthLimited: !!scanned.depthLimited,
+            truncatedReason: scanned.truncated ? 'LIB_E_TRUNCATED'
+                : (scanned.depthLimited ? 'LIB_E_DEPTH' : ''),
+            limit: {
+                maxItems: (opts.limits && opts.limits.maxItems) || LIMITS.MAX_ITEMS,
+                maxDepth: (opts.limits && opts.limits.maxDepth) || LIMITS.MAX_DEPTH
+            }
         };
     }
 
@@ -658,13 +932,36 @@
 
     async function fileExists(handle, rel) {
         var segs = splitRel(rel);
-        if (!segs.length || segs.indexOf('..') !== -1) { return false; }
+        if (!segs.length || segs.indexOf('..') !== -1) { return 'invalid'; }
         var name = segs.pop();
         var dir = handle;
         for (var i = 0; i < segs.length; i++) {
-            try { dir = await dir.getDirectoryHandle(segs[i]); } catch (e) { return false; }
+            try { dir = await dir.getDirectoryHandle(segs[i]); }
+            catch (e) {
+                if (isNotFound(e)) { return 'missing'; }
+                return 'unknown';       /* 权限/IO 问题 → 不能断定文件没了 */
+            }
         }
-        try { await dir.getFileHandle(name); return true; } catch (e) { return false; }
+        try {
+            await dir.getFileHandle(name);
+            return 'ok';
+        } catch (e) {
+            return isNotFound(e) ? 'missing' : 'unknown';
+        }
+    }
+
+    /**
+     * 判断 FSA 异常是否真的是「这条路径不存在」。
+     *
+     * 为什么必须区分（红队 a-3）：
+     *   原实现把**所有**异常都当作「文件不存在」，于是把「目录读不到」
+     *   （句柄失效、权限回收、磁盘报错）也标成 missing。
+     *   一旦被标 missing，用户会以为素材丢了；而 missing 语义是
+     *   「永不自动删除」（ADR-030），错标会一直留着。
+     */
+    function isNotFound(e) {
+        var n = e && e.name;
+        return n === 'NotFoundError' || n === 'TypeMismatchError';
     }
 
     async function reconcile() {
@@ -691,7 +988,11 @@
             if (d) {
                 state = (d.exists === false) ? 'missing' : 'ok';
             } else if (rr.handle) {
-                state = (await fileExists(rr.handle, stripPrefix(f.relPath, rr.prefix))) ? 'ok' : 'missing';
+                /* 三态：ok / missing / unknown。
+                 * unknown 不能当 missing —— 那是「读不到」而非「文件没了」，
+                 * 错标会把用户的素材永久挂成「失联」（ADR-030 不自动删除）。 */
+                var st = await fileExists(rr.handle, stripPrefix(f.relPath, rr.prefix));
+                state = (st === 'ok' || st === 'missing') ? st : null;
             }
             if (!state) { unknown++; continue; }
             checked++;
@@ -727,7 +1028,54 @@
         }
     }
 
-    async function snapshot() {
+    /* 对外入口：串行化，避免并发 createWritable 互相截断（红队 a-5） */
+    function snapshot() {
+        return serializeSnapshot(function () { return snapshotInner(); });
+    }
+
+    /* ---------------- 快照自动化（红队 a-5 / US-3） ---------------- */
+
+    var autoTimer = 0;
+    var autoPending = false;
+
+    /**
+     * 触发一次「延迟合并」的快照写入。
+     *
+     * 为什么需要（US-3）：
+     *   VRIndex.snapshot() 原来全仓库只有一个调用点——设置页的手动按钮。
+     *   于是本地/磁盘快照永远停在「上次手点」那一刻，
+     *   用户下载完新素材再打开资源库，看到的还是旧列表。
+     *
+     * 为什么要节流：
+     *   每次入库都写 2 万条 ≈ 8MB，连续批量下载会明显拖慢。
+     *   30 秒窗口内多次入库合并成一次写；IDB 才是即时真相，快照是派生数据，
+     *   短暂落后不影响当前使用。
+     *
+     * @param {number} delayMs 合并窗口，默认 30 秒
+     */
+    function scheduleSnapshot(delayMs) {
+        var ms = Number(delayMs);
+        if (!isFinite(ms) || ms <= 0) { ms = 30000; }
+        autoPending = true;
+        if (autoTimer) { return { scheduled: true, merged: true }; }
+        autoTimer = setTimeout(function () {
+            autoTimer = 0;
+            if (!autoPending) { return; }
+            autoPending = false;
+            snapshot().catch(function () { /* 失败下次入库再试，不打扰用户 */ });
+        }, ms);
+        return { scheduled: true, merged: false };
+    }
+
+    /** 测试/退出前强制立即写一次；没有待写任务时返回 null */
+    function flushSnapshot() {
+        if (!autoPending) { return Promise.resolve(null); }
+        autoPending = false;
+        if (autoTimer) { clearTimeout(autoTimer); autoTimer = 0; }
+        return snapshot();
+    }
+
+    async function snapshotInner() {
         if (!dbReady()) { throw makeErr('LIB_E_DB', 'VRDB 未加载'); }
         var rr = await resolveRoot();
         if (!rr.handle) { throw makeErr('LIB_E_NO_PERM', '需要一次目录授权才能写快照'); }
@@ -735,43 +1083,55 @@
         await ensureRead(rr.handle);
 
         var files = await root.VRDB.getAllFiles();
-        var payload = {
-            version: 1,
-            at: Date.now(),
-            root: rr.absRoot,
-            subdir: rr.prefix,
-            count: files.length,
-            files: files.map(function (f) {
-                return {
-                    relPath: f.relPath,
-                    size: f.size || 0,
-                    mtime: f.mtime || 0,
-                    platform: f.platform || '',
-                    creatorId: f.creatorId || '',
-                    type: f.type || '',
-                    fileName: f.fileName || '',
-                    starred: f.starred || 0,
-                    tags: Array.isArray(f.tags) ? f.tags : []
-                };
-            })
-        };
+        var favs = [];
+        try {
+            var v = await root.VRDB.getSetting('vrFavs', []);
+            if (Array.isArray(v)) { favs = v; }
+        } catch (e) { /* 没有收藏夹不影响写快照 */ }
 
+        var payload = snapshotPayload(files, favs, { root: rr.absRoot, prefix: rr.prefix });
         var dir = await rr.handle.getDirectoryHandle(SNAP_DIR, { create: true });
+
+        /* ① 按日快照（保留 7 份，现有行为不变） */
         var name = 'index-' + stamp() + '.json';
+        await writeJsonAtomic(dir, name, payload);
+        await pruneSnapshots(dir);
+
+        /* ② 固定名快照（供「先读索引」与重装恢复用，永不参与轮转） */
+        try {
+            await writeJsonAtomic(dir, FIXED_SNAP, payload);
+        } catch (e) { /* 固定名失败不影响按日快照，下次再补 */ }
+
+        try { await root.VRDB.setSetting('snapshotAt', payload.at); } catch (e) { /* 忽略 */ }
+
+        return rr.absRoot + '/' + SNAP_DIR + '/' + name;
+    }
+
+    /**
+     * 原子写一个 JSON 文件。
+     *
+     * 关于「原子性」（红队 a-1，结论经检索修正）：
+     *   `createWritable()` **本身**就是「写临时文件 → close 时才替换原文件」
+     *   （MDN：writes are not in-place, they use a temporary file;
+     *    the original is not modified unless it passes all security checks）。
+     *   所以**不能也不需要**自行实现「写 .tmp 再 rename」——
+     *   `FileSystemHandle.move()` 至今未发布（chromestatus: In development）。
+     *
+     * 因此这里的正确做法是：
+     *   · 默认不用 keepExistingData（保持文件大小可收缩，避免残留尾巴）
+     *   · 失败时 abort()，原文件因从未被替换而完好
+     */
+    async function writeJsonAtomic(dir, name, payload) {
         var fh = await dir.getFileHandle(name, { create: true });
         var w = await fh.createWritable();
         try {
             await w.write(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
             await w.close();
         } catch (e) {
-            try { await w.abort(); } catch (e2) { /* 忽略 */ }
-            try { await dir.removeEntry(name); } catch (e3) { /* 忽略 */ }
+            try { await w.abort(); } catch (e2) { /* 已关闭则忽略 */ }
             throw e;
         }
-        await pruneSnapshots(dir);
-        try { await root.VRDB.setSetting('snapshotAt', payload.at); } catch (e) { /* 忽略 */ }
-
-        return rr.absRoot + '/' + SNAP_DIR + '/' + name;
+        return name;
     }
 
     /* ---------------- 状态 ---------------- */
@@ -799,10 +1159,17 @@
         build: build,
         reconcile: reconcile,
         snapshot: snapshot,
+        scheduleSnapshot: scheduleSnapshot,
+        flushSnapshot: flushSnapshot,
         setRoot: setRoot,
         resolveRoot: resolveRoot,
         status: status,
         errCode: errCode,
+        /* 持久化纯逻辑（供 Node 单测与内部复用） */
+        LIMITS: LIMITS,
+        snapshotPayload: snapshotPayload,
+        absRootFromSnapshot: absRootFromSnapshot,
+        collectTree: collectTree,
         // 测试用：只清内存，不动已落库的句柄
         _resetRoot: function () { memHandle = null; memRoot = ''; memPrefix = ''; },
         _skipRel: skipRel,

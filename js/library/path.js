@@ -345,6 +345,54 @@
         return 'file:///' + out.replace(/^\/+/, '');
     }
 
+    /**
+     * relPath → 缩略图文件名（16 位 hex，不含扩展名）
+     *
+     * 为什么用 hash 而不是直接用 relPath：
+     *   thumbKey 形如 `t:花瓣/小鱼(@u1)/图片/面包.jpg`，含斜杠、中文、@、#、%，
+     *   不能直接当文件名（斜杠会被解析成目录层级）。
+     *   这是 freedesktop Thumbnail Managing Standard 的通行做法（2001 年即用 MD5 哈希命名）。
+     *
+     * 为什么取 SHA-256 前 8 字节：
+     *   16 hex = 64 bit，2 万条量级碰撞概率可忽略；文件名短、目录不膨胀。
+     *
+     * @param {string} relPath 相对资源库根的路径
+     * @returns {Promise<string>} 16 位小写 hex
+     */
+    function thumbFileName(relPath) {
+        var src = String(relPath == null ? '' : relPath);
+        var subtle = root.crypto && root.crypto.subtle;
+        if (subtle && typeof subtle.digest === 'function' && typeof TextEncoder !== 'undefined') {
+            var buf = new TextEncoder().encode(src);
+            return Promise.resolve(subtle.digest('SHA-256', buf)).then(function (d) {
+                var bytes = new Uint8Array(d);
+                var hex = '';
+                for (var i = 0; i < 8; i++) {
+                    hex += ('0' + bytes[i].toString(16)).slice(-2);
+                }
+                return hex;
+            }, function () {
+                return fnv1a32(src);
+            });
+        }
+        /* 老环境没有 WebCrypto：退化成纯 JS 哈希。
+         * 明确声明：这不是加密用途，只求「同一路径稳定、不同路径基本不撞」。 */
+        return Promise.resolve(fnv1a32(src));
+    }
+
+    /** 两个 32 位哈希拼成 16 hex（WebCrypto 不可用时的兜底） */
+    function fnv1a32(s) {
+        var str = String(s == null ? '' : s);
+        var h1 = 0x811c9dc5, h2 = 0x01000193;
+        for (var i = 0; i < str.length; i++) {
+            var c = str.charCodeAt(i);
+            h1 ^= c; h1 = (h1 + ((h1 << 1) + (h1 << 4) + (h1 << 7) + (h1 << 8) + (h1 << 24))) >>> 0;
+            h2 = (h2 ^ (c + i)) >>> 0;
+            h2 = (h2 * 16777619) >>> 0;
+        }
+        return ('00000000' + h1.toString(16)).slice(-8) + ('00000000' + h2.toString(16)).slice(-8);
+    }
+
     /** 形如 huaban.com / pixso.cn / v.qq.com 的域名段 */
     function looksLikeHost(seg) {
         var s = String(seg || '');
@@ -488,7 +536,9 @@
         cleanSeg: cleanSeg,
         cleanPath: cleanPath,
         toFileUrl: toFileUrl,
-        checkLength: checkLength
+        checkLength: checkLength,
+        thumbFileName: thumbFileName,
+        _fnv1a32: fnv1a32
     };
     if (typeof module === 'object' && module.exports) { module.exports.VRPath = root.VRPath; }
 })(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this));

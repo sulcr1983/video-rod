@@ -161,6 +161,143 @@
         });
     }
 
+    /**
+     * 批量删除缩略图。
+     *
+     * 为什么必须有（红队 b-1）：
+     *   thumb store 原来只有 clear / put / get，**没有任何删除接口**。
+     *   于是删除素材、改名、移动素材时（trash.js / rename.js / move-picker.js）
+     *   都只删 file 条目、把 thumbKey 置空，旧 blob 永久残留。
+     *   缩略图一旦落盘，这些残留就会变成磁盘上看得见的垃圾文件。
+     *
+     * @param {string[]} thumbKeys
+     * @returns {Promise<number>} 删除条数
+     */
+    function deleteThumbs(thumbKeys) {
+        var keys = (thumbKeys || []).filter(Boolean);
+        if (!keys.length) { return Promise.resolve(0); }
+        return open().then(function (db) {
+            return tx(db, ['thumb'], 'readwrite', function (t) {
+                var s = t.objectStore('thumb');
+                keys.forEach(function (k) { s.delete(k); });
+            }).then(function () { return keys.length; });
+        });
+    }
+
+    /**
+     * 按条件查询条目（走已有索引，不全表读）。
+     *
+     * 为什么需要（红队 c-3）：
+     *   getAllFiles() 在 6 处被无条件调用（app.js:897/904、
+     *   dedup.js:172/202/284/329），上万条时每次都是全表读进内存。
+     *   db.js 建库时已声明 platform / creatorId / type / mtime / starred 索引，
+     *   却几乎没用上。
+     *
+     * 语义：所有条件取交集；未给的条件不参与过滤。
+     * limit/offset 用于分页（资源库首屏只取第一页）。
+     *
+     * @param {object} q { platform, creatorId, type, starred, limit, offset }
+     * @returns {Promise<Array>}
+     */
+    function queryFiles(q) {
+        var opt = q || {};
+        return open().then(function (db) {
+            /* 能用索引就只取索引命中的区间，避免 getAll 全表 */
+            var indexed = ('starred' in opt && opt.starred !== undefined && opt.starred !== null)
+                ? 'starred'
+                : (opt.platform ? 'platform'
+                    : (opt.creatorId ? 'creatorId'
+                        : (opt.type ? 'type' : null)));
+            var key = indexed ? opt[indexed] : undefined;
+            if (indexed === 'starred') { key = opt.starred ? 1 : 0; }
+
+            return new Promise(function (resolve, reject) {
+                var t = db.transaction(['file'], 'readonly');
+                var store = t.objectStore('file');
+                var req = indexed
+                    ? store.index(indexed).getAll(IDBKeyRange.only(key))
+                    : store.getAll();
+                req.onsuccess = function () {
+                    var rows = req.result || [];
+                    /* 索引命中的结果再按其余条件精筛 */
+                    rows = rows.filter(function (f) {
+                        if (!f) { return false; }
+                        if (opt.platform && f.platform !== opt.platform) { return false; }
+                        if (opt.creatorId && f.creatorId !== opt.creatorId) { return false; }
+                        if (opt.type && f.type !== opt.type) { return false; }
+                        if (opt.starred !== undefined && opt.starred !== null) {
+                            if ((f.starred ? 1 : 0) !== (opt.starred ? 1 : 0)) { return false; }
+                        }
+                        return true;
+                    });
+                    var off = Number(opt.offset) || 0;
+                    var lim = Number(opt.limit) || 0;
+                    if (off > 0 || lim > 0) {
+                        rows = rows.slice(off, lim > 0 ? off + lim : undefined);
+                    }
+                    resolve(rows);
+                };
+                req.onerror = function () { reject(req.error); };
+            });
+        });
+    }
+
+    /**
+     * 按字段值做游标式筛选（不在内存里攒全表）。
+     *
+     * 为什么需要（红队 c-3）：
+     *   dedup.js 有多处「getAllFiles() 然后按 sha256 线性扫」——
+     *   查重每次下载都跑，上万条时反复把整表拉进内存。
+     *   这里用 IDB 游标逐条比对，命中即回调，内存占用 O(1)。
+     *
+     * @param {string} field 比较的字段名（如 'sha256'）
+     * @param {*} value 期望值
+     * @param {object} opts { limit, excludeRelPath }
+     * @returns {Promise<Array>} 命中的条目（最多 limit 条）
+     */
+    function findBy(field, value, opts) {
+        var o = opts || {};
+        var limit = Number(o.limit) || 1;
+        if (!field) { return Promise.resolve([]); }
+        return open().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var t = db.transaction(['file'], 'readonly');
+                var store = t.objectStore('file');
+                var out = [];
+                var req = store.openCursor();
+                req.onsuccess = function () {
+                    var cur = req.result;
+                    if (!cur || out.length >= limit) { resolve(out); return; }
+                    var v = cur.value;
+                    if (v && v[field] === value && v.relPath !== o.excludeRelPath) {
+                        out.push(v);
+                    }
+                    cur.continue();
+                };
+                req.onerror = function () { reject(req.error); };
+            });
+        });
+    }
+
+    /** 统计某字段等于 value 的条目数（引用计数用，恒定内存） */
+    function countBy(field, value) {
+        if (!field) { return Promise.resolve(0); }
+        return open().then(function (db) {
+            return new Promise(function (resolve, reject) {
+                var t = db.transaction(['file'], 'readonly');
+                var req = t.objectStore('file').openCursor();
+                var n = 0;
+                req.onsuccess = function () {
+                    var cur = req.result;
+                    if (!cur) { resolve(n); return; }
+                    if (cur.value && cur.value[field] === value) { n++; }
+                    cur.continue();
+                };
+                req.onerror = function () { reject(req.error); };
+            });
+        });
+    }
+
     /* ---------- 设置 ---------- */
 
     function getSetting(key, def) {
@@ -237,6 +374,10 @@
         count: count,
         putThumb: putThumb,
         getThumb: getThumb,
+        deleteThumbs: deleteThumbs,
+        queryFiles: queryFiles,
+        findBy: findBy,
+        countBy: countBy,
         getSetting: getSetting,
         setSetting: setSetting,
         log: log,

@@ -27,6 +27,30 @@
     var MAX_ATTEMPT = 2;
     var failed = Object.create(null);   // relPath -> 已失败次数
 
+    /**
+     * 缩略图是否需要重建（mtime + size 双校验）。
+     *
+     * 为什么必须两个字段一起比：
+     *   freedesktop Thumbnail Managing Standard §7 明确写了「仅靠 mtime 不够」——
+     *   文件被别的文件覆盖时 mtime 可能**变小**，只判 `file.mtime > thumb.mtime`
+     *   就会漏判，用户看到的是旧图。
+     *   同理只比 size 会漏掉「同尺寸不同内容」。
+     *
+     * 缺字段时保守返回 true：宁可多生成一次，也不要显示错图。
+     *
+     * @param {object} entry   条目（需 mtime / size）
+     * @param {object|null} src 已存记录 {mtime, size}
+     * @returns {boolean} true = 需要重建
+     */
+    function shouldRefresh(entry, src) {
+        if (!entry) { return true; }
+        if (!src) { return true; }
+        if (src.mtime == null || src.size == null) { return true; }
+        if (Number(src.mtime) !== Number(entry.mtime)) { return true; }
+        if (Number(src.size) !== Number(entry.size)) { return true; }
+        return false;
+    }
+
     function dbReady() {
         return typeof root.VRDB !== 'undefined' && root.VRDB && typeof root.VRDB.putThumb === 'function';
     }
@@ -139,7 +163,153 @@
         });
     }
 
-    function announce(relPath, payload) {
+    /* ---------------- 落盘（B-33） ----------------
+ *
+ * 为什么要落盘：
+ *   缩略图原来只存在 IDB 的 thumb store 里，重装系统即失，
+ *   必须对全部素材重新解码（上万条非常慢）。
+ *   写进 <根>/_library/thumbs/<hash>.webp 后跟着素材文件夹走。
+ *
+ * 为什么用 hash 文件名而不是 relPath：
+ *   relPath 含中文、@、#、斜杠，不能直接当文件名。
+ *   这是 freedesktop Thumbnail Managing Standard 的做法。
+ *
+ * 为什么所有落盘失败都静默降级：
+ *   磁盘满 / 无权限 / 未授权目录时，用户仍应能正常浏览（哪怕图片是现生成的）。
+ *   缩略图是性能优化，不是数据本身。
+ */
+
+var THUMB_DIR = 'thumbs';
+var THUMB_EXT = '.webp';
+
+/** 拿 <根>/_library/thumbs 目录句柄；没有授权目录时返回 null */
+async function thumbDirHandle(create) {
+    if (typeof root.VRDB === 'undefined' || !root.VRDB || typeof root.VRDB.getHandle !== 'function') {
+        return null;
+    }
+    var handle = null;
+    try { handle = await root.VRDB.getHandle('root'); } catch (e) { return null; }
+    if (!handle || typeof handle.getDirectoryHandle !== 'function') { return null; }
+    try {
+        var lib = await handle.getDirectoryHandle('_library', { create: !!create });
+        return await lib.getDirectoryHandle(THUMB_DIR, { create: !!create });
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * 把缩略图写进磁盘。
+ * @param {string} relPath
+ * @param {Blob} blob
+ * @returns {Promise<string|null>} 成功返回文件名（不含扩展名），失败 null
+ */
+async function saveToDisk(relPath, blob) {
+    if (!blob || !relPath) { return null; }
+    try {
+        var dir = await thumbDirHandle(true);
+        if (!dir) { return null; }
+        var name = await root.VRPath.thumbFileName(relPath);
+        var fh = await dir.getFileHandle(name + THUMB_EXT, { create: true });
+        var w = await fh.createWritable();
+        try {
+            await w.write(blob);
+            await w.close();
+        } catch (e) {
+            try { await w.abort(); } catch (e2) { /* 已关闭则忽略 */ }
+            throw e;
+        }
+        return name;
+    } catch (e) {
+        return null;        /* 静默降级：不影响浏览 */
+    }
+}
+
+/**
+ * 从磁盘读回缩略图。
+ * @returns {Promise<Blob|null>}
+ */
+async function loadFromDisk(relPath) {
+    if (!relPath) { return null; }
+    try {
+        var dir = await thumbDirHandle(false);
+        if (!dir) { return null; }
+        var name = await root.VRPath.thumbFileName(relPath);
+        var fh = await dir.getFileHandle(name + THUMB_EXT);
+        var f = await fh.getFile();
+        return f && f.size ? f : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * 删除某条目对应的磁盘缩略图（rename / move / delete 时必须调）。
+ *
+ * 为什么必须有（红队 b-2/b-3/b-4）：
+ *   改名、移动、删除素材时，原实现只清 thumbKey 或只删 file 条目，
+ *   磁盘上的 .webp 会永远留着 —— 落盘后每个孤儿都是一个真实文件。
+ *
+ * @param {string|string[]} relPaths
+ * @returns {Promise<number>} 成功删除数
+ */
+async function deleteFor(relPaths) {
+    var list = Array.isArray(relPaths) ? relPaths : [relPaths];
+    list = list.filter(Boolean);
+    if (!list.length) { return 0; }
+    var dir = null;
+    try { dir = await thumbDirHandle(false); } catch (e) { return 0; }
+    if (!dir) { return 0; }
+    var n = 0;
+    for (var i = 0; i < list.length; i++) {
+        try {
+            var name = await root.VRPath.thumbFileName(list[i]);
+            await dir.removeEntry(name + THUMB_EXT);
+            n++;
+        } catch (e) { /* 不存在就算了 */ }
+    }
+    return n;
+}
+
+/**
+ * 清理孤儿缩略图：磁盘上有、但没有任何条目引用。
+ *
+ * @param {object} opts { entries, dryRun }
+ *        entries = 当前库全部条目（用于算出「哪些 hash 是活的」）
+ * @returns {Promise<{removed:number, kept:number, failed:number}>}
+ */
+async function gc(opts) {
+    var o = opts || {};
+    var entries = Array.isArray(o.entries) ? o.entries : [];
+    var dir = null;
+    try { dir = await thumbDirHandle(false); } catch (e) { return { removed: 0, kept: 0, failed: 0 }; }
+    if (!dir) { return { removed: 0, kept: 0, failed: 0 }; }
+
+    var live = Object.create(null);
+    for (var i = 0; i < entries.length; i++) {
+        var rp = entries[i] && entries[i].relPath;
+        if (!rp) { continue; }
+        try { live[await root.VRPath.thumbFileName(rp)] = 1; } catch (e) { /* 忽略 */ }
+    }
+
+    var removed = 0, kept = 0, failed = 0;
+    try {
+        for await (var e of dir.entries()) {
+            var nm = e[0];
+            if (e[1].kind !== 'file' || !/\.webp$/i.test(nm)) { continue; }
+            var key = nm.replace(/\.webp$/i, '');
+            if (live[key]) { kept++; continue; }
+            if (o.dryRun) { removed++; continue; }
+            try { await dir.removeEntry(nm); removed++; }
+            catch (err) { failed++; }
+        }
+    } catch (err2) {
+        return { removed: removed, kept: kept, failed: failed + 1 };
+    }
+    return { removed: removed, kept: kept, failed: failed };
+}
+
+function announce(relPath, payload) {
         try {
             window.dispatchEvent(new CustomEvent('vrthumb', {
                 detail: Object.assign({ relPath: relPath }, payload)
@@ -148,11 +318,30 @@
     }
 
     async function cached(entry) {
-        if (!entry || !entry.thumbKey || !dbReady()) { return null; }
+        if (!entry || !dbReady()) { return null; }
+        /* 失效判定（B-33 / freedesktop 规范 §7）：
+         * 源文件的 mtime 或 size 变了，说明内容已换，旧缩略图必须作废。
+         * 缺 thumbSrc（老数据）时保守视为需重建 —— 宁可多生成一次，也不显示错图。 */
+        if (entry.thumbSrc && shouldRefresh(entry, entry.thumbSrc)) {
+            return null;        /* 交给 generate 重建，并覆盖磁盘文件 */
+        }
+        /* ① IDB 命中：最快路径，正常浏览都走这里 */
+        if (entry.thumbKey) {
+            try {
+                var t = await root.VRDB.getThumb(entry.thumbKey);
+                if (t && t.blob) { return t; }
+            } catch (e) { /* 继续往下 */ }
+        }
+        /* ② IDB 没有 → 读磁盘（重装系统后走这条，避免重新解码上万条） */
         try {
-            var t = await root.VRDB.getThumb(entry.thumbKey);
-            if (t && t.blob) { return t; }
-        } catch (e) { /* 继续生成 */ }
+            var blob = await loadFromDisk(entry.relPath);
+            if (blob) {
+                /* 回填 IDB，下次可直接命中；失败不影响本次显示 */
+                var key = 't:' + entry.relPath;
+                try { await root.VRDB.putThumb(key, blob, 0, 0); } catch (e2) { /* 忽略 */ }
+                return { blob: blob, w: 0, h: 0, thumbKey: key };
+            }
+        } catch (e3) { /* 继续生成 */ }
         return null;
     }
 
@@ -196,6 +385,21 @@
             if (entry.type === 'video' && source && source.duration) {
                 patch.duration = Math.round(source.duration * 10) / 10;
             }
+            /* 先落盘，再写记录（红队 a-4：原来 putThumb 与 patchFile 非原子，
+             * 中途失败会留下「thumb 表有 blob、条目无 thumbKey」的僵尸态）。
+             * 顺序理由：
+             *   · 落盘失败 → 只写 IDB，功能照常，只是重装后要重新生成（静默降级）
+             *   · 落盘成功 → 记录 thumbFile + thumbSrc，重装后可直接读盘
+             * 两者都不会留下「引用了不存在的文件」的状态。 */
+            var thumbFile = await saveToDisk(entry.relPath, blob);
+            if (thumbFile) {
+                patch.thumbFile = thumbFile;
+                patch.thumbSrc = {
+                    mtime: Number(entry.mtime) || 0,
+                    size: Number(entry.size) || 0
+                };
+            }
+            await root.VRDB.putThumb(thumbKey, blob, canvas.width, canvas.height);
             /* patchFile 失败不能吞：吞了就会出现「thumb 表里有 blob、条目却没 thumbKey」，
              * 于是 cached() 永不命中，每次进视口都重新抽 30 秒。
              * 注意 db.js:104-110 在条目不存在时返回 null 而不是抛错，必须显式检查。 */
@@ -203,7 +407,10 @@
             if (!saved) {
                 throw new Error('patchFile missed: ' + entry.relPath);
             }
-            return { blob: blob, w: canvas.width, h: canvas.height, thumbKey: thumbKey };
+            return {
+                blob: blob, w: canvas.width, h: canvas.height,
+                thumbKey: thumbKey, thumbFile: thumbFile || ''
+            };
         } finally {
             if (resolved.revoke) { resolved.revoke(); }
         }
@@ -291,6 +498,14 @@
         enqueue: enqueue,
         retry: retry,
         clear: function () { queue.length = 0; failed = Object.create(null); },
+        shouldRefresh: shouldRefresh,
+        /* 落盘能力（B-33） */
+        saveToDisk: saveToDisk,
+        loadFromDisk: loadFromDisk,
+        deleteFor: deleteFor,
+        gc: gc,
+        THUMB_DIR: THUMB_DIR,
+        THUMB_EXT: THUMB_EXT,
         // 测试用
         _size: function () { return queue.length; },
         _failed: function (relPath) { return failed[relPath] || 0; }

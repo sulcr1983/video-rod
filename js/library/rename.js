@@ -289,6 +289,13 @@
             } catch (e) {
                 throw makeErr('LIB_E_DB', '文件已改名，但索引更新失败：请刷新列表');
             }
+            /* 清掉旧路径的磁盘缩略图（红队 b-3）：原来只把 thumbKey 置空，
+             * 旧 hash 的 .webp 会永远留在 _library/thumbs/ 里。 */
+            try {
+                if (root.VRThumbs && root.VRThumbs.deleteFor) {
+                    await root.VRThumbs.deleteFor([oldRel]);
+                }
+            } catch (e2) { /* 清理失败不影响改名结果 */ }
             try {
                 await root.VRDB.log('rename', { from: oldRel, to: newRel }, { size: srcFile.size });
             } catch (e) { /* 忽略 */ }

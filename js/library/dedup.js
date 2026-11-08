@@ -169,7 +169,13 @@
     async function findByHash(hash, excludeRelPath) {
         try {
             if (!hash) { return null; }
-            if (root.VRDB && root.VRDB.getAllFiles) {
+            /* 游标查询（c-3）：只取命中的 1 条，不再把整表读进内存 */
+            if (root.VRDB && root.VRDB.findBy) {
+                var hit = await root.VRDB.findBy(HASH_FIELD, hash, {
+                    limit: 1, excludeRelPath: excludeRelPath
+                });
+                if (hit && hit.length) { return hit[0]; }
+            } else if (root.VRDB && root.VRDB.getAllFiles) {
                 var all = await root.VRDB.getAllFiles();
                 for (var i = 0; i < all.length; i++) {
                     var e = all[i];
@@ -198,7 +204,12 @@
     /** 同指纹条目数（引用计数） */
     async function refCount(hash) {
         try {
-            if (!hash || !root.VRDB || !root.VRDB.getAllFiles) { return 0; }
+            if (!hash || !root.VRDB) { return 0; }
+            /* 游标计数（c-3）：恒定内存，避免整表读入 */
+            if (root.VRDB.countBy) {
+                return await root.VRDB.countBy(HASH_FIELD, hash);
+            }
+            if (!root.VRDB.getAllFiles) { return 0; }
             var all = await root.VRDB.getAllFiles();
             var n = 0;
             for (var i = 0; i < all.length; i++) {
@@ -281,9 +292,16 @@
             var hash = entry[HASH_FIELD];
             // 先把这一条从库里去掉，再看还有几条引用
             var remaining = 0;
-            var all = await root.VRDB.getAllFiles();
-            for (var i = 0; i < all.length; i++) {
-                if (all[i] && all[i][HASH_FIELD] === hash && all[i].relPath !== entry.relPath) { remaining++; }
+            /* 用游标计数（c-3）：原来 getAllFiles() 把整表拉进内存，
+             * 而查重/删除每次下载都会跑一遍，上万条时是明显的浪费。 */
+            if (root.VRDB.countBy) {
+                remaining = await root.VRDB.countBy(HASH_FIELD, hash);
+                if (remaining > 0) { remaining--; }   /* 减去自己 */
+            } else {
+                var all0 = await root.VRDB.getAllFiles();
+                for (var i0 = 0; i0 < all0.length; i0++) {
+                    if (all0[i0] && all0[i0][HASH_FIELD] === hash && all0[i0].relPath !== entry.relPath) { remaining++; }
+                }
             }
             out.refCount = remaining;
             if (remaining === 0) {
@@ -292,7 +310,15 @@
                    真正要删的是原件 → 必须先按 refOf 找原件的 absPath。 */
                 var physical = '';
                 if (entry.refOf) {
-                    var origin = all.filter(function (x) { return x && x.relPath === entry.refOf; })[0];
+                    var origin = null;
+                    try {
+                        origin = (root.VRDB.getFile && entry.refOf)
+                            ? await root.VRDB.getFile(entry.refOf) : null;
+                    } catch (e0) { origin = null; }
+                    if (!origin && root.VRDB.findBy) {
+                        var hits0 = await root.VRDB.findBy('relPath', entry.refOf, { limit: 1 });
+                        origin = hits0 && hits0[0];
+                    }
                     physical = origin ? (origin.absPath || '') : '';
                 }
                 if (!physical) { physical = entry.absPath || ''; }

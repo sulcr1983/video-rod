@@ -198,6 +198,12 @@
                     await root.VRDB.putFiles([next]);
                     dbWritten = true;
                     await root.VRDB.deleteFiles([f.relPath]);
+                    /* 清旧路径缩略图（红队 b-4）：与改名同理，否则每次移动留一个孤儿 */
+                    try {
+                        if (root.VRThumbs && root.VRThumbs.deleteFor) {
+                            await root.VRThumbs.deleteFor([f.relPath]);
+                        }
+                    } catch (e4) { /* 清理失败不影响移动结果 */ }
                 }
                 okN++;
             } catch (e) {

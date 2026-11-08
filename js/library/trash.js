@@ -218,6 +218,12 @@
             try {
                 if (!(await exists(rr.handle, fsRel))) {
                     if (dbReady()) { await root.VRDB.deleteFiles([rel]); }
+                    /* 顺手清掉磁盘缩略图（红队 b-2）：否则落盘后每个删除都留一个孤儿文件 */
+                    try {
+                        if (root.VRThumbs && root.VRThumbs.deleteFor) {
+                            await root.VRThumbs.deleteFor([rel]);
+                        }
+                    } catch (e3) { /* 删除失败不影响主流程 */ }
                     cleaned++;
                     tick();
                     continue;
@@ -238,6 +244,12 @@
                         if (cnt > 1) {
                             // 还有别的引用在用同一个物理文件 → 只删库条目，不动文件
                             await root.VRDB.deleteFiles([rel]);
+                            /* 缩略图按 relPath 存，与该条目一一对应，所以也要清（b-2） */
+                            try {
+                                if (root.VRThumbs && root.VRThumbs.deleteFor) {
+                                    await root.VRThumbs.deleteFor([rel]);
+                                }
+                            } catch (e4) { /* 忽略 */ }
                             items.push(Object.assign({}, entry, {
                                 fileName: split(rel).pop(),
                                 state: 'ok',
@@ -271,6 +283,12 @@
             });
             if (dbReady()) {
                 await root.VRDB.deleteFiles(items.map(function (it) { return it.relPath; }));
+                /* 批量删除同样要清缩略图（b-2），否则一次删几百条会留几百个孤儿文件 */
+                try {
+                    if (root.VRThumbs && root.VRThumbs.deleteFor) {
+                        await root.VRThumbs.deleteFor(items.map(function (it) { return it.relPath; }));
+                    }
+                } catch (e4) { /* 忽略 */ }
                 try {
                     await root.VRDB.log('trash.remove', { batch: batch, count: items.length },
                         { moved: items.length, cleaned: cleaned, failed: failed.length });

@@ -561,6 +561,16 @@
         if (root.VRLib && typeof root.VRLib.ingestDirect === 'function') {
             return Promise.resolve().then(function () {
                 return root.VRLib.ingestDirect(info);
+            }).then(function (item) {
+                /* 入库成功 → 通知索引层「该刷新快照了」（US-3 / 红队 a-5）。
+                 * 用 30s 合并窗口，批量下载不会逐条重写 8MB 文件。
+                 * 失败不影响下载本身：快照是派生数据，下次入库会再触发。 */
+                try {
+                    if (root.VRIndex && typeof root.VRIndex.scheduleSnapshot === 'function') {
+                        root.VRIndex.scheduleSnapshot(30000);
+                    }
+                } catch (e) { /* 索引层未加载时忽略 */ }
+                return item;
             }).catch(function () { return null; });
         }
         return new Promise(function (resolve) {

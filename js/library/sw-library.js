@@ -366,6 +366,14 @@
         // FSA 直写的文件没有下载事件，由写入方调这个直接入库（YouTube 用）
         if (t === 'vrLib.ingest') {
             ingestDirect(Message.info || {}).then(function (item) {
+                /* 入库成功 → 触发自动快照（B-32 阶段 1.5）。
+                 * 这条路径与 save.js 的直调并列：FSA 直写（YouTube / 图片）走这里，
+                 * 漏了它就会出现「下载完但快照没更新」，重装后看不到新素材。 */
+                try {
+                    if (root.VRIndex && typeof root.VRIndex.scheduleSnapshot === 'function') {
+                        root.VRIndex.scheduleSnapshot(30000);
+                    }
+                } catch (e0) { /* 索引层未加载时忽略 */ }
                 sendResponse({ ok: !!item, item: item });
             }).catch(function (e) {
                 sendResponse({ ok: false, code: 'LIB_E_DB', message: String(e) });
