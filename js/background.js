@@ -2278,7 +2278,10 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
                 chrome.tabs.sendMessage(tid, {
                     Message: 'vrYtProgress',
                     text: Message.text || '', pct: Message.pct,
-                    done: !!Message.done, kind: Message.kind || ''
+                    done: !!Message.done, kind: Message.kind || '',
+                    /* busy 原样转发：浮层靠它决定是否显示「取消下载」——
+                     * 只靠 pct 会漏掉「准备链路…」这种没有百分比的阶段。 */
+                    busy: !!Message.busy
                 }, function () { void chrome.runtime.lastError; });
             } catch (e) { /* 原标签已关就算了 */ }
         }
@@ -2299,6 +2302,106 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message && Message.Message === 'vrYtClose') {
         const tid = sender && sender.tab && sender.tab.id;
         if (tid) { try { chrome.tabs.remove(tid); } catch (e) { /* ignore */ } }
+        sendResponse({ ok: true });
+        return true;
+    }
+    // YouTube：取消正在跑的下载（来源：YouTube 页面右下角浮层的「取消」）
+    //
+    // 2026-11-08 苏哥反馈「下载没有终止按钮」，一个 15GB 的任务点下去只能等。
+    // 这里把取消指令转给正在跑的下载页（vrYtQueueTabId），由页面 abort 所有 fetch。
+    //
+    // 顺序很重要：**先通知下载页、再释放队列位**。
+    // 反过来的话，下一个排队任务会在当前连接还没断开时就启动，两条大流量并存。
+    if (Message && Message.Message === 'vrYtCancel') {
+        const target = vrYtQueueTabId;
+        const done = function (cancelled) {
+            /* 无论页面有没有回执，都要释放队列，否则下一个任务永远排队。
+             * vrYtRelease 内部有 600ms 延迟，给 abort 收尾留出时间。 */
+            vrYtRelease(target);
+            try {
+                sendResponse({
+                    ok: true,
+                    cancelled: !!cancelled,
+                    tabId: target,
+                    queue: vrYtQ.status()
+                });
+            } catch (e) { /* 调用方已关 */ }
+        };
+        if (target == null) {
+            /* 没有在跑的下载页：可能已经结束或被关了，直接告诉调用方 */
+            done(false);
+            return true;
+        }
+        try {
+            chrome.tabs.sendMessage(target, { Message: 'vrYtCancel' }, function (res) {
+                void chrome.runtime.lastError;
+                done(!!(res && res.ok));
+            });
+        } catch (e) {
+            done(false);
+        }
+        return true;
+    }
+    // YouTube：用户在页面浮层选定了某个清晰度（来源：vrYtOptions 渲染出的按钮）
+    //
+    // 2026-11-08：不再由下载页擅自挑最高档（曾经在 91vZf7QNTpE 上直接拉 15.66GB），
+    // 改为把档位交给用户，选完再转给下载页点选 + 开始。
+    if (Message && Message.Message === 'vrYtChoose') {
+        const target = vrYtQueueTabId;
+        const key = String(Message.key || '');
+        if (target == null || !key) {
+            sendResponse({ ok: false, reason: target == null ? 'no-active-download' : 'no-key' });
+            return true;
+        }
+        try {
+            chrome.tabs.sendMessage(target, {
+                Message: 'vrYtChoose',
+                key: key,
+                start: Message.start !== false
+            }, function (res) {
+                void chrome.runtime.lastError;
+                sendResponse({
+                    ok: !!(res && res.ok),
+                    key: key,
+                    reason: (res && res.ok) ? '' : 'download-page-rejected'
+                });
+            });
+        } catch (e) {
+            sendResponse({ ok: false, reason: 'send-failed' });
+        }
+        return true;
+    }
+    // YouTube：页面浮层要档位列表（打开浮层/切视频后主动拉一次）
+    if (Message && Message.Message === 'vrYtRequestOptions') {
+        const target = vrYtQueueTabId;
+        if (target == null) {
+            sendResponse({ ok: false, reason: 'no-active-download', options: [] });
+            return true;
+        }
+        try {
+            chrome.tabs.sendMessage(target, { Message: 'vrYtRequestOptions' }, function (res) {
+                void chrome.runtime.lastError;
+                sendResponse(res || { ok: false, options: [] });
+            });
+        } catch (e) {
+            sendResponse({ ok: false, reason: 'send-failed', options: [] });
+        }
+        return true;
+    }
+    // YouTube：下载页把档位列表（含体积）广播给原页面
+    if (Message && Message.Message === 'vrYtOptions') {
+        const tid = Number(Message.tabId || 0);
+        if (tid) {
+            try {
+                chrome.tabs.sendMessage(tid, {
+                    Message: 'vrYtOptions',
+                    title: Message.title || '',
+                    author: Message.author || '',
+                    duration: Message.duration || 0,
+                    options: Array.isArray(Message.options) ? Message.options : []
+                }, function () { void chrome.runtime.lastError; });
+            } catch (e) { /* 原标签已关就算了 */ }
+        }
         sendResponse({ ok: true });
         return true;
     }

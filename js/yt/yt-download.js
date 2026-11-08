@@ -15,7 +15,7 @@
     var qs = new URLSearchParams(location.search);
     var videoId = qs.get('videoId') || '';
     var tabId = parseInt(qs.get('tabId') || '0', 10) || 0;
-    var autoMode = qs.get('auto') === '1';   // 后台模式：不展示界面、自动最高画质
+    var autoMode = qs.get('auto') === '1';   // 后台模式：隐藏界面，档位交给用户选
     var meta = {
         title: qs.get('title') || '',
         author: qs.get('author') || '',
@@ -62,7 +62,14 @@
         prefix: 'video-rod',      // 资源库根已经到的那一层（FSA 写盘前要剥掉）
         durSec: 0,
         mergeError: '',
-        via: ''
+        via: '',
+        /* 已渲染的档位列表（含体积）。autoMode 不再自己挑档，
+         * 而是把它广播给 YouTube 页面，由用户在那里选。 */
+        options: [],
+        /* 下载中的中断控制器。run() 开始时创建，finish/fail 时清空。
+         * 用户点「取消」→ abort() → fetch 立即中断，且不再被当成断流续传。 */
+        controller: null,
+        cancelled: false
     };
 
     var sandbox = { frame: null, ready: null, seq: 0, wait: {} };
@@ -77,7 +84,11 @@
             chrome.runtime.sendMessage({
                 Message: 'vrYtProgress', tabId: tabId,
                 text: text || '', pct: (pct === null || pct === undefined) ? null : pct,
-                done: !!done, kind: kind || ''
+                done: !!done, kind: kind || '',
+                /* 显式带上「是否在下载」：光看 pct 不够 ——
+                 * setMsg('准备链路…') 这种阶段提示没有百分比，
+                 * 浮层若只按 pct 判断就不会显示「取消下载」按钮。 */
+                busy: !!state.busy
             }, function () { void chrome.runtime.lastError; });
         } catch (e) { /* 广播失败不影响下载 */ }
     }
@@ -95,6 +106,31 @@
         el.bar.classList.add('on');
         el.barI.style.width = Math.max(0, Math.min(100, pct)) + '%';
     }
+
+    /**
+     * 用户点「取消」：中断当前下载的所有请求。
+     *
+     * 2026-11-08 苏哥反馈「下载没有终止按钮」，而且一个 15GB 的任务点下去
+     * 就只能等它下完或者关页面。根因是 fetch 从来没接过 signal。
+     *
+     * 现在 abort() 会让请求立刻 reject，run() 的 catch 走 fail 收尾
+     * （isAborted 判定为「取消」而不是失败，不播红色报错）。
+     *
+     * @returns {boolean} 是否确实取消了一个正在跑的任务
+     */
+    function cancelDownload(reason) {
+        if (!state.busy) { return false; }
+        state.cancelled = true;
+        try {
+            if (state.controller) { state.controller.abort(); }
+        } catch (e) { /* ignore */ }
+        var txt = reason || '正在取消…';
+        setMsg(txt, 'warn');
+        broadcast(txt, null, false, 'warn');
+        return true;
+    }
+    /* 直接调用口：自动化/排查时可以 window.__vrYtCancel() */
+    try { window.__vrYtCancel = cancelDownload; } catch (e) { /* ignore */ }
 
     function mb(n) {
         if (!n) { return ''; }
@@ -125,6 +161,10 @@
      *  2026-11-08：画质不再过滤后，8K 也会出现在列表里。
      *  原来这里 `h >= 2160 ? '4K'` 会把 4320 也标成 4K，用户分不出高低。 */
     function qlabel(f) {
+        /* 统一走 js/yt/yt-options.js（40+ 条单测覆盖 8K/5K/4K/2K/Np 与帧率）。
+         * 这里以前手写过一份，和浮层那份容易漂移 —— 一旦不一致就会出现
+         * 「显示 4K 却下 1080p」。 */
+        if (self.VRYtOptions) { return self.VRYtOptions.qualityLabel(f.height, f.fps); }
         var h = f.height || 0;
         var n = h >= 4320 ? '8K'
             : h >= 2880 ? '5K'
@@ -315,6 +355,9 @@
                 t: qlabel(f),
                 s: mb(total) + (state.audio ? ' · 视频+音频' : ' · 仅视频'),
                 badge: i === 0 ? '最高' : '',
+                /* size 供浮层显示「约 926 MB」；0 表示接口没给体积 */
+                size: total,
+                height: f.height || 0,
                 video: f
             });
         });
@@ -324,12 +367,17 @@
                 t: qlabel(state.muxed),
                 s: mb(state.muxed.size) + ' · 单文件',
                 badge: '免合并',
+                size: state.muxed.size || 0,
+                height: state.muxed.height || 0,
                 muxed: state.muxed
             });
         }
         if (state.audio) {
             opts.push({
-                key: 'a', t: '仅音频', s: mb(state.audio.size) + ' · m4a', badge: '', audio: true
+                key: 'a', t: '仅音频', s: mb(state.audio.size) + ' · m4a', badge: '',
+                size: state.audio.size || 0,
+                height: 0,
+                audio: true
             });
         }
 
@@ -353,6 +401,9 @@
             });
             el.qc.appendChild(b);
         });
+
+        /* 把档位列表暴露给 autoMode 广播（含体积），也方便排查时读。 */
+        state.options = opts;
 
         if (!opts.length) {
             setMsg('这个视频没有可用的 MP4 轨（可能只有 WebM，暂不支持）', 'err');
@@ -441,7 +492,21 @@
      */
     var MAX_TOTAL_RETRY = 40;
 
-    function fetchBytes(url, onProgress) {
+    /** 取消信号的统一判定：AbortError 与「已 abort」都算用户主动取消，
+     *  不能被当成断流去续传 —— 否则点了取消还在后台继续拉。 */
+    function isAborted(e, signal) {
+        if (signal && signal.aborted) { return true; }
+        var n = e && (e.name || e.code || '');
+        return n === 'AbortError' || n === 'ABORT_ERR';
+    }
+
+    function abortedError() {
+        var e = new Error('已取消');
+        e.name = 'AbortError';
+        return e;
+    }
+
+    function fetchBytes(url, onProgress, signal) {
         var total = 0;
         var parts = [];
         var got = 0;
@@ -452,9 +517,12 @@
 
         /** 请求一段；返回 {bytes, complete}，失败抛出 */
         function step(start) {
+            if (signal && signal.aborted) { return Promise.reject(abortedError()); }
             var headers = {};
             if (start > 0) { headers.Range = 'bytes=' + start + '-'; }
-            return fetch(url, { credentials: 'omit', headers: headers }).then(function (r) {
+            var init = { credentials: 'omit', headers: headers };
+            if (signal) { init.signal = signal; }
+            return fetch(url, init).then(function (r) {
                 if (!r.ok && r.status !== 206) {
                     throw new Error('HTTP ' + r.status + (r.status === 403 ? '（直链失效）' : ''));
                 }
@@ -475,6 +543,7 @@
 
         function loop(attempt) {
             return step(got).then(function (res) {
+                if (signal && signal.aborted) { throw abortedError(); }
                 if (!total || got >= total) { return done(); }
                 if (!res.complete) {
                     /* 断流但有进展：继续从 got 续 */
@@ -488,6 +557,8 @@
                 /* 服务器结束了但总长未到：继续要下一段 */
                 return loop(0);
             }).catch(function (e) {
+                /* 取消不是失败：直接抛出去，绝不续传、绝不重试 */
+                if (isAborted(e, signal)) { throw abortedError(); }
                 if (attempt >= MAX_RETRY || /HTTP 4\d\d/.test(String(e && e.message))) { throw e; }
                 retry++;
                 if (retry > MAX_TOTAL_RETRY) { throw e; }
@@ -501,20 +572,22 @@
     }
 
     /** 解 n 后拉流；403/解密失败自动重来一次（直链会轮换） */
-    function fetchStream(rawUrl, label, onProgress) {
+    function fetchStream(rawUrl, label, onProgress, signal) {
         // 没有 n 参数的直链不需要解密，就别白起沙箱（也避开 base.js 的下载）
         if (!/[?&]n=/.test(rawUrl)) {
-            return fetchBytes(rawUrl, onProgress);
+            return fetchBytes(rawUrl, onProgress, signal);
         }
         function once() {
             return nsig([rawUrl], state.playerId).then(function (u) {
+                if (signal && signal.aborted) { throw abortedError(); }
                 var fixed = u[0];
                 if (fixed && fixed.__err) { throw new Error(label + '链解密失败：' + fixed.__err); }
                 if (!fixed) { throw new Error(label + '链为空'); }
-                return fetchBytes(fixed, onProgress);
+                return fetchBytes(fixed, onProgress, signal);
             });
         }
         return once().catch(function (e) {
+            if (isAborted(e, signal)) { throw abortedError(); }
             var msg = String((e && e.message) || e);
             if (!/403|失效|解密失败|超时/.test(msg)) { throw e; }
             setMsg(msg + ' → 重试一次…', 'warn');
@@ -759,6 +832,10 @@
         if (state.busy || !state.chosen) { return; }
         var o = state.chosen;
         state.busy = true;
+        state.cancelled = false;
+        /* 每次下载一个独立的 controller：取消只影响这一次，不影响下一次重试。 */
+        state.controller = (typeof AbortController === 'function') ? new AbortController() : null;
+        var sig = state.controller ? state.controller.signal : undefined;
         el.go.disabled = true;
         el.file.classList.remove('on');
         el.note.textContent = '';
@@ -789,6 +866,7 @@
         function stage(txt, pct) { setMsg(txt); setBar(pct); }
         function finish(saved) {
             setBar(100);
+            state.controller = null;
             var tail = state.via === 'fsa'
                 ? '已直接写入资源库目录'
                 : '已交给浏览器下载器（未授权资源库目录，文件名可能被浏览器改成随机名）';
@@ -830,8 +908,15 @@
         }
         function fail(e) {
             setBar(null);
-            setMsg(String((e && e.message) || e), 'err');
-            broadcast(String((e && e.message) || e), null, true, 'err');
+            /* 取消不是错误：给一句中性提示，别把「已取消」渲染成红色报错 */
+            if (isAborted(e, sig)) {
+                setMsg('已取消', 'warn');
+                broadcast('已取消', null, true, 'ok');
+            } else {
+                setMsg(String((e && e.message) || e), 'err');
+                broadcast(String((e && e.message) || e), null, true, 'err');
+            }
+            state.controller = null;
             state.busy = false;
             el.go.disabled = !state.chosen;
         }
@@ -851,7 +936,7 @@
             return fetchStream(onlySrc, isAudioOnly ? '音频' : '视频', function (got, total) {
                 setBar(total ? 5 + (got / total) * 85 : 50);
                 setMsg((isAudioOnly ? '音频 ' : '视频 ') + mb(got) + (total ? ' / ' + mb(total) : ''));
-            }).then(function (blob) {
+            }, sig).then(function (blob) {
                 stage('写入磁盘…', 92);
                 return save(blob, buildPath(isAudioOnly ? 'm4a' : 'mp4', isAudioOnly ? '' : nameSuffix));
             }).then(finish, fail);
@@ -862,13 +947,13 @@
         fetchStream(vSrc, '视频', function (got, total) {
             setBar(total ? 5 + (got / total) * 60 : 35);
             setMsg('视频轨 ' + mb(got) + (total ? ' / ' + mb(total) : ''));
-        }).then(function (vBlob) {
+        }, sig).then(function (vBlob) {
             stage('下载音频轨…', 66);
             if (!aSrc) { return { v: vBlob, a: null }; }
             return fetchStream(aSrc, '音频', function (got, total) {
                 setBar(total ? 66 + (got / total) * 18 : 75);
                 setMsg('音频轨 ' + mb(got) + (total ? ' / ' + mb(total) : ''));
-            }).then(function (aBlob) { return { v: vBlob, a: aBlob }; });
+            }, sig).then(function (aBlob) { return { v: vBlob, a: aBlob }; });
         }).then(function (pair) {
             stage('合并音视频…', 86);
             /* 音频轨必须真有数据且带 mp4a 标记，否则明确报错，
@@ -986,26 +1071,100 @@
         }).catch(function () { return null; });
     }
 
+    /* ===== autoMode：不再自动挑档，改为「先把档位交给用户选」=====
+     *
+     * 2026-11-08 苏哥实测 https://youtu.be/91vZf7QNTpE 显示 15.66GB：
+     * 原逻辑是 `el.qc.children[0].click()` —— 无条件点第一档（列表按高度降序）。
+     * 以前有 MAX_HEIGHT=2160 挡着，最坏也就 4K；上限放开后第一档直接是 8K 长视频，
+     * 于是「点一下下载」= 静默拉 15GB。这既不可预期，也没法中途停。
+     *
+     * 现在：取到格式后把档位列表（清晰度 + 体积）广播给 YouTube 页面，
+     * 由浮层展示，用户点了某个档才真正开始。不再替用户做决定。
+     */
+    function broadcastOptions() {
+        var list = (state.options || []).map(function (o) {
+            return {
+                key: o.key,
+                label: o.t,
+                size: o.size || 0,
+                /* 0 表示 YouTube 没给 contentLength，前端要显示「大小未知」 */
+                sizeText: self.VRYtOptions
+                    ? self.VRYtOptions.sizeText(o.size)
+                    : (o.size ? mb(o.size) : '大小未知'),
+                height: o.height || 0,
+                badge: o.badge || ''
+            };
+        });
+        try {
+            chrome.runtime.sendMessage({
+                Message: 'vrYtOptions', tabId: tabId,
+                title: meta.title || '',
+                author: meta.author || '',
+                duration: state.durSec || 0,
+                options: list
+            }, function () { void chrome.runtime.lastError; });
+        } catch (e) { /* ignore */ }
+    }
+
+    /** 用户在原页面选定某个档位后，由后台转进来 */
+    function chooseByKey(key, autoStart) {
+        var want = String(key || '');
+        if (!want) { return false; }
+        /* 正在下载时不能换档：按钮自己的 click 处理器会直接 return，
+         * 这里若仍返回 true，调用方会以为已经切换成功。 */
+        if (state.busy) { return false; }
+        var idx = -1;
+        for (var i = 0; i < (state.options || []).length; i++) {
+            if (state.options[i].key === want) { idx = i; break; }
+        }
+        if (idx < 0) { return false; }
+        var btn = el.qc.children[idx];
+        if (!btn) { return false; }
+        btn.click();                      // 复用原有选中逻辑（含 hintFor）
+        if (autoStart !== false) {
+            setTimeout(function () { try { el.go.click(); } catch (e) { /* ignore */ } }, 120);
+        }
+        return true;
+    }
+
+    /* 扩展页收指令：取消 / 选档 / 要档位列表。统一放在 IIFE 顶层，
+     * 不能放进 run() —— 那样没点过下载就收不到消息。 */
+    try {
+        chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+            if (!msg || typeof msg !== 'object') { return; }
+            if (msg.Message === 'vrYtCancel') {
+                sendResponse({ ok: cancelDownload('已取消') });
+                return true;
+            }
+            if (msg.Message === 'vrYtChoose') {
+                var ok = chooseByKey(msg.key, msg.start !== false);
+                sendResponse({ ok: ok, key: msg.key || '' });
+                return true;
+            }
+            if (msg.Message === 'vrYtRequestOptions') {
+                broadcastOptions();
+                sendResponse({ ok: true, count: (state.options || []).length });
+                return true;
+            }
+        });
+    } catch (e) { /* ignore */ }
+
     if (autoMode) {
         document.body.classList.add('vr-auto');
         var autoTimer = setInterval(function () {
             if (el.qc && el.qc.children.length) {
                 clearInterval(autoTimer);
-                var planned = state.video[0] ? buildPath('mp4', '_' + state.video[0].height + 'p') : '';
-                var exists = window.VRDB && VRDB.getFile && planned ? VRDB.getFile(planned).catch(function () { return null; }) : Promise.resolve(null);
-                exists.then(function (samePath) {
-                    return samePath ? { relPath: planned } : findExistingYt();
-                }).then(function (hit) {
+                /* 先查重：同一视频已下过就跳过，避免重复拉一遍 15GB */
+                findExistingYt().then(function (hit) {
                     if (hit) {
                         setMsg('已存在：' + (hit.relPath || hit.title) + '，跳过重复下载');
                         broadcast('已存在，跳过重复下载', 100, true, 'ok');
                         closeAuto();
                         return;
                     }
-                    try {
-                        el.qc.children[0].click();      // 最高画质（列表已按高度降序）
-                        setTimeout(function () { el.go.click(); }, 120);
-                    } catch (e) { broadcast('自动开始失败，请手动下载', null, true, 'err'); }
+                    /* 把档位交给用户：原来这里是无条件点第一档。 */
+                    broadcastOptions();
+                    setMsg('请选择清晰度');
                 });
             }
         }, 300);

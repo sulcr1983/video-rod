@@ -170,6 +170,7 @@
         "https://*.youtube.com/*"
       ],
       "js": [
+        "js/yt/yt-options.js",
         "js/yt/yt-page.js"
       ],
       "run_at": "document_idle",

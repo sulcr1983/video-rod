@@ -283,6 +283,55 @@ JSON.parse 成功 ／ noteDetailMap 键 ["6ae7193c0000000025038f26"]
 - 进度广播 `done` → 同时 `tabs.remove`
 - 用户手动关页 → `chrome.tabs.onRemoved`
 
+### C. 2026-11-08 追加：不再替用户选档 + 随时可停
+
+**触发**：`https://youtu.be/91vZf7QNTpE` 点下载直接显示 **15.66 GB**，且没有终止按钮。
+
+**根因（是放开上限时埋下的）**：
+
+| 现象 | 根因 |
+|---|---|
+| 15.66 GB | `auto=1` 是「自动最高画质」，无条件 `el.qc.children[0].click()`；8K 档放开后第一档就是它 |
+| 看不到选项 | `body.vr-auto > *{display:none}` 把界面整个藏了 |
+| 停不下来 | `fetchBytes()` 的 `fetch()` 从未接过 `signal` |
+
+**改法一：先问再下**
+
+```
+取到格式 → 查重 → 广播档位列表（清晰度 + 体积）→ 浮层展示 → 用户点档 → 才开始
+```
+
+消息链路：
+
+| 消息 | 方向 | 作用 |
+|---|---|---|
+| `vrYtOptions` | 下载页 → 页面 | 档位列表（label / size / sizeText / badge） |
+| `vrYtChoose` | 页面 → 后台 → 下载页 | 按 `key` 选档并开始 |
+| `vrYtRequestOptions` | 页面 → 下载页 | 主动拉一次列表 |
+
+**改法二：随时可停**
+
+- `fetchBytes()` / `fetchStream()` 接受 `signal`，请求带 `init.signal`
+- `loop()` 的 catch **先判 `isAborted()`**：命中即抛，绝不进续传/重试分支
+  （否则点了取消，后台还在偷偷续传）
+- 取消与失败在 UI 上区分：取消播「已取消」，不报红错
+- 后台**先通知下载页 abort、再释放队列位**，避免下个任务提前启动造成两条大流量并存
+
+**状态显式上报**：浮层判断「在下载」不能只看 `pct`——
+`setMsg('准备链路…')` 没有百分比，那几个阶段会看不到取消按钮。
+改为广播带 `busy: !!state.busy`，后台原样转发。
+
+**踩到的两个坑**：
+
+1. 用 `m.done === false` 判「在下载」是错的：`setMsg` 每条消息都带 `done:false`，
+   会把刚渲染好的档位列表秒清空
+2. `lastOptions` 存的是整条消息对象，判长度要写 `lastOptions.options.length`
+
+**纯逻辑抽离**：`js/yt/yt-options.js`（零依赖，50 条单测）负责
+`sizeText` / `qualityLabel` / `buildAll` / `indexOfKey`；
+下载页 `qlabel()` 与浮层体积兜底都调它，避免两处实现漂移
+（漂移的后果是「显示 4K 却下了 1080p」）。
+
 ---
 
 ## 七、明确没做的
@@ -291,8 +340,10 @@ JSON.parse 成功 ／ noteDetailMap 键 ["6ae7193c0000000025038f26"]
 |---|---|
 | 文件头探测真实宽高 | 每张图多一次请求；改用 HEAD 探测 + 候选回退替代 |
 | Tubly 的云端代理解析 | 需把 Cookie 发到第三方，隐私不可接受 |
-| 8K 下载 | 本机内存撑不住双轨合并 |
 | 小红书批量自动翻页 | 维持「只处理已渲染卡片」的既有口径 |
+
+> 8K 已可下载（上限全部解除，见 §五）。原来这里写「本机内存撑不住双轨合并」，
+> 是没验证过的推断；实测 200MB Blob 不进 JS 堆，该结论已作废。
 
 ---
 
@@ -300,12 +351,17 @@ JSON.parse 成功 ／ noteDetailMap 键 ["6ae7193c0000000025038f26"]
 
 ```bash
 # 单测
-node tools/test-video-quality.js
-node tools/test-xhs-media.js
-node tools/test-xhs-ssr.js
-node tools/test-range-split.js
+node tools/test-yt-options.js     # 50  档位构造/体积格式化/清晰度标签
+node tools/test-yt-queue.js       # 26  串行队列语义
+node tools/test-video-quality.js  # 57  清晰度排序与解析
+node tools/test-xhs-media.js      # 25  小红书候选链与原图推导
+node tools/test-xhs-ssr.js        # 26  SSR state 提取
+node tools/test-range-split.js    # 18  Range 分段边界
 
 # 语法
+node --check js/yt/yt-options.js
+node --check js/yt/yt-download.js
+node --check js/yt/yt-page.js
 node --check js/video-quality.js
 node --check js/xhs-media.js
 node --check js/xhs-ssr.js
