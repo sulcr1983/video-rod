@@ -956,8 +956,11 @@
 
     var batchTotal = 0;
     var batchDone = 0;
+    var batchFail = 0;
 
     /** 记录本批下载 id（monkey-patch chrome.downloads.download） */
+    var batchIdNames = {};   // downloadId -> filename（失败回滚的独立依据，见 bindDownloadProgress）
+
     function hookDownloadsApi() {
         try {
             var api = chrome.downloads;
@@ -965,13 +968,51 @@
             if (!orig || orig.__vrHooked) { return; }
             var wrapped = function (opts, cb) {
                 return orig.call(api, opts, function (id) {
-                    if (id) { batchIds.push(id); }
+                    if (id) {
+                        batchIds.push(id);
+                        // 猫抓 popup.js 下载出错时会 catDownload 重试并 delete downData[id]，
+                        // 钓鱼竿的失败回滚若依赖 downData 就永远拿不到 —— 这里自记一份
+                        // id→filename，失败回滚才有着落（2026-11-08 QA 实测踩坑）。
+                        if (opts && opts.filename) { batchIdNames[id] = String(opts.filename); }
+                    }
                     cb && cb(id);
                 });
             };
             wrapped.__vrHooked = true;
             api.download = wrapped;
         } catch (e) { /* 个别版本 API 只读，忽略 */ }
+    }
+
+    /** 按 downFileName 找卡片并撤销「已完成」假象（失败回滚用） */
+    function unmarkCardByFileName(full) {
+        try {
+            var all = vrAllData();
+            for (var i = 0; i < all.length; i++) {
+                var d = all[i];
+                if (d && d.downFileName === full && d.html && d.html.length) {
+                    d.html.removeClass('done');
+                    d.html.attr('data-vr-state', '失败');
+                }
+            }
+        } catch (e) { /* 找不到卡片就算了，去重表回滚不受影响 */ }
+    }
+
+    /** 批量收尾汇总（成功/失败终点共用）：如实报数 + 兜底改名提示 */
+    function tipBatchSummary(doneN, failN, errName) {
+        var base = '批量完成：' + doneN + ' 个文件已保存' +
+            (failN ? '，' + failN + ' 个失败' +
+                (errName ? '（' + errName + '，可重试）' : '（可重试）') : '');
+        try {
+            chrome.storage.session.get('vrNameFallback', function (o) {
+                // 未授权素材目录时下载走浏览器下载器兜底，Chrome 147+ 会把文件名
+                // 改成 UUID/URL 末段（ADR-040）。SW 兜底时会打标记 —— 如实说明。
+                tip(base + ((o && o.vrNameFallback)
+                    ? '；未授权素材目录，文件名可能被浏览器改名，在资源库设置里授权后可保住命名'
+                    : ''));
+            });
+        } catch (e1) {
+            tip(base);
+        }
     }
 
     /** 完成/失败汇报 */
@@ -990,27 +1031,55 @@
 
                 if (delta.state && delta.state.current === 'complete') {
                     if (data) { markCardDone(data); }
+                    delete batchIdNames[delta.id];
                     if (batchIds.indexOf(delta.id) >= 0) {
                         batchDone++;
-                        if (batchTotal && batchDone >= batchTotal) {
-                            tip('批量完成：' + batchDone + ' 个文件已保存');
+                        if (batchTotal && (batchDone + batchFail) >= batchTotal) {
+                            tipBatchSummary(batchDone, batchFail, '');
                             batchTotal = 0;
                             batchDone = 0;
+                            batchFail = 0;
                             batchIds = [];
                         }
                     }
                 }
                 if (delta.state && delta.state.current === 'interrupted') {
+                    var errName = (delta.error && delta.error.current) || '未知原因';
+                    var rollName = null;
                     if (data) {
                         data.html.removeClass('done');
                         data.html.attr('data-vr-state', '失败');
+                        rollName = data.downFileName || null;
+                    }
+                    // 上游 popup.js 出错时先 catDownload 重试并删掉 downData[id]，
+                    // 这里 data 常为 null —— 用 monkey-patch 记下的 id→filename 兜底，
+                    // 否则去重表留僵尸记录，重试被「选中的都下载过了」永久拦死（QA 实测）。
+                    if (!rollName && batchIdNames[delta.id]) {
+                        rollName = batchIdNames[delta.id];
+                        unmarkCardByFileName(rollName);
+                    }
+                    delete batchIdNames[delta.id];
+                    if (rollName) {
                         // 失败了就把去重记录撤掉，允许重试
-                        var key = hashKey(data.downFileName || '');
+                        var key = hashKey(rollName);
                         if (downloaded[key]) {
                             delete downloaded[key];
                             saveDownloaded();
                         }
-                        tip('下载失败：' + (delta.error && delta.error.current || '未知原因'));
+                    }
+                    if (batchIds.indexOf(delta.id) >= 0) {
+                        batchFail++;
+                        if (batchTotal && (batchDone + batchFail) >= batchTotal) {
+                            tipBatchSummary(batchDone, batchFail, errName);
+                            batchTotal = 0;
+                            batchDone = 0;
+                            batchFail = 0;
+                            batchIds = [];
+                        } else {
+                            tip('下载失败：' + errName);
+                        }
+                    } else {
+                        tip('下载失败：' + errName);
                     }
                 }
             });

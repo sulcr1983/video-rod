@@ -102,10 +102,14 @@ def main():
             raise RuntimeError("读取 VRDB 失败：%s" % rows_raw)
         all_rows = json.loads(rows_raw)
         real = [r for r in all_rows if not is_fixture(r) and r.get("absPath")]
+        # 2026-11-08 修正：库页显示「全部非夹具条目」（含自选文件夹/未整理的无 absPath
+        # 条目），卡片数不能只和有 absPath 的子集比——那是旧模型，101 条真实库会误报 7 项。
+        shown = [r for r in all_rows if not is_fixture(r)]
         fixtures = [r for r in all_rows if is_fixture(r)]
-        print("真实条目 %d / 测试假数据 %d / 总 %d" % (len(real), len(fixtures), len(all_rows)))
+        print("真实条目 %d / 其中带 absPath %d / 测试假数据 %d / 总 %d"
+              % (len(shown), len(real), len(fixtures), len(all_rows)))
         check("真实库无测试假数据", len(fixtures) == 0, "fixtures=%d" % len(fixtures))
-        check("真实条目 > 0", len(real) > 0, "real=%d" % len(real))
+        check("真实条目 > 0", len(shown) > 0, "shown=%d" % len(shown))
 
         # Python 侧核对真实文件存在
         missing = [r.get("relPath") for r in real if not os.path.exists(os.path.normpath(str(r.get("absPath") or "")))]
@@ -122,7 +126,7 @@ def main():
         })()""", sid)
         time.sleep(1.0)
         cards = c.ev("document.querySelectorAll('#grid .card').length", sid, False)
-        check("卡片数=真实条目数（筛选已复位）", cards == len(real), "cards=%s real=%s" % (cards, len(real)))
+        check("卡片数=真实条目数（筛选已复位）", cards == len(shown), "cards=%s shown=%s" % (cards, len(shown)))
 
         # 安装错误收集
         c.ev("""(()=>{window.__vrRealErrs=[];window.addEventListener('error',e=>window.__vrRealErrs.push(String(e.message)));
@@ -149,14 +153,14 @@ def main():
             except Exception:
                 return ""
 
-        # 用 relPath 映射 mtime / size
-        by_rel = {str(r.get("relPath")): r for r in real}
+        # 用 relPath 映射 mtime / size（排序口径与库页一致：全部非夹具条目）
+        by_rel = {str(r.get("relPath")): r for r in shown}
         orders = {}
         for mode in ("new", "old", "size", "name"):
             set_sort(mode)
             o = order()
             orders[mode] = [x["id"] for x in o]
-            check("排序 %s：卡片未丢" % mode, len(o) == len(real), "got=%d want=%d" % (len(o), len(real)))
+            check("排序 %s：卡片未丢" % mode, len(o) == len(shown), "got=%d want=%d" % (len(o), len(shown)))
             if mode in ("new", "old"):
                 # 与 app.js 一致：排序键是 fmtDate(mtime)（分钟精度），不是原始毫秒。
                 seq = [saved_at(by_rel.get(x["id"], {}).get("mtime")) for x in o]

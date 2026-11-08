@@ -1,0 +1,45 @@
+{
+ "results": [
+  {
+   "name": "库非空",
+   "pass": true,
+   "detail": "151"
+  },
+  {
+   "name": "平台/类型字段完整",
+   "pass": false,
+   "detail": "['X/Astronomy Today(@astronomytodayy)/视频/Astronomy Today(@astronomytodayy)_Earth from Orbit in 8K.mp4', '其他网页/v.qq.com/视频/Tencent VFE Team_高手一般把手机藏在哪个地方？_高清1080P在线观看平台.mp4', '其他网页/v.qq.com/视频/Tencent VFE Team_高手一般把手机藏在哪个地方？_高清1080P在线观看平台_01.mp4']"
+  },
+  {
+   "name": "relPath 都在 video-rod/ 下",
+   "pass": false,
+   "detail": "['X/@Sukiea1008/图片/20261106_Home _ X.jpg', 'X/@Sukiea1008/图片/20261106_Home _ X.png', 'X/@Sukiea1008/图片/20261106_Home _ X_01.jpg']"
+  },
+  {
+   "name": "无重复 relPath",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "所有 absPath 文件存在",
+   "pass": false,
+   "detail": "['X/@Sukiea1008/图片/20261106_Home _ X.jpg', 'X/@Sukiea1008/图片/20261106_Home _ X.png', 'X/@Sukiea1008/图片/20261106_Home _ X_01.jpg']"
+  },
+  {
+   "name": "文件大小非 0 且与 DB 一致",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "图片可解码",
+   "pass": false,
+   "detail": "[('video-rod/微博/t(@1)/test_33412.jpg', \"cannot identify image file 'D:\\\\\\\\personal\\\\\\\\Downloads\\\\\\\\video-rod\\\\\\\\微博\\\\\\\\t(@1)\\\\\\\\test_33412.jpg'\")]"
+  },
+  {
+   "name": "视频/音频有有效文件头",
+   "pass": true,
+   "detail": "[]"
+  }
+ ],
+ "entries": 151
+}

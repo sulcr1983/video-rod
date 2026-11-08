@@ -711,6 +711,11 @@ function vrDownloadWithName(url, filename, extra) {
                 return { __fsa: true, path: r.path };
             }
             if (r && r.ok && r.mode === 'downloads') {
+                // 契约要求「名字可能被浏览器改名（ADR-040）要如实告知用户」：
+                // 打一个会话级标记，popup 的完成提示读到它就追加说明，不假装没问题。
+                try {
+                    chrome.storage.session.set({ vrNameFallback: true });
+                } catch (e0) { /* 标记失败不影响下载本身 */ }
                 return r.downloadId || null;
             }
             vrAbortFilename(url, filename);

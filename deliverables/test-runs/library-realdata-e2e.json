@@ -1,0 +1,72 @@
+[
+ {
+  "name": "真实库无测试假数据",
+  "pass": true,
+  "detail": "fixtures=0"
+ },
+ {
+  "name": "真实条目 > 0",
+  "pass": true,
+  "detail": "shown=101"
+ },
+ {
+  "name": "真实文件全部存在",
+  "pass": true,
+  "detail": "missing=[]"
+ },
+ {
+  "name": "卡片数=真实条目数（筛选已复位）",
+  "pass": true,
+  "detail": "cards=101 shown=101"
+ },
+ {
+  "name": "排序 new：卡片未丢",
+  "pass": true,
+  "detail": "got=101 want=101"
+ },
+ {
+  "name": "排序 new：时间单调",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "排序 old：卡片未丢",
+  "pass": true,
+  "detail": "got=101 want=101"
+ },
+ {
+  "name": "排序 old：时间单调",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "排序 size：卡片未丢",
+  "pass": true,
+  "detail": "got=101 want=101"
+ },
+ {
+  "name": "排序 size：大小递减",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "排序 name：卡片未丢",
+  "pass": true,
+  "detail": "got=101 want=101"
+ },
+ {
+  "name": "排序 name：标题升序",
+  "pass": true,
+  "detail": "titles=['【阿典自驾游成员1️⃣：眼镜女穷游很极端】 在约堡机场，4人全员到齐，其中包括：1️⃣眼睛女2️⃣天津女3️⃣广州男4️⃣典 接下来总共8天自驾行程，典会跟另外3个中国驴友一起，从伊丽莎白港开车一路到', '【阿典自驾游成员1️⃣：眼镜女穷游很极端】 在约堡机场，4人全员到齐，其中包括：1️⃣眼睛女2️⃣天津女3️⃣广州男4️⃣典 接下来总共8天自驾行程，典会跟另外3个中国驴友一起，从伊丽莎白港开车一路到', '@地球知识局 的个人主页']"
+ },
+ {
+  "name": "切换排序确实改变顺序",
+  "pass": true,
+  "detail": "{'new': ['video-rod/YouTube/說影君/原本平凡的一個舉動，竟然成為改變人生的關鍵_#奇聞奇事 #奇聞異事 #趣事_1280p.mp4', 'video-rod/小红书/www.xiaohongshu.com/20261108_九龙城寨，怎么成为一座立体迷宫的？ - 小红书.webp', 'video-rod/微博/t(@1)/test_33125.jpg'], 'old': ['video-rod/x/NASA(@NASA)/images/NASA(@NASA)_Earlier today, @astro_anil spoke from the Internation"
+ },
+ {
+  "name": "排序后无 JS 异常",
+  "pass": true,
+  "detail": "[]"
+ }
+]

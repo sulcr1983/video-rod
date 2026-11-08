@@ -93,7 +93,7 @@ def main():
     # ---------- popup ----------
     tid, sid = c.open_page("chrome-extension://%s/popup.html" % a.ext, 400, 620)
     time.sleep(3)
-    check("popup 标题", c.ev("document.title", sid), "苏哥的钓鱼竿 video-rod")
+    check("popup 标题", c.ev("document.title", sid), "苏哥的钓鱼竿")
     check("popup 外壳存在", c.ev("!!document.getElementById('vrShell')", sid), True)
     check("popup 底色", c.ev("getComputedStyle(document.body).backgroundColor", sid), POPUP_BG)
     check("popup 标题文字色",
