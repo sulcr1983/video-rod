@@ -160,7 +160,7 @@
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
   z-index: 2147483003;
 }
-.vr-mask.on { display: block; }
+.vr-mask.on { display: block; pointer-events: auto; }
 .vr-panel {
   position: fixed; left: 50%; top: 50%; transform: translate(-50%, -48%) scale(.98);
   width: min(880px, calc(100vw - 32px));
@@ -175,7 +175,12 @@
   transition: opacity .18s, transform .18s;
   opacity: 0;
 }
-.vr-panel.on { display: flex; opacity: 1; transform: translate(-50%, -50%) scale(1); }
+/* pointer-events 是**继承属性**，宿主 host 写了 pointer-events:none，
+   shadow 树里的面板会继承到 none —— 于是面板能显示、但 X、「关闭」、
+   「全选」全部点不动（2026-11-08 苏哥在小红书页实测）。
+   对照 image-batch.js 的 .vr-cf.on 里的 pointer-events:auto，
+   这里必须同样在开启态显式打开，否则继承下来的是 none。 */
+.vr-panel.on { display: flex; opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
 
 .vr-head {
   display: flex; align-items: center; gap: 10px;
