@@ -17,11 +17,12 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp  # noqa: E402
+from vr_testenv import work_root
 
 CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
 EXT = r"E:\test\video-rod"
 PORT = int(os.environ.get("VR_PORT", "9411"))
-PROFILE = r"E:\test\video-rod\.work\profiles\yt-ext"
+PROFILE = os.path.join(work_root(), "profiles", "yt-ext")
 PROXY = "http://127.0.0.1:7897"
 VIDEO = sys.argv[1] if len(sys.argv) > 1 else "aqz-KE-bpKQ"
 

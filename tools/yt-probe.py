@@ -23,10 +23,11 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp  # noqa: E402
+from vr_testenv import work_root
 
 CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
 PORT = 9401
-PROFILE = r"E:\test\video-rod\.work\profiles\yt-probe"
+PROFILE = os.path.join(work_root(), "profiles", "yt-probe")
 PROXY = "http://127.0.0.1:7897"
 VIDEO = sys.argv[1] if len(sys.argv) > 1 else "aqz-KE-bpKQ"   # Big Buck Bunny 4K60
 
@@ -268,7 +269,7 @@ def main():
         for u in hits[:3]:
             print("    ", u[:200])
 
-        out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".work", "yt-probe.json")
+        out = os.path.join(work_root(), "yt-probe.json")
         json.dump({"main": data, "api": api, "videoplayback": hits[:20]},
                   open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         print("\n[8] 原始数据已存 .work/yt-probe.json")

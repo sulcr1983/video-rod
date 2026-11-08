@@ -8,6 +8,7 @@
 import argparse
 import json
 import os
+from vr_testenv import work_root
 import sys
 import time
 import urllib.request
@@ -21,7 +22,7 @@ except Exception:
     pass
 
 DEFAULT_EXT = "ceogmckiinjolbbdkjfelmfcfepccabp"
-GIF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".work", "gif-fixture.gif")
+GIF = os.path.join(work_root(), "gif-fixture.gif")
 RESULTS = []
 
 

@@ -221,7 +221,7 @@ WORK = Path(os.environ.get("VR_WORK") or Path(__file__).resolve().parents[2] / "
 | 对象 | 动作 | 状态 |
 |---|---|---|
 | `dist/` | 新增，由 `tools/build-dist.js` 生成 | ✅ 已生成（179 文件 / 4.71 MB） |
-| `.work/`（仓库内） | 保留现存内容，新测试一律写仓库外 | ⚠️ 未迁移（29 个脚本仍引用 `.work`，见 §3.2 兼容说明） |
+| `.work/`（仓库内） | 已整体迁往 `..\work\`，仓库内不再保留 | ✅ 已完成（2026-11-08）：32 个脚本改用 `vr_testenv.work_root()`，含改掉 6 处失效的 `E:\test\video-rod\.work` 绝对路径 |
 | `deliverables/assets/` 大图 | 历史瘦身 | ⏳ 待执行（需先装 `git filter-repo`） |
 
 ### 6.2 上级目录 `D:\test\download\`

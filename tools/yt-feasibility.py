@@ -18,10 +18,11 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp  # noqa: E402
+from vr_testenv import work_root
 
 CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
 PORT = 9404
-PROFILE = r"E:\test\video-rod\.work\profiles\yt-feas"
+PROFILE = os.path.join(work_root(), "profiles", "yt-feas")
 PROXY = "http://127.0.0.1:7897"
 
 # 覆盖：4K 动画 / 版权音乐 / 高清实拍
@@ -129,7 +130,7 @@ def main():
                     v["q"], v["itag"], v["codecs"], v["size"] / 1048576))
             time.sleep(1.2)
 
-        json.dump(out, open(r".work\yt-urls.json", "w", encoding="utf-8"),
+        json.dump(out, open(os.path.join(work_root(), "yt-urls.json"), "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
         print("\n已写 .work/yt-urls.json")
         return 0

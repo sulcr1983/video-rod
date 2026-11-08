@@ -8,8 +8,8 @@
           扩展改了他的下载设置。
 
 约定：
-    1. 测试产物一律落在仓库内 `work/dl/<脚本名>-<时间戳>/`，跑完可整目录删除。
-       （仓库外若存在 `..\\work\\`，优先用它，见 docs/ARTIFACT-MANAGEMENT.md）
+    1. 测试产物一律落在仓库外 `..\\work\\`（规范见 docs/ARTIFACT-MANAGEMENT.md §3），
+       跑完可整目录删除。仓库内的 `.work/` 仅作历史兼容回退。
     2. 绝不默认写用户的 shell:Downloads。
     3. 需要真实下载目录时，显式传环境变量 VR_DL_ROOT。
     4. 连日常浏览器（9223）的脚本必须显式确认，不静默使用。
@@ -20,22 +20,44 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def dl_dir(tag="misc"):
-    """本次运行专用的下载目录（仓库内，自动创建）。
+def work_root():
+    """测试工作区根目录。
 
     优先级：
-      VR_DL_ROOT（显式指定，用户自担风险）> ..\\work\\dl\\<tag>-<stamp> > .work\\dl\\<tag>-<stamp>
+      VR_WORK（显式指定）> ..\\work\\（仓库外，正式位置）> .work\\（仓库内，历史兼容）
+
+    返回路径不保证已创建；调用方按需 os.makedirs(exist_ok=True)。
+    """
+    env = os.environ.get("VR_WORK", "").strip()
+    if env:
+        return env
+
+    out_of_repo = os.path.join(os.path.dirname(ROOT), "work")
+    if os.path.isdir(out_of_repo):
+        return out_of_repo
+    return os.path.join(ROOT, ".work")
+
+
+def work_path(*parts):
+    """工作区内的子路径（自动建父目录）。"""
+    path = os.path.join(work_root(), *parts)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def dl_dir(tag="misc"):
+    """本次运行专用的下载目录（自动创建）。
+
+    优先级：
+      VR_DL_ROOT（显式指定，用户自担风险）> <work_root>/dl/<tag>-<stamp>
     """
     env = os.environ.get("VR_DL_ROOT", "").strip()
     if env:
         os.makedirs(env, exist_ok=True)
         return env
 
-    out_of_repo = os.path.join(os.path.dirname(ROOT), "work", "dl")
-    base = out_of_repo if os.path.isdir(os.path.dirname(out_of_repo)) else os.path.join(ROOT, ".work", "dl")
-
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    path = os.path.join(base, "%s-%s" % (tag, stamp))
+    path = os.path.join(work_root(), "dl", "%s-%s" % (tag, stamp))
     os.makedirs(path, exist_ok=True)
     return path
 

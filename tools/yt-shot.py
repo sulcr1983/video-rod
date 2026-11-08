@@ -2,6 +2,7 @@
 """YouTube 下载功能：截图取证（注入按钮 + 下载小窗）"""
 import base64
 import os
+from vr_testenv import work_root
 import subprocess
 import sys
 import time
@@ -14,7 +15,7 @@ CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64
 EXT = r"E:\test\video-rod"
 OUT = r"E:\test\video-rod\deliverables\assets"
 PORT = 9414
-PROFILE = r"E:\test\video-rod\.work\profiles\yt-shot"
+PROFILE = os.path.join(work_root(), "profiles", "yt-shot")
 PROXY = "http://127.0.0.1:7897"
 VIDEO = sys.argv[1] if len(sys.argv) > 1 else "aqz-KE-bpKQ"
 

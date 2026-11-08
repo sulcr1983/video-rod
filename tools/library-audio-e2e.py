@@ -8,6 +8,7 @@ import argparse
 import json
 import math
 import os
+from vr_testenv import work_root
 import struct
 import sys
 import time
@@ -17,7 +18,7 @@ import wave
 from websocket import create_connection
 
 EXT = "ceogmckiinjolbbdkjfelmfcfepccabp"
-WAV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".work", "audio-e2e.wav")
+WAV = os.path.join(work_root(), "audio-e2e.wav")
 RESULTS = []
 
 

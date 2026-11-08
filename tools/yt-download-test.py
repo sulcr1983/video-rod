@@ -15,6 +15,7 @@ YouTube 下载页：端到端离线测试（不依赖 YouTube）
 import base64
 import json
 import os
+from vr_testenv import work_root
 import shutil
 import subprocess
 import sys
@@ -31,10 +32,10 @@ CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64
 EXT = r"E:\test\video-rod"
 WORK = r"E:\test\video-rod\.work"
 STAMP = time.strftime("%H%M%S")
-DL = os.path.join(r"E:\test\video-rod\.work\dl", "run-" + STAMP)
+DL = os.path.join(work_root(), "dl", "run-" + STAMP)
 PORT_WEB = 18082
 PORT_CDP = int(os.environ.get("VR_PORT", "0")) or (9400 + (int(time.time()) % 300))
-PROFILE = os.path.join(r"E:\test\video-rod\.work\profiles", "yt-dl-test-" + STAMP)
+PROFILE = os.path.join(work_root(), "profiles", "yt-dl-test-" + STAMP)
 
 PASS, FAIL = [], []
 

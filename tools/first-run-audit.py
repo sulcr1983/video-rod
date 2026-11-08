@@ -17,6 +17,7 @@ import base64
 import http.server
 import json
 import os
+from vr_testenv import work_root
 import shutil
 import socketserver
 import subprocess
@@ -38,9 +39,9 @@ EDGE_CANDIDATES = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 ]
-PROFILE = os.path.join(ROOT, ".work", "first-run-profile")
-SITE = os.path.join(ROOT, ".work", "first-run-site")
-DL = os.path.join(ROOT, ".work", "first-run-downloads")
+PROFILE = os.path.join(work_root(), "first-run-profile")
+SITE = os.path.join(work_root(), "first-run-site")
+DL = os.path.join(work_root(), "first-run-downloads")
 PORT = 9491
 EXT = "ceogmckiinjolbbdkjfelmfcfepccabp"
 RESULTS = []

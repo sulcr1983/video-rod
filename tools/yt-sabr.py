@@ -13,6 +13,7 @@ SABR 复放实验（决定性）
 """
 import json
 import os
+from vr_testenv import work_root
 import subprocess
 import sys
 import time
@@ -23,7 +24,7 @@ from cdp_client import Cdp  # noqa: E402
 
 CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
 PORT = 9405
-PROFILE = r"E:\test\video-rod\.work\profiles\yt-sabr"
+PROFILE = os.path.join(work_root(), "profiles", "yt-sabr")
 PROXY = "http://127.0.0.1:7897"
 VIDEO = sys.argv[1] if len(sys.argv) > 1 else "LXb3EKWsInQ"   # Costa Rica 4K
 
@@ -142,8 +143,8 @@ def main():
         sabr = [c for c in cap if c["sabr"]] or cap
         best = max(sabr, key=lambda c: len(c["body"]))
         print("    请求体长度 =", len(best["body"]))
-        open(r".work\_sabr_body.bin", "wb").write(best["body"].encode("latin-1"))
-        open(r".work\_sabr_url.txt", "w").write(best["url"])
+        open(os.path.join(work_root(), "_sabr_body.bin"), "wb").write(best["body"].encode("latin-1"))
+        open(os.path.join(work_root(), "_sabr_url.txt"), "w").write(best["url"])
         print("    关键头 =", json.dumps({k: v for k, v in best["headers"].items()
                                          if k.lower() in
                                          ("content-type", "user-agent", "origin",
@@ -183,7 +184,7 @@ def main():
             first = media[0][2]
             print("\n    ★ 成功：第一个媒体分片 box =", first[4:8],
                   "| 总媒体字节 =", sum(s for _, s, _ in media))
-            open(r".work\_sabr_media.bin", "wb").write(b"".join(p for _, _, p in media))
+            open(os.path.join(work_root(), "_sabr_media.bin"), "wb").write(b"".join(p for _, _, p in media))
             print("    已存 .work/_sabr_media.bin")
         else:
             txt = [p.decode("utf-8", "replace") for _, _, p in parts[:6]]
@@ -192,7 +193,7 @@ def main():
         json.dump({"requests": [{k: v for k, v in c.items() if k != "body"} |
                                 {"body_len": len(c["body"]),
                                  "body_head": c["body"][:200]} for c in cap]},
-                  open(r".work\yt-sabr.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+                  open(os.path.join(work_root(), "yt-sabr.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         return 0
     finally:
         try:

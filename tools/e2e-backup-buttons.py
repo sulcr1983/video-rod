@@ -20,6 +20,7 @@
 import argparse
 import json
 import os
+from vr_testenv import work_root
 import subprocess
 import sys
 import time
@@ -134,8 +135,7 @@ def launch_isolated(port, root):
     exe = find_edge()
     if not exe:
         raise RuntimeError("找不到 Edge")
-    profile = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           ".work", "e2e-profile")
+    profile = os.path.join(work_root(), "e2e-profile")
     os.makedirs(profile, exist_ok=True)
     args = [
         exe,

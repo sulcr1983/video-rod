@@ -18,6 +18,7 @@
 import argparse
 import json
 import os
+from vr_testenv import work_root
 import socket
 import subprocess
 import sys
@@ -25,7 +26,7 @@ import time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORK = os.path.join(ROOT, ".work")
+WORK = work_root()
 PROFILES = os.path.join(WORK, "profiles")
 
 DEFAULT_CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"

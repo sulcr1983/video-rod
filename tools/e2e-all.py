@@ -20,6 +20,7 @@
 import argparse
 import json
 import os
+from vr_testenv import work_root
 import random
 import re
 import shutil
@@ -82,7 +83,7 @@ EDGE_CANDIDATES = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 ]
-ISOLATED_PROFILE = os.path.join(ROOT, ".work", "e2e-profile")
+ISOLATED_PROFILE = os.path.join(work_root(), "e2e-profile")
 
 
 def edge_exe():

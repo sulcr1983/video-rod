@@ -18,10 +18,11 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp  # noqa: E402
+from vr_testenv import work_root
 
 CHROME = r"C:\Users\XPENG\AppData\Local\ms-playwright\chromium-1217\chrome-win64\chrome.exe"
 PORT = 9403
-PROFILE = r"E:\test\video-rod\.work\profiles\yt-dl"
+PROFILE = os.path.join(work_root(), "profiles", "yt-dl")
 PROXY = "http://127.0.0.1:7897"
 VIDEO = sys.argv[1] if len(sys.argv) > 1 else "aqz-KE-bpKQ"
 
@@ -158,7 +159,7 @@ def main():
                     p.get("status"), ("body=" + str(r.get("body"))[:110]) if r.get("status", 0) >= 400 else ""))
                 time.sleep(0.3)
 
-        json.dump(got, open(r".work\yt-dl-test.json", "w", encoding="utf-8"),
+        json.dump(got, open(os.path.join(work_root(), "yt-dl-test.json"), "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
         return 0
     finally:

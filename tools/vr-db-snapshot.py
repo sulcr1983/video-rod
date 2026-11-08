@@ -20,6 +20,7 @@
 import argparse
 import json
 import os
+from vr_testenv import work_root
 import sys
 import time
 import urllib.request
@@ -30,7 +31,7 @@ from websocket import create_connection
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_PORT = 9480
 DEFAULT_EXT = "ceogmckiinjolbbdkjfelmfcfepccabp"
-SNAP_DIR = os.path.join(ROOT, ".work", "db-snapshots")
+SNAP_DIR = os.path.join(work_root(), "db-snapshots")
 TEST_DISPLAY = "功能测试改名"
 
 

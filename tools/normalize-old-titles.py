@@ -17,6 +17,7 @@
 import argparse
 import json
 import os
+from vr_testenv import work_root
 import re
 import sys
 import time
@@ -32,7 +33,7 @@ except Exception:
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_EXT = "ceogmckiinjolbbdkjfelmfcfepccabp"
-ROLLBACK_DIR = os.path.join(ROOT, ".work", "title-rollback")
+ROLLBACK_DIR = os.path.join(work_root(), "title-rollback")
 
 PLAT_LABEL = {
     "x": "X", "xiaohongshu": "小红书", "douyin": "抖音", "weibo": "微博",
