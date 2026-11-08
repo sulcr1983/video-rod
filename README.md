@@ -116,20 +116,29 @@ video-rod/
 
 **工程**
 - **零构建原生 JS**：无框架、无打包、无运行时 CDN 依赖，装上即用
-- **54 个自动化测试脚本、1336 条断言**：核心套件跑真实浏览器 + 真实扩展上下文
-- **决策留痕**：55 条 ADR（`docs/DECISIONS.md`），每个"为什么这么做"都有出处
+- **24 个纯逻辑测试套件、679 条断言**（Node 直跑，零依赖）+ 39 个浏览器 e2e 脚本
+- **决策留痕**：85 条 ADR（`docs/DECISIONS.md`），每个"为什么这么做"都有出处
 
 ---
 
 ## 安装（开发者模式）
 
 1. 克隆本仓库到本地
-2. 浏览器地址栏打开 `chrome://extensions`（Edge 为 `edge://extensions`）
-3. 右上角打开「**开发者模式**」
-4. 点「**加载已解压的扩展程序**」，选择本仓库目录
-5. 完成。图标会出现在工具栏（被折叠就点拼图图标 📌 钉住）
+2. **生成可加载目录**（仓库根混着文档、测试和产物，不能直接加载）：
 
-> 浏览器大版本更新后若扩展掉了，重做第 1–3 步即可，设置存在 profile 里不丢。
+   ```bash
+   node tools/build-dist.js
+   ```
+
+   产物在 `dist/`（约 5 MB，只含扩展运行时文件）。
+3. 浏览器地址栏打开 `chrome://extensions`（Edge 为 `edge://extensions`）
+4. 右上角打开「**开发者模式**」
+5. 点「**加载已解压的扩展程序**」，选择 **`dist/` 目录**（不是仓库根）
+6. 完成。图标会出现在工具栏（被折叠就点拼图图标 📌 钉住）
+
+> 改了源码后重跑 `node tools/build-dist.js`，再在扩展页点「重新加载」。
+> 直接加载仓库根会让扩展体积虚胖（文档、测试产物、`.git` 全被算进去）。
+> 详见 [`docs/ARTIFACT-MANAGEMENT.md`](docs/ARTIFACT-MANAGEMENT.md)。
 
 ---
 
@@ -291,20 +300,22 @@ video-rod/
 ## 开发与测试
 
 ```bash
-# 离线回归（8 套件，隔离 profile，不碰真实库）
+# 纯 Node 单测（无需浏览器，24 个套件 / 679 条断言）
+for t in tools/test-*.js; do node "$t" || break; done
+node tools/dedup-test.mjs
+
+# 浏览器 e2e（隔离 profile，不碰真实库）
 python tools/e2e-all.py --isolated
 
-# 真实库回归
+# 真实库回归（需先起测试实例）
 python tools/library-buttons-e2e.py --port 9480    # 按钮级 99 项
 python tools/library-functions-e2e.py --port 9480  # 功能级 44 条
 python tools/library-integrity-check.py --port 9480 # 库完整性 8 项
-
-# 纯 Node 单测（无需浏览器）
-node tools/test-path.js && node tools/test-save.js
-node tools/test-naming.js && node tools/test-image-util.js
 ```
 
 > 真实站点套件请加 `--live`，会触发风控；默认只跑离线套件。
+> 测试产物一律写仓库外 `..\work\`（由 `tools/vr_testenv.py` 的 `work_root()` 解析），
+> 不进 git、可整体删除。规范见 [`docs/ARTIFACT-MANAGEMENT.md`](docs/ARTIFACT-MANAGEMENT.md)。
 
 ---
 
