@@ -711,6 +711,170 @@
           "ok": true
         }
       ]
+    },
+    {
+      "at": "2026-11-08T21:49:47",
+      "summary": "1/1 套件通过，用时 5.8s",
+      "report": "deliverables\\test-runs\\2026-11-08-2149-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T21:55:52",
+      "summary": "1/1 套件通过，用时 5.0s",
+      "report": "deliverables\\test-runs\\2026-11-08-2155-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T22:03:30",
+      "summary": "1/1 套件通过，用时 6.3s",
+      "report": "deliverables\\test-runs\\2026-11-08-2203-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T22:10:31",
+      "summary": "1/1 套件通过，用时 5.5s",
+      "report": "deliverables\\test-runs\\2026-11-08-2210-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T22:13:56",
+      "summary": "1/1 套件通过，用时 6.0s",
+      "report": "deliverables\\test-runs\\2026-11-08-2213-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T22:19:08",
+      "summary": "7/8 套件通过，用时 151.5s",
+      "report": "deliverables\\test-runs\\2026-11-08-2219-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        },
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        },
+        {
+          "n": "skin",
+          "ok": true
+        },
+        {
+          "n": "download-path",
+          "ok": false
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T22:23:39",
+      "summary": "1/1 套件通过，用时 6.3s",
+      "report": "deliverables\\test-runs\\2026-11-08-2223-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T22:24:43",
+      "summary": "1/1 套件通过，用时 5.3s",
+      "report": "deliverables\\test-runs\\2026-11-08-2224-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T22:29:49",
+      "summary": "7/8 套件通过，用时 141.3s",
+      "report": "deliverables\\test-runs\\2026-11-08-2229-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        },
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        },
+        {
+          "n": "skin",
+          "ok": true
+        },
+        {
+          "n": "download-path",
+          "ok": false
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        }
+      ]
     }
   ]
 }
