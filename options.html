@@ -164,6 +164,10 @@
               <button type="button" id="vrLibIdxSnap">写快照</button>
               <button type="button" id="vrLibIdxFull">授权目录并全量扫描</button>
             </div>
+            <div class="action-row">
+              <button type="button" id="vrLibExport" class="button2">导出 _library 整包</button>
+              <button type="button" id="vrLibRestore">从 _library 恢复</button>
+            </div>
             <div id="vrLibIdxMsg" class="explain field-hint"></div>
           </div>
         </div>
@@ -1396,6 +1400,7 @@
 
   <script src="lib/base64.js" defer></script>
   <script src="js/library/path.js" defer></script>
+  <script src="js/library/zip.js" defer></script>
   <script src="js/library/db.js" defer></script>
   <script src="js/library/indexer.js" defer></script>
   <script src="js/library/migrate.js" defer></script>

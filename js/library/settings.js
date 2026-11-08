@@ -761,6 +761,133 @@
                 });
             });
         }
+
+        /* 备份/恢复按钮（阶段 4） */
+        try { bindBackup(); } catch (e) { /* 按钮不存在时忽略 */ }
+    }
+
+    /* ---------------- 备份 / 恢复（阶段 4） ----------------
+     *
+     * 为什么需要这两个按钮：
+     *   用户真实的备份动作是「把整个素材文件夹拷到移动硬盘」。
+     *   但 `_library/` 里是散落的 index.json + thumbs/*.webp，
+     *   没有工具时难以确认「到底备份全了没有」。
+     *   导出一个整包 zip，恢复时直接读回，是最不容易出错的形态。
+     *
+     * 口径：
+     *   · 导出 = 只打包 `_library/`（索引 + 收藏夹 + 缩略图），不碰素材本体
+     *   · 恢复 = 从已授权的目录读 `_library/index.json` 重放，不删任何东西
+     */
+
+    /** 列出一组目录下所有文件（递归，仅文件） */
+    async function listFiles(dir, prefix) {
+        var out = [];
+        try {
+            for await (var e of dir.entries()) {
+                var name = e[0], h = e[1];
+                var rel = prefix ? (prefix + '/' + name) : name;
+                if (h.kind === 'file') {
+                    out.push({ rel: rel, handle: h });
+                } else {
+                    var sub = await listFiles(h, rel);
+                    out = out.concat(sub);
+                }
+            }
+        } catch (err) { /* 单个子目录读不到不影响其余 */ }
+        return out;
+    }
+
+    function bindBackup() {
+        var exp = $('vrLibExport');
+        if (exp) {
+            exp.addEventListener('click', function () {
+                if (typeof root.showDirectoryPicker !== 'function') {
+                    text('vrLibIdxMsg', '此浏览器不支持目录选择', '#c0392b');
+                    return;
+                }
+                text('vrLibIdxMsg', '请选择资源库根目录（含 _library 的那一层）…', '#666');
+                root.showDirectoryPicker({ mode: 'read' }).then(async function (h) {
+                    var lib;
+                    try {
+                        lib = await h.getDirectoryHandle('_library');
+                    } catch (e) {
+                        throw new Error('这个目录里没有 _library 子目录');
+                    }
+                    var files = await listFiles(lib, '');
+                    if (!files.length) { throw new Error('_library 里没有文件'); }
+
+                    text('vrLibIdxMsg', '正在打包 ' + files.length + ' 个文件…', '#666');
+                    /* 零依赖打包：用最简 STORE（不压缩）zip，避免引入库。
+                     * 索引是 JSON、缩略图已是 webp，再压缩收益很小。 */
+                    var entries = [];
+                    for (var i = 0; i < files.length; i++) {
+                        var f = await files[i].handle.getFile();
+                        entries.push({ name: '_library/' + files[i].rel, file: f });
+                    }
+                    var blob = await makeZip(entries);
+                    downloadBlob(blob, '_library-backup.zip');
+                    text('vrLibIdxMsg', '已导出 ' + files.length + ' 个文件（' +
+                        Math.round(blob.size / 1048576 * 10) / 10 + ' MB）', '#2e7d32');
+                }).catch(function (e) {
+                    if (e && e.name === 'AbortError') { return; }
+                    text('vrLibIdxMsg', '导出失败：' + (e && e.message || e), '#c0392b');
+                });
+            });
+        }
+
+        var res = $('vrLibRestore');
+        if (res) {
+            res.addEventListener('click', function () {
+                if (!root.VRIndex) { text('vrLibIdxMsg', '索引模块未加载', '#c0392b'); return; }
+                if (typeof root.showDirectoryPicker !== 'function') {
+                    text('vrLibIdxMsg', '此浏览器不支持目录选择', '#c0392b');
+                    return;
+                }
+                text('vrLibIdxMsg', '请选择资源库根目录（含 _library 的那一层）…', '#666');
+                root.showDirectoryPicker({ mode: 'read' }).then(function (h) {
+                    return root.VRIndex.setRoot(h, absRootNow()).then(function () {
+                        return root.VRIndex.build({ mode: 'snapshot' });
+                    });
+                }).then(function (r) {
+                    text('vrLibIdxMsg', '恢复完成：读回 ' + r.ok + ' 条' +
+                        (r.missing ? '（其中 ' + r.missing + ' 条标记缺失）' : ''), '#2e7d32');
+                    refreshIndex();
+                }).catch(function (e) {
+                    if (e && e.name === 'AbortError') { return; }
+                    text('vrLibIdxMsg', '恢复失败：' + (e && e.message || e), '#c0392b');
+                });
+            });
+        }
+    }
+
+    /** 极简 STORE 模式 zip：实现在 js/library/zip.js（可单测），这里只做 Blob 包装。
+     *  为什么不内联：zip 头部字段错一个字节解压就报损坏，而这类错平时不会被发现，
+     *  必须靠 tools/test-zip.js 的结构化断言兜住。 */
+    async function makeZip(entries) {
+        if (!root.VRZip) { throw new Error('zip 模块未加载（js/library/zip.js）'); }
+        var list = [];
+        for (var i = 0; i < entries.length; i++) {
+            var data = new Uint8Array(await entries[i].file.arrayBuffer());
+            list.push({ name: entries[i].name, data: data });
+        }
+        return new Blob([root.VRZip.build(list)], { type: 'application/zip' });
+    }
+
+    function downloadBlob(blob, filename) {
+        try {
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () {
+                try { URL.revokeObjectURL(url); } catch (e) { /* 忽略 */ }
+                if (a.parentNode) { a.parentNode.removeChild(a); }
+            }, 1000);
+        } catch (e) {
+            text('vrLibIdxMsg', '下载触发失败：' + (e && e.message || e), '#c0392b');
+        }
     }
 
     /* ---------------- 事件绑定 ---------------- */
@@ -814,6 +941,60 @@
         if (openPage) {
             openPage.addEventListener('click', function () {
                 chrome.tabs.create({ url: chrome.runtime.getURL('library.html') });
+            });
+        }
+
+        /* 直达链接（2026-11-08）：扩展没有固定 key，ID 随加载路径变，
+         * 所以地址必须运行时取，不能写死在 HTML 里。 */
+        var urlBox = $('vrLibUrl');
+        var libUrl = '';
+        try { libUrl = chrome.runtime.getURL('library.html'); } catch (e) { libUrl = ''; }
+        if (urlBox && libUrl) { urlBox.value = libUrl; }
+
+        var copyBtn = $('vrLibUrlCopy');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async function () {
+                if (!libUrl) { return; }
+                try {
+                    await navigator.clipboard.writeText(libUrl);
+                    copyBtn.textContent = '已复制';
+                    setTimeout(function () { copyBtn.textContent = '复制'; }, 1500);
+                } catch (e) {
+                    /* 剪贴板被拒（窗口没聚焦 / 无权限）时退回手选，别让用户卡住 */
+                    if (urlBox) { urlBox.focus(); urlBox.select(); }
+                    copyBtn.textContent = '请按 Ctrl+C';
+                    setTimeout(function () { copyBtn.textContent = '复制'; }, 2500);
+                }
+            });
+        }
+
+        /* 加书签：chrome.bookmarks 需要 "bookmarks" 权限。
+         * 没权限时明确告诉用户，而不是静默失败。 */
+        var bmBtn = $('vrLibUrlBookmark');
+        if (bmBtn) {
+            bmBtn.addEventListener('click', function () {
+                if (!libUrl) { return; }
+                var api = chrome.bookmarks;
+                if (!api || typeof api.create !== 'function') {
+                    bmBtn.textContent = '无书签权限';
+                    setTimeout(function () { bmBtn.textContent = '加书签'; }, 2500);
+                    return;
+                }
+                try {
+                    api.create({ title: '媒体库 · 苏哥的钓鱼竿', url: libUrl }, function (node) {
+                        var err = chrome.runtime.lastError;
+                        if (err) {
+                            bmBtn.textContent = '添加失败';
+                            setTimeout(function () { bmBtn.textContent = '加书签'; }, 2500);
+                            return;
+                        }
+                        bmBtn.textContent = '已加书签';
+                        setTimeout(function () { bmBtn.textContent = '加书签'; }, 2000);
+                    });
+                } catch (e) {
+                    bmBtn.textContent = '添加失败';
+                    setTimeout(function () { bmBtn.textContent = '加书签'; }, 2500);
+                }
             });
         }
 
