@@ -180,6 +180,9 @@
     var pendingCount = null;
     var handleName = '';         // 已保存目录句柄的显示名（FSA 拿不到绝对路径）
     var scanBusy = false;
+    /* 推导出的下载根绝对路径：只活在内存里，不落库（见 resolveDetectedRoot 注释）。
+     * 换机器/换系统后这里自然重算，不会留下污染设置的脏值。 */
+    var detectedRootCache = '';
 
     function modeOf() {
         return (state && state.mode === 'custom') ? 'custom' : 'system';
@@ -202,25 +205,40 @@
             var k = f.indexOf(want);
             if (k > 0) { return f.slice(0, k); }
         }
-        for (i = 0; i < list.length; i++) {
-            var g = String((list[i] || {}).filename || '').replace(/\\/g, '/');
-            var dir = g.slice(0, g.lastIndexOf('/'));
-            if (dir) { return dir; }
-        }
+        /* 2026-11-08 修：原来这里是「拿最近任意一条下载的父目录当下载根」。
+         * 实测后果：测试浏览器的 …\.edge-login-profile\Webstore Downloads 被当成
+         * 用户的下载目录，并 save() 进 vrLibSettings.detectedRoot，
+         * 用户看到「系统默认下载文件夹被改了」。
+         *
+         * chrome.downloads 没有「系统默认下载目录」这个接口，只能从记录推断；
+         * 而任意一条记录可能来自手动另存、临时目录或别的浏览器实例，
+         * 不足以代表下载根。所以只认「路径里含 /<subdir>/」这条硬证据，
+         * 没有就返回空 → 显示「未探测」，让用户自己确认。 */
         return '';
     }
 
-    /** 首次打开就把默认位置算出来；算不到也允许保存，首次下载时浏览器会自动建目录 */
+    /**
+     * 推导默认位置（仅供本次显示/索引使用，**不持久化**）。
+     *
+     * 2026-11-08 苏哥定调：「不要写死！要相对路径！相对路径就是系统默认的下载文件夹，
+     * 不同系统是不同的。」
+     *
+     * 所以这里的关键变化：推导出来的绝对路径只放进内存缓存（detectedRootCache），
+     * 不再 save() 进 vrLibSettings。理由：
+     *   · 真正的下载位置由浏览器/系统决定，扩展无权也无必要记住它；
+     *     chrome.downloads 的 filename 传的是相对路径，天然跨平台。
+     *   · 一旦把绝对路径持久化，换机器/换系统/换下载目录后它就成了脏数据，
+     *     还会被误当成「用户设置」，看起来像扩展改了他的下载文件夹。
+     *   · 需要绝对路径只为了给索引/缩略图拼 file://，那是一个可丢弃的推导结果，
+     *     每次按需重算即可，代价只是一次 downloads.search。
+     */
     function resolveDetectedRoot(cb) {
-        if (state.detectedRoot) { if (cb) { cb(state.detectedRoot); } return; }
+        if (detectedRootCache) { if (cb) { cb(detectedRootCache); } return; }
         try {
             chrome.downloads.search({ limit: 50, orderBy: ['-startTime'] }, function (list) {
-                var base = guessBase(list || [], (state && state.subdir) || 'video-rod');
-                if (!base) { if (cb) { cb(''); } return; }
-                save({ detectedRoot: base }, function () {
-                    render();
-                    if (cb) { cb(base); }
-                });
+                detectedRootCache = guessBase(list || [], (state && state.subdir) || 'video-rod');
+                render();
+                if (cb) { cb(detectedRootCache); }
             });
         } catch (e) { if (cb) { cb(''); } }
     }
@@ -252,8 +270,11 @@
         var rootEl = $('vrLibRoot');
         if (rootEl) {
             var subdir = state.subdir || 'video-rod';
-            if (state.detectedRoot) {
-                var shown = String(state.detectedRoot + '\\' + subdir).replace(/\//g, '\\');
+            /* 显示口径：有推导值就显示完整路径供参考；没有就明说「系统下载目录\<subdir>」。
+             * 这里读的是内存缓存，不是持久化设置——扩展从不“记住”用户的下载根。 */
+            var dr = detectedRootCache || '';
+            if (dr) {
+                var shown = String(dr + '\\' + subdir).replace(/\//g, '\\');
                 rootEl.textContent = shown;
                 rootEl.title = shown;
             } else {
@@ -409,10 +430,10 @@
     /** 默认位置授权：已有句柄先尝试恢复权限；没有才弹目录选择 */
     async function authDefault() {
         var sub = cleanSeg($('vrLibSubdir') ? $('vrLibSubdir').value : state.subdir);
-        var base = state.detectedRoot
-            ? (String(state.detectedRoot).replace(/\/+$/, '') + '/' + sub)
+        var base = detectedRootCache
+            ? (String(detectedRootCache).replace(/\/+$/, '') + '/' + sub)
             : '';
-        var parent = state.detectedRoot ? baseNameOf(state.detectedRoot) : '';
+        var parent = detectedRootCache ? baseNameOf(detectedRootCache) : '';
         var h = null;
         try { h = await root.VRDB.getHandle('root'); } catch (e) { /* 忽略 */ }
         if (!h) { try { h = await idbGet('root'); } catch (e) { /* 忽略 */ } }
@@ -488,7 +509,7 @@
             return;
         }
         var sub = cleanSeg(($('vrLibSubdir') && $('vrLibSubdir').value) || (state && state.subdir));
-        var parent = state.detectedRoot ? baseNameOf(state.detectedRoot) : '';
+        var parent = detectedRootCache ? baseNameOf(detectedRootCache) : '';
         if (h.name !== sub && (!parent || h.name !== parent)) {
             msg.textContent = '当前授权的是「' + h.name + '」，不是「' + sub + '」；点「授权写入」重新选择';
             msg.style.color = '#b26a00';
@@ -499,8 +520,8 @@
             if (h.queryPermission) { st = await h.queryPermission({ mode: 'readwrite' }); }
         } catch (e) { st = 'error'; }
         if (st === 'granted') {
-            var p = state.detectedRoot
-                ? (state.detectedRoot + '\\' + (state.subdir || 'video-rod')).replace(/\//g, '\\')
+            var p = detectedRootCache
+                ? (detectedRootCache + '\\' + (state.subdir || 'video-rod')).replace(/\//g, '\\')
                 : (h.name || '');
             msg.textContent = '已授权写入：' + p;
             msg.style.color = '#2e7d32';
@@ -700,7 +721,7 @@
         if ((state.mode || 'system') === 'custom') {
             return String(state.customRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
         }
-        var rootDir = String(state.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        var rootDir = String(detectedRootCache || '').replace(/\\/g, '/').replace(/\/+$/, '');
         return rootDir ? (rootDir + '/' + (state.subdir || 'video-rod')) : '';
     }
 
