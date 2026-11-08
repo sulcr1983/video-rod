@@ -149,6 +149,23 @@
           </div>
         </div>
 
+        <!-- 直达链接（2026-11-08 苏哥反馈：媒体库太难进去）。
+             扩展没有固定 key，ID 随加载路径变，所以地址必须运行时取
+             chrome.runtime.id，不能写死。复制到地址栏即可直接打开。 -->
+        <div class="field">
+          <div class="field-label">直达链接</div>
+          <div class="field-control field-inline">
+            <input type="text" id="vrLibUrl" class="input-md" readonly
+                   style="flex:1;min-width:220px" placeholder="正在获取…" />
+            <button type="button" id="vrLibUrlCopy" class="button2">复制</button>
+            <button type="button" id="vrLibUrlBookmark">加书签</button>
+          </div>
+          <div class="explain field-hint">
+            复制后粘贴到浏览器地址栏就能直接打开资源库，不用先点扩展图标。
+            「加书签」会把它存进浏览器书签栏，以后点一下即可。
+          </div>
+        </div>
+
         <div class="field field-top">
           <div class="field-label">最近入库</div>
           <div class="field-control">

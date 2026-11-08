@@ -986,8 +986,39 @@
             if (act === 'txt' || act === 'csv') { exportLinks(act); }
             if (act === 'zip') { packZip(); }
             if (act === 'library') { openLibrary(); }
+            if (act === 'libraryLink') { copyLibraryLink(); }
             if (act === 'downloads') { openDownloads(); }
         });
+    }
+
+    /**
+     * 复制媒体库直达链接（2026-11-08 苏哥反馈：媒体库太难进去）。
+     * 扩展没有固定 key，ID 随加载路径变，所以地址必须运行时取。
+     */
+    async function copyLibraryLink() {
+        let url = '';
+        try { url = chrome.runtime.getURL('library.html'); } catch (e) { url = ''; }
+        if (!url) { setFootNote('取不到资源库地址'); return; }
+        try {
+            await navigator.clipboard.writeText(url);
+            setFootNote('已复制媒体库链接');
+        } catch (e) {
+            /* 侧边栏可能没有剪贴板权限：退回到输入框手选，让用户自己 Ctrl+C */
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = url;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                setFootNote('已复制媒体库链接');
+            } catch (e2) {
+                setFootNote('复制失败，可在设置页手动复制');
+            }
+        }
+        toggleMore(false);
     }
 
     /* 资源库 / 下载管理：独立窗口打开（与 popup 里的同名入口一致）。
