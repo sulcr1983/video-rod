@@ -460,7 +460,15 @@
                     '<span class="ix">' + t.num + '</span><span class="label">' + esc(t.label) + '</span>' +
                     '<span class="count">' + t.count + '</span></button>';
             }
-            return '<button class="tree-node lv2" data-author="' + esc(t.label) + '" style="--pct:' + pct + '%">' +
+            /* 作者节点必须带上它所属的站点分组键（t.plat 就是 siteGroupKey 的结果）。
+             * 不带的话，点击作者只会写搜索词，而平台筛选还留在上一次的状态：
+             * 「微博」+「YouTube 作者名」叠加必然筛出 0 条
+             * （2026-11-08 苏哥反馈：点作者后列表空了）。
+             * active 也要按筛选状态算：点击时加的 class 在重绘后会丢，
+             * 不在这里判断，用户就看不到「当前筛的是哪个作者」。 */
+            var aOn = (S.plat === (t.plat || '')) && S.q &&
+                (S.q === String(t.label || '').toLowerCase());
+            return '<button class="tree-node lv2' + (aOn ? ' active' : '') + '" data-author="' + esc(t.label) + '" data-author-plat="' + esc(t.plat || '') + '" style="--pct:' + pct + '%">' +
                 '<span class="ix">' + t.num + '</span><span class="label">' + esc(t.label) + '</span>' +
                 '<span class="count">' + t.count + '</span></button>';
         }).join('');
@@ -894,7 +902,16 @@
         if (!root.VRDB) { return; }
         var list = [];
         try {
-            list = await root.VRDB.getAllFiles();
+            /* 大库（B-35）：先只取首屏那一页，避免上万条一次性铺进内存。
+             * 小库走原来的全量读，行为完全不变。
+             * 判据用 count()（O(1)），不看已加载条数——那正是我们要省掉的。 */
+            var total = 0;
+            try { total = await root.VRDB.count(); } catch (e0) { total = 0; }
+            if (total > WIN_THRESHOLD && typeof root.VRDB.queryFiles === 'function') {
+                list = await root.VRDB.queryFiles({ limit: PAGE });
+            } else {
+                list = await root.VRDB.getAllFiles();
+            }
             /* 首屏可能撞上另一个标签正在重建索引：那一刻读到空表，
              * 之后数据回来了却没人再渲染 → 页面永远空白，只能手动重扫。
              * 读空时延迟复查一次，有数据就重新渲染（最多两级，不递归）。 */
@@ -999,12 +1016,17 @@
             var k = f.indexOf(want);
             if (k > 0) { return f.slice(0, k); }       // …/Downloads/video-rod/x → …/Downloads
         }
-        // 还没有落在 subdir 里的历史下载：拿最近一条的父目录当下载根
-        for (i = 0; i < list.length; i++) {
-            var g = String((list[i] || {}).filename || '').replace(/\\/g, '/');
-            var dir = g.slice(0, g.lastIndexOf('/'));
-            if (dir) { return dir; }
-        }
+        /* 2026-11-08 修：这里原来有「拿最近任意一条下载的父目录当下载根」的兜底，
+         * 结果把测试浏览器的 Webstore Downloads 当成了用户的下载目录，
+         * 并持久化进 vrLibSettings.detectedRoot —— 用户看到默认下载文件夹被改。
+         *
+         * 为什么直接删掉兜底：`chrome.downloads` 不提供「系统默认下载目录」，
+         * 只能从记录反推；而「任意一条下载」可能来自手动另存、临时目录、
+         * 别的浏览器实例，完全不代表下载根。拿它当基准是猜测，不是事实。
+         *
+         * 正确做法：只认本扩展自己产物（路径里含 /<subdir>/）这一条硬证据。
+         * 没有就返回空 → 设置页显示「未探测」，用户可以自己填，
+         * 也绝不会把错误路径写进设置。 */
         return '';
     }
 
@@ -1018,10 +1040,31 @@
         });
     }
 
+    /**
+     * 取「下载根目录」用于索引/缩略图拼绝对路径。
+     *
+     * 2026-11-08 苏哥定调：「不要写死！要相对路径！相对路径就是系统默认的下载文件夹，
+     * 不同系统是不同的。」
+     *
+     * 因此这里不再把推导出的绝对路径写回 vrLibSettings：
+     *   · 下载位置由浏览器/系统决定，chrome.downloads 的 filename 是相对路径，天然跨平台；
+     *   · 绝对路径一旦持久化，换机器/换系统后会变成脏数据，
+     *     还会被误读成「用户设置」，看起来像扩展改了他的下载文件夹。
+     * 绝对路径只是一个可丢弃的推导结果，每次按需重算。
+     *
+     * 历史遗留的 s.detectedRoot 仍会被用作「候选」，但必须通过有效性校验。
+     */
     async function ensureRoot() {
         var s = await readLibSettings();
         if ((s.mode || 'system') === 'custom' && s.customRoot) { return s; }
-        if (s.detectedRoot) { return s; }
+
+        /* 1) 优先：历史值（若仍在当前机器上说得通） */
+        var legacy = String(s.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        if (legacy && isPlausibleRoot(legacy, s.subdir || 'video-rod')) {
+            return Object.assign({}, s, { detectedRoot: legacy });
+        }
+
+        /* 2) 其次：从下载记录实时推导 */
         var list = await new Promise(function (resolve) {
             try {
                 chrome.downloads.search({ limit: 50, orderBy: ['-startTime'] }, function (l) {
@@ -1031,13 +1074,26 @@
             } catch (e) { resolve([]); }
         });
         var base = guessBaseFromDownloads(list, s.subdir || 'video-rod');
-        if (!base) { return s; }
-        var next = Object.assign({}, s, { detectedRoot: base });
-        await new Promise(function (resolve) {
-            try { chrome.storage.local.set({ vrLibSettings: next }, function () { resolve(); }); }
-            catch (e) { resolve(); }
-        });
-        return next;
+        if (!base) { return Object.assign({}, s, { detectedRoot: '' }); }
+        return Object.assign({}, s, { detectedRoot: base });
+    }
+
+    /**
+     * 这个绝对路径在当前机器上说得通吗？
+     *
+     * 判据刻意保守——只拦「明显不该是下载根」的值，避免把用户的真实目录否掉：
+     *   · 必须是绝对路径（盘符或 UNC / 以 / 开头）
+     *   · 不能是浏览器 profile 内部目录（.../User Data/...、....edge-*）：
+     *     那是浏览器自己的家目录，绝不该被当成用户下载位置
+     *   · 不能是 Webstore Downloads 这类受管默认名（上次踩过的坑）
+     */
+    function isPlausibleRoot(p, subdir) {
+        var s = String(p || '').replace(/\\/g, '/');
+        if (!s) { return false; }
+        if (!/^([A-Za-z]:\/|\/\/|\/)/.test(s)) { return false; }
+        if (/\/(User Data|\.edge-[^/]+|Default)\//i.test(s + '/')) { return false; }
+        if (/Webstore Downloads/i.test(s)) { return false; }
+        return !!subdir;
     }
 
     /* ---------- 首次自动索引 ---------- */
@@ -1057,22 +1113,42 @@
                 : ('已扫描 ' + (p.done || 0) + '/' + (p.total || 0));
         };
         var ok = false;
+        var built = null;
         // ① 下载记录模式：**不需要目录授权**，能立刻把已下载的文件收进库。
         //    2026-11-05 事故：这里原来只试 full/snapshot，两者都要 FSA 授权，
         //    没授权就整个失败 → 资源库永远空白，用户看到「管理器里什么都没有」。
-        try { await root.VRIndex.build({ mode: 'downloads', onProgress: onProgress }); ok = true; }
+        try { built = await root.VRIndex.build({ mode: 'downloads', onProgress: onProgress }); ok = true; }
         catch (e) {
-            // ② 全量扫描：需要一次目录授权，好处是能发现「文件已被删」
-            try { await root.VRIndex.build({ mode: 'full', onProgress: onProgress }); ok = true; }
+            // ② 增量对账：需要一次目录授权，磁盘为真相（B-34）
+            try { built = await root.VRIndex.build({ mode: 'reconcile', onProgress: onProgress }); ok = true; }
             catch (e2) {
-                // ③ 快照：同样是授权后的兜底
-                try { await root.VRIndex.build({ mode: 'snapshot', onProgress: onProgress }); ok = true; }
-                catch (e3) { ok = false; }
+                // ③ 全量扫描：对账不可用时的兜底
+                try { built = await root.VRIndex.build({ mode: 'full', onProgress: onProgress }); ok = true; }
+                catch (e3) {
+                    // ④ 快照：授权也拿不到时，只能重放上次写下的索引
+                    try { built = await root.VRIndex.build({ mode: 'snapshot', onProgress: onProgress }); ok = true; }
+                    catch (e4) { ok = false; }
+                }
             }
         }
         hideScan();
+        /* 超限必须告诉用户（B-34 / 红队 c-1/c-2）：
+         * 原来超限静默截断，用户看到「刚好 2 万条」会以为素材丢了。
+         * 这里只在真的发生时提示一次，不打扰正常使用。 */
+        try { reportTruncation(built); } catch (e) { /* 提示失败不影响索引 */ }
         if (ok) { await recordScan(); }
         return ok;
+    }
+
+    /** 把「被上限截断」这件事如实告诉用户（B-34） */
+    function reportTruncation(r) {
+        if (!r || (!r.truncated && !r.depthLimited)) { return; }
+        var msg = '已扫描 ' + (r.total || 0) + ' 项';
+        if (r.skipped) { msg += '，另有 ' + r.skipped + ' 项因超出上限未纳入'; }
+        if (r.depthLimited) { msg += '，部分深层目录未扫描'; }
+        if (r.limit) { msg += '（上限 ' + r.limit.maxItems + ' 项 / ' + r.limit.maxDepth + ' 层）'; }
+        toast(msg);
+        try { console.warn('[vrLib] 索引被截断', r); } catch (e) { /* 忽略 */ }
     }
 
     /* ---------- 事件 ---------- */
@@ -1347,13 +1423,18 @@
             tree.addEventListener('click', function (e) {
                 var n = e.target.closest('.tree-node'); if (!n) { return; }
                 if (!n.dataset.plat && !n.dataset.author && !n.dataset.group) {
-                    /* 根节点「全部资源」：之前只加 active 不重置筛选，点了等于没点 */
-                    S.q = ''; S.plat = 'all'; S.type = 'all';
+                    /* 根节点「全部资源」= 回到全库视图。
+                     * 2026-11-08 修：原来只清 q/plat/type，漏了 S.fav ——
+                     * 收藏筛选还挂着时点「全部资源」，列表仍是收藏里的几条，
+                     * 用户看到的就是「点了没反应 / 库坏了」。
+                     * 标签筛选同样属于「范围」，一并清掉。 */
+                    S.q = ''; S.plat = 'all'; S.type = 'all'; S.fav = null; S.tags = [];
                     if ($('#search')) { $('#search').value = ''; }
                     $$('#typeTabs button').forEach(function (x) {
                         x.classList.toggle('active', x.dataset.type === 'all');
                     });
                     render();
+                    renderTree();
                     return;
                 }
                 if (n.dataset.group === 'others') {
@@ -1367,9 +1448,13 @@
                     var p = n.dataset.plat;
                     treeOpen[p] = !treeOpen[p];
                     /* 左侧平台节点也是筛选入口：旧代码只展开/收起，不写 S.plat，
-                     * 用户点平台看起来毫无反应（只有顶部 chip 能筛）。 */
+                     * 用户点平台看起来毫无反应（只有顶部 chip 能筛）。
+                     * 切平台属于「换一个范围」，收藏/标签筛选必须一起清掉，
+                     * 否则「收藏里的微博」这类组合会让列表莫名其妙变空。 */
                     S.plat = (S.plat === p) ? 'all' : p;
                     S.q = '';
+                    S.fav = null;
+                    S.tags = [];
                     if ($('#search')) { $('#search').value = ''; }
                     render();
                     renderTree();
@@ -1379,8 +1464,20 @@
                 n.classList.add('active');
                 if (n.dataset.author) {
                     S.q = n.dataset.author.toLowerCase();
+                    /* 必须同时把平台切到作者所属站点（2026-11-08 苏哥反馈：点作者后列表空了）。
+                     * 原来只写搜索词，平台筛选还停在上一次的状态，
+                     * 「微博」+「YouTube 作者名」叠加必然 0 条。
+                     * 作者节点自带 data-author-plat，直接用它的分组键。 */
+                    var ap = n.dataset.authorPlat || '';
+                    if (ap) {
+                        S.plat = ap;
+                        treeOpen[ap] = true;   // 保证重绘后作者节点仍然展开可见
+                    }
                     if ($('#search')) { $('#search').value = n.dataset.author; }
                     render();
+                    /* 左栏跟着刷新：平台节点高亮、作者节点高亮都依赖 S.plat / S.q，
+                     * 不重绘的话用户看到的还是点击前的状态（看起来「点了没反应」）。 */
+                    renderTree();
                 }
             });
         }
@@ -1727,7 +1824,6 @@
          * 旧测试/误操作留下的多个文件夹合并到第一个，避免侧栏继续膨胀。 */
         if (FAVS.length > 1) {
             var keep = FAVS[0];
-            keep.name = '收藏';
             keep.ids = keep.ids || [];
             FAVS.slice(1).forEach(function (f) {
                 (f.ids || []).forEach(function (id) {
@@ -1735,8 +1831,20 @@
                 });
             });
             FAVS = [keep];
-            saveFavs();
         }
+        /* 2026-11-08 苏哥拍板：收藏是「点一下就看收藏内容」的视图，不是可命名的文件夹。
+         *   · 名字固定为「收藏」，不再沿用历史遗留的自定义名
+         *   · 库为空时也必须有这一行，否则左栏连可点的入口都没有
+         * 这里只在必要时落库一次，不制造额外写入。 */
+        var dirty = false;
+        if (!FAVS.length) {
+            FAVS = [{ id: 'fav-default', name: '收藏', ids: [] }];
+            dirty = true;
+        } else if (FAVS.length === 1 && FAVS[0].name !== '收藏') {
+            FAVS[0].name = '收藏';
+            dirty = true;
+        }
+        if (dirty) { saveFavs(); }
     }
     function saveFavs() {
         try {
@@ -1773,28 +1881,20 @@
     function renderFavs() {
         var list = $('#favList');
         if (!list) { return; }
-        var all = [{ id: 'fav-star', name: '已加星标', sys: 'star' }].concat(FAVS);
-        list.innerHTML = all.map(function (fav) {
+        /* 只有一行「收藏」（2026-11-08 苏哥拍板）：
+         * 收藏是「点击查看收藏内容」的视图，不该有名字，也不该有第二个夹。
+         * 星标仍保留，但入口在详情页/右键菜单，不再占左栏一行。 */
+        list.innerHTML = FAVS.filter(function (fav) { return fav.sys !== 'star'; }).map(function (fav) {
             var n = FILES.filter(function (f) { return favHas(fav, f); }).length;
-            if (fav.sys === 'star' && !n) { return ''; }
             var on = S.fav === fav.id;
             return '<button class="fav-row' + (on ? ' active' : '') + '" data-fav="' + esc(fav.id) + '">' +
-                '<svg class="i fi' + (fav.sys === 'star' ? ' star' : '') + '"><use href="#i-' + (fav.sys === 'star' ? 'star' : 'bookmark') + '"/></svg>' +
+                '<svg class="i fi"><use href="#i-bookmark"/></svg>' +
                 '<span class="label">' + esc(fav.name) + '</span>' +
                 '<span class="count">' + n + '</span></button>';
         }).join('');
-        /* 底部「收藏夹」按钮的计数 = 收藏夹里的条目数。
-         * 原来这里写的是「星标数」，按钮文字却是「收藏夹」，
-         * 用户看到的数字和点进去的内容对不上（2026-11-06 反馈）。 */
-        var cnt = $('#favSideCnt');
-        if (cnt) {
-            var seen = {};
-            FAVS.forEach(function (fav) {
-                if (fav.sys === 'star') { return; }
-                (fav.ids || []).forEach(function (id) { seen[id] = 1; });
-            });
-            cnt.textContent = Object.keys(seen).length;
-        }
+        /* 计数只放在行尾（2026-11-08 二次修正）：
+         * 上方那条「收藏 N」标题删掉后，这里不能再写 #favSideCnt，
+         * 否则会恢复成「两行都是收藏」的观感。 */
     }
 
     /**
@@ -2307,23 +2407,6 @@
        补齐原型里「有按钮、没接线」的死键（E2E 交叉比对查出 23 个）。
        规矩：每个按钮点了必须有真实动作或明确提示，不许点了没反应。
        ========================================================== */
-    function renderFavDrawer() {
-        var listEl = document.getElementById('favDrawerList');
-        var nEl = document.getElementById('favDrawerN');
-        if (nEl) { nEl.textContent = FAVS.length; }
-        if (!listEl) { return; }
-        if (!FAVS.length) { listEl.innerHTML = '<div class="dw-empty">还没有收藏夹</div>'; return; }
-        listEl.innerHTML = FAVS.map(function (fav) {
-            var n = fav.sys === 'star'
-                ? FILES.filter(function (f) { return f.starred; }).length
-                : (fav.ids || []).length;
-            return '<div class="dw-item">' +
-                '<span class="dw-name">' + esc(fav.name) + '</span>' +
-                '<span style="color:var(--faint);font-size:10px;margin-right:8px">' + n + ' 项</span>' +
-                '<button class="btn small" data-favdel="' + esc(fav.id) + '">删除</button>' +
-                '</div>';
-        }).join('');
-    }
 
     /* 移动：应用内文件夹选择（move-picker.js），不让用户手写路径 */
     function moveHooks() {
@@ -2644,115 +2727,9 @@
             toast(next ? '连播：开' : '连播：关');
         });
 
-        /* ---- 收藏夹 ---- */
-        function openFavDrawer() {
-            renderFavDrawer();
-            var d = byId('favDrawer'); if (d) { d.classList.add('show'); }
-            var m = byId('setmask'); if (m) { m.classList.add('show'); }
-        }
-        function closeFavDrawer() {
-            var d = byId('favDrawer'); if (d) { d.classList.remove('show'); }
-            var m = byId('setmask'); if (m) { m.classList.remove('show'); }
-        }
-        on('favMore', openFavDrawer);
-        on('favDrawerClose', closeFavDrawer);
-        on('favDrawerNew', function () {
-            var n = window.prompt('新收藏夹名字', '新收藏夹');
-            if (n === null) { return; }
-            n = String(n).trim();
-            if (!n) { toast('名字不能为空'); return; }
-            FAVS.push({ id: 'f' + Date.now(), name: n, ids: [] });
-            saveFavs(); renderFavs(); renderFavDrawer();
-            toast('已新建收藏夹「' + n + '」');
-        });
-        on('favSaveFilter', function () {
-            /* 必须用 filtered()（当前筛选结果），不是 FILES（全部）。
-             * 原实现把整个库都存进「智能夹」，等于没筛（2026-11-06 反馈）。 */
-            var rows = sorted(filtered());
-            if (!rows.length) { toast('当前筛选没有素材'); return; }
-            var name = '筛选 ' + new Date().toLocaleDateString();
-            FAVS.push({
-                id: 'f' + Date.now(), name: name,
-                ids: rows.map(function (f) { return f.id; })
-            });
-            saveFavs(); renderFavs(); renderFavDrawer();
-            toast('已把当前 ' + rows.length + ' 项存成收藏夹「' + name + '」');
-        });
-        on('favPopNew', function () {
-            var n = window.prompt('新收藏夹名字', '新收藏夹');
-            if (n === null) { return; }
-            n = String(n).trim();
-            if (!n) { toast('名字不能为空'); return; }
-            FAVS.push({ id: 'f' + Date.now(), name: n, ids: [] });
-            saveFavs(); renderFavs(); renderFavDrawer();
-            toast('已新建收藏夹「' + n + '」');
-        });
-        on('favPopDone', function () {
-            var pop = byId('favPop'); if (pop) { pop.classList.remove('show'); }
-        });
-
-        function curFav() {
-            return findFav(S.fav);
-        }
-        on('favRename', function () {
-            var fav = curFav();
-            if (!fav) { toast('先在左边选一个收藏夹'); return; }
-            var n = window.prompt('收藏夹新名字', fav.name);
-            if (n === null) { return; }
-            n = String(n).trim();
-            if (!n) { toast('名字不能为空'); return; }
-            fav.name = n; saveFavs(); renderFavs(); renderFavDrawer();
-            toast('已重命名收藏夹');
-        });
-        on('favDelete', function () {
-            var fav = curFav();
-            if (!fav) { toast('先在左边选一个收藏夹'); return; }
-            ask('删除收藏夹「' + fav.name + '」？只删这个视图，文件不会动。', function () {
-                FAVS = FAVS.filter(function (x) { return x.id !== fav.id; });
-                if (S.fav === fav.id) { S.fav = ''; }
-                saveFavs(); renderFavs(); renderFavDrawer();
-                toast('收藏夹已删除（文件没动）');
-            });
-        });
-        on('favExport', function () {
-            var fav = curFav();
-            if (!fav) { toast('先在左边选一个收藏夹'); return; }
-            var list = fav.sys === 'star'
-                ? FILES.filter(function (f) { return f.starred; })
-                : FILES.filter(function (f) { return (fav.ids || []).indexOf(f.id) >= 0; });
-            try {
-                var txt = list.map(function (f) { return f.relPath; }).join('\n');
-                var blob = new Blob([txt], { type: 'text/plain' });
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = fav.name + '.txt';
-                a.click();
-                setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-                toast('清单已导出（' + list.length + ' 条）');
-            } catch (e) { toast('导出失败'); }
-        });
-
         // 左侧栏「回收站」入口（此前只有设置抽屉里的那个有绑定）
         var sideTrash = byId('trashBtn');
         if (sideTrash) { sideTrash.addEventListener('click', function () { openTrash(); }); }
-
-        // 抽屉里每行的「删除」
-        var dlist = byId('favDrawerList');
-        if (dlist) {
-            dlist.addEventListener('click', function (e) {
-                var b = e.target.closest ? e.target.closest('[data-favdel]') : null;
-                if (!b) { return; }
-                var id = b.getAttribute('data-favdel');
-                var fav = FAVS.filter(function (x) { return x.id === id; })[0];
-                if (!fav) { return; }
-                ask('删除收藏夹「' + fav.name + '」？只删这个视图，文件不会动。', function () {
-                    FAVS = FAVS.filter(function (x) { return x.id !== id; });
-                    if (S.fav === id) { S.fav = ''; }
-                    saveFavs(); renderFavs(); renderFavDrawer();
-                    toast('收藏夹已删除（文件没动）');
-                });
-            });
-        }
     }
 
     function bindFavAndDrawer() {
@@ -2767,19 +2744,9 @@
                 renderFavs(); render();
             });
         }
-        function createFav() {
-            var inp = $('#favNewInput'); if (!inp) { return; }
-            var name = String(inp.value || '').trim();
-            if (!name) { return; }
-            FAVS.push({ id: 'fav-' + Date.now(), name: name, ids: [] });
-            inp.value = '';
-            var row = $('#favNewRow'); if (row) { row.classList.remove('on'); }
-            saveFavs(); renderFavs();
-            toast('已创建收藏夹「' + name + '」');
-        }
-        var okBtn = $('#favNewOk'); if (okBtn) { okBtn.addEventListener('click', createFav); }
-        var inp = $('#favNewInput');
-        if (inp) { inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { createFav(); } }); }
+        /* 2026-11-08 苏哥拍板：收藏夹不命名、不新建。
+         * 侧栏只有一行「收藏」，点击即筛选；分类交给标签。
+         * 原先的 createFav（收藏夹名字输入框 + 创建按钮）已随 DOM 一并删除。 */
 
         /* ---------- 标签区（默认折叠） ---------- */
         /* 展开/收起：就地展开，不弹层。收起时仍能看见当前筛了哪些标签，
@@ -3111,12 +3078,39 @@
          * 看起来就像这个功能没做。 */
         try { await refreshDrawer(); window.__vrBoot.push('drawer'); }
         catch (e) { window.__vrBoot.push('drawer-ERR:' + (e && e.message || '')); }
+
+        /* 孤儿缩略图清理：首屏之后延迟跑一次，静默失败（B-33） */
+        try { scheduleThumbGC(); window.__vrBoot.push('thumbGC'); } catch (e) { /* 忽略 */ }
     }
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', boot);
     } else {
         boot();
+    }
+
+    /**
+     * 启动后台清理孤儿缩略图（B-33 / US-2）。
+     *
+     * 为什么放在启动后延迟执行：
+     *   · 必须等 FILES 加载完才知道哪些 thumbFile 是「活的」；
+     *   · 必须避开首屏渲染，否则上万条遍历会拖慢打开速度；
+     *   · 失败必须完全静默 —— 清垃圾失败不该打断用户浏览。
+     */
+    function scheduleThumbGC() {
+        var run = function () {
+            try {
+                if (!root.VRThumbs || typeof root.VRThumbs.gc !== 'function') { return; }
+                if (typeof root.VRIndex === 'undefined' || !root.VRIndex) { return; }
+                root.VRThumbs.gc({ entries: FILES }).then(function (r) {
+                    if (r && r.removed) {
+                        try { console.info('[thumb-gc] 清理孤儿缩略图', r.removed, '个'); } catch (e) { /* 忽略 */ }
+                    }
+                }, function () { /* 静默 */ });
+            } catch (e) { /* 静默：清垃圾失败不影响浏览 */ }
+        };
+        /* 首屏渲染之后再跑，且只跑一次 */
+        setTimeout(run, 8000);
     }
 
     root.VRApp = {

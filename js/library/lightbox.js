@@ -152,6 +152,10 @@
     /* 自选文件夹没有绝对路径时，用目录句柄读出 Blob URL。切换条目/关闭时回收。 */
     var lastShown = null;
 
+    /* 「已有标签」候选的刷新钩子：由 bindInfoPanel 里的标签逻辑赋值，
+     * paintInfo 每次切换素材后调用它。声明放模块级，避免 TDZ / 未定义引用。 */
+    var tagPickRefresh = null;
+
     function releaseUrl(f) {
         if (!f) { return; }
         if (typeof f._revokeUrl === 'function') {
@@ -492,6 +496,11 @@
                 : '';   /* 空态不写「还没有标签」，+ 添加 按钮本身就是入口 */
         }
         hideEmptyFields(!hasPage && !hasMedia);
+        /* 切换素材时刷新「已有标签」候选：刚加过的标签要从候选里消失，
+         * 换到另一条素材时它自己的标签也要排除掉。 */
+        if (tagPickRefresh) {
+            try { tagPickRefresh(); } catch (e) { /* 候选刷新失败不影响信息栏 */ }
+        }
     }
 
     /** 右栏只显示真实有值的字段：空 / — / - 一律收起，避免整片「没记录」占位 */
@@ -805,28 +814,153 @@
         var tagAdd = document.getElementById('pvTagAdd');
         var tagWrap = document.getElementById('pvTagInputWrap');
         var tagInput = document.getElementById('pvTagInput');
+        var tagPick = document.getElementById('pvTagPick');
+        /* 候选列表状态：items 是当前可见项，idx 是键盘高亮项（-1 = 无） */
+        var tagPickItems = [];
+        var tagPickIdx = -1;
+
+        /**
+         * 汇总全库标签（跨素材去重）。
+         * 为什么从全库取：标签是自由文本，没有独立注册表；
+         * 只有把所有素材的 tags 并起来，才知道「已经有哪些标签可用」。
+         * 小写作为去重 key，显示沿用首次出现的写法（避免 PIXIV / pixiv 并存）。
+         */
+        function collectAllTags() {
+            var all = [];
+            try {
+                all = (root.VRApp && root.VRApp.getFiles) ? root.VRApp.getFiles() : [];
+            } catch (e) { all = []; }
+            var map = {};
+            (all || []).forEach(function (f) {
+                ((f && f.tags) || []).forEach(function (t) {
+                    var label = String(t || '').trim();
+                    if (!label) { return; }
+                    var k = label.toLowerCase();
+                    if (!map[k]) { map[k] = { key: k, label: label, count: 0 }; }
+                    map[k].count++;
+                });
+            });
+            return Object.keys(map).map(function (k) { return map[k]; });
+        }
+
+        /** 渲染候选：排除当前素材已有的标签；按输入过滤；前缀匹配优先 */
+        function renderTagPick() {
+            if (!tagPick) { return; }
+            var open = !!(tagWrap && tagWrap.classList.contains('on'));
+            if (!open) { tagPick.hidden = true; tagPickIdx = -1; return; }
+
+            var f = curFile();
+            var mine = {};
+            ((f && f.tags) || []).forEach(function (t) { mine[String(t).toLowerCase()] = 1; });
+            var raw = tagInput ? String(tagInput.value || '').trim() : '';
+            var q = raw.toLowerCase();
+
+            var list = collectAllTags().filter(function (t) {
+                if (mine[t.key]) { return false; }   // 当前素材已经有，不必再列
+                if (q && t.key.indexOf(q) < 0) { return false; }
+                return true;
+            }).sort(function (a, b) {
+                var ap = (q && a.key.indexOf(q) === 0) ? 0 : 1;
+                var bp = (q && b.key.indexOf(q) === 0) ? 0 : 1;
+                if (ap !== bp) { return ap - bp; }
+                if (b.count !== a.count) { return b.count - a.count; }
+                return a.label.localeCompare(b.label, 'zh');
+            });
+
+            tagPickItems = list.slice(0, 40);
+            if (tagPickIdx >= tagPickItems.length) { tagPickIdx = -1; }
+
+            if (!tagPickItems.length) {
+                tagPick.innerHTML = q
+                    ? '<span class="none">没有匹配的已有标签，回车新建「' + esc(raw) + '」</span>'
+                    : '<span class="none">还没有其它标签，直接输入回车即可新建</span>';
+                tagPick.hidden = false;
+                return;
+            }
+            tagPick.innerHTML = tagPickItems.map(function (t, i) {
+                return '<button type="button" class="pick' + (i === tagPickIdx ? ' on' : '') +
+                    '" data-pick="' + i + '" title="点一下加这个标签">' +
+                    '<span>#' + esc(t.label) + '</span>' +
+                    '<span class="n">' + t.count + '</span></button>';
+            }).join('');
+            tagPick.hidden = false;
+        }
+
+        /** 把标签加到当前素材；label 为空表示取消 */
+        async function addTagValue(label) {
+            var f = curFile();
+            var v = String(label || '').trim();
+            if (!f || !v) { return; }
+            /* 大小写归一：库里已有「Pixiv」时，输入 pixiv 不新建重复项 */
+            var same = collectAllTags().filter(function (t) { return t.key === v.toLowerCase(); })[0];
+            var finalLabel = same ? same.label : v;
+            var next = (f.tags || []).slice();
+            if (next.indexOf(finalLabel) < 0) { next.push(finalLabel); }
+            if (tagInput) { tagInput.value = ''; }
+            tagPickIdx = -1;
+            if (tagWrap) { tagWrap.classList.remove('on'); }
+            if (tagPick) { tagPick.hidden = true; }
+            await saveTags(next);
+        }
+
+        async function addTag() {
+            if (!tagInput) { return; }
+            await addTagValue(tagInput.value);
+        }
+
+        /* 切换素材后由 paintInfo 调这里，保证候选跟着当前条目走 */
+        tagPickRefresh = renderTagPick;
+
+        if (tagPick) {
+            tagPick.addEventListener('click', function (e) {
+                var b = e.target.closest('[data-pick]');
+                if (!b) { return; }
+                var it = tagPickItems[Number(b.getAttribute('data-pick'))];
+                if (it) { addTagValue(it.label); }
+            });
+        }
+
         if (tagAdd) {
             tagAdd.addEventListener('click', function () {
                 if (tagWrap) { tagWrap.classList.add('on'); }
                 if (tagInput) { tagInput.focus(); }
+                tagPickIdx = -1;
+                renderTagPick();
             });
-        }
-        async function addTag() {
-            var f = curFile(); if (!f || !tagInput) { return; }
-            var v = String(tagInput.value || '').trim();
-            if (!v) { return; }
-            var next = (f.tags || []).slice();
-            if (next.indexOf(v) < 0) { next.push(v); }
-            tagInput.value = '';
-            if (tagWrap) { tagWrap.classList.remove('on'); }
-            await saveTags(next);
         }
         var tagSave = document.getElementById('pvTagSave');
         if (tagSave) { tagSave.addEventListener('click', addTag); }
         if (tagInput) {
+            tagInput.addEventListener('input', function () {
+                tagPickIdx = -1;
+                renderTagPick();
+            });
+            tagInput.addEventListener('focus', function () { renderTagPick(); });
             tagInput.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') { e.preventDefault(); addTag(); }
-                if (e.key === 'Escape' && tagWrap) { tagWrap.classList.remove('on'); }
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    if (!tagPickItems.length) { return; }
+                    e.preventDefault();
+                    var stepN = e.key === 'ArrowDown' ? 1 : -1;
+                    var n = tagPickItems.length;
+                    tagPickIdx = (tagPickIdx + stepN + n) % n;
+                    renderTagPick();
+                    return;
+                }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    /* 用上下键选中的候选优先；否则按输入框文本新建 */
+                    if (tagPickIdx >= 0 && tagPickItems[tagPickIdx]) {
+                        addTagValue(tagPickItems[tagPickIdx].label);
+                    } else {
+                        addTag();
+                    }
+                    return;
+                }
+                if (e.key === 'Escape') {
+                    if (tagPickIdx >= 0) { tagPickIdx = -1; renderTagPick(); return; }
+                    if (tagWrap) { tagWrap.classList.remove('on'); }
+                    renderTagPick();
+                }
             });
         }
 
