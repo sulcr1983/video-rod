@@ -36,16 +36,19 @@
         openDir: document.getElementById('openDir')
     };
 
-    /* 画质上限：4K（2160p）。
-     * 苏哥 2026-11-07 拍板放开：之前限 1080p 是担心 4K 双轨全量进内存再合并会崩，
-     * 但用户明确要更高档。改成「放开 + 内存护栏」：
-     *   · 4K 及以上档位列出来，并在条目上标注体积
-     *   · 单轨超过 MAX_TRACK_BYTES 时仍然拒绝（明确报错，不硬撑 OOM）
-     *   · 8K（4320p）不列出：单轨常超 1GB，本机合并必失败 */
-    var MAX_HEIGHT = 2160;
-    /* 单条轨道内存上限：超过就明确报错，不硬撑（避免页面被 OOM 杀掉）。
-     * 4K 单轨常见 200~500MB，留到 700MB 以覆盖多数 4K 片源。 */
-    var MAX_TRACK_BYTES = 700 * 1024 * 1024;
+    /* 画质与容量：**不设人为上限**。
+     *
+     * 苏哥 2026-11-08 拍板：「放开啊。不要限制。没必要限制容量之类。
+     * 怎么下载是用户的事情，能不能下载是软件的事情。」
+     *
+     * 留下的只有 BIG_FILE_WARN —— 超过这个体积给一句「会久一点」的提醒，
+     * 但仍然照常下载，不做任何拦截。
+     *
+     * 历史：原来这里是两道硬限制（1080p/4K 画质上限、700MB/2GB 容量拒绝）。
+     * 实测证明「大文件必然 OOM」是误判 —— 200MB Blob 构造后 JS 堆只涨 119MB，
+     * Blob 数据存磁盘 backing store；而 mergeBlobs 用 Blob.slice 引用原片段，
+     * 不复制数据。拦下来只会让用户少一个本该能下的选项。 */
+    var BIG_FILE_WARN = 2048 * 1024 * 1024;                 // 2GB，仅提示，不拦截
 
     var state = {
         formats: [],
@@ -267,18 +270,11 @@
             var r = rank(f.codec), rc = rank(cur.codec);
             if (r > rc || (r === rc && (f.bitrate || 0) > (cur.bitrate || 0))) { byH[h] = f; }
         });
+        /* 不按画质过滤：有多少档就列多少档。
+         * 原来这里按 MAX_HEIGHT 过滤，超出上限的档位直接不显示 ——
+         * 那等于替用户做决定。现在全部列出，体积照常标注。 */
         state.video = Object.keys(byH).map(function (k) { return byH[k]; })
-            .filter(function (f) { return !f.height || f.height <= MAX_HEIGHT; })
             .sort(function (a, b) { return b.height - a.height; });
-        /* 只在有 1080p 时才丢掉更高档；万一某视频只有 4K 没有 1080p，
-         * 上面的过滤会把列表清空 —— 这种情况保留原始列表，别让用户无档可选。 */
-        if (!state.video.length) {
-            state.video = Object.keys(byH).map(function (k) { return byH[k]; })
-                .sort(function (a, b) { return b.height - a.height; });
-            state.overCap = true;
-        } else {
-            state.overCap = false;
-        }
 
         // 音频优先 AAC
         auds.sort(function (a, b) {
@@ -300,17 +296,11 @@
     function render() {
         el.qc.innerHTML = '';
         var opts = [];
-        /* 给用户一句明确解释：不是「取不到」，是我们主动不做更高档 */
-        var capNote = document.getElementById('capNote');
-        if (!capNote) {
-            capNote = document.createElement('p');
-            capNote.id = 'capNote';
-            capNote.className = 'cap-note';
-            el.qc.parentNode.insertBefore(capNote, el.qc);
-        }
-        capNote.textContent = state.overCap
-            ? '这个视频只有超过 4K 的档位；为避免超大文件合并失败，仍可下载，但可能较慢。'
-            : ('最高支持 4K（2160p），8K 档位已隐藏');
+        /* 不再有「隐藏档位」这回事：所有档位一律列出。
+         * 原来这里用 capNote 解释「为什么没有 8K」，上限去掉后就没意义了，
+         * 顺手把可能残留在 DOM 里的旧提示清掉。 */
+        var staleNote = document.getElementById('capNote');
+        if (staleNote && staleNote.parentNode) { staleNote.parentNode.removeChild(staleNote); }
 
         state.video.forEach(function (f, i) {
             var total = (f.size || 0) + (state.audio ? (state.audio.size || 0) : 0);
@@ -780,16 +770,14 @@
             return;
         }
 
-        /* 体积保护：单轨超上限就直接拒绝，别让浏览器 OOM 把整个页面弄死。
-         * 这是「合并卡死」的第二道防线（第一道是 1080p 上限）。 */
+        /* 体积不设限：大文件只是慢，不是不能下。
+         * 原来这里超过上限直接 return 拒绝 —— 苏哥 2026-11-08 明确要求去掉：
+         * 「怎么下载是用户的事情，能不能下载是软件的事情。」
+         * 现在只在超过 BIG_FILE_WARN 时给一句提示，照常继续下载。 */
         var needBytes = (o.video ? (o.video.size || 0) : 0) +
             ((!o.audioOnly && !o.muxed && state.audio) ? (state.audio.size || 0) : 0);
-        if (needBytes > MAX_TRACK_BYTES) {
-            state.busy = false;
-            el.go.disabled = !state.chosen;
-            setMsg('这个档位约 ' + mb(needBytes) + '，超过单次合并上限 ' +
-                mb(MAX_TRACK_BYTES) + '；请选低一档，或用浏览器下载器自行保存。', 'err');
-            return;
+        if (needBytes > BIG_FILE_WARN) {
+            setMsg('文件约 ' + mb(needBytes) + '，较大，下载和合并会久一点…', 'warn');
         }
 
         function stage(txt, pct) { setMsg(txt); setBar(pct); }
