@@ -3,7 +3,7 @@
     "message": "苏哥的钓鱼竿"
   },
   "description": {
-    "message": "Web video sniffing & download tool (personal fork of cat-catch)"
+    "message": "Tired of re-filing? Sniff video, image & audio; auto-file by site, creator & type, dedupe by SHA-256, trace sources, search."
   },
   "confirm": {
     "message": "Confirm"

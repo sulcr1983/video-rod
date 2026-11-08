@@ -30,6 +30,7 @@
 | **`TEST-ASSETS.md`** | 实测素材登记 | 带真实 URL 与验证结果 |
 | **`TEST-BROWSER.md`** | 测试浏览器与登录态规则 | 操作步骤可复现 |
 | **`DESIGN-SYSTEM-STAGE.md`** | 设计 token 真源 | 改 UI 前必读 |
+| **`ARTIFACT-MANAGEMENT.md`** | **产出物与工作区管理规范**：源码/构建/测试/交付四类物理边界 | 2026-11-08 建立，配套 `tools/build-dist.js` |
 | **`DECISIONS.md`** | 决策记录（56 条 ADR） | 每个「为什么」都有出处 |
 
 ---
@@ -147,3 +148,7 @@
 
 **我要知道某个决定为什么这么做**
 → `DECISIONS.md`（ADR-001 ~ ADR-055）
+
+**我要搞清文件该放哪 / 为什么扩展体积虚胖**
+→ `ARTIFACT-MANAGEMENT.md`（四类边界：源码 / `dist/` / `../work/` / 交付物）
+→ 重新生成可加载目录：`node tools/build-dist.js`，然后在扩展页点「重新加载」

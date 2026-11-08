@@ -19,18 +19,18 @@ window.addEventListener('DOMContentLoaded', function () {
 
         // 更新动态文本
         if (lang === 'en') {
-            document.getElementById('main-title').textContent = 'Installation Successful!';
-            document.getElementById('subtitle').textContent = 'Cat Catch Extension is now installed';
-            document.getElementById('welcome-title').textContent = 'Welcome to Cat Catch';
+            document.getElementById('main-title').textContent = 'Video Rod is ready';
+            document.getElementById('subtitle').textContent = 'Catch, file, archive — all in one';
+            document.getElementById('welcome-title').textContent = 'Your web media, in your own library';
             document.getElementById('privacy-title').textContent = 'Privacy Policy';
             document.getElementById('disclaimer-title').textContent = 'Disclaimer';
             document.getElementById('issue-title').textContent = 'Issue Submission';
             document.getElementById('agreeText').textContent = 'Agree';
             document.getElementById('uninstallText').textContent = 'Uninstall Extension';
         } else {
-            document.getElementById('main-title').textContent = '恭喜 猫抓 扩展已成功安装 !';
-            document.getElementById('subtitle').textContent = 'Installation successful !';
-            document.getElementById('welcome-title').textContent = '希望本扩展能帮助到你';
+            document.getElementById('main-title').textContent = '苏哥的钓鱼竿 已就位';
+            document.getElementById('subtitle').textContent = '抓取 → 归档 → 入库，一条龙';
+            document.getElementById('welcome-title').textContent = '网页里的视频和图片，从此进你自己的库';
             document.getElementById('privacy-title').textContent = '隐私政策 / Privacy Policy';
             document.getElementById('disclaimer-title').textContent = '免责声明 / Disclaimer';
             document.getElementById('issue-title').textContent = '问题提交 / Issue Submission';

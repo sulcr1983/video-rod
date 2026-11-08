@@ -18,7 +18,9 @@ __pycache__/
 *.pyc
 
 # 本机临时工作区（浏览器 profile / 测试媒体 / 一次性草稿，可整体删除）
+# 正式位置在仓库外：..\work\（规范见 docs/ARTIFACT-MANAGEMENT.md §3）
 /.work/
+/work/
 
 # 资源库根目录：下载内容不进 git
 /download/
