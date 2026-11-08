@@ -54,25 +54,27 @@ check("收藏夹在侧栏底部（索引区上方）", a["side"] and a["order"],
 check("顶栏不再有收藏夹按钮", a["topbarBtn"] is False)
 check("四个预置栏目已清空", a["preset"] == 0, a["preset"])
 
-# 2. 面板：初始空态；新建夹子出现
-# 收藏区已改平铺（2026-11-07）：不再有 favMenuBtn/favMenu 弹层，直接读 #favList
+# 2. 收藏区（2026-11-08 苏哥拍板：只有一个「收藏」，不命名、不新建）
+# 旧断言「初始空态提示 + 新建我的精选」已不适用：命名输入框与新建按钮已随 DOM 删除。
 b = ev("""(()=>{
   const list=document.getElementById('favList');
-  const empty=list&&list.querySelector('.fav-empty')?list.querySelector('.fav-empty').textContent:'';
-  const inp=document.getElementById('favNewInput'); inp.value='我的精选';
-  document.querySelector('#favNewOk').click();
   const rows=[...(list?list.querySelectorAll('.fav-row'):[])].map(r=>r.innerText.replace(/\\n/g,''));
-  return {empty, rows};})()""")
-check("初始空态提示", '还没有收藏夹' in b["empty"], b["empty"])
-check("新建「我的精选」出现在列表", any('我的精选' in r for r in b["rows"]), b["rows"])
+  return {rows,
+    hasInput: !!document.getElementById('favNewInput'),
+    hasMore: !!document.getElementById('favMore'),
+    hasDrawer: !!document.getElementById('favDrawer')};})()""")
+check("收藏区固定一行", len(b["rows"]) == 1, b["rows"])
+check("无命名输入框", b["hasInput"] is False)
+check("无「全部收藏夹」入口", b["hasMore"] is False)
+check("无管理抽屉", b["hasDrawer"] is False)
 shot("side-fav-1-open.png", {"x": 0, "y": 620, "width": 460, "height": 580, "scale": 1.6})
 
-# 3. 已加星标动态化
+# 3. 星标不再占左栏一行（仍可在详情页/右键使用）
 c = ev("""(()=>{
   FILES[0].starred = true; render(); renderFavs();
   const rows=[...document.querySelectorAll('#favList .fav-row')].map(r=>r.innerText.replace(/\\n/g,''));
   return {rows};})()""")
-check("加星后「已加星标」动态出现", any('已加星标' in r for r in c["rows"]), c["rows"])
+check("星标不额外占左栏行", not any('已加星标' in r for r in c["rows"]), c["rows"])
 
 # 4. 资源树折叠
 d = ev("""(()=>{

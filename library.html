@@ -114,18 +114,12 @@
     <nav class="tree" id="tree"></nav>
 
     <div class="fav-side">
-      <!-- 平铺，不再向上弹层：收藏实际只有「已加星标」+「收藏」两行，
-           为 2 行内容做「点击→弹层→再点」三步是多余，弹层还会遮住资源树。
-           （代码里 2026-11-06 已定：收藏夹只留一个，分类交给标签） -->
-      <div class="side-label">
-        <span>收藏</span><span id="favSideCnt">0</span>
-      </div>
+      <!-- 只有一行「收藏」，点击即筛选收藏内容。
+           2026-11-08 苏哥拍板：收藏夹不该有名字，也不需要新建/重命名——
+           只有一个「收藏」，分类交给标签。
+           2026-11-08 二次修正：原来上面还有一条 .side-label「收藏 2」标题，
+           与下面这行同名，看起来像两个收藏夹。标题删掉，计数由行尾数字承担。 -->
       <nav id="favList"></nav>
-      <div class="fav-new" id="favNewRow">
-        <input id="favNewInput" placeholder="收藏夹名字，回车创建" autocomplete="off" spellcheck="false">
-        <button class="ok" id="favNewOk">创建</button>
-      </div>
-      <button class="fav-more hidden" id="favMore">全部收藏夹（<span id="favMoreN">0</span>）</button>
     </div>
 
     <!-- 标签区：默认**收起成一行**，点开就地展开。
@@ -185,11 +179,6 @@
             </button>
             <kbd title="按 / 聚焦搜索框，Esc 清空">/</kbd>
           </div>
-        </div>
-        <div class="ph-fav-acts hidden" id="favActs">
-          <button class="btn small" id="favRename"><svg class="i i-sm"><use href="#i-pencil"/></svg>重命名</button>
-          <button class="btn small" id="favExport"><svg class="i i-sm"><use href="#i-copy"/></svg>复制清单</button>
-          <button class="btn small danger" id="favDelete"><svg class="i i-sm"><use href="#i-trash-2"/></svg>删除收藏夹</button>
         </div>
       </div>
     </section>
@@ -417,6 +406,9 @@
           <div class="pi-taginput" id="pvTagInputWrap">
             <input id="pvTagInput" placeholder="输入标签，回车确认" autocomplete="off">
             <button class="pi-copy" id="pvTagSave">保存</button>
+            <!-- 已有标签候选：全库标签在这里列出，点一下直接加，不用手打。
+                 2026-11-08 苏哥反馈：原先只有纯文本输入，看不到任何已有标签。 -->
+            <div class="pi-tagpick" id="pvTagPick" hidden></div>
           </div>
         </div>
       </section>
@@ -583,34 +575,6 @@
       </div>
     </div>
   </div>
-
-  <!-- 加入收藏夹浮层 -->
-  <div class="favpop" id="favPop" role="menu" aria-label="加入收藏夹">
-    <div class="fp-head"><span>加入收藏夹</span><span id="favPopN">已选 0 项</span></div>
-    <div class="fp-list" id="favPopList"></div>
-    <div class="fp-foot">
-      <button class="fp-new" id="favPopNew"><svg class="i"><use href="#i-bookmark-plus"/></svg>新建收藏夹</button>
-      <button class="fp-done" id="favPopDone">完成</button>
-    </div>
-  </div>
-
-  <!-- 收藏夹管理抽屉 -->
-  <div class="drawer-mask" id="favMask"></div>
-  <aside class="drawer" id="favDrawer" aria-label="管理收藏夹" style="width:400px">
-    <div class="dw-head">
-      <svg class="i" style="width:15px;height:15px;color:var(--muted)"><use href="#i-bookmark"/></svg>
-      <h3>管理收藏夹</h3>
-      <span class="cnt" id="favDrawerN">0</span>
-      <button class="close" id="favDrawerClose" aria-label="关闭"><svg class="i"><use href="#i-x"/></svg></button>
-    </div>
-    <div class="dw-note">收藏夹只是「视图」，移动素材文件本身不会被改动。顺序可上下调整——收藏夹是给人看的，顺序有意义。</div>
-    <div class="dw-list" id="favDrawerList"></div>
-    <div class="dw-foot">
-      <button class="btn small" id="favDrawerNew">新建收藏夹</button>
-      <span class="spacer"></span>
-      <span style="font-size:10px;color:var(--faint)">拖动排序将在正式版支持</span>
-    </div>
-  </aside>
 
   <div class="setmask" id="setmask"></div>
   <aside class="setdrawer" id="setdrawer" aria-label="资源库设置">

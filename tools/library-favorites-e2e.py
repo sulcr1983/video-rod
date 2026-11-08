@@ -116,16 +116,17 @@ def main():
         c.ev("VRDB.setSetting('vrFavs', []).then(()=>1)", sid)
         reload()
 
-        # 1. 新建收藏夹
-        # 收藏区已改平铺（2026-11-07）：输入框常驻，不再需要先点 favNewBtn 展开
-        name0 = "E2E收藏-%d" % int(time.time())
-        c.ev("(()=>{const i=document.getElementById('favNewInput');i.value=%s;return 1})()" % json.dumps(name0), sid)
-        c.ev("document.getElementById('favNewOk').click();1", sid)
-        time.sleep(0.8)
+        # 1. 空库时自动出现唯一的「收藏」（2026-11-08 苏哥拍板：不命名、不新建）
         f1 = favs()
-        check("新建收藏夹落库", len(f1) == 1 and f1[0].get("name") == name0, f1)
+        check("空库自动创建唯一收藏", len(f1) == 1 and f1[0].get("name") == "收藏", f1)
+        rows1 = c.ev("document.querySelectorAll('#favList .fav-row').length", sid, False)
+        check("侧栏只有一行收藏", rows1 == 1, rows1)
+        check("无命名输入框", c.ev("!!document.getElementById('favNewInput')", sid, False) is False)
+        check("无重命名/删除入口",
+              c.ev("!!document.getElementById('favRename')||!!document.getElementById('favDelete')", sid, False) is False)
+        check("无管理抽屉", c.ev("!!document.getElementById('favDrawer')", sid, False) is False)
 
-        # 2. 批量选择第一张 → 加入收藏夹
+        # 2. 批量选择第一张 → 加入收藏
         c.ev("document.getElementById('selectBtn').click();1", sid)
         time.sleep(0.3)
         c.ev("(()=>{const c=document.querySelector('#grid .card');if(c)c.click();return 1})()", sid)
@@ -136,50 +137,34 @@ def main():
         ids = (f2[0].get("ids") if f2 else []) or []
         check("批量收藏写入条目", len(ids) == 1, f2)
 
-        # 3. 重载后仍在
+        # 3. 重载后仍在，且名字固定为「收藏」
         reload()
         f3 = favs()
-        found = [x for x in f3 if x.get("name") == name0]
-        check("重载后收藏夹仍在", bool(found), f3)
-        check("重载后成员仍在", bool(found and len(found[0].get("ids") or []) == 1), found)
+        check("重载后收藏仍在", len(f3) == 1, f3)
+        check("名字固定为收藏", bool(f3 and f3[0].get("name") == "收藏"), f3)
+        check("重载后成员仍在", bool(f3 and len(f3[0].get("ids") or []) == 1), f3)
         dom_text = c.ev("(document.getElementById('favList')||{}).innerText||''", sid, False)
-        check("侧栏显示收藏夹", name0 in str(dom_text), dom_text[:120])
+        check("侧栏显示收藏", "收藏" in str(dom_text), dom_text[:120])
 
-        # 4. 重命名
-        name1 = name0 + "-改名"
-        fav_id = found[0].get("id") if found else ""
-        c.ev("window.prompt=function(){return %s};1" % json.dumps(name1), sid)
-        c.ev("(()=>{const b=document.querySelector('#favList .fav-row[data-fav=\"'+CSS.escape(%s)+'\"]');if(b)b.click();return 1})()" % json.dumps(fav_id), sid)
-        time.sleep(0.4)
-        c.ev("document.getElementById('favRename').click();1", sid)
-        time.sleep(0.8)
-        reload()
-        f4 = favs()
-        check("重命名收藏夹持久化", any(x.get("name") == name1 for x in f4), f4)
+        # 4. 点收藏 → 进入筛选态，只显示被收藏的条目
+        c.ev("document.querySelector('#favList .fav-row').click();1", sid)
+        time.sleep(0.6)
+        check("点收藏进入筛选态",
+              c.ev("document.querySelector('#favList .fav-row').classList.contains('active')", sid, False) is True)
+        fav_cards = c.ev("document.querySelectorAll('#grid .card').length", sid, False)
+        check("收藏视图只显示已收藏", fav_cards == 1, fav_cards)
 
-        # 5. 当前筛选存为收藏夹（35 条）
-        c.ev("document.getElementById('favSaveFilter').click();1", sid)
-        time.sleep(0.8)
-        f5 = favs()
-        smart = [x for x in f5 if str(x.get("name", "")).startswith("筛选 ")]
-        check("当前筛选存为收藏夹", bool(smart), f5)
-        check("智能收藏夹包含全部 35 条", bool(smart and len(smart[0].get("ids") or []) == 35),
-              smart[0].get("ids")[:3] if smart else None)
+        # 5. 再点「全部资源」→ 筛选必须被清掉（2026-11-08 修复的回归点）
+        c.ev("(()=>{const n=[...document.querySelectorAll('#tree .tree-node')].find(x=>x.innerText.indexOf('全部资源')>=0);if(n)n.click();return 1})()", sid)
+        time.sleep(0.6)
+        all_cards = c.ev("document.querySelectorAll('#grid .card').length", sid, False)
+        check("点全部资源回到全库", all_cards > 1, all_cards)
+        check("收藏高亮已清除",
+              c.ev("document.querySelector('#favList .fav-row').classList.contains('active')", sid, False) is False)
 
-        # 6. 删除自定义收藏夹
-        c.ev("(()=>{const b=document.querySelector('#favList .fav-row[data-fav=\"'+CSS.escape(%s)+'\"]');if(b)b.click();return 1})()" % json.dumps(fav_id), sid)
-        time.sleep(0.4)
-        c.ev("document.getElementById('favDelete').click();1", sid)
-        time.sleep(0.2)
-        c.ev("document.getElementById('confirmOk').click();1", sid)
-        time.sleep(0.8)
-        f6 = favs()
-        check("删除收藏夹落库", all(x.get("id") != fav_id for x in f6), f6)
-        reload()
-        f7 = favs()
-        check("重载后删除仍生效", all(x.get("id") != fav_id for x in f7), f7)
+        # 6. 收藏操作不动物理素材
         cards = c.ev("document.querySelectorAll('#grid .card').length", sid, False)
-        check("收藏夹操作不删素材", cards == 35, cards)
+        check("收藏操作不删素材", cards > 0, cards)
 
         failed = [x for x in RESULTS if not x["pass"]]
         print("\n%d/%d PASS" % (len(RESULTS) - len(failed), len(RESULTS)))

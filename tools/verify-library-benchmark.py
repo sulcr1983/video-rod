@@ -71,21 +71,20 @@ check("交集 nasa video 更少", 0 < q2 < q1, "nasa=%s nasa video=%s" % (q1, q2
 check("排除 -词 生效（nasa -nasa = 0）", q3 == 0, q3)
 ev("""(()=>{const i=document.querySelector('#search');i.value='';i.dispatchEvent(new Event('input',{bubbles:true}));return 1})()""")
 
-# 3. 智能收藏夹：把当前筛选存为夹
-sf = ev("""(()=>{
-  const before=FAVORITES.length;
-  document.querySelector('#favSaveFilter').click();
-  const fav=FAVORITES[FAVORITES.length-1];
-  return {before, after:FAVORITES.length, isSmart:!!fav.smart, name:fav.name,
-          rowShown:!!document.querySelector('#favList [data-fav="'+fav.id+'"]')};})()""")
-check("点漏斗 → 新增智能收藏夹", sf["after"] == sf["before"] + 1 and sf["isSmart"] is True, sf)
-check("侧栏出现智能夹行", sf["rowShown"] is True)
-# 智能夹计数与规则生效：切进去看数量
-cnt = ev("""(()=>{
-  const fav=FAVORITES[FAVORITES.length-1];
-  document.querySelector('#favList [data-fav="'+fav.id+'"]').click();
-  return {rows:document.querySelectorAll('#grid .card').length, expect:favMembers(fav).length};})()""")
-check("智能夹视图行数 = 规则命中数", cnt["rows"] == cnt["expect"] and cnt["rows"] > 0, cnt)
+# 3. 收藏区（2026-11-08 苏哥拍板：只有一个「收藏」，不命名、不新建、无智能夹）
+# 旧断言「把筛选存成智能收藏夹」已不适用：#favSaveFilter 随 DOM 删除。
+fav = ev("""(()=>{
+  const rows=[...document.querySelectorAll('#favList .fav-row')];
+  const hasSaveFilter=!!document.querySelector('#favSaveFilter');
+  return {rowCount:rows.length, hasSaveFilter};})()""")
+check("收藏区只有一行", fav["rowCount"] == 1, fav)
+check("无「存为智能夹」入口", fav["hasSaveFilter"] is False)
+
+# 点收藏进入筛选态（收藏为空时结果为 0，只验证状态切换）
+favClick = ev("""(()=>{
+  document.querySelector('#favList .fav-row').click();
+  return {active:document.querySelector('#favList .fav-row').classList.contains('active')};})()""")
+check("点收藏进入筛选态", favClick["active"] is True, favClick)
 shot("lib-bench-smart-fav.png")
 
 errs = cdp.errors()

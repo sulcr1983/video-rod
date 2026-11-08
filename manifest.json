@@ -34,7 +34,8 @@
     "sidePanel",
     "contextMenus",
     "offscreen",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "bookmarks"
   ],
   "commands": {
     "_execute_action": {

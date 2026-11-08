@@ -256,6 +256,12 @@
                 if ((st.mode || 'system') === 'custom') { return finish(st.customRoot || ''); }
                 var base = String(st.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
                 if (!base) { return finish(''); }
+                /* 与 app.js/indexer.js 同口径：拒绝浏览器 profile 内部目录与
+                 * 受管默认名（Webstore Downloads），避免把用户文件指到错位置。 */
+                if (/\/(User Data|\.edge-[^/]+|Default)\//i.test(base + '/') ||
+                    /Webstore Downloads/i.test(base)) {
+                    return finish('');
+                }
                 var sub = pfx || String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '') || 'video-rod';
                 finish(base + '/' + sub);
             };

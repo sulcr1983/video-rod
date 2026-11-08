@@ -35,7 +35,8 @@
     "scripting",
     "declarativeNetRequest",
     "contextMenus",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "bookmarks"
   ],
   "commands": {
     "_execute_browser_action": {},

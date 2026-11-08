@@ -212,14 +212,19 @@ def main():
     c.ev("document.getElementById('batchExit').click(); 1", sid)
     time.sleep(0.5)
 
-    # 6 收藏夹：新建 → 出现 → 删除
-    # 收藏区已改平铺（2026-11-07）：不再有 favNewBtn 弹层开关，输入框常驻可见
-    c.ev("""(()=>{const el=document.getElementById('favNewInput');
-      if(el){el.value='测试夹'; el.dispatchEvent(new Event('input',{bubbles:true}));} return 1})()""", sid)
-    time.sleep(0.3)
-    c.ev("document.getElementById('favNewOk').click(); 1", sid)
-    time.sleep(0.9)
-    ck("收藏夹已建（出现测试夹）", c.ev("(document.body.innerText||'').indexOf('测试夹') >= 0", sid), True)
+    # 6 收藏区（2026-11-08 苏哥拍板：只有一个「收藏」，不命名、不新建）
+    # 旧断言「新建测试夹」已不适用：输入框与新建按钮已随 DOM 删除。
+    # 现在验证的是新契约：只有一行「收藏」、可点击筛选、且不再有命名入口。
+    ck("收藏区只有一行", c.ev("document.querySelectorAll('#favList .fav-row').length", sid), 1)
+    ck("收藏区无命名输入框", c.ev("!!document.getElementById('favNewInput')", sid), False)
+    c.ev("document.querySelector('#favList .fav-row').click(); 1", sid)
+    time.sleep(0.6)
+    ck("点收藏后进入筛选态", c.ev("document.querySelector('#favList .fav-row').classList.contains('active')", sid), True)
+    # 必须退出收藏筛选再往下走：否则后面「预览 / 下一张」只在收藏的几条里翻，
+    # 会把正常功能误报成失败（2026-11-08 实测踩到）。
+    c.ev("""(()=>{const n=[...document.querySelectorAll('#tree .tree-node')].find(x=>(x.querySelector('.label')||{}).textContent==='全部资源'); if(n) n.click(); return 1})()""", sid)
+    time.sleep(0.6)
+    ck("退出收藏筛选后恢复全库", c.ev("document.querySelectorAll('#grid .card').length", sid), 10)
 
     # 7 设置抽屉
     c.ev("document.getElementById('settingsBtn').click(); 1", sid)
@@ -323,7 +328,9 @@ def main():
     DANGER = {"ClearData", "ResetAllOption", "extensionReload", "importOptions", "exportOptions",
               "vrLibPickDir", "vrLibAuthDefault", "vrLibIdxFull", "vrLibMigPickParent", "vrLibMigPickSrc",
               "vrLibMigPickDst", "vrLibMigPickSrc2", "vrLibMigPlan", "vrLibMigRun",
-              "vrLibMigRollback", "vrLibVerify", "vrLibIdxBuild", "vrLibIdxSnap"}
+              "vrLibMigRollback", "vrLibVerify", "vrLibIdxBuild", "vrLibIdxSnap",
+              # 备份/恢复（阶段 4）：两者都会弹原生目录选择框，点下去会阻塞整个套件
+              "vrLibExport", "vrLibRestore"}
     ids2 = c.ev("""(()=>[...document.querySelectorAll('.options-page button[id]')].map(b=>b.id))()""", sid2) or []
     print("设置页按钮数:", len(ids2))
     ck("设置页按钮 >= 25", len(ids2) >= 25, True)

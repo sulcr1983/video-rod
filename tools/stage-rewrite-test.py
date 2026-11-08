@@ -128,11 +128,10 @@ def main():
     ev("document.querySelector('#viewToggle button[data-view=grid]').click();1", sid)
     time.sleep(0.3)
 
-    # 收藏夹：新建 + 计数
-    # 收藏区已改平铺（2026-11-07）：输入框常驻，不再需要先点 favNewBtn 展开
-    ev("(()=>{const i=document.getElementById('favNewInput');i.value='测试夹';document.getElementById('favNewOk').click();return 1})()", sid)
-    time.sleep(0.5)
-    check("收藏夹已建", ev("[...document.querySelectorAll('#favList .fav-row .label')].map(e=>e.textContent).includes('测试夹')", sid), True)
+    # 收藏区（2026-11-08 苏哥拍板：只有一个「收藏」，不命名、不新建）
+    # 旧断言「新建测试夹」已不适用：命名输入框与新建按钮已随 DOM 删除。
+    check("收藏区只有一行", ev("document.querySelectorAll('#favList .fav-row').length", sid), 1)
+    check("收藏区无命名输入框", ev("!!document.getElementById('favNewInput')", sid), False)
 
     # 预览
     ev("document.querySelector('#grid .card').click();1", sid)
