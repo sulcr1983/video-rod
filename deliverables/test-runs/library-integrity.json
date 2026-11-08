@@ -3,7 +3,7 @@
   {
    "name": "库非空",
    "pass": true,
-   "detail": "151"
+   "detail": "96"
   },
   {
    "name": "平台/类型字段完整",
@@ -41,5 +41,5 @@
    "detail": "[]"
   }
  ],
- "entries": 151
+ "entries": 96
 }
