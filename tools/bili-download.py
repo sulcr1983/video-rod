@@ -1,15 +1,20 @@
 # 真实 B 站下载 + 自定义文件名 端到端验证（星愿 9223）
 import json
 import os
+import sys
 import time
 import urllib.request
 
 from websocket import create_connection
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vr_testenv import dl_dir
+
 CDP_URL = os.environ.get("VR_CDP", "http://127.0.0.1:9223")
 EXT_ID = "bilfgmaaplmlfgpmjfhdaillmnonjlbj"
 BILI_URL = "https://www.bilibili.com/video/BV1DVaZ6hEK6/"
-DL_DIR = r"E:\personal\Downloads"
+# 2026-11-08：不再写死用户下载目录，测试产物进仓库内 work/dl。
+DL_DIR = dl_dir("bili-download")
 
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 

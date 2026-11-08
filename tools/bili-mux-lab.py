@@ -2,16 +2,24 @@
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.request
 
 from websocket import create_connection
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from vr_testenv import dl_dir
+
 CDP_URL = "http://127.0.0.1:9223"
 BILI_URL = "https://www.bilibili.com/video/BV1DVaZ6hEK6/"
-DL_DIR = r"E:\personal\Downloads"
-MP4BOX = r"E:\test\download\video-rod\lib\mp4box.all.min.js"
-ATTEMPT = r"E:\test\download\video-rod\tools\mux-attempt.js"
+# 2026-11-08：原为 E:\personal\Downloads（用户真实下载夹，且该盘路径在本机不存在）。
+# 测试产物集中到仓库内 work/dl，不再污染用户的下载目录。
+DL_DIR = dl_dir("mux-lab")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(_HERE)
+MP4BOX = os.path.join(_REPO, "lib", "mp4box.all.min.js")
+ATTEMPT = os.path.join(_HERE, "mux-attempt.js")
 
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 

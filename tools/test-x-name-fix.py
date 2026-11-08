@@ -10,11 +10,13 @@ import time
 
 sys.path.insert(0, r"E:\test\download\video-rod\tools")
 from cdp_client import Cdp  # noqa: E402
+from vr_testenv import dl_dir  # noqa: E402
 
 CDP = Cdp(os.environ.get("VR_CDP", "http://127.0.0.1:9223"))
 EXT_ID = "bilfgmaaplmlfgpmjfhdaillmnonjlbj"
 TWEET = "https://x.com/m0ve0f/status/2111443787952377869"
-DOWN_DIR = r"E:\personal\Downloads"
+# 2026-11-08：不再写死用户下载目录，测试产物进仓库内 work/dl。
+DOWN_DIR = dl_dir("x-name")
 
 
 def sw_session():

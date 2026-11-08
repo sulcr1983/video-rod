@@ -7,9 +7,11 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp, find_ext_id  # noqa: E402
+from vr_testenv import dl_dir  # noqa: E402
 
 IMG_PAGE = "http://127.0.0.1:18080/images.html"
-DL_ROOT = os.environ.get("VR_DL_ROOT", r"E:/personal/Downloads")
+# 2026-11-08：默认值改为仓库内测试目录（原来写死 E:/personal/Downloads）。
+DL_ROOT = os.environ.get("VR_DL_ROOT") or dl_dir("m5b")
 TARGET_DIR = os.path.join(DL_ROOT, "video-rod")
 
 

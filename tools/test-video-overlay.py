@@ -7,13 +7,16 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, r"E:/test/download/video-rod/tools")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp
+from vr_testenv import dl_dir, warn_daily_browser
 
 CDP_URL = os.environ.get("VR_CDP", "http://127.0.0.1:9223")
 EXT_ID = "bilfgmaaplmlfgpmjfhdaillmnonjlbj"
 BILI_URL = os.environ.get("VR_URL", "https://www.bilibili.com/video/BV1DVaZ6hEK6/")
-DL_DIR = r"E:\personal\Downloads"
+# 2026-11-08：不再写死 E:\personal\Downloads（那个目录根本不存在，
+# 且真实下载目录是 D:\personal\Downloads）。测试产物一律进仓库内 work/dl。
+DL_DIR = dl_dir("overlay")
 
 CDP = Cdp(CDP_URL)
 

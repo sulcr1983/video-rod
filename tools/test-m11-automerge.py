@@ -187,9 +187,14 @@ else:
 import glob
 newest = None
 t0 = time.time()
+# 2026-11-08：扫仓库内测试目录，不再写死用户下载夹。
+# 可用 VR_DL_ROOT 覆盖（需要指向真实下载目录时）。
+_SCAN_ROOT = os.environ.get("VR_DL_ROOT") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".work", "dl")
 while time.time() - t0 < 25:
     time.sleep(3)
-    for f in glob.glob(os.path.join(r"E:\personal\Downloads\video-rod", "*.mp4")):
+    for f in glob.glob(os.path.join(_SCAN_ROOT, "**", "video-rod", "*.mp4"), recursive=True) + \
+             glob.glob(os.path.join(_SCAN_ROOT, "**", "*.mp4"), recursive=True):
         if os.path.getmtime(f) > test_started_at - 60:
             if newest is None or os.path.getmtime(f) > os.path.getmtime(newest):
                 newest = f

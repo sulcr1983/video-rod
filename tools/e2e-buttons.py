@@ -161,7 +161,13 @@ def main():
 
     print("\n---- 基础 ----")
     ck("10 张卡片", c.ev("document.querySelectorAll('#grid .card').length", sid), 10)
-    ck("树节点 8（10 条按 平台/作者 聚合）", c.ev("document.querySelectorAll('#tree .tree-node').length", sid), 8)
+    # 资源树自 2026-11-07 起按 MIN_SITE=5 分组：素材 ≥5 条的站点单独成一级，
+    # 其余收进「其他站点」。这份 10 条种子里没有任何站点达到 5 条
+    # （bilibili 3、xiaohongshu 2、其余各 1），所以只有
+    # 「全部资源」+「其他站点」两个节点。
+    # 原断言期望 8 个节点是分组规则引入前的口径，已过期。
+    ck("树节点 2（无站点达 5 条，收进「其他站点」）",
+       c.ev("document.querySelectorAll('#tree .tree-node').length", sid), 2)
     ck("页签计数自洽", c.ev("""(()=>{
       const t = {}; [...document.querySelectorAll('#typeTabs button')].forEach(b => t[b.dataset.type] = +b.querySelector('b').textContent);
       return t.all === 10 && t.video === 5 && t.image === 4 && t.anim === 0 && t.audio === 1;
@@ -186,8 +192,15 @@ def main():
     # 3 平台筛选（B-23 选项 A：顶部 chips 已移除，改由左侧资源树承担）
     chips = c.ev("document.querySelectorAll('#chips .chip').length", sid)
     ck("顶部 chips 已移除", chips, 0)
-    ev_plat = c.ev("""(()=>{const n=[...document.querySelectorAll('#tree .tree-node.plat')].find(x=>x.dataset.plat==='bilibili'); if(!n) return 0; n.click(); return 1})()""", sid)
-    time.sleep(0.8)
+    # B站只有 3 条（< MIN_SITE=5），被收进「其他站点」；要先展开才点得到。
+    # 原断言直接找 data-plat=bilibili，在分组规则下永远找不到（2026-11-08 实测）。
+    # 注意两点：①「其他站点」按钮本身也带 .tree-node.plat，必须用 data-group 精确定位；
+    # ② data-plat 的值是站点分组键「@B站」，不是原始 platform「bilibili」。
+    c.ev("""(()=>{const g=document.querySelector('#tree .tree-node[data-group="others"]'); if(g) g.click(); return 1})()""", sid)
+    time.sleep(0.9)
+    ev_plat = c.ev("""(()=>{const n=[...document.querySelectorAll('#tree .tree-node.plat')].find(x=>(x.dataset.plat||'').indexOf('B站') >= 0); if(!n) return 0; n.click(); return 1})()""", sid)
+    time.sleep(0.9)
+    ck("展开「其他站点」后能点到 B站", ev_plat, 1)
     ck("点左侧「B站」节点筛选生效", c.ev("document.querySelectorAll('#grid .card').length", sid), 3)
     c.ev("""(()=>{const n=document.querySelector('#tree .tree-node'); if(n) n.click(); return 1})()""", sid)
     time.sleep(0.8)

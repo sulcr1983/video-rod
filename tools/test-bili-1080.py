@@ -7,13 +7,15 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, r"E:/test/download/video-rod/tools")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp
+from vr_testenv import dl_dir
 
 CDP_URL = os.environ.get("VR_CDP", "http://127.0.0.1:9223")
 EXT_ID = "bilfgmaaplmlfgpmjfhdaillmnonjlbj"
 BILI_URL = "https://www.bilibili.com/video/BV1DVaZ6hEK6/"
-DL_DIR = r"E:\personal\Downloads"
+# 2026-11-08：改到仓库内测试目录，不再往用户真实下载文件夹写文件。
+DL_DIR = dl_dir("bili1080")
 
 CDP = Cdp(CDP_URL)
 R = {}

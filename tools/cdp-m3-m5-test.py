@@ -96,7 +96,8 @@ def main():
 
     # ---------- M5：图片真落盘 ----------
     if os.environ.get("VR_DL"):
-        dl_root = os.environ.get("VR_DL_ROOT", r"E:/personal/Downloads")
+        # 2026-11-08：默认值改为仓库内测试目录（原来写死 E:/personal/Downloads）。
+        dl_root = os.environ.get("VR_DL_ROOT") or dl_dir("m3m5")
         tdir = os.path.join(dl_root, "video-rod")
         before_i = set()
         if os.path.isdir(tdir):
