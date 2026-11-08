@@ -1,6 +1,6 @@
 # 文档索引与可信度分级
 
-> 更新：2026-11-08 ｜ 共 **78 份**文档（新增 `LIBRARY-PERSISTENCE-SPEC.md`、
+> 更新：2026-11-08（晚间）｜ 共 **79 份**文档（新增 `LIBRARY-PERSISTENCE-SPEC.md`、
 > `LIBRARY-PERSISTENCE-REQUIREMENTS.md`、`LIBRARY-SELF-CONTAINED-PLAN.md`、`ARTIFACT-MANAGEMENT.md`）
 > 用途：接手时先看这份，知道**哪份能信、哪份只能当历史看**。
 
@@ -77,7 +77,8 @@
 
 | 文档 | 内容 |
 |---|---|
-| `PLAN.md` | 方案书 v1.1 |
+| **`EXECUTION-PLAN-20261108.md`** | **当前执行真源**：QA 审计后的任务分解（Q-01~Q-15）、阶段划分、5 项待拍板决策、文档修订判定。取代 `PLAN.md` / `BUILD-PLAN.md` 的执行地位（二者仅作架构背景） |
+| `PLAN.md` | 方案书 v1.1（执行地位已被 EXECUTION-PLAN-20261108 取代） |
 | `BUILD-PLAN.md` | 施工计划 M0–M11（+ M12 附录） |
 | `BUILD-PLAN-STAGE.md` | 舞台换皮施工清单 |
 | `REQUIREMENTS.md` / `REQUIREMENTS-CHECKLIST.md` | 需求规格 |
