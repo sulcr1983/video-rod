@@ -8,11 +8,23 @@ if (typeof G === 'undefined') {
         "/js/bili-whole.js", "/js/douyin.js",
         "/js/site-name.js", "/js/site-name-store.js", "/js/library/site-names-preset.js",
         "/js/library/path.js", "/js/library/db.js", "/js/library/dedup.js", "/js/library/sw-library.js",
-        "/js/lib-image-util.js", "/js/album-sites.js", "/js/video-quality.js");
+        /* indexer 必须在 sw-library 之后：它依赖 VRDB + VRPath；
+         * sw-library 的 ingest 回调会调 VRIndex.scheduleSnapshot()。 */
+        "/js/library/indexer.js",
+        "/js/lib-image-util.js", "/js/album-sites.js", "/js/video-quality.js", "/js/xhs-media.js", "/js/xhs-ssr.js", "/js/yt/yt-queue.js");
 }
 // 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用
 if (typeof self.VRVideoQuality === 'undefined') {
     try { importScripts("/js/video-quality.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+if (typeof self.VRXhsMedia === 'undefined') {
+    try { importScripts("/js/xhs-media.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+if (typeof self.VRXhsSsr === 'undefined') {
+    try { importScripts("/js/xhs-ssr.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+if (typeof self.VRYtQueue === 'undefined') {
+    try { importScripts("/js/yt/yt-queue.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
 if (typeof self.VRSiteName === 'undefined') {
     try { importScripts("/js/site-name.js"); } catch (e) { /* 已加载或环境不支持 */ }
@@ -44,6 +56,14 @@ if (typeof self.VRAlbumSites === 'undefined') {
  * 所以必须放在这两个之后加载。 */
 if (typeof self.VRSave === 'undefined') {
     try { importScripts("/js/library/save.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+
+/* VRIndex：SW 侧也要能调 scheduleSnapshot()，否则「入库后自动写快照」
+ * （B-32 阶段 1.5）在 SW 链路里恒为 no-op —— save.js 里那句
+ * `typeof root.VRIndex.scheduleSnapshot === 'function'` 会静默失败。
+ * indexer.js 不依赖 DOM（已核：无 document./window. 引用），SW 可加载。 */
+if (typeof self.VRIndex === 'undefined') {
+    try { importScripts("/js/library/indexer.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
 
 // Service Worker 5分钟后会强制终止扩展
@@ -504,6 +524,48 @@ function vrMarkDownloaded(path) {
  * 手动兜底页 m3u8-multi.html 走同一条管线，不再有第二套实现。
  */
 const vrMergeTasks = {};    // taskId -> {urls, state, bytes, ext}
+/* ===== YouTube 下载串行队列（2026-11-08）=====
+ * 同一时间只允许一个 YouTube 任务在跑：多个 4K 并发会互相抢带宽，
+ * 同时对 googlevideo 开多条大流量连接更容易触发限流。
+ * 队列语义（去重 / 一次一个 / 结束放行 / 启动失败不卡死）在
+ * js/yt/yt-queue.js 里，配 tools/test-yt-queue.js 26 条单测。 */
+
+/** 开一个下载页；由队列模块回调 */
+function vrYtLaunch(job) {
+    var ytUrl = chrome.runtime.getURL('js/yt/yt-download.html') +
+        '?videoId=' + encodeURIComponent(job.videoId) +
+        '&tabId=' + encodeURIComponent(String(job.tabId || 0)) +
+        '&title=' + encodeURIComponent(job.title || '') +
+        '&author=' + encodeURIComponent(job.author || '') +
+        '&authorId=' + encodeURIComponent(job.authorId || '') +
+        '&pageUrl=' + encodeURIComponent(job.pageUrl || '') +
+        '&auto=1';
+    chrome.tabs.create({ url: ytUrl, active: false }, function (t) {
+        if (chrome.runtime.lastError || !t) {
+            /* 开页失败：丢弃这个任务，继续下一个，别把队列堵死 */
+            vrYtQ.release();
+            return;
+        }
+        vrYtQueueTabId = t.id;
+    });
+}
+
+var vrYtQueueTabId = null;       // 正在执行的下载页标签 id
+var vrYtQ = self.VRYtQueue
+    ? self.VRYtQueue.create({ startFn: vrYtLaunch, delayMs: 600 })
+    : { push: function () { return { ok: false, reason: 'queue-unavailable' }; },
+        release: function () { return false; },
+        status: function () { return { active: '', queued: 0, list: [] }; } };
+
+/** 任务结束（成功/失败/页面被关）后释放队列位 */
+function vrYtRelease(tabId) {
+    /* 只认「正在跑的那一页」的结束信号；别的页关掉不该影响队列 */
+    if (vrYtQueueTabId != null && tabId != null && vrYtQueueTabId !== tabId) {
+        return;
+    }
+    vrYtQueueTabId = null;
+    vrYtQ.release();
+}
 
 function vrMergeNotify(msg) {
     try {
@@ -2221,17 +2283,13 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             } catch (e) { /* 原标签已关就算了 */ }
         }
         /* 自动下载页广播 done 后关闭它自己（页面发来的 vrYtClose 在部分 Chrome
-         * 版本会被忽略；这里按 sender.tab 关闭，保证“无感”）。 */
+         * 版本会被忽略；这里按 sender.tab 关闭，保证“无感”）。
+         * 同时释放串行队列：YouTube 同一时间只跑一个任务。 */
         try {
             const st = sender && sender.tab;
             if (Message.done && st && /yt-download\.html/.test(st.url || '') && /auto=1/.test(st.url || '')) {
                 setTimeout(function () { try { chrome.tabs.remove(st.id); } catch (e) { /* ignore */ } }, 1200);
-            }
-        } catch (e) { /* ignore */ }
-        try {
-            const st = sender && sender.tab;
-            if (Message.done && st && /yt-download\.html/.test(st.url || '') && /auto=1/.test(st.url || '')) {
-                setTimeout(function () { try { chrome.tabs.remove(st.id); } catch (e) { /* ignore */ } }, 1200);
+                vrYtRelease(st.id);
             }
         } catch (e) { /* ignore */ }
         sendResponse({ ok: true });
@@ -2246,6 +2304,46 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     }
     // YouTube：页面按钮点击 → 开下载窗口（单开小窗的理由见 js/yt/yt-download.js 抬头注释）
     if (Message && Message.Message === 'ytOpen') {
+        /* 串行队列：同一时间只跑一个 YouTube 下载。
+         *
+         * 2026-11-08 苏哥要求：YouTube 不允许同时下多个，要排队。
+         * 原因有两层：
+         *   ① 多个 4K 任务并发会互相抢带宽，每个都变得极慢；
+         *   ② 同时对 googlevideo 发起多条大流量连接更容易触发限流。
+         *
+         * 实现：SW 内一个内存队列 + 当前任务 id。前一个任务结束（收到
+         * vrYtClose 或标签页关闭）后自动启动下一个。
+         * SW 被回收时队列会丢 —— 这是可接受的：用户重开页面会重新入队，
+         * 而持久化队列会让「幽灵任务」永久卡住队列，得不偿失。 */
+        const job = {
+            videoId: Message.videoId || '',
+            tabId: (sender.tab && sender.tab.id) || 0,
+            title: Message.title || '',
+            author: Message.author || '',
+            authorId: Message.authorId || '',
+            pageUrl: Message.pageUrl || ''
+        };
+        if (!job.videoId) {
+            sendResponse({ ok: false, error: 'no-video-id' });
+            return true;
+        }
+        /* 入队：去重、串行、结束放行的语义都在 js/yt/yt-queue.js 里 */
+        const r = vrYtQ.push(job);
+        sendResponse({
+            ok: r.ok !== false,
+            reason: r.reason,
+            queued: r.queued,
+            position: r.position,
+            active: vrYtQ.status().active
+        });
+        return true;
+    }
+    if (Message && Message.Message === 'ytQueueStatus') {
+        const st = vrYtQ.status();
+        sendResponse({ ok: true, active: st.active, queued: st.queued, list: st.list });
+        return true;
+    }
+    if (Message && Message.Message === 'ytOpenOld') {
         var ytUrl = chrome.runtime.getURL('js/yt/yt-download.html') +
             '?videoId=' + encodeURIComponent(Message.videoId || '') +
             '&tabId=' + encodeURIComponent(String((sender.tab && sender.tab.id) || 0)) +
@@ -3032,6 +3130,9 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
         G.blockUrlSet.has(tabId) && G.blockUrlSet.delete(tabId);
         G.damnUrlSet.has(tabId) && G.damnUrlSet.delete(tabId);
     }
+    /* YouTube 下载页被关（用户手动关 / 浏览器回收）也要释放串行队列，
+     * 否则下一个任务会永远排队等一个不存在的页面。 */
+    try { vrYtRelease(tabId); } catch (e) { /* ignore */ }
 });
 
 // 苏哥的钓鱼竿：X(推特) 推文内联按钮下载（M8）
@@ -3192,6 +3293,7 @@ const VR_VIDEO_EXT = /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i;
 const VR_STATIC_ASSET = /(web_login_static|\/static\/|\/assets\/|\/images?\/|\/icons?\/|\/sprites?\/|\.gif$|\.png$|\.jpe?g$|\.webp$|\.svg$)/i;
 
 /* 清晰度解析与候选排序统一放在 js/video-quality.js（纯函数，可 Node 单测）。
+ * 曾经的临时实现留在这里会被两处调用点重复维护，已删除。
  * 通用规则：分辨率优先 → 体积次之 → 「正在播放」仅作次要加权。 */
 
 /* ---------- 媒体 CDN 的 Referer 保护 ----------
@@ -3620,6 +3722,23 @@ async function vrXhsScanInTab(tabId, noteId) {
 async function vrXhsAutoQueue(notes, sourceTabId) {
     const list = Array.isArray(notes) ? notes.slice() : [];
     let done = 0, files = 0, skipped = 0, errors = 0, stopped = '';
+    /* 复用一个后台标签页，全程只改 URL 导航 —— 绝不逐篇开/关。
+     * 2026-11-08 苏哥实测：原来的「每篇 tabs.create + tabs.remove」
+     * 会让小红书判定为机器行为并触发风控。
+     * 复用同一个页面 + 站内导航，行为与人工逐个点开笔记一致。 */
+    let reuseTabId = null;
+    try {
+        const t = await chrome.tabs.create({
+            url: 'https://www.xiaohongshu.com/explore',
+            active: false
+        });
+        reuseTabId = t && t.id;
+        if (reuseTabId != null) {
+            await vrXhsWaitTab(reuseTabId, 15000);
+            await vrBulkSleep(1200 + Math.floor(Math.random() * 800));
+        }
+    } catch (e) { reuseTabId = null; }
+
     for (let i = 0; i < list.length; i++) {
         const n = list[i] || {};
         if (!n.noteId) { done++; continue; }
@@ -3663,13 +3782,30 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
             const token = n.xsecToken
                 ? '?xsec_token=' + encodeURIComponent(n.xsecToken) + '&xsec_source=pc_user'
                 : '';
-            const tab = await chrome.tabs.create({
-                url: 'https://www.xiaohongshu.com/explore/' + encodeURIComponent(n.noteId) + token,
-                active: false
-            });
-            tabId = tab.id;
+            const targetUrl = 'https://www.xiaohongshu.com/explore/' +
+                encodeURIComponent(n.noteId) + token;
+            /* 复用同一个标签页：只导航，不开关。
+             * 首次若没有可复用页（上面创建失败），才退回新建一次。 */
+            if (reuseTabId != null) {
+                try {
+                    await chrome.tabs.update(reuseTabId, { url: targetUrl });
+                    tabId = reuseTabId;
+                } catch (e) {
+                    reuseTabId = null;      // 页面被用户关了
+                }
+            }
+            if (tabId == null) {
+                const tab = await chrome.tabs.create({ url: targetUrl, active: false });
+                tabId = tab.id;
+                reuseTabId = tab.id;
+            }
+            /* 导航后等内容渲染：模拟人工阅读的停顿，避免固定节奏被判机器 */
             const loaded = await vrXhsWaitTab(tabId, 18000);
-            if (loaded) { await new Promise(function (r) { setTimeout(r, 1200); }); }
+            if (loaded) {
+                await new Promise(function (r) {
+                    setTimeout(r, 1800 + Math.floor(Math.random() * 1400));
+                });
+            }
             if (!loaded) {
                 errors++;
             } else {
@@ -3696,11 +3832,8 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
             }
         } catch (e) {
             errors++;
-        } finally {
-            if (tabId != null) {
-                try { await chrome.tabs.remove(tabId); } catch (e) { /* ignore */ }
-            }
         }
+        /* 不再逐篇 remove —— 复用页留到整个队列结束再关（见函数末尾）。 */
         done++;
         if (noteOk) { errors = 0; }
         if (sourceTabId != null) {
@@ -3720,6 +3853,16 @@ async function vrXhsAutoQueue(notes, sourceTabId) {
             await vrBulkSleep(3000 + Math.floor(Math.random() * 2000));
         }
     }
+    /* 队列结束：统一关掉复用页（全程只开过这一个）。
+     * 给一点缓冲再关，避免「刚读完就消失」的突兀感，也更像人工行为。 */
+    if (reuseTabId != null) {
+        try {
+            await vrBulkSleep(1500 + Math.floor(Math.random() * 1000));
+            await chrome.tabs.remove(reuseTabId);
+        } catch (e) { /* 用户已手动关掉 */ }
+        reuseTabId = null;
+    }
+
     /* 明确告诉页面「队列结束」：长任务的回执可能先断，
      * 页面不能只靠 sendMessage 回调解除 running，否则按钮会永久卡住。 */
     if (sourceTabId != null) {
@@ -4273,6 +4416,141 @@ function vrWithTimeout(promise, ms, label) {
     ]);
 }
 
+/**
+ * 微博：用 mid 去详情接口换最高清直链。
+ *
+ * 背景：嗅探只能看到浏览器实际请求过的码率，微博信息流默认播 720p，
+ * 所以「排序嗅探结果」永远拿不到 1080p —— 必须主动问接口。
+ *
+ * 参考实现：星愿里装的「笃笃微博视频下载器」v0.16.14，
+ * 它用 `GET /ajax/statuses/show?id=<mid>&locale=zh-CN` 取
+ * `page_info.media_info`，再按 mp4_hd_url > stream_url_hd > mp4_sd_url 取直链。
+ *
+ * 关键差异：**必须在页面主世界 fetch**。
+ * 扩展上下文请求会被微博 302 到 passport.weibo.com/visitor/visitor（实测），
+ * 页面上下文自带 Cookie 与 Referer 才通。
+ *
+ * @param {number} tabId
+ * @param {string} mid
+ * @returns {Promise<{url:string, size:number, height:number}|null>}
+ */
+async function vrWeiboHdProbe(tabId, mid) {
+    if (!mid) { return null; }
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            args: [String(mid)],
+            func: async function (id) {
+                try {
+                    const url = 'https://' + (location.hostname || 'weibo.com') +
+                        '/ajax/statuses/show?id=' + encodeURIComponent(id) + '&locale=zh-CN';
+                    const res = await fetch(url, {
+                        credentials: 'include',
+                        headers: { accept: 'application/json, text/plain, */*' }
+                    });
+                    if (!res.ok) { return null; }
+                    const j = await res.json();
+                    const Q = self.VRVideoQuality;
+                    if (!Q) { return null; }
+                    const hd = Q.pickWeiboHdUrl(j);
+                    if (!hd) { return null; }
+                    const pi = (j.page_info && j.page_info.media_info) || {};
+                    return {
+                        url: hd,
+                        size: Number(pi.size) || Number(pi.duration_size) || 0,
+                        height: Q.heightFromUrl(hd)
+                    };
+                } catch (e) { return null; }
+            }
+        }), 6000, 'weibo-hd');
+        return (r && r[0] && r[0].result) || null;
+    } catch (e) { return null; }
+}
+
+/**
+ * 展开 HLS master：把每个 variant 拉成独立候选。
+ *
+ * 拉取放在页面主世界（带 Cookie/Referer），解析交给 VRVideoQuality.parseHlsMaster。
+ * 只处理 master（含 #EXT-X-STREAM-INF）；媒体清单（纯分片）没有 variant，直接跳过。
+ *
+ * @param {number} tabId
+ * @param {string[]} urls master 地址列表
+ * @returns {Promise<Array<{url:string, height:number, bandwidth:number}>>}
+ */
+async function vrExpandHlsMasters(tabId, urls) {
+    const list = Array.isArray(urls) ? urls.filter(Boolean).slice(0, 3) : [];
+    if (!list.length) { return []; }
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            args: [list],
+            func: async function (masters) {
+                const Q = self.VRVideoQuality;
+                if (!Q) { return []; }
+                const out = [];
+                for (const u of masters) {
+                    try {
+                        const res = await fetch(u, { credentials: 'include' });
+                        if (!res.ok) { continue; }
+                        const text = await res.text();
+                        const variants = Q.parseHlsMaster(text, u);
+                        for (const v of variants) {
+                            out.push({ url: v.url, height: v.height || 0,
+                                bandwidth: v.bandwidth || 0 });
+                        }
+                    } catch (e) { /* 单个 master 失败不影响其他 */ }
+                }
+                return out.slice(0, 12);
+            }
+        }), 8000, 'hls-master');
+        return (r && r[0] && r[0].result) || [];
+    } catch (e) { return []; }
+}
+
+/**
+ * 探测 DASH MPD：拉取并解析，返回最高视频档的宽高与码率。
+ *
+ * 只用于「识别 + 排序」，不在这里合并分片（合并交给既有 mpd 处理页）。
+ * 拉取在页面主世界做（带 Cookie/Referer），解析用 VRVideoQuality.parseDashMpd。
+ *
+ * @param {number} tabId
+ * @param {string[]} urls
+ * @returns {Promise<{height:number, width:number, bandwidth:number}|null>}
+ */
+async function vrProbeDashMpd(tabId, urls) {
+    const list = Array.isArray(urls) ? urls.filter(Boolean).slice(0, 2) : [];
+    if (!list.length) { return null; }
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            world: 'MAIN',
+            args: [list],
+            func: async function (mpds) {
+                const Q = self.VRVideoQuality;
+                if (!Q) { return null; }
+                for (const u of mpds) {
+                    try {
+                        const res = await fetch(u, { credentials: 'include' });
+                        if (!res.ok) { continue; }
+                        const text = await res.text();
+                        const reps = Q.parseDashMpd(text);
+                        if (!reps.length) { continue; }
+                        const best = Q.pickBestVariant(reps);
+                        if (best) {
+                            return { height: best.height || 0, width: best.width || 0,
+                                bandwidth: best.bandwidth || 0 };
+                        }
+                    } catch (e) { /* 换下一个 */ }
+                }
+                return null;
+            }
+        }), 8000, 'dash-mpd');
+        return (r && r[0] && r[0].result) || null;
+    } catch (e) { return null; }
+}
+
 /** 通用：从页面内嵌 JSON / 全局变量里找视频直链。
  *  为什么需要：TikTok 等站用 MSE(blob:) 播放，网络嗅探看到的是分片，
  *  通用嗅探缓存里一条完整 mp4 都没有 → 面板显示「还没被嗅探到」。
@@ -4434,7 +4712,7 @@ async function vrVideoOptions(tabId) {
     });
     /* 高清优先：先按 URL 里的分辨率档位，再按体积，最后才偏好「正在播放」。
      * 旧规则把正在播放的无条件置顶 —— 微博信息流默认播 720p，
-     * 于是一键下载永远只拿到 720p（2026-11-07 实测）。 */
+     * 于是一键下载永远只拿到 720p，用户以为站点最高就这档（2026-11-07 实测）。 */
     list = self.VRVideoQuality.sortCandidates(list, playing);
 
     /* Instagram 优先取 hydration JSON 的完整 progressive MP4。
@@ -4460,8 +4738,8 @@ async function vrVideoOptions(tabId) {
         const pExt = (playing.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
         if (VR_VIDEO_EXT.test(pExt)) {
             list.push({ url: playing, ext: pExt, size: 0 });
-            /* 补进来的这条也要参与同一套排序：不能置顶，
-             * 否则「正在播放」又压过更高清的档位。 */
+            /* 补进来的这条也要参与同一套排序：不能 unshift 置顶，
+             * 否则「正在播放」又压过更高清的档位（见 video-quality 注释）。 */
             list = self.VRVideoQuality.sortCandidates(list, playing);
         }
     }
@@ -4477,12 +4755,101 @@ async function vrVideoOptions(tabId) {
         });
     }
 
-    out.options = list.slice(0, 6).map(function (m, i) {
+    /* 主动补高清档（通用思路，微博先落地）。
+     *
+     * 为什么必须有这一步：嗅探只能看到浏览器**实际请求过**的码率。
+     * 微博信息流默认播 720p，所以嗅探到的最高就是 720p —— 光排序永远拿不到 1080p。
+     * 真正的做法是拿作品 id 去站点详情接口换高清直链：
+     * 笃笃微博下载器 v0.16.14（星愿里那个）用 `ajax/statuses/show?id=` 取
+     * `page_info.media_info.mp4_hd_url`，本实现照此思路，但走页面上下文 fetch
+     * （自带 Cookie/Referer，扩展上下文会被微博 302 到访客页）。
+     *
+     * 失败不阻断：拿不到就沿用嗅探结果，面板照常可用。 */
+    try {
+        const mid = self.VRVideoQuality.weiboMidFromUrl(
+            (list[0] && list[0].url) || playing || '');
+        if (mid) {
+            const hd = await vrWeiboHdProbe(tabId, mid);
+            if (hd && hd.url) {
+                /* 已存在就不重复插（避免同一地址出现两次） */
+                if (!list.some(function (m) { return m.url === hd.url; })) {
+                    list.push({ url: hd.url, ext: 'mp4', size: hd.size || 0,
+                        height: hd.height || self.VRVideoQuality.heightFromUrl(hd.url) });
+                }
+                if (hd.size && !hd.height) {
+                    /* 有体积无分辨率时按体积给个粗略档位，保证排序不把它压到最后 */
+                    const last = list[list.length - 1];
+                    if (!last.height) {
+                        last.height = hd.size > 20 * 1048576 ? 1080 : 720;
+                    }
+                }
+            }
+        }
+    } catch (e) { /* 补高清失败不影响已有候选 */ }
+
+    /* HLS master 展开（通用，抄 Video Downloader Plus v4.0.0 的做法）。
+     *
+     * 为什么需要：HLS 站点（B站/YouTube/多数流媒体）拿到的是 master 地址，
+     * 里面每个 #EXT-X-STREAM-INF 都带 RESOLUTION= 与 BANDWIDTH=。
+     * 只把 master 当一个候选交出去，下载器拿到的是一张「清单」而不是视频，
+     * 更不可能知道哪档最高。展开后每个 variant 都是独立候选，按分辨率排序即可。
+     *
+     * master 拉取放在页面主世界（带 Cookie/Referer），失败就保持原样。 */
+    try {
+        const masters = list.filter(function (m) {
+            return m && /\.m3u8(\?|$)/i.test(m.url || '');
+        });
+        if (masters.length) {
+            const expanded = await vrExpandHlsMasters(tabId, masters.map(function (m) { return m.url; }));
+            if (expanded.length) {
+                /* 移除 master 本身，换成展开出的 variant */
+                const masterUrls = {};
+                masters.forEach(function (m) { masterUrls[m.url] = 1; });
+                list = list.filter(function (m) { return !masterUrls[m.url]; });
+                expanded.forEach(function (v) {
+                    if (!list.some(function (m) { return m.url === v.url; })) {
+                        list.push({ url: v.url, ext: 'm3u8', size: 0, height: v.height || 0 });
+                    }
+                });
+                list = self.VRVideoQuality.sortCandidates(list, playing);
+            }
+        }
+    } catch (e) { /* HLS 展开失败不影响已有候选 */ }
+
+    /* DASH MPD 探测（通用，参考 Video Downloader Pro v0.1.11 的格式覆盖）。
+     *
+     * 为什么要动它：我们原来只在独立页 js/mpd.js 里解析 MPD，主下载链路
+     * 根本不认 .mpd，遇到 DASH 站点只能看到一个「清单」地址。
+     * 这里只做「识别 + 标注最高档分辨率」，真正的分片合并仍交给既有
+     * m3u8/mpd 处理页 —— 不在这条链路上重写合并器（风险太高）。
+     *
+     * 目的很具体：让候选列表里出现 `4320p · 8K` 这类真实档位，
+     * 而不是把 .mpd 当成一个不明大小的 MP4。 */
+    try {
+        const mpds = list.filter(function (m) {
+            return m && /\.mpd(\?|$)/i.test(m.url || '');
+        });
+        if (mpds.length) {
+            const info = await vrProbeDashMpd(tabId, mpds.map(function (m) { return m.url; }));
+            if (info && info.height) {
+                mpds.forEach(function (m) { m.height = info.height; });
+                if (info.bandwidth) { mpds.forEach(function (m) { m.size = m.size || info.bandwidth; }); }
+                list = self.VRVideoQuality.sortCandidates(list, playing);
+            }
+        }
+    } catch (e) { /* MPD 探测失败不影响已有候选 */ }
+
+    out.options = list.slice(0, 8).map(function (m, i) {
+        /* 标签带上分辨率，用户才能一眼看出哪档更高。
+         * 旧标签只有 "MP4 · 4.0MB"，6 个档位看起来像 6 个不同大小的视频，
+         * 实际是同一个视频的不同码率（2026-11-07 苏哥反馈「每个都一样」）。 */
+        const h = m.height || self.VRVideoQuality.heightFromUrl(m.url);
         return {
             id: 'm' + i, kind: 'url', url: m.url,
-            label: (m.ext || 'video').toUpperCase() +
-                (m.size ? ' · ' + (m.size / 1048576).toFixed(1) + 'MB' : ''),
-            note: i === 0 ? ((playing && m.url === playing) ? '当前播放' : '最大') : ''
+            height: h,
+            label: self.VRVideoQuality.labelOf(m),
+            note: i === 0 ? ((playing && m.url === playing) ? '最高清 · 当前播放' : '最高清')
+                : ((playing && m.url === playing) ? '当前播放' : '')
         };
     });
     return out;
