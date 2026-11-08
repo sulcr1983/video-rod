@@ -128,6 +128,34 @@
 - [ ] 右键秒存、快捷键过
 - [ ] 面板无 JS 报错（控制台干净）
 
+### 4.1 资源库持久化（2026-11-07 新增，670 条断言）
+
+改 `js/library/` 下任何模块都要跑：
+
+```bash
+node tools/test-persistence.js     # 79  快照字段/root 自恢复/超限上报/缩略图失效判定
+node tools/test-zip.js             # 40  zip 结构：CRC 标准向量、三个签名、UTF-8 名、偏移自洽
+node tools/test-backup-restore.js  # 33  导出→解包→恢复全链路（含中文名与缩略图引用）
+node tools/test-path.js            # 90  路径拼装与清洗
+node tools/test-save.js            # 51  落盘模式决策与错误码
+node tools/dedup-test.mjs          # 21  去重指纹与引用计数
+```
+
+**改字号/图标后另跑**（结构不能被样式改动破坏）：
+
+```bash
+python tools/e2e-all.py --isolated --only stage-rewrite
+```
+
+**改备份/恢复按钮后另跑**（需真实浏览器，会自己拉起隔离实例）：
+
+```bash
+python tools/e2e-backup-buttons.py --launch --port 9492   # 12/12
+```
+
+> 注：`e2e-backup-buttons.py` 会桩掉 `showDirectoryPicker` 并断言点击确实进入绑定逻辑；
+> 真的弹原生目录框无法自动化，那是唯一需要真人补的一步。
+
 ### 4.2 图片侧边栏 / 下载扫描（2026-11-07 新增，69 条断言）
 
 改 `js/lib-image-util.js`、`js/lib-download-scan.js`、`js/image-page.js` 后跑：
@@ -153,7 +181,6 @@ http://127.0.0.1:18080/src-only.html
 > 验收口径：该页 DOM 只有 1 张图，源码通道应额外抓出 3 张（`original-1200.png`、
 > `srcset-1200.png`、`i5-unique.png`）。少一张就说明正则又退回了「只认 `https?://`」的老写法
 > ——单斜杠 `/media/x.jpg` 与协议相对 `//host/x.jpg` 必须都能抓到。
-
 
 ### 4.3 图片清单面板的 CSS 契约（2026-11-08 新增，11 条断言）
 

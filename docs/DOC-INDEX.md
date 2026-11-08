@@ -1,6 +1,7 @@
 # 文档索引与可信度分级
 
-> 更新：2026-11-06 晚 ｜ 共 **70 份**文档（新增 `IMAGE-SIDEBAR-AIX-ADOPT.md`）
+> 更新：2026-11-08 ｜ 共 **78 份**文档（新增 `LIBRARY-PERSISTENCE-SPEC.md`、
+> `LIBRARY-PERSISTENCE-REQUIREMENTS.md`、`LIBRARY-SELF-CONTAINED-PLAN.md`、`ARTIFACT-MANAGEMENT.md`）
 > 用途：接手时先看这份，知道**哪份能信、哪份只能当历史看**。
 
 ---
@@ -30,8 +31,10 @@
 | **`TEST-ASSETS.md`** | 实测素材登记 | 带真实 URL 与验证结果 |
 | **`TEST-BROWSER.md`** | 测试浏览器与登录态规则 | 操作步骤可复现 |
 | **`DESIGN-SYSTEM-STAGE.md`** | 设计 token 真源 | 改 UI 前必读 |
-| **`ARTIFACT-MANAGEMENT.md`** | **产出物与工作区管理规范**：源码/构建/测试/交付四类物理边界 | 2026-11-08 建立，配套 `tools/build-dist.js` |
 | **`DECISIONS.md`** | 决策记录（56 条 ADR） | 每个「为什么」都有出处 |
+| **`LIBRARY-PERSISTENCE-SPEC.md`** | **资源库持久化技术规格**：存储格式/接口/迁移/验收用例 | 字段与行号均对照代码核实（2026-11-07） |
+| **`LIBRARY-PERSISTENCE-REQUIREMENTS.md`** | **资源库持久化需求规格**：用户故事、范围、取舍 | 用户原话与实测数据为据 |
+| **`ARTIFACT-MANAGEMENT.md`** | **产出物与工作区管理规范**：源码/构建/测试/交付四类物理边界 | 2026-11-08 建立，配套 `tools/build-dist.js` |
 
 ---
 
@@ -66,6 +69,7 @@
 | `IMAGE-*-RESEARCH/PLAN/IMPL.md` | 图片下载系列（调研→方案→实现） | I1–I5 已实现 |
 | `INCIDENT-20261019-LIBRARY-DIR.md` | 媒体库目录限制复盘 | 教训仍有效 |
 | `INVENTORY-2026-11-06.md` | 全面盘点 | 快照，会过期 |
+| `UI-POLISH-2026-11-06.md` | UI 打磨记录 | 快照 |
 
 ---
 
@@ -79,6 +83,8 @@
 | `REQUIREMENTS.md` / `REQUIREMENTS-CHECKLIST.md` | 需求规格 |
 | `DESIGN.md` | 技术设计（部分模块名已漂移，见 §六） |
 | `LIBRARY-PLAN-审计方案.md` | 方案审计 |
+| `LIBRARY-SELF-CONTAINED-PLAN.md` | **资源库自包含化架构方案**（含红队 14 项 + 检索 5 项结论；配套 SPEC/REQ） |
+| `LIBRARY-STANDALONE-PLAN.md` | **已放弃**的本地 HTML 方案（证据存档：`file://` 探针 §0） |
 | `LIBRARY-FULL-TEST.md` | 逐按钮验收（旧口径） |
 | `MEDIA-LIBRARY-PLAN.md` | 早期媒体库方案 |
 | `OPTIONS-REDESIGN.md` | 设置页重设计 |
@@ -145,6 +151,15 @@
 
 **我要跑测试**
 → `TESTING.md` + `TEST-BROWSER.md`；命令见 README「开发与测试」
+→ 资源库持久化专项（670 条断言）：`TESTING.md` §4.1
+
+**我要改资源库持久化（快照/缩略图/备份）**
+→ `LIBRARY-PERSISTENCE-SPEC.md`（格式与接口）→ `LIBRARY-SELF-CONTAINED-PLAN.md`（为什么这么做）
+→ 改完必跑：`node tools/test-persistence.js`、`test-zip.js`、`test-backup-restore.js`
+
+**我要调字号/图标**
+→ `DESIGN-SYSTEM-STAGE.md` §2（正文 14 / 下限 11 / 图标 18）
+→ `node tools/bump-type-scale.js <css> [--conservative]`（带幂等标记，重复执行会拒绝）
 
 **我要知道某个决定为什么这么做**
 → `DECISIONS.md`（ADR-001 ~ ADR-055）
