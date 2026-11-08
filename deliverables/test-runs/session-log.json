@@ -29,6 +29,42 @@
       "ts": 1793878990.8679495,
       "reason": "TikTok 验收需走 Clash 代理，一次性重启（今日第 5 次）",
       "headless": false
+    },
+    {
+      "at": "2026-11-07T22:01:47",
+      "ts": 1794060107.3957994,
+      "reason": "微博相册面板可视化核查：档位缺失与双面板",
+      "headless": false
+    },
+    {
+      "at": "2026-11-08T09:14:26",
+      "ts": 1794100466.7682705,
+      "reason": "验证图片面板按钮可点（pointer-events 修复）",
+      "headless": false
+    },
+    {
+      "at": "2026-11-08T11:01:14",
+      "ts": 1794106874.6503131,
+      "reason": "验证媒体库直达链接与加书签",
+      "headless": false
+    },
+    {
+      "at": "2026-11-08T13:37:08",
+      "ts": 1794116228.972315,
+      "reason": "读取扩展错误页真实内容",
+      "headless": false
+    },
+    {
+      "at": "2026-11-08T13:59:31",
+      "ts": 1794117571.460026,
+      "reason": "验证相对路径改动",
+      "headless": false
+    },
+    {
+      "at": "2026-11-08T14:09:05",
+      "ts": 1794118145.8943727,
+      "reason": "本次任务最终验收",
+      "headless": false
     }
   ],
   "closes": [
@@ -39,6 +75,22 @@
     {
       "at": "2026-11-05T19:43:02",
       "ts": 1793878982.349348
+    },
+    {
+      "at": "2026-11-08T11:04:45",
+      "ts": 1794107085.223249
+    },
+    {
+      "at": "2026-11-08T13:54:44",
+      "ts": 1794117284.2327332
+    },
+    {
+      "at": "2026-11-08T14:00:19",
+      "ts": 1794117619.9297638
+    },
+    {
+      "at": "2026-11-08T14:22:29",
+      "ts": 1794118949.016234
     }
   ],
   "runs": [
@@ -354,6 +406,154 @@
         },
         {
           "n": "e2e-overlay",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:11:01",
+      "summary": "0/1 套件通过，用时 53.5s",
+      "report": "deliverables\\test-runs\\2026-11-08-1411-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:13:44",
+      "summary": "0/1 套件通过，用时 55.8s",
+      "report": "deliverables\\test-runs\\2026-11-08-1413-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:15:38",
+      "summary": "0/1 套件通过，用时 60.0s",
+      "report": "deliverables\\test-runs\\2026-11-08-1415-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:17:42",
+      "summary": "0/1 套件通过，用时 61.1s",
+      "report": "deliverables\\test-runs\\2026-11-08-1417-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:20:10",
+      "summary": "0/1 套件通过，用时 58.3s",
+      "report": "deliverables\\test-runs\\2026-11-08-1420-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:22:17",
+      "summary": "0/1 套件通过，用时 56.7s",
+      "report": "deliverables\\test-runs\\2026-11-08-1422-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:23:28",
+      "summary": "1/2 套件通过，用时 52.0s",
+      "report": "deliverables\\test-runs\\2026-11-08-1423-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:43:47",
+      "summary": "0/1 套件通过，用时 59.8s",
+      "report": "deliverables\\test-runs\\2026-11-08-1443-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:45:09",
+      "summary": "0/1 套件通过，用时 61.0s",
+      "report": "deliverables\\test-runs\\2026-11-08-1445-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:46:38",
+      "summary": "0/1 套件通过，用时 57.5s",
+      "report": "deliverables\\test-runs\\2026-11-08-1446-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:48:49",
+      "summary": "1/1 套件通过，用时 54.8s",
+      "report": "deliverables\\test-runs\\2026-11-08-1448-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-08T14:53:36",
+      "summary": "1/1 套件通过，用时 58.7s",
+      "report": "deliverables\\test-runs\\2026-11-08-1453-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
           "ok": true
         }
       ]

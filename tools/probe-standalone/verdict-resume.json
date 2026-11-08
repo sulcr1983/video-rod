@@ -1,0 +1,13 @@
+{
+  "profile": "D:\\test\\download\\video-rod\\.work\\probe-standalone\\profile-1794037418",
+  "result": {
+    "supported": true,
+    "keys": [
+      "root"
+    ],
+    "hasHandle": true,
+    "handleType": "directory",
+    "permission": "prompt",
+    "name": "video-rod"
+  }
+}

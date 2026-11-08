@@ -1,0 +1,374 @@
+{
+  "startedAt": "2026-11-07T08:15:30.751Z",
+  "finishedAt": "2026-11-07T08:15:33.549Z",
+  "finished": true,
+  "env": {
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+    "href": "file:///E:/test/vr-standalone-probe/probe.html",
+    "protocol": "file:",
+    "origin": "file://",
+    "isSecureContext": true,
+    "hasShowDirectoryPicker": true,
+    "hasIndexedDB": true,
+    "hasLocalStorage": true,
+    "hasDecompressionStream": true,
+    "hasWorker": true
+  },
+  "tests": {
+    "T1": {
+      "id": "T1",
+      "name": "图片：相对路径直读（4 种文件名）",
+      "pass": true,
+      "value": "4/4 变体通过",
+      "reason": "",
+      "extra": [
+        {
+          "pass": true,
+          "url": "image/sample.jpg",
+          "w": 640,
+          "h": 480,
+          "ms": 10,
+          "note": "",
+          "variant": "纯 ASCII",
+          "stem": "sample"
+        },
+        {
+          "pass": true,
+          "url": "image/%E4%B8%AD%E6%96%87%E6%A0%B7%E6%9C%AC.jpg",
+          "w": 640,
+          "h": 480,
+          "ms": 3,
+          "note": "",
+          "variant": "中文",
+          "stem": "中文样本"
+        },
+        {
+          "pass": true,
+          "url": "image/with%20space.jpg",
+          "w": 640,
+          "h": 480,
+          "ms": 3,
+          "note": "",
+          "variant": "含空格",
+          "stem": "with space"
+        },
+        {
+          "pass": true,
+          "url": "image/hash%23pct%25%E6%A0%B7.jpg",
+          "w": 640,
+          "h": 480,
+          "ms": 5,
+          "note": "",
+          "variant": "含 # 与 %",
+          "stem": "hash#pct%样"
+        }
+      ]
+    },
+    "T2": {
+      "id": "T2",
+      "name": "动图 GIF：相对路径直读（4 种文件名）",
+      "pass": true,
+      "value": "4/4 变体通过",
+      "reason": "",
+      "extra": [
+        {
+          "pass": true,
+          "url": "gif/sample.gif",
+          "w": 256,
+          "h": 256,
+          "ms": 22,
+          "note": "",
+          "variant": "纯 ASCII",
+          "stem": "sample"
+        },
+        {
+          "pass": true,
+          "url": "gif/%E4%B8%AD%E6%96%87%E6%A0%B7%E6%9C%AC.gif",
+          "w": 256,
+          "h": 256,
+          "ms": 3,
+          "note": "",
+          "variant": "中文",
+          "stem": "中文样本"
+        },
+        {
+          "pass": true,
+          "url": "gif/with%20space.gif",
+          "w": 256,
+          "h": 256,
+          "ms": 3,
+          "note": "",
+          "variant": "含空格",
+          "stem": "with space"
+        },
+        {
+          "pass": true,
+          "url": "gif/hash%23pct%25%E6%A0%B7.gif",
+          "w": 256,
+          "h": 256,
+          "ms": 3,
+          "note": "",
+          "variant": "含 # 与 %",
+          "stem": "hash#pct%样"
+        }
+      ]
+    },
+    "T3": {
+      "id": "T3",
+      "name": "视频 MP4：相对路径直读 + seek（4 种文件名）",
+      "pass": true,
+      "value": "4/4 变体通过",
+      "reason": "",
+      "extra": [
+        {
+          "pass": true,
+          "url": "video/sample.mp4",
+          "readyState": 4,
+          "duration": 42.066688,
+          "ms": 436,
+          "note": "",
+          "seek": {
+            "target": 2,
+            "got": 2,
+            "ok": true
+          },
+          "variant": "纯 ASCII",
+          "stem": "sample"
+        },
+        {
+          "pass": true,
+          "url": "video/%E4%B8%AD%E6%96%87%E6%A0%B7%E6%9C%AC.mp4",
+          "readyState": 4,
+          "duration": 42.066688,
+          "ms": 291,
+          "note": "",
+          "seek": {
+            "target": 2,
+            "got": 2,
+            "ok": true
+          },
+          "variant": "中文",
+          "stem": "中文样本"
+        },
+        {
+          "pass": true,
+          "url": "video/with%20space.mp4",
+          "readyState": 4,
+          "duration": 42.066688,
+          "ms": 314,
+          "note": "",
+          "seek": {
+            "target": 2,
+            "got": 2,
+            "ok": true
+          },
+          "variant": "含空格",
+          "stem": "with space"
+        },
+        {
+          "pass": true,
+          "url": "video/hash%23pct%25%E6%A0%B7.mp4",
+          "readyState": 4,
+          "duration": 42.066688,
+          "ms": 339,
+          "note": "",
+          "seek": {
+            "target": 2,
+            "got": 2,
+            "ok": true
+          },
+          "variant": "含 # 与 %",
+          "stem": "hash#pct%样"
+        }
+      ]
+    },
+    "T4": {
+      "id": "T4",
+      "name": "音频 WAV：相对路径直读（4 种文件名）",
+      "pass": true,
+      "value": "4/4 变体通过",
+      "reason": "",
+      "extra": [
+        {
+          "pass": true,
+          "url": "audio/sample.wav",
+          "duration": 1,
+          "readyState": 4,
+          "ms": 18,
+          "note": "",
+          "variant": "纯 ASCII",
+          "stem": "sample"
+        },
+        {
+          "pass": true,
+          "url": "audio/%E4%B8%AD%E6%96%87%E6%A0%B7%E6%9C%AC.wav",
+          "duration": 1,
+          "readyState": 4,
+          "ms": 6,
+          "note": "",
+          "variant": "中文",
+          "stem": "中文样本"
+        },
+        {
+          "pass": true,
+          "url": "audio/with%20space.wav",
+          "duration": 1,
+          "readyState": 4,
+          "ms": 6,
+          "note": "",
+          "variant": "含空格",
+          "stem": "with space"
+        },
+        {
+          "pass": true,
+          "url": "audio/hash%23pct%25%E6%A0%B7.wav",
+          "duration": 1,
+          "readyState": 4,
+          "ms": 5,
+          "note": "",
+          "variant": "含 # 与 %",
+          "stem": "hash#pct%样"
+        }
+      ]
+    },
+    "T5": {
+      "id": "T5",
+      "name": "<script src> 加载索引",
+      "pass": true,
+      "value": "200 条 / 14ms",
+      "reason": "",
+      "extra": null
+    },
+    "T6": {
+      "id": "T6",
+      "name": "fetch() 加载索引",
+      "pass": false,
+      "value": "threw",
+      "reason": "TypeError: Failed to fetch",
+      "extra": null
+    },
+    "T7": {
+      "id": "T7",
+      "name": "XMLHttpRequest 加载索引",
+      "pass": false,
+      "value": "onerror",
+      "reason": "网络层拒绝",
+      "extra": null
+    },
+    "T8": {
+      "id": "T8",
+      "name": "IndexedDB 可用（存星标/收藏夹/句柄）",
+      "pass": true,
+      "value": "open+write ok",
+      "reason": "",
+      "extra": null
+    },
+    "T9": {
+      "id": "T9",
+      "name": "localStorage 可用（存视图偏好）",
+      "pass": true,
+      "value": "readback ok",
+      "reason": "",
+      "extra": null
+    },
+    "T15": {
+      "id": "T15",
+      "name": "canvas 导出缩略图（thumbs.js 的前提）",
+      "pass": false,
+      "value": "null",
+      "reason": "SecurityError: Failed to execute 'getImageData' on 'CanvasRenderingContext2D': The canvas has been tainted by cross-origin data.",
+      "extra": null
+    },
+    "T16": {
+      "id": "T16",
+      "name": "video 逐帧取图（视频缩略图）",
+      "pass": false,
+      "value": "null",
+      "reason": "",
+      "extra": null
+    },
+    "T17a": {
+      "id": "T17a",
+      "name": "blob URL 导出缩略图（全自动）",
+      "pass": true,
+      "value": "webp 560B",
+      "reason": "",
+      "extra": null
+    },
+    "T12": {
+      "id": "T12",
+      "name": "DecompressionStream(gzip) 可用",
+      "pass": true,
+      "value": "压缩 68B → 还原 8000B",
+      "reason": "",
+      "extra": null
+    },
+    "T13": {
+      "id": "T13",
+      "name": "5 万条索引：加载 + 解析耗时",
+      "pass": true,
+      "value": "50000 条 / 加载+解析 598ms / 再序列化 35ms / JSON 8MB / 堆 43MB",
+      "reason": "",
+      "extra": {
+        "count": 50000,
+        "loadMs": 598,
+        "serializeMs": 35,
+        "jsonMB": 8,
+        "heapMB": 43
+      }
+    },
+    "T14": {
+      "id": "T14",
+      "name": "Worker 可用（补充项，影响解压是否阻塞 UI）",
+      "pass": true,
+      "value": "constructed",
+      "reason": "",
+      "extra": null
+    },
+    "T10": {
+      "id": "T10",
+      "name": "showDirectoryPicker 在 file:// 下能否弹出",
+      "pass": null,
+      "value": "PENDING-MANUAL",
+      "reason": "需要真人点一次「选择文件夹」"
+    },
+    "T11": {
+      "id": "T11",
+      "name": "目录句柄能否跨会话保存",
+      "pass": null,
+      "value": "PENDING-MANUAL",
+      "reason": "依赖 T10 与 IndexedDB 结果"
+    }
+  },
+  "manual": {},
+  "verdict": {
+    "canViewWithoutGesture": true,
+    "viewDetail": {
+      "T1": true,
+      "T2": true,
+      "T3": true,
+      "T4": true
+    },
+    "hasPersistentStore": true,
+    "indexedDB": true,
+    "localStorage": true,
+    "handlePersists": false,
+    "canManageAcrossSessions": true,
+    "workingIndexChannels": [
+      "T5"
+    ],
+    "bigIndex": {
+      "count": 50000,
+      "loadMs": 598,
+      "serializeMs": 35,
+      "jsonMB": 8,
+      "heapMB": 43
+    }
+  },
+  "_meta": {
+    "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "url": "file:///E:/test/vr-standalone-probe/probe.html",
+    "probeDir": "E:/test/vr-standalone-probe",
+    "note": "未传 --allow-file-access-from-files，测的是默认行为"
+  }
+}

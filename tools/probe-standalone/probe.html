@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <title>standalone 能力探针 — video-rod</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px 28px 60px;
+      font: 13px/1.6 ui-sans-serif, system-ui, "Microsoft YaHei", sans-serif;
+      background: #FAF9F5; color: #1A1814;
+    }
+    h1 { font-size: 16px; margin: 0 0 4px; font-weight: 650; }
+    .sub { color: #6B655C; font-size: 12px; margin-bottom: 18px; }
+    .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    button {
+      font: inherit; font-size: 12px; padding: 7px 14px; border-radius: 7px;
+      border: 1px solid #D6D0C4; background: #fff; cursor: pointer;
+    }
+    button:hover { background: #F2EEE5; }
+    button.primary { background: #1A1814; color: #FAF9F5; border-color: #1A1814; }
+    button.primary:hover { background: #35302A; }
+    #summary { font-size: 12px; color: #6B655C; font-variant-numeric: tabular-nums; }
+    #manualMsg { font-size: 12px; color: #8A5A1E; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #E4DED2; border-radius: 8px; overflow: hidden; }
+    th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #EFEAE0; vertical-align: top; }
+    th { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #8A8478; font-weight: 650; background: #FBFAF7; }
+    td.id { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #6B655C; width: 42px; }
+    td.tag { width: 62px; font-size: 11px; font-weight: 650; }
+    td.val { font-family: ui-monospace, Consolas, monospace; font-size: 11px; width: 260px; }
+    td.why { font-size: 11px; color: #8A5A1E; }
+    tr.ok td.tag { color: #2C6B3F; }
+    tr.bad td.tag { color: #A8321E; }
+    tr.pend td.tag { color: #8A6A1E; }
+    tr.bad { background: #FDF6F4; }
+    pre {
+      margin: 18px 0 0; padding: 14px; background: #1A1814; color: #E8E2D6;
+      border-radius: 8px; font-size: 11px; line-height: 1.55; overflow: auto; max-height: 420px;
+    }
+    .note { margin-top: 18px; padding: 12px 14px; background: #F2EEE5; border-left: 3px solid #C9A227; border-radius: 0 7px 7px 0; font-size: 12px; }
+    .note b { font-weight: 650; }
+    .note ol { margin: 6px 0 0; padding-left: 18px; }
+  </style>
+</head>
+
+<body>
+  <h1>standalone 能力探针</h1>
+  <div class="sub">
+    用实测回答「本地 HTML 双击打开后能不能自己干活」。结果由 <code>run-probe.py</code> 通过 CDP 读取。
+  </div>
+
+  <div class="bar">
+    <button class="primary" id="run">开始自动检测</button>
+    <span id="summary">未开始</span>
+  </div>
+
+  <div class="bar">
+    <button id="manual">手动：选一个文件夹（测 T10 / T11）</button>
+    <span id="manualMsg">需要真人点一次，脚本模拟的点击浏览器不认</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>编号</th>
+        <th>检查项</th>
+        <th>结果</th>
+        <th>实测值</th>
+        <th>失败原因</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <div class="note">
+    <b>怎么读这张表</b>
+    <ol>
+      <li><b>看</b> = T1–T4。全通过才说明「双击后 0 次交互就能看到素材」。</li>
+      <li><b>管</b> = T8 / T9 / T11。全通过才说明「星标、收藏夹、目录授权能跨会话记住」。</li>
+      <li>T5–T7 决定索引文件能用什么格式存；T12–T14 决定大数据量下会不会卡。</li>
+    </ol>
+  </div>
+
+  <pre id="json">{}</pre>
+
+  <script src="probe.js"></script>
+</body>
+
+</html>
