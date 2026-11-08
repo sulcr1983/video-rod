@@ -324,28 +324,13 @@
     /**
      * 取候选链里「最可能是图片」的最大版本。
      *
-     * 关键坑（踩过）：collectCandidates 的第 ① 级是包裹图片的 `a[href]`，
-     * 那**可能是详情页/原帖地址而不是图片**。若直接取首项，
-     * 预览层会显示一张网页、下载也会把网页存下来 ——
-     * 正是「下载到的不是自己想要的」最常见的成因。
-     * 所以必须先用 isProbablyImage 过滤，再从剩下的里取最靠前（已按大图优先排序）。
+     * 逻辑已抽到 lib-image-util.js 的 bestCandidate（纯函数，可单测）：
+     * 2026-11-08 苏哥报「嗅探不准确」，根因就是这段逻辑只有侧边栏有一份，
+     * 而三处批量下载都直接用 it.url（页面显示的预览版），
+     * 同一张图单张下是原图、批量下是缩略图。
      */
     function bestCandidate(it) {
-        const list = it.candidates || [];
-        let fallback = '';
-        for (const c of list) {
-            if (!c) { continue; }
-            if (c.indexOf('data:') === 0) {
-                if (!fallback) { fallback = c; }
-                continue;
-            }
-            let ok = false;
-            try { ok = U.isProbablyImage(c); } catch (e) { ok = false; }
-            if (ok) { return c; }
-            if (!fallback) { fallback = c; }
-        }
-        // 一个都不像图片时退回显示地址（至少是页面真正渲染出来的那张）
-        return fallback || it.url;
+        return U.bestCandidate(it.candidates, it.url);
     }
 
     /* ---------------- 默认全选口径 ---------------- */
@@ -755,7 +740,11 @@
         renderFoot();
 
         const payload = list.map((it, i) => ({
-            url: it.url,
+            /* 用 it.orig（候选链里最像原图的那条），不是 it.url。
+             * 2026-11-08 苏哥报「嗅探不准确」：单张下载走的是 it.orig，
+             * 批量却用 it.url（页面显示的预览版），同一张图两条路径落盘尺寸不同。
+             * 小红书实测 26 张全是 640 宽的预览档，就是这条造成的。 */
+            url: it.orig || it.url,
             candidates: it.candidates,
             /* 必须带序号：同页多张图共用 pageTitle 时，背景会按 title 命名，
              * 两张同名只剩扩展名能区分（实测 cover.jpg / sprite.png 落成同名 .jpg/.png）。

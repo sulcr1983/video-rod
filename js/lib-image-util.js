@@ -148,6 +148,41 @@
         return true;   // 例如 /img?id=1、hbimg 的 hash 结尾
     }
 
+    /**
+     * 从候选链里挑「最可能是原图」的那一条。
+     *
+     * 为什么要抽成公共函数：这段逻辑原先只写在 `image-page.js` 里，
+     * 结果**侧边栏批量用 it.url（页面显示的 640 预览版）、单张下载用 it.orig**，
+     * 同一张图在两条路径下落盘尺寸不同（2026-11-08 苏哥报「嗅探不准确」）。
+     * 现在统一走这里，三条批量入口和单张下载口径一致。
+     *
+     * 关键坑：候选链第 ① 级是包裹图片的 `a[href]`，那**可能是详情页而不是图片**。
+     * 所以必须先用 isProbablyImage 过滤，不能盲取首项 ——
+     * 否则会把网页存成图片（「下载到的不是自己想要的」最常见成因）。
+     *
+     * @param {string[]} candidates 候选链（已按大图优先排序）
+     * @param {string} [fallback] 全都不像图片时的兜底（通常是页面显示地址）
+     * @returns {string}
+     */
+    function bestCandidate(candidates, fallback) {
+        var list = Array.isArray(candidates) ? candidates : [];
+        var fb = '';
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i];
+            if (!c) { continue; }
+            if (c.indexOf('data:') === 0) {
+                if (!fb) { fb = c; }
+                continue;
+            }
+            var ok = false;
+            try { ok = isProbablyImage(c); } catch (e) { ok = false; }
+            if (ok) { return c; }
+            if (!fb) { fb = c; }
+        }
+        /* 一个都不像图片时退回兜底：至少是页面真正渲染出来的那张 */
+        return fb || String(fallback || '');
+    }
+
     /* ---------------- srcset ---------------- */
 
     /**
@@ -924,6 +959,7 @@
         isSvgUrl: isSvgUrl,
         isPlaceholderUrl: isPlaceholderUrl,
         isProbablyImage: isProbablyImage,
+        bestCandidate: bestCandidate,
         looksLikePage: looksLikePage,
         extFromUrl: extFromUrl,
         extFromContentType: extFromContentType,

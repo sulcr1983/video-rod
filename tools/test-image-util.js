@@ -190,6 +190,38 @@ const onlyCurrent = makeImg({ src: '/x.jpg', currentSrc: '/y.jpg' });
 arr('候选 ⑤currentSrc 先于 src', U.collectCandidates(onlyCurrent, makeDoc([])),
     ['https://example.com/y.jpg', 'https://example.com/x.jpg']);
 
+/* ---------------- bestCandidate（2026-11-08 统一择优） ---------------- */
+/* 背景：这段逻辑原先只在 image-page.js 里有一份，三处批量下载直接用 it.url，
+ * 导致「单张下是原图、批量下是缩略图」。抽成公共函数后必须锁住语义。 */
+{
+    const chain = ['https://a.com/post/123', 'https://a.com/big.jpg', 'https://a.com/small.jpg'];
+    eq('best 跳过网页路径取图', U.bestCandidate(chain, 'https://a.com/small.jpg'),
+        'https://a.com/big.jpg');
+    eq('best 取第一个像图的（大图优先）', U.bestCandidate(
+        ['https://a.com/1.jpg', 'https://a.com/2.jpg'], ''), 'https://a.com/1.jpg');
+    eq('best 空链退回 fallback', U.bestCandidate([], 'https://a.com/x.jpg'),
+        'https://a.com/x.jpg');
+    eq('best 全不像图退回首个候选', U.bestCandidate(['https://a.com/p/1'], ''),
+        'https://a.com/p/1');
+    eq('best 无 fallback 且空链返回空串', U.bestCandidate([], ''), '');
+    eq('best data URI 作兜底', U.bestCandidate(['data:image/png;base64,xx'], ''),
+        'data:image/png;base64,xx');
+    eq('best 跳过 svg', U.bestCandidate(['https://a.com/i.svg', 'https://a.com/p.jpg'], ''),
+        'https://a.com/p.jpg');
+    eq('best 非数组安全', U.bestCandidate(null, 'https://a.com/y.jpg'),
+        'https://a.com/y.jpg');
+    /* 小红书实测形态：候选链里只有 sns-*.xhscdn.com（预览档 + 去参裸地址），
+     * **没有** ci.xiaohongshu.com 原图 —— 原图推导在 js/xhs-media.js，
+     * 但它不在图片内容脚本组里，collectCandidates 用不到（见 B-37）。
+     * 所以这里取到的是链首的预览档，这是当前的真实行为，不是期望行为。 */
+    const xhs = [
+        'https://sns-na-i4.xhscdn.com/notes_pre_post/1040g2sg?imageView2/2/w/640/format/webp',
+        'https://sns-na-i4.xhscdn.com/notes_pre_post/1040g2sg'
+    ];
+    eq('best 小红书当前取链首（原图未接入，见 B-37）',
+        U.bestCandidate(xhs, xhs[0]), xhs[0]);
+}
+
 /* ---------------- scanImages ---------------- */
 const big1 = makeImg({ src: '/media/a.jpg', nw: 1200, nh: 900 });
 const big2 = makeImg({ src: '/media/b.png', nw: 800, nh: 800 });

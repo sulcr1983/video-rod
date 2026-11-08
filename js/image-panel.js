@@ -612,7 +612,10 @@
         return items
             .filter(it => want.has(it.url))
             .map(it => ({
-                url: it.url,
+                /* 取候选链里最像原图的那条，不是页面显示的预览版。
+                 * 2026-11-08 苏哥报「嗅探不准确」：单张下载走 orig、批量走 url，
+                 * 同一张图两条路径落盘尺寸不同。 */
+                url: U.bestCandidate(it.candidates, it.url),
                 candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url],
                 title: pageTitle
             }));
