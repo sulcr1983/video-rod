@@ -153,7 +153,40 @@
 | 上述 2 处日志补强 | **未执行**：`js/background.js` 本轮被另一会话持有写权（`workspace.write_conflict`） | 待该会话释放后按本表补上，不改逻辑、只加一行带上下文的 `console.warn` |
 
 > 本轮对库页（`js/library/*.js`）新增的异常分支都带上下文日志或明确降级说明，未新增静默 `catch`。
-| B-30 | **站点名的真机交叉验证（自动抓取 vs 预置表）** | 已实测 10 个真实站点：花瓣网/知乎/豆瓣/GitHub/Pixso 靠抓取成功，Pixabay/Unsplash/Dribbble/Behance/500px 因 Cloudflare 或超时回退预置表。但还没在**扩展真机**（装进 Edge 后）复跑一遍，确认 service worker 的 fetch 与 Node 环境一致 | 扩展加载后打开 5 个站点各下载一次，看设置页「站点名称」是否出现真实站名（而非域名） | 真机走一遍，核对 vrSiteNames 实际写入内容与来源标记 |
-| B-31 | **预置表 381 条的站名准确性抽查** | 表内 host 与显示名的格式已全部校验通过，但「小众站点官方到底叫什么」没有逐条核实。错的显示名会直接变目录名 | 抽查 30 条（尤其中文小站）与官网对照 | 发现错误就改 `site-names-preset.js` 后跑 `node tools/check-site-names.js` |
+| B-30 | **站点名的真机交叉验证（自动抓取 vs 预置表）** | 已实测 10 个真实站点：花瓣网/知乎/豆瓣/GitHub/Pixso 靠抓取成功，Pixabay/Unsplash/Dribbble/Behance/500px 因 Cloudflare 或超时回退预置表。**2026-11-08 补**：站点名链路代码已全部提交（`e025d82`），离线校验 `test-site-name` **84/84**、`check-site-names` **5/5** 全绿，但这只覆盖纯逻辑与表结构。**「扩展真机里 service worker 的 fetch 与 Node 一致」仍未验**——这是本条唯一未解除的卡点 | 扩展加载后打开 5 个站点各下载一次，看设置页「站点名称」是否出现真实站名（而非域名） | 真机走一遍，核对 vrSiteNames 实际写入内容与来源标记（需带登录态的 Edge 实例，无法在本环境完成） |
+| B-31 | **预置表 381 条的站名准确性抽查** | 表内 host 与显示名的**格式**已全部机器校验通过（2026-11-08 复跑 `check-site-names`：381 条 / 391 host 格式合法、显示名唯一且可原样落盘、均为可注册域名、byHost/byName 自反命中）。卡点只剩**语义层**：「小众站点官方到底叫什么」没有与官网逐条对照，错的显示名会直接变目录名 | 抽查 30 条（尤其中文小站）与官网对照 | 发现错误就改 `site-names-preset.js` 后跑 `node tools/check-site-names.js`（该脚本已验证可用，改完立即能判格式是否仍合法） |
 | B-36 | **全链接扫描未接 UI（模块已就绪）** | `js/lib-download-scan.js` 的 `collectLinks`（`a[href]` 全量 + `video/audio/source/embed/object`）已实现且有单测，但没接进侧边栏：我们的 `vrImgDownload` 会把 `VR_IMG_EXT_OK` 白名单外的扩展名**一律强转 `jpg`**，接上去等于列出 PDF 却存成 .jpg（曾加过菜单项，随即撤掉，不留死按钮） | **前置**：`vrImgDownload` 的 `type` 从硬编码 `'image'` 改为按扩展名推导，白名单外走通用 `vrDownloadWithName` | 改完后接 `data-more="files"` 菜单项 + 列表项 `kind` 支持 doc/media | `COMPETITOR-EXTENSIONS.md` §8.4、ADR-065 决策三 |
 | B-37 | **小红书原图未接入图片链路** | `js/xhs-media.js` 的 `originalUrl()` 能把 `sns-*.xhscdn.com` 预览档推导成 `ci.xiaohongshu.com` 原图（25 条单测通过），但它**不在图片内容脚本组**里（`manifest.json` 的图片组只有 lib-image-util / lib-download-scan / image-*），所以 `collectCandidates` 拿不到原图候选，清单里全是 640 宽预览档。另注：`ci` 域对**部分**素材 ID 返回 404（2026-11-07 实测），不能盲目优先 | **前置**：① 把 `js/xhs-media.js` 加进图片内容脚本组；② `collectCandidates` 对 xhscdn 追加 ci 原图候选（**排在末位**，不夺首选）；③ 下载侧失败要能回退到预览档（`vrImgDownload` 目前不消费 candidates，需一并改） | 改完跑 `node tools/test-xhs-media.js` + `test-image-util.js`，并真机验 1 个笔记 | `COMPETITOR-EXTENSIONS.md` §8.1、ADR-065 |
+
+---
+
+## 资源库持久化（2026-11-07 新增，方案见 `LIBRARY-SELF-CONTAINED-PLAN.md`）
+
+| # | 任务 | 为什么 | 阻塞条件 | 验收方式 | 出处 |
+|---|---|---|---|---|---|
+| B-32 | **✅ 已实施** · 快照补全 + 自动化 + 路径自恢复 | 用户核心痛点：重装系统后整理成果丢失。实测快照只存 9 个字段，收藏夹/改名/分辨率/来源 URL 全不在内；`snapshot()` 只有设置页手动按钮一个调用点；`payload.root` 写入但无代码读取 | — | 已交付：17 字段 + `favorites` + 固定名 `index.json` + `root` 自恢复 + 入库后 30s 节流自动写 | `LIBRARY-PERSISTENCE-SPEC.md` §6.1 |
+| B-33 | **✅ 已实施** · 缩略图落盘 + 生命周期管理 | 缩略图只存 IDB blob，重装即失；`thumb` store 无 delete；改名/删除/移动产生孤儿 | — | 已交付：`thumbs/<16hex>.webp` 落盘、`deleteFor`/`gc`、mtime+size 双校验失效判定、启动后自动清孤儿 | `LIBRARY-PERSISTENCE-SPEC.md` §6.2 |
+| B-34 | **✅ 已实施** · 冷启动「读索引 + 增量对账」+ 超限提示 | `mode:'full'` 对每文件 `getFile()`；`MAX_ITEMS/MAX_DEPTH` 三处静默截断 | — | 已交付：新增 `mode:'reconcile'`、`MAX_ITEMS` 2 万→10 万、`MAX_DEPTH` 8→12、超限经 `reportTruncation` toast 告知 | `LIBRARY-PERSISTENCE-SPEC.md` §6.3 |
+| B-35 | **✅ 已实施** · 按需查询替代全量读表 | `getAllFiles()` 6 处无条件调用；已有索引未充分利用 | — | 已交付：`queryFiles`/`findBy`/`countBy` 游标查询；首屏大库只取一页（`count()` 判据）；dedup 三处改用游标 | `LIBRARY-PERSISTENCE-SPEC.md` §3.1 |
+
+> **2026-11-07 实施完成**：B-32→B-35 四步全部落地，另加阶段 4 备份/恢复入口。
+> 红队 14 项缺陷中，9 项真实缺陷已全部修复（2 项经检索认定无需改、3 项确认无动作）。
+>
+> **回归结果（670 条断言）**：
+> `test-persistence` 79 · `test-zip` 40 · `test-backup-restore` 33 ·
+> `test-path` 90 · `test-save` 51 · `dedup` 21 · `naming` 43 ·
+> `img-filter` 47 · `image-tier` 57 · `album-sites` 52 · `site-name` 84 ·
+> `image-util` 108 · `check-site-names` 5 —— **全部 0 失败**。
+>
+> **Edge 隔离套件**：5/8 通过。3 个 FAIL 经「改动前基线对照」证实为既有问题：
+> `skin` 19/20（前后一致）、`e2e-buttons` 26/28（前后一致，失败项同为
+> 「树节点 8」「B站节点筛选 3」）、`download-path` 6/10（文档已记录的
+> "无 FSA 时 Chrome 忽略 filename" 限制）。
+
+> **回滚方式（任一阶段出问题）**：
+> 删掉 `_library/index.json` 即回退快照改动；`git checkout css/` 回退字号；
+> IDB schema 从未升版，浏览器数据不受影响。
+
+> **施工建议顺序**：B-32 → B-33 → B-34 → B-35。
+> B-32 单独就有价值（直接解决重装丢失），改动最小且可回滚
+> （删掉 `_library/index.json` 即可回退，IDB 从未被改动）。
