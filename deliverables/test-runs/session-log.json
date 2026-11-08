@@ -875,6 +875,106 @@
           "ok": true
         }
       ]
+    },
+    {
+      "at": "2026-11-08T23:52:55",
+      "summary": "1/1 套件通过，用时 9.4s",
+      "report": "deliverables\\test-runs\\2026-11-08-2352-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T00:04:07",
+      "summary": "1/1 套件通过，用时 8.8s",
+      "report": "deliverables\\test-runs\\2026-11-09-0004-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T00:08:35",
+      "summary": "1/1 套件通过，用时 8.3s",
+      "report": "deliverables\\test-runs\\2026-11-09-0008-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T00:29:44",
+      "summary": "1/1 套件通过，用时 8.3s",
+      "report": "deliverables\\test-runs\\2026-11-09-0029-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T00:35:11",
+      "summary": "1/1 套件通过，用时 8.9s",
+      "report": "deliverables\\test-runs\\2026-11-09-0035-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T00:43:24",
+      "summary": "7/8 套件通过，用时 154.6s",
+      "report": "deliverables\\test-runs\\2026-11-09-0043-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        },
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        },
+        {
+          "n": "skin",
+          "ok": true
+        },
+        {
+          "n": "download-path",
+          "ok": false
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        }
+      ]
     }
   ]
 }
