@@ -422,10 +422,25 @@
     /** 图是否属于某个视频容器（封面/海报/视频卡片缩略图） */
     function nearVideo(img) {
         var p = img && img.parentElement;
+        var ri = null;
+        try { ri = img.getBoundingClientRect(); } catch (e) { }
         for (var i = 0; i < 4 && p; i++, p = p.parentElement) {
             try {
                 if (p.tagName === 'VIDEO') { return true; }
                 if (p.querySelector && p.querySelector('video')) { return true; }
+                /* 播放器在 iframe 里（MSN / 多数新闻站的标准做法）：
+                 * 顶层 DOM 查不到 video，但 iframe 就盖在这张封面上 ——
+                 * 同样说明「这是视频封面，用户要的是视频，不是这张图」。
+                 * 2026-11-09 苏哥实测：MSN 视频卡片上只冒出「4 张图」的图片浮标，
+                 * 视频下载键没出现 —— 一半原因就是这条没认 iframe。
+                 *
+                 * 要求 iframe 面积接近这张图，避免「整个页面主体就是一个 iframe」
+                 * 的站点被一刀切（那种情况下所有图都会被误抑制）。 */
+                var f = p.querySelector && p.querySelector('iframe');
+                if (f && ri) {
+                    var rf = f.getBoundingClientRect();
+                    if (rf.width >= ri.width * 0.7 && rf.height >= ri.height * 0.7) { return true; }
+                }
             } catch (e) { /* 忽略 */ }
         }
         return false;

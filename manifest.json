@@ -130,10 +130,20 @@
       ],
       "js": [
         "js/naming.js",
-        "js/video-quality.js",
-        "js/video-overlay.js"
+        "js/video-quality.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
+        "js/video-overlay.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
       "matches": [

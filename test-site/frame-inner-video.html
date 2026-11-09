@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>播放器（iframe 内部）</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; }
+  video { display: block; width: 100%; height: 100%; object-fit: cover; }
+</style>
+</head>
+<body>
+  <!-- 不要求真能播：悬浮键的挂载只看元素尺寸，不看能否解码。
+       这样可以离线验证「iframe 里的 video 有没有被扫到」。 -->
+  <video id="v" controls muted playsinline
+         poster="../media/wide.png"
+         src="../media/sample-not-found.mp4"></video>
+</body>
+</html>

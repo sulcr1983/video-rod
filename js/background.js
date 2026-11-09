@@ -2842,7 +2842,9 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message.Message == "vrVideoOptions") {
         const tabId = (sender && sender.tab && sender.tab.id != null)
             ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
-        vrVideoOptions(tabId).then(function (r) {
+        /* frameId 来自注入点：按钮挂在 iframe 里时，要按那个 frame 去找「正在播的」 */
+        const fId = (sender && sender.frameId != null) ? sender.frameId : Message.frameId;
+        vrVideoOptions(tabId, fId).then(function (r) {
             sendResponse({ ok: true, site: r.site, options: r.options });
         }).catch(function (e) {
             sendResponse({ ok: false, reason: String(e).slice(0, 120) });
@@ -2852,7 +2854,8 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message.Message == "vrVideoDownload") {
         const tabId = (sender && sender.tab && sender.tab.id != null)
             ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
-        vrVideoDownload(tabId, Message.optionId, Message.wantBest !== false)
+        const fId = (sender && sender.frameId != null) ? sender.frameId : Message.frameId;
+        vrVideoDownload(tabId, Message.optionId, Message.wantBest !== false, fId)
             .then(function (r) {
                 // 诊断：把「有几个可选源 / 选了哪个 / 结果」记一条到 storage。
                 // 用户反馈「点了没反应」时，先看这条就知道是没源、还是下载被拒。
@@ -4992,7 +4995,7 @@ async function vrDouyinImages(sender) {
     }
 }
 
-async function vrVideoOptions(tabId) {
+async function vrVideoOptions(tabId, frameId) {
     const out = { site: 'generic', options: [] };
 
     // 抖音优先：详情接口一次拿到「当前这条」的元数据和全部清晰度。
@@ -5096,7 +5099,12 @@ async function vrVideoOptions(tabId) {
     let playing = '';
     try {
         const pr = await vrWithTimeout(chrome.scripting.executeScript({
-            target: { tabId: tabId },
+            /* 按钮可能挂在 iframe 里（MSN/新闻站的播放器都在 iframe 中）。
+             * 不指定 frameIds 就只能读到顶层 frame 的 video —— 而顶层往往一个都没有，
+             * 于是「正在播放」永远为空，选中哪条全靠运气。 */
+            target: (frameId != null && frameId >= 0)
+                ? { tabId: tabId, frameIds: [frameId] }
+                : { tabId: tabId },
             func: function () {
                 const vs = Array.from(document.querySelectorAll('video'));
                 const v = vs.filter(function (x) { return x.currentSrc && !x.paused; })[0]
@@ -5281,8 +5289,8 @@ async function vrVideoOptions(tabId) {
 
 /** 页内按钮：按选项下载。完成后主动推 vrVideoProgress 给按钮更新状态。
  *  B站 的两条路都必须在页面主世界跑（CDN 要页面 Referer，ADR-029）。 */
-async function vrVideoDownload(tabId, optionId, wantBest) {
-    const opt = await vrVideoOptions(tabId);
+async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
+    const opt = await vrVideoOptions(tabId, frameId);
     let pick = null;
     if (wantBest || !optionId) {
         // 一键下载 = 最高清：B站 有更高档的 DASH 就用它（合成只多一两秒），

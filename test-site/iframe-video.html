@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>iframe 内视频 —— 视频悬浮键覆盖测试</title>
+<style>
+  body { font: 14px/1.6 system-ui, sans-serif; margin: 24px; background: #f6f7f9; color: #111; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .hint { color: #666; margin-bottom: 18px; }
+  /* 模拟 MSN：卡片 = 封面图 + 遮罩，真视频在 iframe 里 */
+  .card { position: relative; width: 720px; border-radius: 12px; overflow: hidden;
+          background: #000; box-shadow: 0 2px 12px rgba(0,0,0,.14); }
+  /* 封面图在顶层：图片浮标会盯上它（苏哥截图里的那个「4 张图」按钮） */
+  .cover { display: block; width: 720px; height: 405px; object-fit: cover; }
+  .card iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .badge { position: absolute; right: 10px; top: 8px; z-index: 3;
+           background: rgba(0,0,0,.6); color: #fff; font-size: 12px; padding: 3px 8px; border-radius: 4px; }
+</style>
+</head>
+<body>
+  <h1>iframe 内视频：视频悬浮键能否挂上</h1>
+  <p class="hint">顶层只有封面 <code>&lt;img&gt;</code>，真 <code>&lt;video&gt;</code> 在 iframe 里（同 MSN 的结构）。</p>
+
+  <div class="card">
+    <img class="cover" src="media/wide.png" alt="视频封面（顶层图片）">
+    <span class="badge">点击查看完整视频</span>
+    <iframe src="frame-inner-video.html" title="视频播放器"></iframe>
+  </div>
+
+  <p class="hint" style="margin-top:16px">
+    预期：iframe 内视频右上角出现视频下载键；顶层封面图可能同时出现图片浮标（两者重叠属已知，待评估）。
+  </p>
+</body>
+</html>

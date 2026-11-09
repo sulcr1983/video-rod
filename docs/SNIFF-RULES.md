@@ -108,7 +108,7 @@ doc.querySelectorAll('img')
 
 ---
 
-## 五、本次修的四个缺陷
+## 五、本次修的五个缺陷
 
 ### 5.1 字节分片被当成完整文件（核心）
 
@@ -170,6 +170,37 @@ https://cdn/video/087d2e….mp4_bd.mp4 ┘ → 主干 …/video/087d2e…  → �
 
 顺手修的一个隐患：原来 `addMedia` 拿 `href` 去 `tabs.query` 里比对，iframe 发来的 `href` 是 **iframe 的 URL**，永远匹配不到 → 落到「当前激活 tab」。用户切到别的标签再触发，地址就归错页了。
 
+### 5.5 页面上只冒出图片浮标，没有视频键（苏哥截图那条）
+
+**现象**（苏哥 2026-11-09 截图）：视频卡片右上角只有「图片下载 + 4 张图」的浮标，
+没有视频下载键。他自己描述成「识别成图片了」。
+
+**根因有两层，都在「悬浮键」而不是「嗅探」**：
+
+1. `video-overlay.js` 所在 content_scripts 是 `all_frames: false` —— 只注入顶层。
+   而 MSN 这类站点的播放器在 **iframe 里**，顶层 `document.querySelectorAll('video')` 是 0 个 → 按钮永远不挂。
+   （和 §5.4 的 `net-sniff` 是同一个病根，只是这次受害者是页面按钮。）
+2. 就算视频键挂上了，图片浮标也会盖在同一位置。`image-hover.js` 有 `nearVideo()`
+   抑制逻辑，但它只查 `<video>`，查不到 iframe 里的播放器 → 拦不住。
+
+**修法**：
+
+| 改动 | 位置 | 说明 |
+|---|---|---|
+| 拆独立注入组 | `manifest.json` | `video-overlay.js` 单独一组，`all_frames: true` |
+| 认 iframe 播放器 | `image-hover.js` `nearVideo` | 祖先里有 iframe 且面积 ≥ 图片的 70% → 视为视频封面，图片浮标让位 |
+| 按 frame 找「正在播」 | `background.js` `vrVideoOptions(tabId, frameId)` | 按钮在 iframe 里时，探测 `playing` 要注入到那个 frame，否则永远是空 |
+
+**验证**：`test-site/iframe-video.html`（顶层封面图 + iframe 内 `<video>`，模拟 MSN 结构）
+
+- 修复前：iframe 内 `.vr-vob` 数量 0；顶层图片浮标存在
+- 修复后：iframe 内 `.vr-vob vr-on` 出现（80×48，右上角）；顶层图片浮标数量 **0**
+
+截图证据：`deliverables/assets/iframe-video-before.png`（两个按钮叠着）、`iframe-video-after.png`（只剩视频键）
+
+**注意**：图片浮标让位 ≠ 图片下不了。卡片封面仍可通过「抓图」批量保存，
+只是不在视频卡片上抢位置。
+
 ---
 
 ## 六、已知边界（说清做不到的）
@@ -196,3 +227,5 @@ https://cdn/video/087d2e….mp4_bd.mp4 ┘ → 主干 …/video/087d2e…  → �
 | 页面侧挖地址 | `js/net-sniff.js` | `scan` / `guessExt` |
 | 图片扫描 | `js/lib-image-util.js` | `scanImages`（632）|
 | 候选排序 | `js/video-quality.js` | `sortCandidates` |
+| 视频悬浮键（含 iframe） | `js/video-overlay.js` + `manifest.json` | `scan` / `usable` |
+| 图片浮标的视频区抑制 | `js/image-hover.js` | `nearVideo`（423）|
