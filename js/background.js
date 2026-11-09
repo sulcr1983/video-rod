@@ -688,6 +688,7 @@ function vrDownloadWithName(url, filename, extra) {
         extra || {}
     );
     delete opts.meta;   // meta 只用于资源库预登记，不是 chrome.downloads 的合法参数
+    delete opts.onProgress;   // 同上：进度回调只给 FSA 直写用，别塞进 downloads API
 
     // Chrome 147 起 chrome.downloads 的文件名保护全面失效（ADR-040）：
     // blob 落盘成 UUID、http 丢名退化成 URL 末段、suggest() 被忽略。
@@ -701,7 +702,11 @@ function vrDownloadWithName(url, filename, extra) {
             mime: (extra && extra.mime) || '',
             referrer: (extra && extra.referrer) || '',
             meta: (extra && extra.meta) || null,
-            prefer: 'auto'
+            prefer: 'auto',
+            /* FSA 直写本来是「没有进度」的黑盒（苏哥 2026-11-09 报进度条永远 0%）。
+             * save.js 的 pumpBlob/pumpUrl 早就带 onProgress(got,total) 钩子，
+             * 只是没人接 —— 这里原样透传，让调用方能把它变成界面上动的百分比。 */
+            onProgress: (extra && typeof extra.onProgress === 'function') ? extra.onProgress : null
         }).then(function (r) {
             if (r && r.ok && r.mode === 'fsa') {
                 // FSA 直写没有下载事件，入库已在 save.js 内部做完了。
@@ -5137,13 +5142,52 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         };
         try {
             const nm = await vrTraceMetaInTab(tabId);
-            if (nm) { Object.assign(trace, nm); }
+            /* ⚠️ 必须是「meta 优先、nm 只补空」，不能 Object.assign 无条件覆盖。
+             * 2026-11-09 实测踩到：meta 来自 vrVideoOptions 那一次 Fiber（与 pick.url 同一时刻，
+             * 两者必然对应同一条视频）；而这里再抠一次 Fiber，中间隔了几百毫秒到几秒，
+             * 首页/精选页一旦自动切到下一条，抠到的就是**另一条**的标题和 pageUrl。
+             * 无条件覆盖的后果：文件本身下对了，库里标题却变成下一条的名字
+             * （苏哥实测：烧鸡视频被记成「万磁侠第9集」）。
+             * 所以这里只允许 nm 填 meta 里没有的字段。 */
+            if (nm) {
+                ['pageUrl', 'author', 'authorId', 'workId', 'title'].forEach(function (k) {
+                    if (!trace[k] && nm[k]) { trace[k] = nm[k]; }
+                });
+            }
         } catch (e) { /* 埋点失败不影响下载 */ }
+
+        /* 抖音：pageUrl 用作品 ID 拼一条确定性地址。
+         * tab.url 可能是带 modal_id 的首页地址（用户点下载时弹窗里是另一条），
+         * 直接用会把「来源原帖」指向错误的视频。有 awemeId 就以它为准。 */
+        if (opt.site === 'douyin' && trace.workId && /^\d{10,}$/.test(String(trace.workId))) {
+            trace.pageUrl = 'https://www.douyin.com/video/' + trace.workId;
+        }
 
         // 路线 1（默认）：downloads API + DNR 回放页面 Referer。
         // 保留子目录和文件名保护；普通站点/抖音都走这条。
         if (pageUrl) { await vrSetMediaHeadersFor(pick.url, pageUrl); }
-        const id = await vrDownloadWithName(pick.url, filename, { meta: trace });
+
+        /* 真实字节进度 → 页内按钮。
+         * FSA 直写（常见路径）本来是个黑盒：save.js 的 pumpBlob/pumpUrl 会按 4MB
+         * 分片回报 onProgress(got,total)，但从来没人接，所以按钮永远 0%。
+         * 这里把它转成百分比推过去。节流：只有整数百分比变化才发。 */
+        let lastPct = -1;
+        const reportProgress = function (got, total) {
+            const t = Number(total) || 0;
+            const g = Number(got) || 0;
+            if (!t) { return; }
+            const pct = Math.max(0, Math.min(99, Math.round(g / t * 100)));
+            if (pct === lastPct) { return; }
+            lastPct = pct;
+            try {
+                chrome.tabs.sendMessage(tabId, {
+                    Message: 'vrVideoProgress', name: filename,
+                    pct: pct, phase: '下载中'
+                });
+            } catch (e) { /* 页面没了就停 */ }
+        };
+
+        const id = await vrDownloadWithName(pick.url, filename, { meta: trace, onProgress: reportProgress });
         let pageDl = null;
         /* FSA 直写成功时没有 downloadId，返回的是 {__fsa:true, path} —— 对象不是数字。
          * 原代码直接把对象丢给 vrWaitDownload，后者拿它当 downloads.search({id}) 的 id，
@@ -5152,18 +5196,34 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
          * 而文件其实**已经落盘成功**（FSA 直写，无需下载器）—— 这就是「静默下好了却报失败」。
          * 仓库里另外 5 处（905/931/2507/3457/3527）都判了 __fsa，唯独这条路径漏了。 */
         if (id && typeof id === 'object' && id.__fsa) {
+            /* 直写已经结束（saveFile 返回即写完），补一个终态。
+             * 没有终点消息的话按钮会永远卡在「…」，比 0% 更糟。 */
+            try {
+                chrome.tabs.sendMessage(tabId, {
+                    Message: 'vrVideoProgress', name: filename, done: true, ok: true
+                });
+            } catch (e) { /* 页面没了 */ }
             vrMarkDownloaded(filename);
             return finish({ ok: true, kind: 'fsa', filename: filename, path: id.path || filename });
         }
         if (id !== null) {
             const outcome = await vrWaitDownload(id, 2500);
-            if (!outcome || outcome.state !== 'interrupted') {
+            if (outcome && outcome.state === 'interrupted') {
+                // CDN 403 快速失败：撤账、清掉 .htm 残留，改走页面 fetch
+                try { vrAbortFilename(pick.url, filename); } catch (e) { /* ignore */ }
+                vrDropDownload(id);
+            } else if (outcome && outcome.state === 'complete') {
                 vrMarkDownloaded(filename);
                 return finish({ ok: true, kind: 'url', filename: filename });
+            } else {
+                /* 2.5 秒内没下完 = 还在跑（大文件基本都走这里）。
+                 * 交给进度观察器按真实字节报百分比，完成/中断由它推终态。
+                 * 必须带 started：视频页按钮看到它才会保持 busy 等进度，
+                 * 否则会立刻显示「完成」——苏哥 2026-11-09 报的「一直 0%」
+                 * 就是这个：没人报进度 + 2.5 秒就报成功。 */
+                vrWatchUrlDownload(tabId, filename, id);
+                return finish({ ok: true, started: true, kind: 'url', filename: filename });
             }
-            // CDN 403 快速失败：撤账、清掉 .htm 残留，改走页面 fetch
-            try { vrAbortFilename(pick.url, filename); } catch (e) { /* ignore */ }
-            vrDropDownload(id);
         }
 
         // 路线 2（回退）：页面主世界 fetch → blob → <a download>。
@@ -5252,6 +5312,70 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
     // 下载在页面里跑，后台盯着进度，完成后主动通知按钮
     vrWatchBiliDownload(tabId, name);
     return finish({ ok: true, kind: pick.kind, filename: name, started: true });
+}
+
+/** 盯 downloads 任务的真实字节进度，转成百分比推给页内按钮。
+ *
+ *  为什么需要（苏哥 2026-11-09「进度条老是 0%」）：
+ *  页内按钮的百分比原先只有 B站 那条链路会推（vrWatchBiliDownload 读页面里的
+ *  window.__vrBiliDL），通用站/抖音走 downloads API，**没有任何人报进度** ——
+ *  而且 vrWaitDownload 只等 2.5 秒，超时就当成功返回，按钮立刻显示「完成」，
+ *  下载其实还在跑。用户看到的就是「一直 0%，然后突然说好了」。
+ *
+ *  这里按 bytesReceived/totalBytes 报真实百分比，完成/中断时推终态。
+ *  抖音那种「downloads 被 CDN 403 → 页面 fetch 兜底」的路径没有 downloadId，
+ *  由调用方改推 indeterminate（按钮显示 …，不假装 0%）。
+ */
+function vrWatchUrlDownload(tabId, name, id) {
+    if (typeof id !== 'number' || !isFinite(id)) { return; }
+    let ticks = 0;
+    let lastPct = -1;
+    const push = function (payload) {
+        try { chrome.tabs.sendMessage(tabId, Object.assign({ Message: 'vrVideoProgress', name: name }, payload)); }
+        catch (e) { /* 页面关了就停 */ }
+    };
+    const timer = setInterval(async function () {
+        ticks++;
+        if (ticks > 1800) {            // 约 30 分钟兜底，防定时器泄漏
+            clearInterval(timer);
+            return;
+        }
+        let d = null;
+        try {
+            const list = await new Promise(function (res) {
+                chrome.downloads.search({ id: id }, function (l) {
+                    res(chrome.runtime.lastError ? [] : (l || []));
+                });
+            });
+            d = list && list[0];
+        } catch (e) { /* 下一次再试 */ }
+
+        if (!d) { clearInterval(timer); return; }
+
+        const total = Number(d.totalBytes) || Number(d.fileSize) || 0;
+        const got = Number(d.bytesReceived) || 0;
+
+        if (d.state === 'complete') {
+            clearInterval(timer);
+            try { vrMarkDownloaded(name); } catch (e) { /* 记账失败不影响下载结果 */ }
+            push({ done: true, ok: true, bytes: got || Number(d.fileSize) || 0 });
+            return;
+        }
+        if (d.state === 'interrupted') {
+            clearInterval(timer);
+            push({ done: true, ok: false, error: d.error || '下载中断' });
+            return;
+        }
+        if (!total) {                  // 服务器没给 Content-Length：老实说不知道进度
+            push({ indeterminate: true, phase: '下载中' });
+            return;
+        }
+        const pct = Math.max(0, Math.min(99, Math.round(got / total * 100)));
+        if (pct !== lastPct) {
+            lastPct = pct;
+            push({ pct: pct, phase: '下载中' });
+        }
+    }, 500);
 }
 
 /** 盯页面里的下载进度，结束/出错时推消息给按钮 */

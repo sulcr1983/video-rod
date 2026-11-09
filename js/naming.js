@@ -200,9 +200,40 @@
         try {
             var vids = qa(doc, 'video');
             if (!vids.length) { return null; }
-            var ordered = vids.filter(function (v) { return v.currentSrc && !v.paused; })
-                .concat(vids.filter(function (v) { return v.currentSrc; }))
-                .concat(vids);
+
+            /** 容器 class 里的权威作品 ID：`… video_<awemeId> …` */
+            function containerId(v) {
+                var n = v;
+                for (var d = 0; d < 14 && n; d++) {
+                    var m = String(n.className || '').match(/video_(\d{15,20})/);
+                    if (m) { return m[1]; }
+                    n = n.parentElement;
+                }
+                return '';
+            }
+            /** 在播 > 有源 > 视口内 > 面积大。
+             *  精选页是瀑布流，可能同时挂着预加载/离屏 video（实测有 1912×0 的隐形节点），
+             *  只按 DOM 顺序取第一个会飘到别的视频上。 */
+            var ordered = vids.slice().sort(function (a, b) {
+                var pa = a.paused ? 0 : 1, pb = b.paused ? 0 : 1;
+                if (pb !== pa) { return pb - pa; }
+                var ha = a.currentSrc ? 1 : 0, hb = b.currentSrc ? 1 : 0;
+                if (hb !== ha) { return hb - ha; }
+                var ra = { inView: 0, area: 0 }, rb = { inView: 0, area: 0 };
+                try {
+                    var ba = a.getBoundingClientRect();
+                    ra = { inView: (ba.top < (winH() || 0) && ba.bottom > 0) ? 1 : 0,
+                        area: Math.max(0, ba.width) * Math.max(0, ba.height) };
+                    var bb = b.getBoundingClientRect();
+                    rb = { inView: (bb.top < (winH() || 0) && bb.bottom > 0) ? 1 : 0,
+                        area: Math.max(0, bb.width) * Math.max(0, bb.height) };
+                } catch (e) { /* 迷你 DOM 没有 getBoundingClientRect → 全 0，退化成原顺序 */ }
+                if (rb.inView !== ra.inView) { return rb.inView - ra.inView; }
+                return rb.area - ra.area;
+            });
+            function winH() {
+                return (typeof window !== 'undefined' && window.innerHeight) || 0;
+            }
 
             function pick(children) {
                 var list = Array.isArray(children) ? children : [children];
@@ -238,11 +269,18 @@
             var hit = null;
             for (var i = 0; i < ordered.length && !hit; i++) {
                 var n = ordered[i];
+                var wantId = containerId(n);
+                var cand = null;
                 for (var up = 0; up < 16 && n; up++) {
-                    hit = fromFiber(n);
-                    if (hit) { break; }
+                    cand = fromFiber(n);
+                    if (cand) { break; }
                     n = n.parentElement;
                 }
+                if (!cand) { continue; }
+                /* 有权威 ID 就对一下：对不上说明这个 fiber 不是这条 video 的，
+                 * 宁可不命名，也不要拿别的视频的标题（错配比没名字更糟）。 */
+                if (wantId && String(cand.awemeId || cand.aweme_id || '') !== wantId) { continue; }
+                hit = cand;
             }
             if (!hit) { return null; }
             var a = hit.authorInfo || hit.author || {};

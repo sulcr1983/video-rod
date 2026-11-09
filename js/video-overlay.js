@@ -165,7 +165,7 @@
     }
 
     /* ---------- 状态 ---------- */
-    function setState(state, pct) {
+    function setState(state, pct, indeterminate) {
         panel.classList.remove('vr-busy', 'vr-done', 'vr-warn');
         if (state) { panel.classList.add('vr-' + state); }
         // 每次重新查：非 busy 分支会重建 innerHTML，旧引用会变成游离节点
@@ -173,7 +173,9 @@
         if (state === 'busy') {
             if (p) {
                 p.style.display = 'flex';
-                p.textContent = (pct != null ? pct : 0) + '%';
+                /* indeterminate：拿不到总字节（FSA 直写 / 服务器没给 Content-Length）
+                 * 时显示「…」而不是假的 0%。苏哥 2026-11-09 报的就是「一直 0%」。 */
+                p.textContent = indeterminate ? '…' : ((pct != null ? pct : 0) + '%');
             }
             const svg = btnMain.querySelector('svg');
             if (svg) { svg.style.opacity = '.25'; }
@@ -231,6 +233,22 @@
     });
 
     /* ---------- 下载 ---------- */
+    /* 兜底超时：后台说「已开始」后如果迟迟收不到任何进度（页面被切/后台被回收），
+     * 按钮不能永远卡在 busy —— 否则用户只能刷新页面。 */
+    var busyWatchdog = 0;
+    function armWatchdog() {
+        clearWatchdog();
+        busyWatchdog = setTimeout(function () {
+            busyWatchdog = 0;
+            if (!busy) { return; }
+            busy = false;
+            flash('warn', 3000);
+        }, 30 * 60 * 1000);
+    }
+    function clearWatchdog() {
+        if (busyWatchdog) { clearTimeout(busyWatchdog); busyWatchdog = 0; }
+    }
+
     function start(optionId, wantBest) {
         if (busy) { return; }
         busy = true;
@@ -248,7 +266,8 @@
                         return;
                     }
                     if (res.started) {
-                        // B站 路线：后台会推 vrVideoProgress 过来，等它通知
+                        // 后台接管了：等它推 vrVideoProgress（含 done）
+                        armWatchdog();
                         return;
                     }
                     busy = false;
@@ -277,10 +296,19 @@
         if (!msg || msg.Message !== 'vrVideoProgress') { return; }
         if (msg.done) {
             busy = false;
+            clearWatchdog();
             flash(msg.ok ? 'done' : 'warn', msg.ok ? 2200 : 3000);
             return;
         }
+        if (msg.indeterminate) {
+            /* 没有真实百分比（等 Content-Length / 直写磁盘）→ 显示 … 保持 busy，
+             * 不要用 0% 糊弄用户。 */
+            setState('busy', null, true);
+            armWatchdog();
+            return;
+        }
         setState('busy', msg.pct || 0);
+        armWatchdog();
     });
 
     /* 微博 feed：点击视频卡片时先记下这条微博的作者/文案。

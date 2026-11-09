@@ -77,7 +77,10 @@
             title: i.title || '',
             post: i.title || '',
             author: i.nickname || '',
-            authorId: i.uniqueId || i.uid || ''
+            authorId: i.uniqueId || i.uid || '',
+            /* 作品 ID 也要带上：入库的「来源原帖」优先用它拼，
+             * 避免拿带 modal_id 的首页地址指到另一条视频（2026-11-09 实测错配）。 */
+            workId: i.awemeId || ''
         };
     }
 
@@ -149,21 +152,62 @@
                 return null;
             }
 
-            /** 优先「正在播的那条」：paused=false 或有 currentSrc 的 video */
+            /** 优先「正在播的那条」：paused=false 或有 currentSrc 的 video。
+             *  再按「视口内 + 面积大」加权 —— 精选页是瀑布流，页面里可能同时存在
+             *  预加载/离屏的 video（实测见过 1912×0 的隐形节点），不能只看顺序。 */
             var vids = Array.prototype.slice.call(document.querySelectorAll('video'));
             if (!vids.length) { return null; }
-            var ordered = vids.filter(function (v) { return v.currentSrc && !v.paused; })
-                .concat(vids.filter(function (v) { return v.currentSrc; }))
-                .concat(vids);
 
-            var hit = null, host = null;
-            for (var i = 0; i < ordered.length && !hit; i++) {
-                var n = ordered[i];
-                for (var up = 0; up < 16 && n; up++) {      // 从 video 往上找带 Fiber 的祖先
-                    hit = fromFiber(n);
-                    if (hit) { host = n; break; }
+            /** 容器 class 里的作品 ID：`basePlayerContainer video_<awemeId>`。
+             *  这是**权威**的「这个 video 属于哪条作品」，用来校验 Fiber 结果，
+             *  防止从列表容器的 children 里抓到别的卡片（2026-11-09 实测错配来源）。 */
+            function containerId(v) {
+                var n = v;
+                for (var d = 0; d < 14 && n; d++) {
+                    var cls = String(n.className || '');
+                    var m = cls.match(/video_(\d{15,20})/);
+                    if (m) { return m[1]; }
                     n = n.parentElement;
                 }
+                return '';
+            }
+            function viewScore(v) {
+                try {
+                    var r = v.getBoundingClientRect();
+                    var inView = (r.top < (window.innerHeight || 0) && r.bottom > 0 &&
+                        r.left < (window.innerWidth || 0) && r.right > 0);
+                    return { inView: inView ? 1 : 0, area: Math.max(0, r.width) * Math.max(0, r.height) };
+                } catch (e) { return { inView: 0, area: 0 }; }
+            }
+            vids.forEach(function (v) { v.__vrScore = viewScore(v); });
+            vids.sort(function (a, b) {
+                var pa = a.paused ? 0 : 1, pb = b.paused ? 0 : 1;
+                if (pb !== pa) { return pb - pa; }                       // 在播的优先
+                var ha = a.currentSrc ? 1 : 0, hb = b.currentSrc ? 1 : 0;
+                if (hb !== ha) { return hb - ha; }                       // 有源的优先
+                if (b.__vrScore.inView !== a.__vrScore.inView) {         // 视口内优先
+                    return b.__vrScore.inView - a.__vrScore.inView;
+                }
+                return b.__vrScore.area - a.__vrScore.area;              // 画面大的优先
+            });
+
+            var hit = null, host = null, expectedId = '', gotId = '';
+            for (var i = 0; i < vids.length && !hit; i++) {
+                var n = vids[i];
+                var wantId = containerId(n);
+                var cand = null;
+                for (var up = 0; up < 16 && n; up++) {      // 从 video 往上找带 Fiber 的祖先
+                    cand = fromFiber(n);
+                    if (cand) { host = n; break; }
+                    n = n.parentElement;
+                }
+                if (!cand) { continue; }
+                gotId = String(cand.awemeId || cand.aweme_id || '');
+                /* 有权威 ID 时必须对上；对不上说明这个 fiber 不是这条 video 的，
+                 * 宁可继续找下一个，也不要拿错的元数据去命名（错配比没名字更糟）。 */
+                if (wantId && gotId !== wantId) { continue; }
+                hit = cand;
+                expectedId = wantId;
             }
             /* 播放器没命中（页面还没渲染完/纯图片卡）→ 退而扫全页卡片 */
             if (!hit) {
@@ -231,6 +275,10 @@
 
             return {
                 awemeId: awemeId,
+                /* 容器 class 里声明的 ID（权威）与 Fiber 抠出来的 ID（实测校验一致时两者相同）。
+                 * 带回来只为排查：真出现不一致，说明兜底走到了扫卡片分支。 */
+                containerId: expectedId,
+                fiberId: gotId,
                 title: desc,
                 nickname: String(author.nickname || author.nick_name || ''),
                 uniqueId: String(author.uniqueId || author.unique_id || author.shortId || author.short_id || ''),
