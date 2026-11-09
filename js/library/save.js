@@ -497,6 +497,19 @@
                 if (tmpUrl) { setTimeout(function () { URL.revokeObjectURL(tmpUrl); }, 30000); }
                 resolve(out);
             };
+            /* ADR-040 复核（2026-11-09 Edge 157 实机）：只要注册了
+             * onDeterminingFilename 监听器，download({filename}) 就会被忽略，
+             * 最终名字由监听器的 suggest() 决定。页面侧有 vr-download-hook.js
+             * 等 SW 记账确认后才发起下载；但本函数运行在 SW 内、直调原始 API，
+             * 没经过那个 hook —— 账本无记录 → 监听器弃权 → 默认名落 Downloads 根
+             * （DEF-02 / B1：返回 path 是归档路径，磁盘却不在那里）。
+             * 所以在发起前于**同一上下文同步**补一次记账；页面上下文没有这个函数时
+             * 保持原行为（由页面侧 hook 负责），不阻断下载。 */
+            if (typeof root.vrQueueFilename === 'function') {
+                try {
+                    root.vrQueueFilename(url, relPath, opt.conflictAction || 'uniquify', opt && opt.meta);
+                } catch (e) { /* 记账失败不阻断下载，最多退回默认名 */ }
+            }
             /* 下载器通道同样要预登记 meta：下载完成事件里页面上下文早没了，
              * 不登记的话入库条目 platform/title/pageUrl 全空（详情页来源空白）。 */
             if (opt && opt.meta && root.VRLib && typeof root.VRLib.record === 'function') {
