@@ -30,7 +30,11 @@
     let items = [];                // [{url,w,h,bg,candidates,key,done,orig}]
     let selected = new Set();      // 选中的 key
     let rendered = 0;
-    let tierMin = 0;   // 0 = 全部（含尺寸未知的懒加载图）
+    let tierMin = 0;   // 0 = 全部（含尺寸未知的懒加载图）；TIER_UNKNOWN = 只看尺寸未知
+    /* 2026-11-09（苏哥报）：尺寸未知的图混在「大 ≥1200」里，看着像筛选没生效。
+     * 现在把它单列成一档。用 -1 而不是 0：0 已经被「全部」占了，且
+     * `shortSide < 0` 恒为假，能安全复用同一套比较。 */
+    const TIER_UNKNOWN = -1;
     let keyword = '';
     let downloaded = Object.create(null);   // 已下载去重表（归一化 URL → 1）
     let filteredOut = 0;                    // 被过滤规则拦下的张数（底部要明示）
@@ -288,6 +292,7 @@
              * 「一张真图都没有、全是尺寸未知」，误判成没嗅探到（2026-11-09 抖音图文页）。
              * 判据用「有尺寸的图被筛光」而不是「列表为空」，避免盖掉用户的筛选意图。 */
             let tierResetTo = 0;
+            let hintUnknown = 0;
             if (tierMin > 0) {
                 const withSize = items.filter(it => it.w > 0 && it.h > 0);
                 const kept = withSize.filter(it => shortSide(it.w, it.h) >= tierMin);
@@ -295,12 +300,18 @@
                     tierResetTo = tierMin;
                     tierMin = 0;
                     saveTierMin(0);
+                } else if (!withSize.length) {
+                    /* 本页一张都没量出尺寸（懒加载站点）：别硬切回「全部」——
+                     * 用户可能就是想看这批，明说一句「去点『未知』」即可。 */
+                    hintUnknown = items.length;
                 }
             }
             autoSelect();
             renderAll();
             if (tierResetTo) {
                 setFootNote('本页没有 ≥' + tierResetTo + ' 的图，已切回「全部」');
+            } else if (hintUnknown) {
+                setFootNote('本页 ' + hintUnknown + ' 张都没量出尺寸，点「未知」可以单独看');
             }
         } catch (e) {
             showEmpty('扫描失败', String((e && e.message) || e));
@@ -362,13 +373,30 @@
      * 小图/条状图已在 scanImages 阶段被同一套门槛滤掉（与面板、悬停口径一致），
      * 所以这里只需要再挡「已下载」——否则每次打开都重复勾一堆下过的。
      */
+    /**
+     * 档位判定 —— visibleItems / autoSelect / 计数三处共用同一口径。
+     *
+     * 2026-11-09 苏哥报「未知尺寸为啥和其他一起混着」：原来「未知」不参与尺寸档过滤，
+     * 于是切到「大 ≥1200」时，一堆没量出尺寸的图照旧显示，看着就像筛选没生效。
+     * 现在拆开：
+     *   全部(0)        → 什么都要（含未知）
+     *   具体尺寸(>0)   → 只要该档；尺寸未知的**不混进来**
+     *   未知(-1)       → 只要尺寸未知的（懒加载没解码 / 背景图 / 只有源码地址）
+     */
+    function inTier(it, min) {
+        const known = it.w > 0 && it.h > 0;
+        if (min === TIER_UNKNOWN) { return !known; }
+        if (min > 0) { return known && shortSide(it.w, it.h) >= min; }
+        return true;
+    }
+
     function autoSelect() {
         selected.clear();
         for (const it of items) {
             if (it.done) { continue; }
-            /* 与 visibleItems 同口径：尺寸未知的不按档位排除，
-             * 否则默认全选会跳过这批图（用户看到列表里有，却没被选上）。 */
-            if (it.w > 0 && it.h > 0 && shortSide(it.w, it.h) < tierMin) { continue; }
+            /* 与 visibleItems 同口径：看不见的不该被勾上，否则「已选 10 张」里有 8 张
+             * 根本不在当前筛选结果里，用户会以为程序乱选。 */
+            if (!inTier(it, tierMin)) { continue; }
             if (!matchKeyword(it, keyword)) { continue; }
             selected.add(it.key);
         }
@@ -391,23 +419,15 @@
     /* ---------------- 渲染 ---------------- */
 
     function visibleItems() {
-        return items.filter(it => {
-            /* 尺寸未知（懒加载还没解码、也没写 width/height 属性）的图**不参与尺寸档位过滤**，
-             * 否则 shortSide 会被算成 0，永远 < tierMin，整批图被无声吞掉。
-             * 实测：花瓣首页 557 张 <img> 中 540 张未解码，扫描收进 182 张，
-             * 但这一行把它们全滤掉，只剩 6 张能看见。
-             * 用户要的是「本页的图都在列表里」，尺寸只是辅助信息。 */
-            if (it.w > 0 && it.h > 0 && shortSide(it.w, it.h) < tierMin) { return false; }
-            return matchKeyword(it, keyword);
-        });
+        return items.filter(it => inTier(it, tierMin) && matchKeyword(it, keyword));
     }
 
     function renderTiers() {
-        const counts = { all: items.length, small: 0, medium: 0, large: 0, huge: 0 };
+        const counts = { all: items.length, unknown: 0, small: 0, medium: 0, large: 0, huge: 0 };
         for (const it of items) {
-            /* 尺寸未知的图（懒加载未解码、也没有 width/height 属性）不计入任何尺寸档，
-             * 但仍归在「全部」里 —— 它们不是没图，只是还没量出尺寸。 */
-            if (!(it.w > 0 && it.h > 0)) { continue; }
+            /* 尺寸未知的图（懒加载未解码、背景图、只有源码地址）单独记一档，
+             * 不再算进任何尺寸档 —— 它们不是「小图」，只是还没量出尺寸。 */
+            if (!(it.w > 0 && it.h > 0)) { counts.unknown++; continue; }
             const s = shortSide(it.w, it.h);
             if (s >= 2000) { counts.huge++; }
             if (s >= 1200) { counts.large++; }
@@ -417,8 +437,8 @@
         el.tiers.innerHTML = (() => {
             /* 头一个「全部」档位：包含尺寸未知的图。
              * 懒加载站点（花瓣实测）大量 <img> 还没解码，按尺寸分档它们不属于任何一档，
-             * 只看四个尺寸档会让人以为「整页只有几张图」。 */
-            const allBtn = '<button class="ip-tier' + (tierMin <= 0 ? ' on' : '') +
+             * 只看尺寸档会让人以为「整页只有几张图」。 */
+            const allBtn = '<button class="ip-tier' + (tierMin === 0 ? ' on' : '') +
                 '" data-min="0">全部<span class="c">' + counts.all + '</span></button>';
             const tiers = U.TIERS.map(t => {
                 const n = counts[t.key] || 0;
@@ -431,7 +451,20 @@
                 return '<button class="ip-tier' + on + '" data-min="' + t.min + '">' +
                     t.label + ' ≥' + t.min + '<span class="c">' + n + '</span></button>';
             }).join('');
-            return allBtn + tiers;
+            /* 「未知」独立一档（2026-11-09 苏哥要求）：想单独挑出没量出尺寸的图
+             * （懒加载、背景图、只在源码里的地址）时，不用再从「全部」里肉眼找。 */
+            const unknownBtn = counts.unknown
+                ? '<button class="ip-tier ip-tier-unknown' + (tierMin === TIER_UNKNOWN ? ' on' : '') +
+                    '" data-min="unknown" title="没量出尺寸的图：懒加载没解码、背景图、只有源码地址">' +
+                    '未知<span class="c">' + counts.unknown + '</span></button>'
+                : '';
+            /* 选中「未知」时补一句说明（只在这一档出现，不占常驻空间）：
+             * 这批图默认会被全选，不说清楚用户容易一键下几百张图标头像。
+             * 不能借用底部 setFootNote —— 那是 ipSum，会在 renderFoot 里被「已选 N」覆盖。 */
+            const unknownNote = (tierMin === TIER_UNKNOWN && counts.unknown)
+                ? '<span class="ip-tier-note">多半是图标/头像/占位图，建议挑着下</span>'
+                : '';
+            return allBtn + tiers + unknownBtn + unknownNote;
         })();
     }
 
@@ -594,11 +627,15 @@
     el.tiers.addEventListener('click', ev => {
         const b = ev.target.closest ? ev.target.closest('.ip-tier') : null;
         if (!b || b.disabled) { return; }
-        tierMin = parseInt(b.getAttribute('data-min'), 10);
+        const raw = b.getAttribute('data-min');
+        /* 「未知」档用字符串标记，不走 parseInt —— 传数字会跟「0=全部」撞车 */
+        tierMin = (raw === 'unknown') ? TIER_UNKNOWN : parseInt(raw, 10);
         /* 「全部」档 data-min=0：早先写 `|| 100` 会把它偷偷变成 100 门槛，
          * 下次扫描又拿 100 去筛图（档位本该只管显示）。显式判 NaN 才不会吞 0。 */
         if (!Number.isFinite(tierMin)) { tierMin = 0; }
         saveTierMin(tierMin);
+        /* 「未知」档的说明写在档位行里（见 renderTiers 的 ip-tier-note），
+         * 不能写 setFootNote —— 那会覆盖底部的「已选 N」。 */
         // 改档位等于改「什么算值得下」，重算默认勾选
         autoSelect();
         renderAll();
@@ -1212,7 +1249,10 @@
          * 这里的档位是「筛选显示」，默认全显示、由用户自己收窄更符合直觉。
          * 注意 `Number(0) || U.MIN_SIZE` 会得到 100，必须显式判 null。 */
         const savedMin = settings.imgTierMin;
-        tierMin = (typeof savedMin === 'number' && savedMin >= 0) ? savedMin : 0;
+        /* savedMin 允许 -1（「未知」档）：早先只认 >=0，切到「未知」后重开侧边栏
+         * 会静默退回「全部」，用户以为档位没记住。 */
+        tierMin = (typeof savedMin === 'number' && (savedMin >= 0 || savedMin === TIER_UNKNOWN))
+            ? savedMin : 0;
 
         const t = await resolveTab();
         if (t > 0) {

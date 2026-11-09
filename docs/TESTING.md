@@ -269,6 +269,21 @@ python tools/test-dedupe-live.py      # 15  账本、库内来源键、跨平台
 > ⚠️ 跑 e2e 时必须 `--isolated`：非隔离的 e2e 会清真实库（实测 72 条 → 9 条），
 > 恢复方式是 `VRIndex.build({mode:'full'})` + `VRDedup.hashMissing()`。
 
+### 4.8 侧边栏「未知尺寸」档（2026-11-09 新增，9 条断言）
+
+改 `js/image-page.js` 的 `inTier` / `renderTiers` / 档位点击，或 `css/image-page.css`
+的 `.ip-tier-unknown` / `.ip-tier-note` 后必须跑：
+
+```bash
+python tools/test-tier-unknown.py     # 9  未知档单独筛选 / 大图档不再混入未知 / 写回设置
+node tools/test-tiers-css.js          # 7  档位行换行 / 不裁切契约
+```
+
+> 三条口径：
+> 1. 「全部」含未知（懒加载站点整页图不能被吞）；
+> 2. 具体尺寸档（小/中/大/超大）**只显示该档**，未知不混入；
+> 3. 「未知」只显示没量出尺寸的图，且 `imgTierMin=-1` 要能存能读。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

@@ -1689,6 +1689,18 @@
           "ok": true
         }
       ]
+    },
+    {
+      "at": "2026-11-10T00:07:40",
+      "summary": "1/1 套件通过，用时 33.7s",
+      "report": "deliverables\\test-runs\\2026-11-10-0007-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-popup",
+          "ok": true
+        }
+      ]
     }
   ]
 }
