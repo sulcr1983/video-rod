@@ -102,7 +102,7 @@ node tools/build-dist.js --check         # 门禁：dist 是否与 HEAD 逐文�
 
 验收四条：
 1. `dist/` 内不含 `docs`、`tools`、`deliverables`、`test-site`（脚本自检，不全则报错退出）。
-2. `--check` 通过（166 个文件，与 HEAD 零差异）。
+2. `--check` 通过（文件数与 HEAD 一致、零差异；当前 166 个）。
 3. 扩展详情页显示的大小 ≈ 扩展本体大小（不应再出现百 MB 级数字）。
 4. 所有功能页能打开、控制台 0 error。
 
