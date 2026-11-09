@@ -28,6 +28,10 @@
     var FILES = [];    // 卡片模型
     var S = {
         type: 'all', plat: 'all', q: '', view: 'grid',
+        /* R4（2026-11-09）：筛选条新增两个维度——时间（all/today/week/month）与「仅已星标」 */
+        time: 'all', starOnly: false,
+        /* R6：更多筛选（低频条件，抽屉里）——大小档 / 分辨率档 / 作者多选 */
+        size: 'all', res: 'all', authors: [],
         /* 选中的标签（多选=交集）。用数组而不是 Set：要按点击顺序稳定渲染，
          * 且要能序列化进「智能收藏夹」。 */
         tags: [],
@@ -250,6 +254,32 @@
                 if (!favHas(fav, f)) { return false; }
             }
             if (S.type !== 'all' && f.kind !== S.type) { return false; }
+            /* R4：时间窗（按 savedTs 真实时间戳；savedAt 是格式化字符串，不能比大小） */
+            if (S.time && S.time !== 'all') {
+                var age = Date.now() - Number(f.savedTs || 0);
+                if (S.time === 'today' && age > 86400000) { return false; }
+                if (S.time === 'week' && age > 7 * 86400000) { return false; }
+                if (S.time === 'month' && age > 30 * 86400000) { return false; }
+            }
+            /* R4：仅已星标 */
+            if (S.starOnly && !f.starred) { return false; }
+            /* R6：大小档（f.size 单位是 MB） */
+            if (S.size && S.size !== 'all') {
+                var mb = Number(f.size || 0);
+                if (S.size === 'lt1' && !(mb < 1)) { return false; }
+                if (S.size === '1to10' && !(mb >= 1 && mb < 10)) { return false; }
+                if (S.size === '10to100' && !(mb >= 10 && mb < 100)) { return false; }
+                if (S.size === 'gt100' && !(mb >= 100)) { return false; }
+            }
+            /* R6：分辨率档（width/height 由缩略图解码回写） */
+            if (S.res && S.res !== 'all') {
+                var fw = Number(f.width || 0), fh = Number(f.height || 0);
+                if (S.res === '4k' && !(fw >= 3840)) { return false; }
+                if (S.res === 'fhd' && !(fw >= 1920)) { return false; }
+                if (S.res === 'portrait' && !(fh > fw)) { return false; }
+            }
+            /* R6：作者多选（任一命中即保留） */
+            if (S.authors && S.authors.length && S.authors.indexOf(f.author) < 0) { return false; }
             /* 标签筛选：多选时取**交集**（booru 用法）——
              * 选「风景」+「竖图」= 同时带这两个标签的图。
              * 大小写不敏感比对，与 counts() 的归并口径保持一致。 */
@@ -510,7 +540,9 @@
             '<span class="timecell">' + esc(shortDate(f.savedAt)) + '</span>' +
             (tags ? '<div class="tagrow">' + tags + '</div>' : '') +
             '</div>' +
-            '<button type="button" class="card-star' + (f.starred ? ' on' : '') + '" data-star="1" aria-pressed="' + (f.starred ? 'true' : 'false') + '" title="' + (f.starred ? '取消星标 (S)' : '加星标 (S)') + '"><svg class="i"><use href="#i-star"/></svg></button>' +
+            /* 2026-11-09 苏哥拍板：卡片星号删除（视觉杂乱）。
+             * 星标功能收口到详情页（.pv-star）+ 键盘 S；starCard/已加星标筛选全部保留，
+             * 已收藏的素材在网格里通过详情页或筛选器可见。 */
             '<input type="checkbox" class="selbox" aria-label="选择此素材"' + (S.sel.has(f.id) ? ' checked' : '') + '>' +
             '</article>';
     }
@@ -634,38 +666,149 @@
         grid.innerHTML = new Array(count + 1).join(one);
     }
 
+    /* ---------- R1/R2（2026-11-09）：平台货架 ----------
+     * 首页网格改为「按 platform 分组、每平台一行」：
+     *   · 每行最多渲染 SHELF_MAX 张（超出由 CSS overflow 裁切 + 右缘渐隐，禁止 JS 量宽隐藏 —— 见 ADR-076）
+     *   · 分组后渲染量 = 平台数 × 12，可控，因此货架路径不参与虚拟滚动/分级加载
+     *   · 列表视图（S.view === 'list'）完全保持原有逻辑，不做任何改动
+     */
+    var SHELF_MAX = 12;
+    function shelvesHTML(rows) {
+        var groups = {}, order = [];
+        rows.forEach(function (f) {
+            var k = f.plat || 'web';
+            if (!groups[k]) { groups[k] = []; order.push(k); }
+            groups[k].push(f);
+        });
+        /* 行序 = 该平台最新一条的时间（最近下载的平台排最上）。
+         * 不依赖 rows 的既有顺序（sorted() 的排序键与这里不同），直接取每组最大 savedTs。
+         * 注意：模型里 savedAt 是格式化字符串（fmtDate），真正的排序键是 savedTs。 */
+        var maxTs = function (arr) {
+            var m = 0;
+            for (var i = 0; i < arr.length; i++) {
+                var t = arr[i].savedTs || 0;
+                if (t > m) { m = t; }
+            }
+            return m;
+        };
+        order.sort(function (a, b) { return maxTs(groups[b]) - maxTs(groups[a]); });
+        return order.map(function (k) {
+            var arr = groups[k], first = arr[0];
+            var p = PLAT[k] || PLAT.web;
+            var label = platLabel(k) || p.label || k;
+            return '<section class="shelf" data-shelf="' + esc(k) + '">' +
+                '<div class="shelf-head">' +
+                    '<span class="bar" style="--pc:' + (p.dot || '#8B93A1') + '"></span>' +
+                    '<b>' + esc(label) + '</b>' +
+                    '<span class="n">' + arr.length + '</span>' +
+                    '<span class="meta">项 · 最近 ' + esc(shortDate(first.savedAt)) + '</span>' +
+                    '<button type="button" class="open" data-shelf-open="' + esc(k) + '">查看全部 ' + arr.length + ' 项 →</button>' +
+                '</div>' +
+                '<div class="shelf-line">' + arr.slice(0, SHELF_MAX).map(card).join('') + '</div>' +
+            '</section>';
+        }).join('');
+    }
+
+    /* R3（2026-11-09）：平台内页的面包屑与标题跟随 S.plat。
+     * 复用现有平台筛选状态，不新增路由/页面；从树、行头、徽标任一入口进来都一致。 */
+    function syncHeader() {
+        var crumb = $('#crumb');
+        var title = $('#pageTitle');
+        var onPlat = S.plat && S.plat !== 'all' && S.plat !== 'others' && S.plat !== 'untracked';
+        var name = onPlat ? (platLabel(S.plat) || S.plat) : '';
+        if (crumb) {
+            crumb.innerHTML = onPlat
+                ? '<a href="javascript:void 0" data-crumb-all style="color:var(--muted);text-decoration:none"><b>媒体库</b></a><span class="sep">/</span><span>' + esc(name) + '</span>'
+                : '<b>媒体库</b><span class="sep">/</span><span>全部平台</span>';
+        }
+        if (title) { title.textContent = onPlat ? name : '全部资源'; }
+    }
+
+    /* R4：筛选条 chips 的选中态同步（时间 / 仅已星标） */
+    var KIND_LABEL = { image: '图片', anim: '动图', video: '视频', audio: '音频' };
+    function syncFilterBar() {
+        $$('#fbar2 [data-time]').forEach(function (b) {
+            b.classList.toggle('on', (b.dataset.time || 'all') === (S.time || 'all'));
+        });
+        var sb = $('#starFilterBtn');
+        if (sb) { sb.classList.toggle('on', !!S.starOnly); }
+        var mb = $('#moreFilterBtn');
+        if (mb) {
+            var n = (S.size && S.size !== 'all' ? 1 : 0) + (S.res && S.res !== 'all' ? 1 : 0) + (S.authors ? S.authors.length : 0);
+            mb.innerHTML = '<svg class="i"><use href="#i-funnel"/></svg>更多筛选' + (n ? ' <span class="hitn">' + n + '</span>' : '');
+        }
+    }
+
+    /* R5：已选条件栏——每个条件可单删，末尾「清除全部」 */
+    function renderActiveBar() {
+        var bar = $('#activebar');
+        if (!bar) { return; }
+        var items = [];
+        if (S.type !== 'all') { items.push({ k: 'type', t: '类型：' + (KIND_LABEL[S.type] || S.type) }); }
+        if (S.time && S.time !== 'all') {
+            items.push({ k: 'time', t: '时间：' + ({ today: '今天', week: '本周', month: '本月' }[S.time] || S.time) });
+        }
+        if (S.starOnly) { items.push({ k: 'star', t: '仅已星标' }); }
+        if (S.plat && S.plat !== 'all') { items.push({ k: 'plat', t: '平台：' + (platLabel(S.plat) || S.plat) }); }
+        if (S.q && S.q.trim()) { items.push({ k: 'q', t: '搜索：' + S.q.trim() }); }
+        (S.tags || []).forEach(function (t) { items.push({ k: 'tag:' + t, t: '标签：' + t }); });
+        /* R6 的抽屉条件也要进条件栏，否则「筛过了但看不见」 */
+        var SZT = { lt1: '< 1 MB', '1to10': '1–10 MB', '10to100': '10–100 MB', gt100: '> 100 MB' };
+        var RST = { '4k': '4K 及以上', fhd: '1080p 及以上', portrait: '竖构图' };
+        if (S.size && S.size !== 'all') { items.push({ k: 'size', t: '大小：' + (SZT[S.size] || S.size) }); }
+        if (S.res && S.res !== 'all') { items.push({ k: 'res', t: '分辨率：' + (RST[S.res] || S.res) }); }
+        (S.authors || []).forEach(function (a) { items.push({ k: 'author:' + a, t: '作者：' + String(a).split(' @')[0] }); });
+        if (!items.length) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+        bar.classList.remove('hidden');
+        bar.innerHTML = '<span class="lbl">已筛选</span>' + items.map(function (x) {
+            return '<span class="acond">' + esc(x.t) +
+                '<button type="button" data-fdel="' + esc(x.k) + '" aria-label="移除该条件"><svg class="i"><use href="#i-x"/></svg></button></span>';
+        }).join('') + '<button type="button" class="clearall" data-fclear="1">清除全部</button>';
+    }
+
     function render() {
         var rows = sorted(filtered());
         S.list = rows;
         S.rows = rows;
         var grid = $('#grid');
         grid.classList.remove('loading');
-        grid.className = 'grid' + (S.view === 'list' ? ' list' : '') + (S.select ? ' selecting' : '');
 
-        /* 小库：保持原路径（一次铺满，滚动追加），行为与以前完全一致 */
-        if (rows.length <= WIN_THRESHOLD) {
+        if (S.view !== 'list') {
+            /* R1/R2：平台货架（网格视图）。列表视图走下面的原路径，一行不改。 */
             win.on = false;
             grid.style.paddingTop = '';
             grid.style.paddingBottom = '';
-            S.shown = Math.min(PAGE, rows.length);
-            grid.innerHTML = rows.slice(0, S.shown).map(card).join('');
-        } else {
-            /* 大库：先量列数/行高，再按窗口画 */
-            win.on = true;
-            win.cols = gridCols(grid);
-            win.totalRows = Math.ceil(rows.length / win.cols);
-            grid.style.paddingTop = '0px';
-            grid.style.paddingBottom = '0px';
-            if (!win.rowH) { win.rowH = 260; }       // 首次给个估值，画完立刻校正
-            win.start = 0;
-            win.end = Math.min(win.totalRows, Math.ceil((window.innerHeight || 800) / win.rowH) + WIN_OVERSCAN);
-            paintWindow();
-            var measured = measureRowH(grid);
-            if (measured > 0 && Math.abs(measured - win.rowH) > 2) {
-                win.rowH = measured;
-                updateWindow(true);
-            }
+            grid.className = 'shelves' + (S.select ? ' selecting' : '');
+            grid.innerHTML = shelvesHTML(rows);
             S.shown = rows.length;
+        } else {
+            grid.className = 'grid list' + (S.select ? ' selecting' : '');
+
+            /* 小库：保持原路径（一次铺满，滚动追加），行为与以前完全一致 */
+            if (rows.length <= WIN_THRESHOLD) {
+                win.on = false;
+                grid.style.paddingTop = '';
+                grid.style.paddingBottom = '';
+                S.shown = Math.min(PAGE, rows.length);
+                grid.innerHTML = rows.slice(0, S.shown).map(card).join('');
+            } else {
+                /* 大库：先量列数/行高，再按窗口画 */
+                win.on = true;
+                win.cols = gridCols(grid);
+                win.totalRows = Math.ceil(rows.length / win.cols);
+                grid.style.paddingTop = '0px';
+                grid.style.paddingBottom = '0px';
+                if (!win.rowH) { win.rowH = 260; }       // 首次给个估值，画完立刻校正
+                win.start = 0;
+                win.end = Math.min(win.totalRows, Math.ceil((window.innerHeight || 800) / win.rowH) + WIN_OVERSCAN);
+                paintWindow();
+                var measured = measureRowH(grid);
+                if (measured > 0 && Math.abs(measured - win.rowH) > 2) {
+                    win.rowH = measured;
+                    updateWindow(true);
+                }
+                S.shown = rows.length;
+            }
         }
         var lh = $('#listhead');
         if (lh) { lh.classList.toggle('on', S.view === 'list'); }
@@ -696,6 +839,10 @@
         });
         renderFavs();
         renderTags();
+        setTxt('#fbCount', rows.length);
+        syncFilterBar();
+        renderActiveBar();
+        syncHeader();
     }
 
     /* ---------- F7 分级加载（虚拟滚动轻量版） ---------- */
@@ -1437,6 +1584,178 @@
                 render();
             });
         }
+        /* B-63（2026-11-09）：原生 select 弹层无法着色（系统渲染），改为隐藏原生 + 自绘下拉。
+           自绘只负责把 value 写回原生控件并派发 change —— 上面的排序逻辑一行没改。 */
+        (function bindSortDD() {
+            var dd = document.getElementById('sortDD');
+            if (!dd || !sort) { return; }
+            var btn = document.getElementById('sortBtn');
+            var menu = document.getElementById('sortMenu');
+            var label = document.getElementById('sortLabel');
+            if (!btn || !menu || !label) { return; }
+            var sync = function () {
+                var opts = menu.querySelectorAll('button[data-sort]');
+                for (var i = 0; i < opts.length; i++) {
+                    var on = opts[i].getAttribute('data-sort') === sort.value;
+                    opts[i].classList.toggle('on', on);
+                    if (on) { label.textContent = opts[i].textContent.trim(); }
+                }
+            };
+            var close = function () {
+                menu.classList.add('hidden'); dd.classList.remove('open');
+                btn.setAttribute('aria-expanded', 'false');
+            };
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var open = menu.classList.contains('hidden');
+                menu.classList.toggle('hidden', !open);
+                dd.classList.toggle('open', open);
+                btn.setAttribute('aria-expanded', String(open));
+            });
+            menu.addEventListener('click', function (e) {
+                var b = e.target.closest('button[data-sort]');
+                if (!b) { return; }
+                sort.value = b.getAttribute('data-sort');
+                sort.dispatchEvent(new Event('change'));
+                close();
+                sync();
+            });
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('#sortDD')) { close(); }
+                /* R3：面包屑「媒体库」在 pagehead 里，不属于 #grid，需要文档级委托才能回到全部。 */
+                if (e.target.closest('[data-crumb-all]')) {
+                    e.preventDefault();
+                    S.plat = 'all';
+                    render();
+                    renderTree();
+                }
+            });
+            sync();
+        })();
+
+        /* R4/R5（2026-11-09）：筛选条 chips + 已选条件栏的增删 */
+        $$('#fbar2 [data-time]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                S.time = b.dataset.time || 'all';
+                render();
+            });
+        });
+        var starBtn = $('#starFilterBtn');
+        if (starBtn) {
+            starBtn.addEventListener('click', function () { S.starOnly = !S.starOnly; render(); });
+        }
+        var abar = $('#activebar');
+        if (abar) {
+            abar.addEventListener('click', function (e) {
+                var del = e.target.closest('[data-fdel]');
+                if (del) {
+                    var k = del.getAttribute('data-fdel');
+                    if (k === 'type') { S.type = 'all'; }
+                    else if (k === 'time') { S.time = 'all'; }
+                    else if (k === 'star') { S.starOnly = false; }
+                    else if (k === 'plat') { S.plat = 'all'; }
+                    else if (k === 'q') { S.q = ''; if ($('#search')) { $('#search').value = ''; } }
+                    else if (k.indexOf('tag:') === 0) {
+                        var t = k.slice(4);
+                        S.tags = S.tags.filter(function (x) { return x !== t; });
+                    }
+                    else if (k === 'size') { S.size = 'all'; }
+                    else if (k === 'res') { S.res = 'all'; }
+                    else if (k.indexOf('author:') === 0) {
+                        var aa = k.slice(7);
+                        S.authors = (S.authors || []).filter(function (x) { return x !== aa; });
+                    }
+                    render(); renderTree(); return;
+                }
+                if (e.target.closest('[data-fclear]')) {
+                    S.type = 'all'; S.time = 'all'; S.starOnly = false; S.plat = 'all'; S.q = ''; S.tags = [];
+                    S.size = 'all'; S.res = 'all'; S.authors = [];
+                    if ($('#search')) { $('#search').value = ''; }
+                    render(); renderTree();
+                }
+            });
+        }
+
+        /* R6（2026-11-09）：更多筛选抽屉——大小 / 分辨率 / 标签 / 作者。
+         * 复用设置抽屉骨架（.setdrawer/.sd-*），只填条件区块。 */
+        function renderFilt() {
+            var body = $('#filtBody');
+            if (!body) { return; }
+            var SZ = [['all', '不限'], ['lt1', '< 1 MB'], ['1to10', '1–10 MB'], ['10to100', '10–100 MB'], ['gt100', '> 100 MB']];
+            var RS = [['all', '不限'], ['4k', '4K 及以上'], ['fhd', '1080p 及以上'], ['portrait', '竖构图']];
+            var tags = [], authors = [];
+            FILES.forEach(function (f) {
+                (Array.isArray(f.tags) ? f.tags : []).forEach(function (t) {
+                    t = String(t || '').trim();
+                    if (t && tags.indexOf(t) < 0) { tags.push(t); }
+                });
+                if (f.author && authors.indexOf(f.author) < 0) { authors.push(f.author); }
+            });
+            var chips = function (list, cur, attr, labelFn) {
+                var isPair = function (x) { return Object.prototype.toString.call(x) === '[object Array]'; };
+                return list.map(function (x) {
+                    /* 注意：不能用 x[0] 判断数组——字符串取下标同样有值，
+                     * 会把「影视飓风」当成数组取成单字「影」（2026-11-09 实测踩到）。 */
+                    var pair = isPair(x);
+                    var v = pair ? x[0] : x;
+                    var text = pair ? x[1] : (labelFn ? labelFn(x) : x);
+                    var on = pair ? (cur === v) : ((cur || []).indexOf(v) >= 0);
+                    return '<button type="button" class="fchip' + (on ? ' on' : '') + '" ' + attr + '="' + esc(v) + '">' + esc(text) + '</button>';
+                }).join('');
+            };
+            body.innerHTML =
+                '<div class="fg"><h4>大小</h4><div class="chips">' + chips(SZ, S.size, 'data-fsize') + '</div></div>' +
+                '<div class="fg"><h4>分辨率</h4><div class="chips">' + chips(RS, S.res, 'data-fres') + '</div></div>' +
+                '<div class="fg"><h4>标签 <span class="fg-sub">可多选 · 取交集</span></h4><div class="chips">' +
+                    (tags.length ? chips(tags, S.tags || [], 'data-ftag') : '<span class="fg-empty">还没有标签</span>') +
+                '</div></div>' +
+                '<div class="fg"><h4>作者 <span class="fg-sub">可多选</span></h4><div class="chips">' +
+                    (authors.length ? chips(authors, S.authors || [], 'data-fauthor', function (a) { return String(a).split(' @')[0].slice(0, 14); }) : '<span class="fg-empty">—</span>') +
+                '</div></div>';
+            var hit = $('#filtHit');
+            if (hit) { hit.textContent = filtered().length; }
+        }
+        function openFilt() {
+            renderFilt();
+            var m = $('#filtMask'), d = $('#filtDrawer');
+            if (m) { m.classList.add('show'); }
+            if (d) { d.classList.add('show'); }
+        }
+        function closeFilt() {
+            var m = $('#filtMask'), d = $('#filtDrawer');
+            if (m) { m.classList.remove('show'); }
+            if (d) { d.classList.remove('show'); }
+        }
+        var moreBtn = $('#moreFilterBtn');
+        if (moreBtn) { moreBtn.addEventListener('click', openFilt); }
+        var fClose = $('#filtClose'), fDone = $('#filtDone'), fMask = $('#filtMask');
+        if (fClose) { fClose.addEventListener('click', closeFilt); }
+        if (fDone) { fDone.addEventListener('click', closeFilt); }
+        if (fMask) { fMask.addEventListener('click', closeFilt); }
+        var fClear = $('#filtClear');
+        if (fClear) {
+            fClear.addEventListener('click', function () {
+                S.size = 'all'; S.res = 'all'; S.authors = [];
+                renderFilt(); render(); syncFilterBar();
+            });
+        }
+        var fBody = $('#filtBody');
+        if (fBody) {
+            fBody.addEventListener('click', function (e) {
+                var b = e.target.closest('[data-fsize],[data-fres],[data-ftag],[data-fauthor]');
+                if (!b) { return; }
+                if (b.dataset.fsize !== undefined) { S.size = b.dataset.fsize; }
+                else if (b.dataset.fres !== undefined) { S.res = b.dataset.fres; }
+                else if (b.dataset.ftag !== undefined) {
+                    var t = b.dataset.ftag, i = (S.tags || []).indexOf(t);
+                    if (i >= 0) { S.tags.splice(i, 1); } else { S.tags.push(t); }
+                } else if (b.dataset.fauthor !== undefined) {
+                    var a = b.dataset.fauthor, j = (S.authors || []).indexOf(a);
+                    if (j >= 0) { S.authors.splice(j, 1); } else { S.authors.push(a); }
+                }
+                renderFilt(); render(); syncFilterBar();
+            });
+        }
 
         var sb = $('#selectBtn');
         if (sb) {
@@ -1469,6 +1788,35 @@
                 toast(n ? ('已按类型选中 ' + n + ' 项') : '当前列表里没有这类素材');
             });
         }
+        /* B-63：批量「按类型…」同样换成自绘下拉（原生弹层白底不可着色）。 */
+        (function bindBatchTypeDD() {
+            var dd = document.getElementById('batchDD');
+            if (!dd || !byType) { return; }
+            var btn = document.getElementById('batchBtn');
+            var menu = document.getElementById('batchMenu');
+            if (!btn || !menu) { return; }
+            var close = function () {
+                menu.classList.add('hidden'); dd.classList.remove('open');
+                btn.setAttribute('aria-expanded', 'false');
+            };
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var open = menu.classList.contains('hidden');
+                menu.classList.toggle('hidden', !open);
+                dd.classList.toggle('open', open);
+                btn.setAttribute('aria-expanded', String(open));
+            });
+            menu.addEventListener('click', function (e) {
+                var b = e.target.closest('button[data-bt]');
+                if (!b) { return; }
+                byType.value = b.getAttribute('data-bt');
+                byType.dispatchEvent(new Event('change'));
+                close();
+            });
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('#batchDD')) { close(); }
+            });
+        })();
         on('batchExit', function () {
             S.select = false; S.sel.clear();
             $('#selectBtn').classList.remove('is-on');
@@ -1539,6 +1887,21 @@
         var grid = $('#grid');
         if (grid) {
             grid.addEventListener('click', function (e) {
+                /* R3：货架行头「查看全部 N 项 →」与面包屑「媒体库」的点击必须先于卡片判断——
+                 * 这两个目标都不在 .card 里，被下面的 early-return 拦掉的话点了没反应。 */
+                var shelfOpen = e.target.closest('[data-shelf-open]');
+                if (shelfOpen) {
+                    e.preventDefault();
+                    S.plat = shelfOpen.getAttribute('data-shelf-open');
+                    S.q = ''; S.type = 'all';
+                    if ($('#search')) { $('#search').value = ''; }
+                    $$('#typeTabs button').forEach(function (x) {
+                        x.classList.toggle('active', x.dataset.type === 'all');
+                    });
+                    render();
+                    renderTree();
+                    return;
+                }
                 var c = e.target.closest('.card'); if (!c) { return; }
                 var id = c.dataset.id;
                 /* 引用角标是唯一一个「不打开素材、只看同内容来源」的入口：
@@ -1556,12 +1919,8 @@
                     }, 40);
                     return;
                 }
-                if (e.target.closest('[data-star]')) {
-                    e.preventDefault();
-                    var sf = FILES.find(function (f) { return f.id === id; });
-                    if (sf) { starCard(sf); }
-                    return;
-                }
+                /* 卡片星号按钮已随 B-54 删除，data-star 分支一并移除；
+                 * starCard() 仍由键盘 S 与详情页 .pv-star 调用。 */
                 /* 站点徽标 = 快捷筛选：点「花瓣」直接只看花瓣的素材。
                  * 比先去左侧树里找节点快一步，且卡片和左栏口径完全一致。 */
                 var badgeEl = e.target.closest('[data-site]');

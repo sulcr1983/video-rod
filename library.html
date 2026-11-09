@@ -111,10 +111,8 @@
     <div>
       <div class="side-label"><span>资源树</span><span id="treeTotal">27</span></div>
     </div>
-    <div class="tree-search">
-      <svg class="i i-sm"><use href="#i-image"/></svg>
-      <input id="treeSearch" placeholder="搜索平台 / 博主…">
-    </div>
+    <!-- B-64（2026-11-09）：左树搜索已删除——与标题行全局搜索重复，只搜平台/作者且树本身不长。
+         保留 <nav class="tree"> 与编号索引；app.js 里 #treeSearch 的两处引用均有 null 保护，无需改。 -->
     <nav class="tree" id="tree"></nav>
 
     <div class="fav-side">
@@ -206,31 +204,70 @@
         <button class="btn small" id="selectBtn"><svg class="i i-sm"><use href="#i-square-check"/></svg>选择</button>
         <span class="select">
           <svg class="i i-sm" style="color:var(--faint);opacity:.7"><use href="#i-list"/></svg>
-          <select id="sort">
+          <!-- B-63：原生 select 的弹层由系统渲染（白底/蓝高亮），深色皮肤下无法覆盖。
+               保留原生控件（隐藏）+ 自绘下拉同步 value 并派发 change，原逻辑零改动。 -->
+          <select id="sort" class="hidden">
             <option value="new">最新保存</option>
             <option value="old">最早保存</option>
             <option value="size">文件最大</option>
             <option value="name">标题 A-Z</option>
           </select>
+          <div class="dd" id="sortDD">
+            <button class="ddbtn" type="button" id="sortBtn" aria-haspopup="listbox" aria-expanded="false">
+              <span id="sortLabel">最新保存</span>
+              <svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
+            </button>
+            <div class="ddmenu hidden" id="sortMenu" role="listbox" aria-label="排序方式">
+              <button type="button" class="on" data-sort="new" role="option">最新保存<svg class="i"><use href="#i-check"/></svg></button>
+              <button type="button" data-sort="old" role="option">最早保存<svg class="i"><use href="#i-check"/></svg></button>
+              <button type="button" data-sort="size" role="option">文件最大<svg class="i"><use href="#i-check"/></svg></button>
+              <button type="button" data-sort="name" role="option">标题 A-Z<svg class="i"><use href="#i-check"/></svg></button>
+            </div>
+          </div>
         </span>
         <div class="viewtoggle" id="viewToggle">
           <button data-view="grid" class="active"><svg class="i i-sm"><use href="#i-layout-grid"/></svg></button>
           <button data-view="list"><svg class="i i-sm"><use href="#i-list"/></svg></button>
         </div>
       </div>
+      <!-- R4（2026-11-09）：筛选条第二行——时间窗 / 仅已星标 / 更多筛选 + 实时计数 -->
+      <div class="fbar2" id="fbar2">
+        <button type="button" class="fchip on" data-time="all">全部时间</button>
+        <button type="button" class="fchip" data-time="today">今天</button>
+        <button type="button" class="fchip" data-time="week">本周</button>
+        <button type="button" class="fchip" data-time="month">本月</button>
+        <span class="fb-div"></span>
+        <button type="button" class="fchip" id="starFilterBtn"><svg class="i"><use href="#i-star"/></svg>已星标</button>
+        <span class="fb-div"></span>
+        <button type="button" class="fchip" id="moreFilterBtn"><svg class="i"><use href="#i-funnel"/></svg>更多筛选</button>
+        <span class="fb-count">共 <b id="fbCount">0</b> 项</span>
+      </div>
     </div>
+    <!-- R5：已选条件栏（有筛选时才占位） -->
+    <div class="activebar hidden" id="activebar"></div>
 
     <div class="batchbar hidden" id="batchbar">
       <b id="batchCount">已选 0 项</b>
       <button class="btn small" id="batchAll">全选</button>
       <button class="btn small" id="batchInvert">反选</button>
-      <select class="btn small bb-type" id="batchByType" title="按类型追加选择">
+      <select class="hidden" id="batchByType" title="按类型追加选择">
         <option value="">按类型…</option>
         <option value="image">只选图片</option>
         <option value="anim">只选动图</option>
         <option value="video">只选视频</option>
         <option value="audio">只选音频</option>
       </select>
+      <div class="dd" id="batchDD">
+        <button class="ddbtn" type="button" id="batchBtn" aria-haspopup="listbox" aria-expanded="false">
+          <svg class="i i-sm"><use href="#i-funnel"/></svg><span>按类型…</span><svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
+        </button>
+        <div class="ddmenu hidden" id="batchMenu" role="listbox" aria-label="按类型追加选择">
+          <button type="button" data-bt="image" role="option">只选图片</button>
+          <button type="button" data-bt="anim" role="option">只选动图</button>
+          <button type="button" data-bt="video" role="option">只选视频</button>
+          <button type="button" data-bt="audio" role="option">只选音频</button>
+        </div>
+      </div>
       <button class="btn small" id="batchClear">清除</button>
       <span class="spacer"></span>
       <button class="btn small" id="batchFav"><svg class="i i-sm"><use href="#i-bookmark-plus"/></svg>加入收藏夹</button>
@@ -619,6 +656,22 @@
       </div>
     </div>
     <footer class="sd-foot"><a href="#" id="sdOptionsLink">打开完整扩展设置 &#8599;</a></footer>
+  </aside>
+
+  <!-- R6（2026-11-09）：更多筛选抽屉（复用设置抽屉 .setdrawer 骨架，不新建组件） -->
+  <div class="setmask" id="filtMask"></div>
+  <aside class="setdrawer" id="filtDrawer" aria-label="更多筛选">
+    <header class="sd-head">
+      <div><h3>更多筛选</h3><p>低频条件收在这里 · 选完即时生效</p></div>
+      <button class="sd-x" type="button" id="filtClose">&#10005;</button>
+    </header>
+    <div class="sd-body" id="filtBody"></div>
+    <footer class="sd-foot">
+      <button class="btn small" type="button" id="filtClear">清除</button>
+      <span style="flex:1"></span>
+      <span class="fb-count" style="margin:0 6px 0 0">命中 <b id="filtHit">0</b> 项</span>
+      <button class="btn small primary" type="button" id="filtDone">完成</button>
+    </footer>
   </aside>
 
   <div class="toast" id="toast"><span id="toastText"></span><button type="button" id="toastAct" hidden></button></div>

@@ -836,8 +836,11 @@ a.src-row:not([href]) .src-go{display:none}
 .pi-kicker .dot{width:6px;height:6px;border-radius:50%;background:var(--pc,var(--accent));display:inline-block}
 .pv-info h2{
   margin:0 0 11px;font-size:19px;line-height:1.35;font-weight:660;letter-spacing:-.35px;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;
-  overflow:hidden;max-height:4.05em;
+  /* B-65（2026-11-09）：Chrome 156 / Edge 157 实测——h2 作为 .pv-info（flex column）的子项时，
+     与 -webkit-line-clamp 组合会整块塌陷成 0 高（详情标题直接消失）。改为普通块 + max-height 裁切，
+     clamp 的两个属性必须显式清掉；flex:0 0 auto 防止被 flex 容器压扁。 */
+  display:block;-webkit-line-clamp:unset;-webkit-box-orient:unset;
+  overflow:hidden;max-height:4.05em;flex:0 0 auto;
 }
 .pi-author{
   display:flex;align-items:center;gap:8px;padding:5px 7px;margin:0 -7px 13px;
@@ -1932,3 +1935,123 @@ h1 {
 .vr-ctx .vr-ctx-sep{height:1px;margin:5px 8px;background:var(--line-2)}
 
 /* type-scale-bumped */
+
+
+/* ==========================================================
+ * B-63（2026-11-09）自绘下拉
+ * 原生 <select> 的弹层由操作系统渲染（白底/灰字/蓝色高亮），深色皮肤下无法用 CSS 覆盖。
+ * 做法：原生 select 保留在 DOM 但隐藏（change 逻辑不动），由 .dd 自绘并同步 value。
+ * ========================================================== */
+.dd{position:relative;display:inline-flex}
+.ddbtn{
+  display:inline-flex;align-items:center;gap:6px;padding:6px 9px;font-size:12px;
+  color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);
+  transition:border-color .14s,background .14s,color .14s;
+}
+.ddbtn:hover{background:var(--surface-2);color:var(--ink);border-color:var(--surface-3)}
+.ddbtn .chev{color:var(--faint);transition:transform .16s}
+.dd.open .ddbtn{border-color:color-mix(in srgb,var(--accent) 34%,transparent);color:var(--ink)}
+.dd.open .ddbtn .chev{transform:rotate(180deg)}
+.ddmenu{
+  position:absolute;right:0;top:calc(100% + 5px);min-width:142px;z-index:80;padding:5px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-2);
+}
+.ddmenu button{
+  display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border-radius:var(--r-sm);
+  font-size:12.5px;color:var(--ink-2);text-align:left;white-space:nowrap;
+}
+.ddmenu button:hover{background:var(--surface-3);color:var(--ink)}
+.ddmenu button .i{width:14px;height:14px;margin-left:auto;opacity:0;color:var(--accent)}
+.ddmenu button.on{color:var(--ink)}
+.ddmenu button.on .i{opacity:1}
+
+
+/* ==========================================================
+ * R1/R2（2026-11-09）首页平台货架（ADR-076）
+ * 只在 .shelves / .shelf-line 作用域内生效；.card 全局规则、.grid、.grid.list 一律不动。
+ * 每行最多 12 张由 JS 控制；超出部分靠 overflow 裁切 + 右缘渐隐，禁止 JS 量宽隐藏。
+ * ========================================================== */
+.shelves{display:flex;flex-direction:column;gap:22px}
+.shelves.hidden{display:none!important}
+.shelf{min-width:0}
+.shelf-head{display:flex;align-items:center;gap:9px;padding:0 2px 9px;min-height:26px}
+.shelf-head .bar{width:3px;height:15px;border-radius:2px;background:var(--pc,var(--muted));flex:0 0 3px}
+.shelf-head b{font-size:13.5px;font-weight:650;color:var(--ink);letter-spacing:-.1px}
+.shelf-head .n{
+  font-family:ui-monospace,Consolas,monospace;font-size:12.5px;font-weight:600;
+  color:var(--accent-ink);font-variant-numeric:tabular-nums;
+}
+.shelf-head .meta{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shelf-head .open{
+  margin-left:10px;flex:0 0 auto;font-size:11.5px;color:var(--muted);
+  padding:2px 8px;border-radius:var(--r-sm);border:1px solid transparent;white-space:nowrap;
+  transition:color .14s,background .14s,border-color .14s;
+}
+.shelf-head .open:hover{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 30%,transparent);background:var(--accent-soft)}
+.shelf-line{display:flex;align-items:flex-start;gap:12px;overflow:hidden;position:relative}
+.shelf-line::after{
+  content:"";position:absolute;right:0;top:0;bottom:0;width:64px;pointer-events:none;
+  background:linear-gradient(90deg,rgba(16,15,14,0),var(--bg) 78%);
+}
+.shelf-line .card{flex:0 0 128px;width:128px}
+.shelf-line .card .thumb{aspect-ratio:16/10}
+.shelf-line .card .body{padding:6px 8px 7px}
+/* 单行标题：原 .title 固定 height:2.9em（两行），货架里必须一起覆盖，否则空出一条 */
+.shelf-line .card .title{
+  font-size:12px;line-height:1.35;font-weight:500;display:block;height:auto;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  -webkit-line-clamp:unset;-webkit-box-orient:unset;
+}
+/* 平台已在行头写明，卡片不再重复；平台/时间/标签列在货架里收起 */
+.shelf-line .card .badge,
+.shelf-line .card .metarow,
+.shelf-line .card .platcell,
+.shelf-line .card .timecell,
+.shelf-line .card .tagrow{display:none}
+/* 批量选择态：原规则挂在 .grid.selecting 上，货架容器是 .shelves */
+.shelves.selecting .selbox{display:block}
+
+
+/* ==========================================================
+ * R4/R5（2026-11-09）筛选条第二行 + 已选条件栏
+ * 复用原版 token；与类型 seg / 排序下拉同一条水平带内，不新增第三行工具条。
+ * ========================================================== */
+.toolbar .fbar2{grid-column:1/-1;display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding-top:2px}
+.fchip{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r-sm);
+  font-size:12px;color:var(--muted);border:1px solid var(--line);background:var(--surface);white-space:nowrap;
+  transition:color .12s,background .12s,border-color .12s;
+}
+.fchip:hover{color:var(--ink-2);border-color:var(--surface-3)}
+.fchip.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 32%,transparent);color:var(--ink)}
+.fchip .i{width:13px;height:13px;color:var(--faint)}
+.fchip.on .i{color:var(--accent)}
+.fb-div{width:1px;height:16px;background:var(--line);margin:0 2px}
+.fb-count{margin-left:auto;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fb-count b{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--ink);font-weight:600}
+.hitn{
+  display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 4px;
+  border-radius:var(--r-full);background:var(--accent);color:#141210;
+  font-size:10px;font-weight:700;font-family:ui-monospace,Consolas,monospace;
+}
+.activebar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px 0 0}
+.activebar .lbl{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.acond{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:var(--r-sm);
+  font-size:11.5px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);
+}
+.acond button{color:var(--faint);display:grid;place-items:center;width:14px;height:14px;border-radius:3px}
+.acond button:hover{background:var(--surface-3);color:var(--ink)}
+.acond button .i{width:11px;height:11px}
+.clearall{font-size:11.5px;color:var(--accent-ink);padding:3px 8px;border-radius:var(--r-sm)}
+.clearall:hover{background:var(--accent-soft)}
+
+
+/* R6：更多筛选抽屉内部的分组 */
+.fg{padding:14px 0;border-bottom:1px solid var(--line-2)}
+.fg:last-child{border-bottom:0}
+.fg h4{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin:0 0 9px;font-weight:650}
+.fg .fg-sub{font-weight:400;text-transform:none;letter-spacing:0;margin-left:4px}
+.fg .chips{display:flex;flex-wrap:wrap;gap:6px}
+.fg .fchip{font-size:11.5px;padding:4px 9px}
+.fg-empty{font-size:11.5px;color:var(--faint)}
