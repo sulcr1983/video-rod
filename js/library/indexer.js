@@ -464,6 +464,12 @@
         var parsed = {};
         try { parsed = (root.VRPath && root.VRPath.parseRelPath(relPath)) || {}; } catch (e) { parsed = {}; }
         var fileName = parsed.fileName || splitRel(relPath).pop() || '';
+        /* 「未整理」判定的唯一来源（B-47 / 苏哥 2026-11-09 报的跨浏览器空白）：
+         * 路径里认不出站点 = 这条素材没有任何来源线索 → untracked=1。
+         * 历史实现里这里恒置 0，而 resolveSite 也恒置 0，全仓库没有任何路径
+         * 能把 untracked 置 1 —— 左栏「未整理」入口是个永远为空的死节点。
+         * 下载记录来源（entryFromDownload）与匹配到下载记录的条目会显式清 0。 */
+        var knownSite = !!(parsed.platform || parsed.siteHost);
         var item = {
             relPath: relPath,
             absPath: absPath ? normAbs(absPath) : '',
@@ -484,7 +490,7 @@
             state: 'ok',
             /* 1 = 从文件系统扫到、但认不出平台/来源；资源库左栏单独归到「未整理」。
              * 下载/快照来源会按平台重新计算，不由旧值继承。 */
-            untracked: 0
+            untracked: knownSite ? 0 : 1
         };
         /* 站点标识与显示名统一在这里落定（含老 'web' 条目的自动纠正）。
          * 作者名完全靠目录推断 —— 重扫时没有网页可读，不能依赖抓取。 */
@@ -544,6 +550,9 @@
         if (!plat) { return item; }
 
         item.platform = plat;
+        /* 认出了站点就不再是「未整理」——这是 untracked 唯一的清零点。
+         * 原实现无条件清零，把 entryFromRel 刚判出来的未整理又盖掉了。 */
+        item.untracked = 0;
         /* 域名形式的标识：尽量换了人话名字 */
         if (!item.platformName || item.platformName === 'web' || isDomainLike) {
             item.platformName = platformNameOf(plat) || parsed.platformName || plat;

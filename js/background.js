@@ -4771,9 +4771,50 @@ async function vrVideoOptions(tabId) {
 
     // 抖音优先：详情接口一次拿到「当前这条」的元数据和全部清晰度。
     // 不走嗅探缓存 → 不会把推荐位/预览片当成目标（苏哥 2026-10-19 报的选错）。
+    //
+    // 2026-11-09 改造（拆「智小抖 v2.4.5」所得，见
+    // deliverables/reviews/2026-11-09-智小抖拆解-抖音取标题机制.md）：
+    // 原来只有一条路 —— parseAwemeId(tab.url) 从 URL 里取作品 ID 再调详情接口。
+    // 但抖音精选页/首页的 URL 是 https://www.douyin.com/jingxuan，**不含作品 ID**，
+    // 这条路直接返回空 → 掉进通用嗅探分支 → 标题全靠 DOM 选择器 →
+    // 而新版抖音把 data-e2e 内容锚点全删了 → 文件名只剩作者名（苏哥报的现象）。
+    //
+    // 现在两条路：① 爬 React Fiber 从播放器组件抠当前视频（全场景，不依赖 URL/选择器/签名）
+    //            ② Fiber 没命中再按 URL 调详情接口（老路，兜底）
+    let douyinTried = false;
     try {
         const tab = await chrome.tabs.get(tabId);
-        const awemeId = self.VR_DOUYIN.parseAwemeId((tab && tab.url) || '');
+        const tabUrl = (tab && tab.url) || '';
+        if (/douyin\.com/i.test(tabUrl)) { douyinTried = true; }
+
+        // ① Fiber：不依赖 URL，首页/精选/搜索/用户主页都能拿到当前播放这条
+        if (douyinTried) {
+            let info = null;
+            try {
+                const pr = await vrWithTimeout(chrome.scripting.executeScript({
+                    target: { tabId: tabId }, world: 'MAIN',
+                    func: self.VR_DOUYIN.playerFunc
+                }), 6000, 'douyin-fiber');
+                info = pr && pr[0] && pr[0].result;
+            } catch (e) { /* Fiber 失败 → 落详情接口 */ }
+
+            const rows = info ? self.VR_DOUYIN.normalize(info) : [];
+            if (info && rows.length) {
+                out.site = 'douyin';
+                out.meta = self.VR_DOUYIN.metaFrom(info);
+                out.options = rows.map(function (x, i) {
+                    return {
+                        id: 'dy' + i, kind: 'url', url: x.url,
+                        label: self.VR_DOUYIN.labelFor(x),
+                        note: i === 0 ? '最高清' : ''
+                    };
+                });
+                return out;
+            }
+        }
+
+        // ② 详情接口：URL 里有作品 ID 时的老路（Fiber 没命中 / 页面还没渲染完）
+        const awemeId = self.VR_DOUYIN.parseAwemeId(tabUrl);
         if (awemeId) {
             const r = await vrWithTimeout(chrome.scripting.executeScript({
                 target: { tabId: tabId }, world: 'MAIN',

@@ -1096,48 +1096,214 @@
         return !!subdir;
     }
 
+    /**
+     * 确保 vrLibSettings.detectedRoot 有值（跨浏览器/重装后的根路径自恢复）。
+     *
+     * 为什么必须有这一步（B-49，苏哥 2026-11-09 "换浏览器就认不出文件夹"）：
+     *   库根的绝对路径只存在 vrLibSettings.detectedRoot 里，而它是**浏览器私有**的
+     *   chrome.storage —— 换浏览器/重装扩展就没了。没有 absRoot 会连锁引发三件事：
+     *     ① 全量扫描出来的条目 absPath 为空 →「打开文件夹」失效
+     *     ② 写快照时 snapshotInner 直接抛「缺少资源库根目录」→ 跨浏览器恢复断链
+     *     ③ 归档路径算不出来
+     *   但路径其实可以从 chrome.downloads 反推：只要本浏览器下过任意一个落进
+     *   <下载目录>/<subdir>/ 的文件，那条记录的 filename 就是绝对路径。
+     *
+     * 只写「反推出来的下载目录」，不动其它字段；已有值就原样返回。
+     * @returns {Promise<string>} detectedRoot（拿不到返回空串）
+     */
+    async function ensureDetectedRoot() {
+        var st = await new Promise(function (res) {
+            try { chrome.storage.local.get('vrLibSettings', function (o) { res((o && o.vrLibSettings) || {}); }); }
+            catch (e) { res({}); }
+        });
+        if (String(st.mode || 'system') === 'custom') { return ''; }   // 自选模式不写这个字段
+        var cur = String(st.detectedRoot || '').trim();
+        if (cur) { return cur; }
+
+        var subdir = String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
+        var list = [];
+        try {
+            list = await new Promise(function (res) {
+                chrome.downloads.search({ limit: 2000 }, function (l) {
+                    res(chrome.runtime.lastError ? [] : (l || []));
+                });
+            });
+        } catch (e) { list = []; }
+
+        /* 从 <…>/<subdir>/… 里截出「下载目录」这一段（去掉 /subdir） */
+        var sd = subdir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var pat = new RegExp('/' + sd + '/', 'i');
+        var tally = {};
+        list.forEach(function (d) {
+            var p = String((d && d.filename) || '').replace(/\\/g, '/');
+            var m = p.match(pat);
+            if (!m) { return; }
+            var base = p.slice(0, m.index);        // 去掉 /subdir/… 之后的下载目录
+            if (base) { tally[base] = (tally[base] || 0) + 1; }
+        });
+        var keys = Object.keys(tally);
+        if (!keys.length) { return ''; }
+        keys.sort(function (a, b) { return tally[b] - tally[a]; });
+        var root = keys[0];
+
+        try {
+            st.detectedRoot = root;
+            st.detectedAt = Date.now();
+            await new Promise(function (res) {
+                chrome.storage.local.set({ vrLibSettings: st }, function () { res(); });
+            });
+        } catch (e) { /* 存不下去也不影响本次使用 */ }
+        return root;
+    }
+
     /* ---------- 首次自动索引 ---------- */
-    async function autoIndex() {
-        if (!root.VRIndex) { return false; }
-        /* 扫描过程要可见：以前只在 toast 里说一句「正在扫描」，长扫描没有任何
-         * 进度，用户会以为卡死。复用 HTML 里一直存在但从未被使用的 #scanState。 */
-        showScan('正在扫描目录…', '正在读取下载记录与本地文件');
+    /**
+     * 扫描条目的统一入口（B-47，苏哥 2026-11-09 拍板「临时扫描 + 全量扫描」两个按钮）。
+     *
+     * mode:
+     *   'quick' —— 临时扫描：下载记录 + 快照对账。秒级，不改磁盘现状，只补新下载的。
+     *   'full'  —— 全量扫描：遍历整棵目录树，**磁盘为真相**。换浏览器/外部拷进来的
+     *              素材靠这条才能进库；认不出站点的归「未整理」。
+     *   'auto'  —— 首次进库时的自动降级链（老行为，保留）。
+     *
+     * 为什么要拆两个按钮：老实现只有一条 autoIndex 降级链
+     * downloads → reconcile → full → snapshot，而 downloads 模式**几乎从不失败**
+     * （它只需要 absRoot，不需要目录授权），所以永远在第一步就成功返回，
+     * full/reconcile 根本没机会执行 —— 这就是「换浏览器后只认自己浏览器下过的」
+     * 的根因（苏哥 2026-11-09 报的第三件事）。
+     */
+    async function runIndex(mode) {
+        if (!root.VRIndex) { return { ok: false, reason: 'no-index' }; }
+
+        /* 扫描前先把库根绝对路径补齐（跨浏览器/重装自恢复）。
+         * 没有它：条目 absPath 为空、「打开文件夹」失效、写快照直接抛异常。 */
+        try { await ensureDetectedRoot(); } catch (e) { /* 拿不到就用现有设置 */ }
+
+        var showTxt = mode === 'full' ? '正在全量扫描文件夹…' : '正在快速扫描…';
+        var showSub = mode === 'full'
+            ? '正在遍历目录树，文件多时需要一会儿'
+            : '正在读取下载记录与索引快照';
+        showScan(showTxt, showSub);
+
         var onProgress = function (p) {
             if (!p) { return; }
-            var t = $('#scanText');
-            if (t) { t.textContent = '正在扫描目录…'; }
             var s = $('#scanSub');
             if (!s) { return; }
             s.textContent = (p.phase === 'merge')
                 ? ('正在合并索引 ' + (p.total || 0) + ' 项')
-                : ('已扫描 ' + (p.done || 0) + '/' + (p.total || 0));
+                : ('已发现 ' + (p.done || 0) + ' / ' + (p.total || 0));
         };
-        var ok = false;
-        var built = null;
-        // ① 下载记录模式：**不需要目录授权**，能立刻把已下载的文件收进库。
-        //    2026-11-05 事故：这里原来只试 full/snapshot，两者都要 FSA 授权，
-        //    没授权就整个失败 → 资源库永远空白，用户看到「管理器里什么都没有」。
-        try { built = await root.VRIndex.build({ mode: 'downloads', onProgress: onProgress }); ok = true; }
-        catch (e) {
-            // ② 增量对账：需要一次目录授权，磁盘为真相（B-34）
-            try { built = await root.VRIndex.build({ mode: 'reconcile', onProgress: onProgress }); ok = true; }
-            catch (e2) {
-                // ③ 全量扫描：对账不可用时的兜底
-                try { built = await root.VRIndex.build({ mode: 'full', onProgress: onProgress }); ok = true; }
-                catch (e3) {
-                    // ④ 快照：授权也拿不到时，只能重放上次写下的索引
-                    try { built = await root.VRIndex.build({ mode: 'snapshot', onProgress: onProgress }); ok = true; }
-                    catch (e4) { ok = false; }
+
+        var built = null, ok = false, err = null;
+        if (mode === 'full') {
+            /* 全量：直接走 full。失败时再退 snapshot（读上次落盘的索引） */
+            try { built = await root.VRIndex.build({ mode: 'full', onProgress: onProgress }); ok = true; }
+            catch (e1) {
+                err = e1;
+                try { built = await root.VRIndex.build({ mode: 'snapshot', onProgress: onProgress }); ok = true; err = null; }
+                catch (e2) { err = e1; }
+            }
+        } else if (mode === 'quick') {
+            /* 临时：下载记录优先，再试增量对账。两者都不需要遍历整棵树的语义。 */
+            try { built = await root.VRIndex.build({ mode: 'downloads', onProgress: onProgress }); ok = true; }
+            catch (e1) {
+                try { built = await root.VRIndex.build({ mode: 'reconcile', onProgress: onProgress }); ok = true; }
+                catch (e2) { err = e1; }
+            }
+        } else {
+            /* auto：老降级链，保持原样（首次进库用） */
+            try { built = await root.VRIndex.build({ mode: 'downloads', onProgress: onProgress }); ok = true; }
+            catch (e1) {
+                try { built = await root.VRIndex.build({ mode: 'reconcile', onProgress: onProgress }); ok = true; }
+                catch (e2) {
+                    try { built = await root.VRIndex.build({ mode: 'full', onProgress: onProgress }); ok = true; }
+                    catch (e3) {
+                        try { built = await root.VRIndex.build({ mode: 'snapshot', onProgress: onProgress }); ok = true; }
+                        catch (e4) { err = e1; }
+                    }
                 }
             }
         }
+
         hideScan();
-        /* 超限必须告诉用户（B-34 / 红队 c-1/c-2）：
-         * 原来超限静默截断，用户看到「刚好 2 万条」会以为素材丢了。
-         * 这里只在真的发生时提示一次，不打扰正常使用。 */
         try { reportTruncation(built); } catch (e) { /* 提示失败不影响索引 */ }
-        if (ok) { await recordScan(); }
-        return ok;
+        if (ok) {
+            await recordScan();
+            /* 扫描完把索引写回磁盘（<根>/_library/index.json）。
+             * 这一步是「换浏览器也能认」的关键：其它浏览器装着同一个扩展、
+             * 授权到同一个文件夹后，读这份快照就能把整库恢复出来，
+             * 而不必依赖各自浏览器私有的 chrome.downloads 历史（苏哥 2026-11-09 报的问题）。
+             * 写失败不阻断扫描结果 —— 内存/IDB 里已经是新的了。 */
+            try {
+                if (root.VRIndex && typeof root.VRIndex.scheduleSnapshot === 'function') {
+                    root.VRIndex.scheduleSnapshot(1200);
+                }
+            } catch (e) { /* 快照失败下次扫描再写 */ }
+        }
+        return { ok: ok, built: built, err: err };
+    }
+
+    async function autoIndex() {
+        var r = await runIndex('auto');
+        return !!r.ok;
+    }
+
+    /** 「临时扫描」按钮：秒级，只补新下载的 */
+    async function scanQuick() {
+        if (!root.VRIndex) { toast('索引模块未加载，请刷新页面'); return false; }
+        var r = await runIndex('quick');
+        if (!r.ok) {
+            toast('快速扫描失败：' + indexErrText(r.err));
+            return false;
+        }
+        await afterScanReset();
+        var n = (r.built && r.built.total) || 0;
+        toast('快速扫描完成：' + FILES.length + ' 项（本次识别 ' + n + ' 项）');
+        return true;
+    }
+
+    /** 「全量扫描」按钮：遍历整棵树，磁盘为真相。
+     *  换浏览器 / 从别处拷进来的素材，只有这条能把它们收进库。 */
+    async function scanFull() {
+        if (!root.VRIndex) { toast('索引模块未加载，请刷新页面'); return false; }
+        var r = await runIndex('full');
+        if (!r.ok) {
+            var msg = indexErrText(r.err);
+            /* 全量扫描需要一次目录授权：把原因说清，而不是甩一句「失败」 */
+            toast('全量扫描失败：' + msg + '。若是首次使用，请在设置里「更换目录」授权一次文件夹', {
+                label: '去授权', ms: 12000, onClick: openOptions
+            });
+            return false;
+        }
+        await afterScanReset();
+        var n = (r.built && r.built.total) || 0;
+        var un = 0;
+        FILES.forEach(function (f) { if (f.untracked) { un++; } });
+        toast('全量扫描完成：库内 ' + FILES.length + ' 项（本次识别 ' + n + ' 项'
+            + (un ? '，其中 ' + un + ' 项未归类' : '') + '）');
+        return true;
+    }
+
+    /** 扫描后的统一收尾：清筛选 + 重载 + 重绘左栏。
+     *  不清筛选的话，旧关键词/平台还挂着，用户以为「没导入」（踩过）。 */
+    async function afterScanReset() {
+        S.q = ''; S.plat = 'all'; S.type = 'all';
+        if ($('#search')) { $('#search').value = ''; }
+        $$('#typeTabs button').forEach(function (x) { x.classList.toggle('active', x.dataset.type === 'all'); });
+        await load();
+        try { renderTree(); } catch (e) { /* 左栏重绘失败不影响主区 */ }
+    }
+
+    /** 把索引错误码翻成人话 */
+    function indexErrText(e) {
+        var code = '';
+        try { code = (root.VRIndex && root.VRIndex.errCode) ? root.VRIndex.errCode(e) : ''; } catch (x) { code = ''; }
+        var raw = (e && e.message) || '';
+        if (code === 'LIB_E_NO_PERM') { return '没有文件夹读取权限'; }
+        if (code === 'LIB_E_NO_SNAPSHOT') { return '还没有可用索引快照'; }
+        if (code === 'LIB_E_ENOSPC') { return '磁盘空间不足'; }
+        if (/LIB_E_NO_PERM|需要一次目录授权/.test(raw)) { return '没有文件夹读取权限'; }
+        return raw || code || '未知原因';
     }
 
     /** 把「被上限截断」这件事如实告诉用户（B-34） */
@@ -1484,16 +1650,15 @@
         var ts = $('#treeSearch');
         if (ts) { ts.addEventListener('input', renderTree); }
 
-        on('rescanBtn', async function () {
-            toast('正在扫描目录…');
-            var ok = await autoIndex();
-            /* 重扫后必须把筛选条件清掉并重新渲染，否则旧关键词/平台还挂着，
-             * 用户以为「没导入」，其实刷新页面（筛选重置）才看得见。 */
-            S.q = ''; S.plat = 'all'; S.type = 'all';
-            if ($('#search')) { $('#search').value = ''; }
-            $$('#typeTabs button').forEach(function (x) { x.classList.toggle('active', x.dataset.type === 'all'); });
-            await load();
-            toast(ok ? '扫描完成：' + FILES.length + ' 项已刷新' : '扫描失败：未授权目录');
+        on('rescanBtn', function () {
+            /* 快速扫描：只补新下载的（下载记录 + 快照对账），秒级。
+             * 不做全量遍历 —— 大目录全量扫一遍很慢，日常刷新用这个就够。 */
+            scanQuick();
+        });
+        on('rescanFullBtn', function () {
+            /* 全量扫描：磁盘为真相。换浏览器 / 从别处拷进来的素材靠这条进库，
+             * 认不出站点的归「未整理」（苏哥 2026-11-09 明确要的两个入口）。 */
+            scanFull();
         });
         on('settingsBtn', function () { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.add('show'); } if (m) { m.classList.add('show'); } refreshDrawer(); });
         on('setClose', function () { closeSet(); });
@@ -1533,20 +1698,31 @@
 
     /** 「定位」统一入口。
      *  有绝对路径：交给系统打开所在文件夹（downloads.show 优先，其次 file://）。
-     *  没有绝对路径：自选文件夹模式下浏览器不提供绝对路径，这不是错误，
-     *  但原来只回一句「没有本地路径，无法定位」，用户既不知道原因也不知道能做什么。
-     *  这里说清原因，并给一个立刻可用的替代动作（复制相对路径）。 */
+     *  没有绝对路径：先尝试**路径自恢复**（用库设置里的根路径 + 条目的相对路径拼），
+     *  仍然拼不出来才给可操作的出路（复制相对路径）。
+     *
+     *  为什么要自恢复（B-48，苏哥 2026-11-09 报「详情页打开文件夹无效」）：
+     *  跨浏览器/全量扫描进来的条目，absPath 可能是空的 —— 下载记录里没有它，
+     *  而自选文件夹模式下 FSA 只给句柄不给路径。但库里其实存着两条线索：
+     *    settings.customRoot（用户填的预览路径）或 settings.detectedRoot + subdir，
+     *    以及条目自己的 relPath（相对库根）。
+     *  两者一拼就是绝对路径，不该直接告诉用户「没记录路径」。 */
     function revealFile(f) {
         if (!f) { return; }
-        var abs = String(f.absPath || '').trim();
-        var openFolder = function (folder) {
+
+        var tryOpen = function (absPath) {
+            var folder = String(absPath || '').replace(/\\/g, '/');
+            if (!folder) { return false; }
+            /* 去掉最后一段（文件名），得到所在目录 */
+            folder = folder.replace(/\/[^/]+$/, '');
+            if (!folder) { return false; }
             var url = '';
             try {
                 url = root.VRPath && root.VRPath.toFileUrl
                     ? root.VRPath.toFileUrl(folder)
-                    : ('file:///' + folder.split(String.fromCharCode(92)).join('/'));
+                    : ('file:///' + folder.replace(/^\//, ''));
                 if (url.charAt(url.length - 1) !== '/') { url += '/'; }
-            } catch (e) { toast('路径无法打开：' + ((e && e.message) || '未知')); return; }
+            } catch (e) { return false; }
             try {
                 if (chrome.tabs && chrome.tabs.create) {
                     chrome.tabs.create({ url: url }, function () {
@@ -1554,29 +1730,109 @@
                     });
                 } else { window.open(url, '_blank'); }
                 toast('已打开所在文件夹');
-            } catch (e) { toast('打开路径失败：' + ((e && e.message) || '未知')); }
+                return true;
+            } catch (e) {
+                try { window.open(url, '_blank'); toast('已打开所在文件夹'); return true; } catch (e2) { return false; }
+            }
         };
 
-        /* 有 downloadId 就先让浏览器自己定位，最准 */
+        /* ① 有 downloadId：让浏览器自己定位，最准（会选中文件本身） */
         if (f.downloadId != null && chrome.downloads && chrome.downloads.show) {
             try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
         }
-        if (abs) {
-            openFolder(abs.replace(new RegExp('[' + String.fromCharCode(92) + '/][^' + String.fromCharCode(92) + '/]+$'), ''));
+
+        /* ② 有绝对路径：直接开 */
+        var abs = String(f.absPath || '').trim();
+        if (abs && tryOpen(abs)) { return; }
+
+        /* ③ 路径自恢复：settings 里的根 + 条目的相对路径 */
+        try {
+            chrome.storage.local.get('vrLibSettings', function (o) {
+                var st = (o && o.vrLibSettings) || {};
+                var rel = String(f.relPath || '').replace(/\\/g, '/');
+                var subdir = String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
+                /* 条目 relPath 形如 video-rod/抖音/作者/视频/x.mp4；
+                 * 根路径只需要前面那段（去掉 subdir 前缀）之后再拼。 */
+                var relFromRoot = rel;
+                if (subdir && relFromRoot.indexOf(subdir + '/') === 0) {
+                    relFromRoot = relFromRoot.slice(subdir.length + 1);
+                }
+                var withBase = function (base) {
+                    if (!base) { return false; }
+                    return tryOpen(String(base).replace(/\/+$/, '') + '/' + relFromRoot);
+                };
+
+                /* ③a 设置里已经有根：直接用 */
+                if (String(st.mode || 'system') === 'custom') {
+                    if (withBase(String(st.customRoot || '').trim())) { return; }
+                } else {
+                    var dr = String(st.detectedRoot || '').trim();
+                    if (dr && withBase(dr + '/' + subdir)) { return; }
+                }
+
+                /* ③b 设置里没有根 —— 从 chrome.downloads 反推。
+                 * 这是跨浏览器最实用的一条：新浏览器没有旧浏览器的下载历史，
+                 * 但只要它自己下过任意一个落进 <根>/ 的文件，就能从那条记录里
+                 * 截出「…/video-rod」这段当库根的绝对路径。
+                 * 苏哥 2026-11-09 报的「详情页打开文件夹无效」正是缺这一步。 */
+                if (!chrome.downloads || !chrome.downloads.search) {
+                    offerCopyPath(f, st, rel);
+                    return;
+                }
+                chrome.downloads.search({ limit: 2000 }, function (list) {
+                    var root = deriveRootFromDownloads(list || [], subdir);
+                    if (root && withBase(root)) { return; }
+                    offerCopyPath(f, st, rel, !!root);
+                });
+            });
             return;
+        } catch (e) { /* 读设置失败 → 走兜底提示 */ }
+
+        offerCopyPath(f, null, String(f.relPath || ''));
+    }
+
+    /** 从下载记录里反推「库根」的绝对路径。
+     *  判据：filename 里出现过 /<subdir>/ 段 → 取它前面那段当根。
+     *  取出现次数最多的那个（避免个别脏记录把根带偏）。 */
+    function deriveRootFromDownloads(list, subdir) {
+        var sd = String(subdir || 'video-rod');
+        var pat = new RegExp('/' + sd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/', 'i');
+        var tally = {};
+        (list || []).forEach(function (d) {
+            var p = String((d && d.filename) || '').replace(/\\/g, '/');
+            if (!p) { return; }
+            var m = p.match(pat);
+            if (!m) { return; }
+            var root = p.slice(0, m.index + 1 + sd.length);
+            if (root) { tally[root] = (tally[root] || 0) + 1; }
+        });
+        var keys = Object.keys(tally);
+        if (!keys.length) { return ''; }
+        keys.sort(function (a, b) { return tally[b] - tally[a]; });
+        return keys[0];
+    }
+
+    /** 「定位」失败时的出路：复制相对路径 + 告诉用户为什么 */
+    function offerCopyPath(f, st, rel, rootGuessed) {
+        var r = String(rel || f.relPath || '');
+        if (!r) { toast('这条素材没有可用的路径信息'); return; }
+        var why;
+        if (rootGuessed) {
+            why = '按文件夹根路径拼了一下没打开，可能文件夹被移动或改名了。';
+        } else if (st && String(st.mode || 'system') === 'custom' && !String(st.customRoot || '').trim()) {
+            why = '当前是自选文件夹模式，浏览器不提供绝对路径。可在「设置 → 媒体库位置」里填一次预览路径。';
+        } else {
+            why = '这条素材没有下载记录，也没能推出它所在文件夹的绝对路径。可在「设置 → 媒体库位置」里填一次预览路径。';
         }
-        /* 走不通时给可操作出路，而不是一句结论 */
-        toast('这条素材没记录绝对路径（自选文件夹模式浏览器不提供），可用「复制相对路径」自己找', {
-            label: '复制路径', ms: 10000,
+        toast(why, {
+            label: '复制路径', ms: 12000,
             onClick: function () {
-                var rel = String(f.relPath || '');
-                if (!rel) { toast('这条没有路径信息'); return; }
-                var done = function () { toast('已复制：' + rel); };
+                var done = function () { toast('已复制：' + r); };
                 try {
                     if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(rel).then(done, function () { toast(rel); });
-                    } else { toast(rel); }
-                } catch (e) { toast(rel); }
+                        navigator.clipboard.writeText(r).then(done, function () { toast(r); });
+                    } else { toast(r); }
+                } catch (e) { toast(r); }
             }
         });
     }
@@ -2162,11 +2418,12 @@
     }
 
     async function doScan() {
-        toast('正在扫描目录…');
-        var ok = await autoIndex();
-        await load();
+        /* 设置抽屉里的「立即扫描」= 全量扫描。
+         * 用户主动点它的时候，意图通常是「把磁盘上的一并认进来」，
+         * 而不是只补新下载的 —— 后者主界面上的「快速扫描」更顺手。 */
+        var ok = await scanFull();
         await refreshDrawer();
-        toast(ok ? '扫描完成：' + FILES.length + ' 项' : '扫描失败：未授权目录');
+        return ok;
     }
 
     /* ---------- 回收站（S5 完整版） ----------

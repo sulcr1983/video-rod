@@ -186,6 +186,22 @@ const SAMPLES = {
                 <h1><span>放慢脚步，幸福会追上你！ #瑜伽裤穿搭 #散步随拍 #户外拍摄</span></h1>
               </div>
             </div></body></html>`
+    },
+    // 11. 抖音精选页/首页（2026-11-09 实站结构）
+    // 苏哥报的「只有作者名没有标题」就是这个场景：URL 里没有作品 ID，
+    // 新版抖音把 data-e2e 内容锚点全删了，标题只在卡片封面的 alt 上。
+    douyinJingxuan: {
+        url: 'https://www.douyin.com/jingxuan',
+        html: `<html><head><title>抖音精选电脑版 - 抖音旗下优质视频平台</title></head>
+            <body><div class="discoverFeedList">
+              <div class="OeaWUf2h discover-video-card-item wsHpfZHO">
+                <img class="XTdkxrLI discover-video-card-img" alt="回顾一下赌侠大战拉斯维加斯粤语版经典片段#经典港片再现 #香港喜剧电影">
+                <div class="basePlayerContainer video_7703110748436434097">
+                  <video src="https://v95-web-sz.douyinvod.com/x/video.mp4"></video>
+                  <span class="nicknameSpan">@小小影视🍀</span>
+                </div>
+              </div>
+            </div></body></html>`
     }
 };
 
@@ -295,6 +311,26 @@ console.log('\n===== 页面识别：抖音 =====');
     eq(buildName(doc, SAMPLES.douyin.url, { tpl: '${author}_${title}', ext: 'mp4' }),
         '东方街拍(@3151627183989326)_放慢脚步，幸福会追上你！ #瑜伽裤穿搭 #散步随拍 #户外拍摄.mp4',
         '抖音文件名 昵称(@UID)_描述');
+}
+console.log('\n===== 页面识别：抖音精选页（2026-11-09 回归） =====');
+{
+    /* 苏哥 2026-11-09 报：首页/精选页点下载，文件名只有作者名、没有视频标题。
+     * 根因：URL 无作品 ID + 新版删光 data-e2e 内容锚点 + 标题其实在卡片封面 alt 上。
+     * 这条用例把「标题必须来自卡片 alt」钉死，防止以后再退回 document.title。 */
+    const doc = parseHTML(SAMPLES.douyinJingxuan.html);
+    const info = extractPageInfo(doc, SAMPLES.douyinJingxuan.url);
+    eq(info.pageType, 'douyin', '精选页识别抖音');
+    eq(info.title, '回顾一下赌侠大战拉斯维加斯粤语版经典片段#经典港片再现 #香港喜剧电影',
+        '精选页标题取自卡片封面 alt（不是作者）');
+    eq(info.author, '', '精选页没有可信作者锚点时留空（不硬造）');
+    eq(buildName(doc, SAMPLES.douyinJingxuan.url, { tpl: '${author}_${title}', ext: 'mp4' }),
+        '回顾一下赌侠大战拉斯维加斯粤语版经典片段#经典港片再现 #香港喜剧电影.mp4',
+        '精选页文件名含标题（不再只剩作者名）');
+    /* 站点宣传语绝不能被当成作品名 */
+    const docNoise = parseHTML(`<html><head><title>抖音精选电脑版 - 抖音旗下优质视频平台</title></head>
+        <body><div class="discover-video-card-item"></div></body></html>`);
+    eq(extractPageInfo(docNoise, 'https://www.douyin.com/jingxuan').title, '',
+        '站点宣传语不当标题（清空交给 URL/时间戳兜底）');
 }
 
 /* ================= N9 AIX / Fatkun 风格占位符 ================= */

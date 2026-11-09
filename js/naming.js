@@ -170,31 +170,132 @@
     }
 
     /** 抖音：描述取详情区 h1，作者取 user-info（昵称 + 抖音号/UID）
-     *  选择器只用 data-e2e 锚点，抖音的 class 是哈希值，随时会变。 */
+     *
+     *  2026-11-09 重写（拆「智小抖 v2.4.5」所得，见
+     *  deliverables/reviews/2026-11-09-智小抖拆解-抖音取标题机制.md）。
+     *  苏哥报的现象：抖音首页/精选页点下载，文件名只有作者名、没有视频标题。
+     *  根因：旧版只靠两个 data-e2e 锚点，而新版抖音精选页实测**一个内容锚点都没有**
+     *  （只剩 douyin-navigation / searchbar-input / im-entry 这类导航项）→
+     *  post 取空 → title 兜底 document.title「抖音精选电脑版 - 抖音旗下优质视频平台」→
+     *  `${author}_${title}` 里 title 那段是站点宣传语，看起来就像「只有作者名」。
+     *  更讽刺：卡片 img.discover-video-card-img 的 alt 装的**是标题**，
+     *  旧代码却把 img[alt] 当作者取，方向正好反了。
+     *
+     *  新取法（按可靠性降序）：
+     *   ① 爬 React Fiber 读播放器组件的 props.awemeInfo → desc + authorInfo.nickname
+     *      （不依赖 URL、不依赖 class、不碰签名，首页/精选/搜索/主页全场景可用）
+     *   ② 卡片 DOM：img.discover-video-card-img[alt] 当标题
+     *   ③ 老 data-e2e 锚点（详情页可能还在）
+     *   ④ document.title 兜底，但先过「站点宣传语黑名单」
+     */
+
+    /** 抖音 document.title 里这类站点宣传语不能当作品标题用 */
+    const DOUYIN_NOISE_TITLE = /(抖音精选电脑版|记录美好生活|抖音旗下优质视频平台|发现更多精彩视频|抖音 - 抖音|抖音搜索)/i;
+
+    /** 爬 React Fiber 抠当前播放视频的 awemeInfo。
+     *  与 js/douyin.js 的 playerFunc 同一套算法；这里独立实现一份，
+     *  因为 naming.js 会被注入页面直接跑，不能依赖扩展侧模块。
+     *  Node 单测的迷你 DOM 里没有 __reactFiber$，Object.keys 拿不到就自然返回 null。 */
+    function douyinFromFiber(doc) {
+        try {
+            var vids = qa(doc, 'video');
+            if (!vids.length) { return null; }
+            var ordered = vids.filter(function (v) { return v.currentSrc && !v.paused; })
+                .concat(vids.filter(function (v) { return v.currentSrc; }))
+                .concat(vids);
+
+            function pick(children) {
+                var list = Array.isArray(children) ? children : [children];
+                for (var i = 0; i < list.length; i++) {
+                    var c = list[i];
+                    var info = c && c.props && c.props.awemeInfo;
+                    if (info && (info.awemeId || info.aweme_id)) { return info; }
+                }
+                return null;
+            }
+            function fromFiber(el) {
+                if (!el || typeof Object.keys !== 'function') { return null; }
+                var ks = Object.keys(el), key = '';
+                for (var i = 0; i < ks.length; i++) {
+                    if (ks[i].indexOf('__reactFiber$') === 0) { key = ks[i]; break; }
+                }
+                if (!key) { return null; }
+                var f = el[key];
+                var tries = [
+                    function () { return f.child && f.child.memoizedProps && f.child.memoizedProps.itemInfo; },
+                    function () { return pick(f.child && f.child.memoizedProps && f.child.memoizedProps.children); },
+                    function () { return pick(f.memoizedProps && f.memoizedProps.children); }
+                ];
+                for (var t = 0; t < tries.length; t++) {
+                    try {
+                        var r = tries[t]();
+                        if (r && (r.awemeId || r.aweme_id)) { return r; }
+                    } catch (e) { /* 换下一种取法 */ }
+                }
+                return null;
+            }
+
+            var hit = null;
+            for (var i = 0; i < ordered.length && !hit; i++) {
+                var n = ordered[i];
+                for (var up = 0; up < 16 && n; up++) {
+                    hit = fromFiber(n);
+                    if (hit) { break; }
+                    n = n.parentElement;
+                }
+            }
+            if (!hit) { return null; }
+            var a = hit.authorInfo || hit.author || {};
+            return {
+                awemeId: String(hit.awemeId || hit.aweme_id || ''),
+                desc: String(hit.desc || ''),
+                nickname: String(a.nickname || a.nick_name || ''),
+                uniqueId: String(a.uniqueId || a.unique_id || ''),
+                uid: String(a.uid || '')
+            };
+        } catch (e) { return null; }
+    }
+
     function extractDouyin(doc, host) {
-        // 视频描述：详情区 h1（实测 [data-e2e="detail-video-info"] 稳定）
-        let post = textOf(q(doc, '[data-e2e="detail-video-info"] h1'))
-            || textOf(q(doc, '[data-e2e="video-detail"] h1'))
-            || '';
-        // 作者昵称：头像 alt 最稳；其次作者链接里的文本
-        const author = attrOf(q(doc, '[data-e2e="user-info"] img[alt]'), 'alt')
+        // ① Fiber：最可靠，直接拿当前这条视频的组件数据
+        const fb = douyinFromFiber(doc);
+
+        // ② 卡片 DOM：精选页标题在卡片封面的 alt 上（不是作者！作者在同级的 @昵称 span 里）
+        const cardImgAlt = attrOf(q(doc, 'img[class*="discover-video-card-img"]'), 'alt')
+            || attrOf(q(doc, '[class*="discover-video-card-img"]'), 'alt');
+        // ③ 老锚点（详情页可能还在）
+        const legacyPost = textOf(q(doc, '[data-e2e="detail-video-info"] h1'))
+            || textOf(q(doc, '[data-e2e="video-detail"] h1'));
+
+        let post = (fb && fb.desc) || cardImgAlt || legacyPost || '';
+        if (DOUYIN_NOISE_TITLE.test(post)) { post = ''; }
+
+        // 作者：Fiber 的 nickname 最准；
+        // 其次详情页 user-info 容器里的头像 alt（实测装的是昵称）；
+        // 再次作者链接文本。注意这条与 ② 的卡片封面 alt 不冲突 ——
+        // 那个是**标题**，这个是 **user-info 作用域内**的头像，两者选择域不同。
+        const author = (fb && fb.nickname)
+            || attrOf(q(doc, '[data-e2e="user-info"] img[alt]'), 'alt')
             || textOf(q(doc, '[data-e2e="user-info"] a[href*="/user/"]'))
             || '';
-        // 作者 ID：作者链接里的 author_id（数字 UID）；没有就退 sec_uid。
-        // 注意：抖音号（unique_id）不在详情页 DOM 里，下载时由后台详情接口补上。
-        let authorId = '';
-        const userA = q(doc, '[data-e2e="user-info"] a[href*="/user/"]');
-        const href = attrOf(userA, 'href');
-        const mUid = href.match(/[?&]author_id=(\d+)/);
-        if (mUid) { authorId = mUid[1]; }
-        else {
-            const mSec = href.match(/\/user\/([A-Za-z0-9_-]+)/);
-            if (mSec) { authorId = mSec[1]; }
+        // 作者 ID：抖音号优先，没有用数字 UID；都没有退回链接里的 sec_uid
+        let authorId = (fb && (fb.uniqueId || fb.uid)) || '';
+        if (!authorId) {
+            const userA = q(doc, '[data-e2e="user-info"] a[href*="/user/"]');
+            const href = attrOf(userA, 'href');
+            const mUid = href.match(/[?&]author_id=(\d+)/);
+            if (mUid) { authorId = mUid[1]; }
+            else {
+                const mSec = href.match(/\/user\/([A-Za-z0-9_-]+)/);
+                if (mSec) { authorId = mSec[1]; }
+            }
         }
-        // 标题：描述优先；没有就从 document.title 剥「 - 抖音」
+
+        // 标题：描述优先；没有才退 document.title，且必须过宣传语黑名单
         let title = post;
         if (!title && doc && doc.title) {
-            title = doc.title.replace(/\s*[-_|—–]\s*抖音\s*$/, '').trim();
+            const t = doc.title.replace(/\s*[-_|—–]\s*抖音\s*$/, '').trim();
+            if (t && !DOUYIN_NOISE_TITLE.test(t)) { title = t; }
         }
         return { title, author, authorId, post, pageType: 'douyin' };
     }
