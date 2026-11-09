@@ -233,6 +233,19 @@ python tools/test-dedupe-live.py     # 15  同平台跳过 / 账本清空仍跳�
 >
 > 删除能力必须走 FSA：`fetch(file://, {method:'DELETE'})` 返回 ok 但**不删文件**（实测踩过）。
 
+### 4.6 侧边栏尺寸档位布局（2026-11-09 新增，7 条断言）
+
+改 `css/image-page.css` 的 `.ip-tiers` / `.ip-tier` 后必须跑：
+
+```bash
+node tools/test-tiers-css.js          # 7  换行 / 不隐藏溢出 / 不压缩 / 「全部」档不得被 100 兜底
+python tools/test-sidebar-tiers.py    # 真机 390×780：5 个档位必须全部落在容器内（含「超大」）
+```
+
+> 背景：原来 `.ip-tiers` 是单行 nowrap + `overflow-x:auto` 且**隐藏滚动条**，
+> 侧边栏 380px 放不下 5 个档位，「超大」被裁掉且没有可滚动提示（苏哥截图报过）。
+> 契约钉死：档位行必须 `flex-wrap: wrap`，且 `allInside === true`。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

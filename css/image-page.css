@@ -123,13 +123,16 @@ input { font: inherit; }
 .ip-tiers {
     flex: 0 0 auto;
     display: flex;
-    gap: 5px;
+    /* 2026-11-09 苏哥报「大 ≥1200 右边被切掉，不知道后面还有没有别的」：
+     * 原来是单行 nowrap + overflow-x:auto **且隐藏了滚动条** —— 侧边栏只有 380px 左右，
+     * 5 个档位（全部/小/中/大/超大）放不下，「超大」被裁掉且没有任何可滚动提示。
+     * 档位是「一眼要比对」的筛选器，藏起来等于没有 —— 改成换行，全部可见。 */
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 6px 5px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--line-2);
-    overflow-x: auto;
-    scrollbar-width: none;
 }
-.ip-tiers::-webkit-scrollbar { display: none; }
 
 .ip-tier {
     flex: 0 0 auto;
@@ -137,7 +140,7 @@ input { font: inherit; }
     align-items: center;
     gap: 5px;
     height: 26px;
-    padding: 0 10px;
+    padding: 0 9px;
     border: 1px solid var(--line);
     border-radius: 999px;
     background: var(--surface-2);
