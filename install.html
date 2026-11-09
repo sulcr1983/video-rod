@@ -4,114 +4,211 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>苏哥的钓鱼竿扩展安装成功</title>
+    <title>苏哥的钓鱼竿 · 安装完成</title>
     <link rel="stylesheet" type="text/css" href="css/install.css" media="all" />
 </head>
 
 <body>
-    <div class="container">
-        <!-- 语言切换按钮 -->
-        <div class="lang-switch" id="langToggle">
-            <span class="lang-emoji" id="langEmoji">🌐</span>
-            <span class="lang-text" id="langText">English</span>
-        </div>
+    <main class="shell">
+        <!-- 装饰：钓线 -->
+        <svg class="hero-line" viewBox="0 0 300 180" aria-hidden="true" focusable="false">
+            <defs>
+                <linearGradient id="lineGold" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#E8B04B" stop-opacity="0.55" />
+                    <stop offset="60%" stop-color="#E8B04B" stop-opacity="0.18" />
+                    <stop offset="100%" stop-color="#E8B04B" stop-opacity="0" />
+                </linearGradient>
+            </defs>
+            <path d="M6 8C78 46 128 22 176 62s58 78 118 96" fill="none" stroke="url(#lineGold)"
+                stroke-width="1.1" stroke-linecap="round" />
+            <circle cx="294" cy="158" r="2.4" fill="#E8B04B" fill-opacity="0.5" />
+        </svg>
 
-        <div class="header">
-            <div class="logo-container">
-                <div class="logo"><img src="img/icon.png"></div>
-            </div>
-            <h1 id="main-title">苏哥的钓鱼竿 已就位</h1>
-            <div class="subtitle" id="subtitle">抓取 → 归档 → 入库，一条龙</div>
-        </div>
-
-        <div class="card fade-in">
-            <div class="card-header">
-                <div class="card-title">
-                    <span class="emoji">🙌</span>
-                    <span id="welcome-title">网页里的视频和图片，从此进你自己的库</span>
+        <header class="hero">
+            <div class="brand">
+                <div class="logo"><img src="img/icon.png" alt="苏哥的钓鱼竿"></div>
+                <div class="brand-text">
+                    <div class="eyebrow">
+                        <span class="lang-zh active">安装完成 · VIDEO ROD</span>
+                        <span class="lang-en">INSTALLED · VIDEO ROD</span>
+                    </div>
+                    <h1 id="main-title">
+                        <span class="lang-zh active">苏哥的钓鱼竿 已就位</span>
+                        <span class="lang-en">Su Ge's Video Rod is ready</span>
+                    </h1>
+                    <p class="lede" id="subtitle">
+                        <span class="lang-zh active">刷到的视频和图，一竿收进你的私人素材库</span>
+                        <span class="lang-en">Every video and image you scroll past, one cast from your own library</span>
+                    </p>
+                    <p class="credit">
+                        <span class="lang-zh active">嗅探内核来自开源猫抓 cat-catch（GPL-3.0）；素材库、批量下载、命名归档与界面为本版重做。</span>
+                        <span class="lang-en">Sniffing core from open-source cat-catch (GPL-3.0); the library, batch
+                            download, naming and UI are rebuilt in this build.</span>
+                    </p>
                 </div>
             </div>
-            <div class="card-body">
-                <div class="policy-section">
-                    <div class="section-title">
-                        <span class="emoji">🔒</span>
-                        <span id="privacy-title">隐私政策 / Privacy Policy</span>
-                    </div>
-                    <div class="content-box">
-                        <div class="lang-zh active">
-                            <p>本扩展收集所有信息都在本地储存处理，不会发送到远程服务器，不包含任何跟踪器。</p>
-                        </div>
-                        <div class="lang-en">
-                            <p>The extension collects and processes all information locally without sending it to remote
-                                servers and does not include any trackers.</p>
-                        </div>
-                    </div>
-                </div>
+            <button class="lang-switch" id="langToggle" type="button" aria-label="切换语言 / Switch language">
+                <span class="lang-emoji" id="langEmoji">🌐</span>
+                <span class="lang-text" id="langText">English</span>
+            </button>
+        </header>
 
-                <div class="policy-section">
-                    <div class="section-title">
-                        <span class="emoji">⚠️</span>
-                        <span id="disclaimer-title">免责声明 / Disclaimer</span>
-                    </div>
-                    <div class="content-box">
-                        <div class="lang-zh active">
-                            <p>本扩展仅供下载用户拥有版权或已获授权的视频，禁止用于下载受版权保护且未经授权的内容。用户需自行承担使用本工具的全部法律责任，开发者不对用户的任何行为负责。本工具按"原样"提供，开发者不承担任何直接或间接责任。
-                            </p>
-                        </div>
-                        <div class="lang-en">
-                            <p>This extension is intended for downloading videos that you own or have authorized access
-                                to. It is prohibited to use this Tool for downloading copyrighted content without
-                                permission. Users are solely responsible for their actions, and the developer is not
-                                liable for any user behavior. This Tool is provided "as-is," and the developer assumes
-                                no direct or indirect liability.</p>
-                        </div>
-                    </div>
+        <section class="features" aria-label="核心能力">
+            <article class="feat">
+                <div class="feat-top">
+                    <svg class="feat-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                        <rect x="2.6" y="4" width="14.8" height="10" rx="2" />
+                        <path d="M8.2 7.4l3.6 2.1-3.6 2.1z" />
+                        <path d="M7 17h6" />
+                    </svg>
+                    <span class="idx">01</span>
                 </div>
+                <h3>
+                    <span class="lang-zh active">什么网页都能钓</span>
+                    <span class="lang-en">Any page works</span>
+                </h3>
+                <p>
+                    <span class="lang-zh active">网页上出现的视频和图片，随手就能存下来；单张存、整页批量存都行。</span>
+                    <span class="lang-en">Any video or image on the page — save one file or the whole batch.</span>
+                </p>
+            </article>
 
-                <div class="policy-section">
-                    <div class="section-title">
-                        <span class="emoji">🚨</span>
-                        <span id="issue-title">问题提交 / Issue Submission</span>
-                    </div>
-                    <div class="content-box">
-                        <div class="lang-zh active">
-                            <a href="https://cat-catch.94cat.com/docs/issues" target="_blank" rel="noopener">
-                                <span class="emoji">🔗</span>
-                                https://cat-catch.94cat.com/docs/issues
-                            </a>
-                        </div>
-                        <div class="lang-en">
-                            <a href="https://cat-catch.94cat.com/docs/issues" target="_blank" rel="noopener">
-                                <span class="emoji">🔗</span>
-                                https://cat-catch.94cat.com/docs/issues
-                            </a>
-                        </div>
-                    </div>
+            <article class="feat">
+                <div class="feat-top">
+                    <svg class="feat-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                        <rect x="3" y="3.2" width="14" height="13.6" rx="2" />
+                        <path d="M3 8.4h14" />
+                        <path d="M7.2 12.2h3.6" />
+                    </svg>
+                    <span class="idx">02</span>
                 </div>
+                <h3>
+                    <span class="lang-zh active">存下来就入库</span>
+                    <span class="lang-en">Saved means filed</span>
+                </h3>
+                <p>
+                    <span class="lang-zh active">自动进本地素材库：能搜、能预览、能筛选，素材不再散落在下载文件夹里。</span>
+                    <span class="lang-en">Everything lands in a local library you can search, preview and filter.</span>
+                </p>
+            </article>
 
-                <div class="agreement">
-                    <div class="lang-zh active">
-                        <p>点击"同意"或"关闭本页面"即表示您已阅读并同意以上内容。</p>
-                    </div>
-                    <div class="lang-en">
-                        <p>By clicking "Agree" or "Close this page," you confirm that you have read and agree to the
-                            above terms.</p>
-                    </div>
+            <article class="feat">
+                <div class="feat-top">
+                    <svg class="feat-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                        <path d="M2.8 6.2a2 2 0 012-2h3.4l1.8 1.8h5.2a2 2 0 012 2v7.4a2 2 0 01-2 2H4.8a2 2 0 01-2-2z" />
+                        <path d="M7 11.4h6" />
+                    </svg>
+                    <span class="idx">03</span>
                 </div>
+                <h3>
+                    <span class="lang-zh active">命名归档按你的规矩</span>
+                    <span class="lang-en">Naming on your rules</span>
+                </h3>
+                <p>
+                    <span class="lang-zh active">文件名模板自己定：标题、作者、序号、日期随便拼，按站点和作者自动分文件夹。</span>
+                    <span class="lang-en">Your filename template, your folders — split by site and author.</span>
+                </p>
+            </article>
 
-                <div class="buttons">
-                    <button id="agreeBtn" class="btn btn-primary">
-                        <span class="emoji">✅</span>
-                        <span id="agreeText">同意</span>
-                    </button>
-                    <button id="uninstallBtn" class="btn btn-outline">
-                        <span class="emoji">🗑️</span>
-                        <span id="uninstallText">卸载扩展</span>
-                    </button>
+            <article class="feat">
+                <div class="feat-top">
+                    <svg class="feat-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                        <path d="M10 2.6l6 2.2v5c0 3.6-2.4 6.5-6 7.6-3.6-1.1-6-4-6-7.6v-5z" />
+                        <path d="M7.5 10.1l1.8 1.8 3.4-3.6" />
+                    </svg>
+                    <span class="idx">04</span>
                 </div>
+                <h3>
+                    <span class="lang-zh active">只在你电脑里跑</span>
+                    <span class="lang-en">Runs on your machine</span>
+                </h3>
+                <p>
+                    <span class="lang-zh active">全程本地处理，不上传、不跟踪、不用注册账号，素材始终是你的。</span>
+                    <span class="lang-en">Fully local: no upload, no tracker, no account. The files stay yours.</span>
+                </p>
+            </article>
+        </section>
+
+        <section class="legal">
+            <div class="legal-col">
+                <h4>
+                    <span class="lang-zh active">隐私政策</span>
+                    <span class="lang-en">Privacy</span>
+                    <em>PRIVACY</em>
+                </h4>
+                <p>
+                    <span class="lang-zh active">所有数据均在你本地存储与处理，不发送到任何远程服务器，不含任何跟踪器。</span>
+                    <span class="lang-en">All data is stored and processed locally. Nothing is sent to a remote server,
+                        and no trackers are included.</span>
+                </p>
             </div>
-        </div>
-    </div>
+            <div class="legal-col">
+                <h4>
+                    <span class="lang-zh active">免责声明</span>
+                    <span class="lang-en">Disclaimer</span>
+                    <em>DISCLAIMER</em>
+                </h4>
+                <p>
+                    <span class="lang-zh active">仅供下载你拥有版权或已获授权的内容，严禁用于未经授权的受版权保护内容。使用本工具产生的一切法律责任由用户自行承担；开发者不承担任何直接或间接责任，工具按“原样”提供。</span>
+                    <span class="lang-en">Use only for content you own or are authorized to download. Unauthorized
+                        copyrighted material is prohibited. You are solely responsible for your use; the developer
+                        accepts no liability. Provided "as-is".</span>
+                </p>
+            </div>
+        </section>
+
+        <section class="feedback">
+            <div class="fb-title">
+                <span class="lang-zh active">遇到问题，直接找作者</span>
+                <span class="lang-en">Something broken? Tell the author</span>
+                <em>FEEDBACK</em>
+            </div>
+            <div class="fb-links">
+                <a href="https://github.com/sulcr1983/video-rod/issues" target="_blank" rel="noopener">
+                    <svg class="link-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                        <path d="M10 2.8a7.2 7.2 0 00-2.3 14c.4.1.5-.2.5-.4v-1.4c-2 .4-2.4-.9-2.4-.9-.3-.8-.8-1-.8-1-.6-.4 0-.4 0-.4.7 0 1.1.7 1.1.7.6 1 1.6.7 2 .6.1-.5.3-.8.5-1-1.6-.2-3.3-.8-3.3-3.6 0-.8.3-1.4.7-1.9-.1-.2-.3-.9.1-1.9 0 0 .6-.2 2 .8a6.9 6.9 0 013.6 0c1.4-1 2-.8 2-.8.4 1 .2 1.7.1 1.9.5.5.7 1.1.7 1.9 0 2.8-1.7 3.4-3.3 3.6.3.3.5.8.5 1.6v2.3c0 .2.1.5.6.4A7.2 7.2 0 0010 2.8z" />
+                    </svg>
+                    <span class="lang-zh active">GitHub · 提交 Issue</span>
+                    <span class="lang-en">GitHub · Open an issue</span>
+                </a>
+                <button class="copy-mail" type="button" data-copy="sulcr@qq.com" aria-label="复制邮箱 sulcr@qq.com">
+                    <svg class="link-icon icon-mail" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                        <rect x="2.6" y="4.4" width="14.8" height="11.2" rx="2" />
+                        <path d="M3.4 5.6L10 10.6l6.6-5" />
+                    </svg>
+                    <span class="copy-text">sulcr@qq.com</span>
+                    <span class="copy-hint">
+                        <span class="lang-zh active">点击复制</span>
+                        <span class="lang-en">click to copy</span>
+                    </span>
+                </button>
+            </div>
+        </section>
+
+        <footer class="actions">
+            <p class="agreement">
+                <span class="lang-zh active">点击“同意”或关闭本页面，即表示你已阅读并同意以上内容。</span>
+                <span class="lang-en">By clicking "Agree" or closing this page, you confirm that you have read and
+                    agree to the terms above.</span>
+            </p>
+            <div class="buttons">
+                <button id="agreeBtn" class="btn btn-primary" type="button">
+                    <span id="agreeText">
+                        <span class="lang-zh active">同意，开始用</span>
+                        <span class="lang-en">Agree</span>
+                    </span>
+                </button>
+                <button id="uninstallBtn" class="btn btn-ghost" type="button">
+                    <span id="uninstallText">
+                        <span class="lang-zh active">卸载扩展</span>
+                        <span class="lang-en">Uninstall</span>
+                    </span>
+                </button>
+            </div>
+        </footer>
+
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
 
     <script src="js/function.js"></script>
     <script src="js/install.js"></script>
