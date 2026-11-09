@@ -717,7 +717,7 @@
                     '<span class="n">' + arr.length + '</span>' +
                     '<span class="meta">项 · ' + fmt(totalMb) + ' · 最近 ' + esc(shortDate(first.savedAt)) + '</span>' +
                     '<span class="grow"></span>' +
-                    '<button type="button" class="open" data-shelf-open="' + esc(k) + '">查看全部 ' + arr.length + ' 项 →</button>' +
+                    '<button type="button" class="open" data-shelf-open="' + esc(k) + '">查看全部 ' + arr.length + ' 项<svg class="i"><use href="#i-chevron-right"/></svg></button>' +
                 '</div>' +
                 '<div class="shelf-line">' + arr.slice(0, SHELF_MAX).map(card).join('') + '</div>' +
             '</section>';
