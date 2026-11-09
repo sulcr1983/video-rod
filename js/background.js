@@ -3548,6 +3548,35 @@ function vrWaitDownload(id, ms) {
     });
 }
 
+/** 下载项看起来是坏的（空文件 / 服务器给回来的是网页）。
+ *
+ *  「下载成功」不等于「内容是好的」：CDN 的风控页、登录页、反爬页
+ *  经常以 **200 + text/html** 返回，chrome.downloads 照单全收 —— 落盘就是坏文件。
+ *  2026-11-09 查库时见到实证：抖音那几条 15KB / 848KB 的「视频」就是这种。
+ *
+ *  规则比 SnapHD（download-tracker.js）更保守：它用 `!/^(video|image|audio)\//`
+ *  白名单，会把 application/mp4 之类的合法类型也判死（误删真文件）。
+ *  我们只拦**明确是文本/网页**的类型 + 0 字节，未知 mime 一律放过。
+ */
+function vrDownloadLooksInvalid(it) {
+    if (!it) { return false; }
+    const mime = String(it.mime || '').toLowerCase();
+    const bytes = Number(it.fileSize) || Number(it.totalBytes) || 0;
+    if (!bytes) { return true; }
+    return /^(text\/|application\/(json|xml|xhtml\+xml))/i.test(mime)
+        && !/^text\/(vtt|plain|srt)/i.test(mime);     // 字幕是文本，别误杀
+}
+
+/** 删掉坏下载：文件 + 记录一起清，否则资源库里会留一张死卡 */
+function vrDiscardBadDownload(id) {
+    try {
+        chrome.downloads.removeFile(id, function () { void chrome.runtime.lastError; });
+    } catch (e) { /* 文件可能已不存在 */ }
+    try {
+        chrome.downloads.erase({ id: id }, function () { void chrome.runtime.lastError; });
+    } catch (e) { /* ignore */ }
+}
+
 /** 清掉快速失败的下载记录和残留文件（微博 403 会落一个 .htm） */
 function vrDropDownload(id) {
     try {
@@ -5490,10 +5519,17 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
                 // CDN 403 快速失败：撤账、清掉 .htm 残留，改走页面 fetch
                 try { vrAbortFilename(pick.url, filename); } catch (e) { /* ignore */ }
                 vrDropDownload(id);
-            } else if (outcome && outcome.state === 'complete') {
+            } else if (outcome && outcome.state === 'complete' && !vrDownloadLooksInvalid(outcome)) {
                 vrMarkDownloaded(filename);
                 P.done(true, '', 0);
                 return finish({ ok: true, kind: 'url', filename: filename });
+            } else if (outcome && outcome.state === 'complete') {
+                /* 下完了但内容是坏的（空文件 / 服务器给的是反爬网页）。
+                 * 清掉假文件，**继续往下走回退路线** —— 页面 fetch / 离屏直连
+                 * 有时能带对 Cookie 拿到真内容，直接报失败等于白放弃。
+                 * 2026-11-09：抖音那几条 15KB / 848KB 的「视频」就是这种假成功。 */
+                vrDiscardBadDownload(id);
+                try { vrAbortFilename(pick.url, filename); } catch (e) { /* ignore */ }
             } else {
                 /* 2.5 秒内没下完 = 还在跑（大文件基本都走这里）。
                  * 交给统一 reporter 的字节轮询报百分比，完成/中断由它推终态。
@@ -5703,8 +5739,28 @@ function vrWatchDownloadId(id, cb) {
 
         if (d.state === 'complete') {
             clearInterval(timer);
+            /* 「下载成功」不等于「内容是好的」。
+             * CDN 的风控页 / 登录页 / 反爬页经常以 **200 + text/html** 返回，
+             * chrome.downloads 照单全收 —— 落盘就是一个打不开的坏文件。
+             * 2026-11-09 查库时见到实证：抖音那几条 15KB / 848KB 的「视频」就是这种。
+             *
+             * 抄 SnapHD（background/download-tracker.js）的校验思路，但比它更保守：
+             *   它用 `!/^(video|image|audio)\//` 白名单，会把 application/mp4、
+             *   video/quicktime 之外的合法类型也判死（误删真文件）。
+             * 我们只拦**明确是文本/网页**的类型 + 0 字节，未知 mime 一律放过 ——
+             * 宁可留一个可疑文件让用户自己看，也不能删掉真视频。 */
+            const bytes = Number(d.fileSize) || got || 0;
+            if (vrDownloadLooksInvalid(d)) {
+                vrDiscardBadDownload(id);
+                const mime = String(d.mime || '').toLowerCase();
+                const why = !bytes
+                    ? '下载到的文件是空的'
+                    : ('服务器返回的是网页（' + mime + '），不是视频 —— 多半是反爬/登录页');
+                cb({ done: true, ok: false, error: why, invalidContent: true });
+                return;
+            }
             try { vrMarkDownloaded(d.filename || ''); } catch (e) { /* 记账失败不影响下载结果 */ }
-            cb({ done: true, ok: true, bytes: got || Number(d.fileSize) || 0 });
+            cb({ done: true, ok: true, bytes: bytes });
             return;
         }
         if (d.state === 'interrupted') {
