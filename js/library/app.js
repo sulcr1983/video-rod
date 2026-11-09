@@ -531,6 +531,9 @@
             '</div>' +
             '<div class="body">' +
             '<div class="title">' + esc(f._title || f.title) + '</div>' +
+            /* 货架专用副行（默认 display:none，只在 .shelf-line 里显示）：
+             * 大小 + 保存时间，用等宽数字提升可读性；列表/网格视图不受影响。 */
+            '<div class="card-sub">' + fmt(f.size) + '<i>·</i>' + esc(shortDate(f.savedAt)) + '</div>' +
             '<div class="metarow">' +
             '<span class="authorline"><span class="avatar">' + esc((f.author || '?').slice(0, 1)) + '</span>' +
             '<span class="nm">' + esc(f.author || '未知来源') + '</span></span>' +
@@ -696,12 +699,22 @@
             var arr = groups[k], first = arr[0];
             var p = PLAT[k] || PLAT.web;
             var label = platLabel(k) || p.label || k;
+            /* 行头可视化：类型图标（最多 3 个）+ 总大小，比纯文字更快辨认这一行是什么 */
+            var kinds = {};
+            arr.forEach(function (f) { kinds[f.kind] = 1; });
+            var kico = Object.keys(kinds).slice(0, 3).map(function (kk) {
+                var ic = kk === 'video' ? 'i-film' : kk === 'anim' ? 'i-repeat-1' : kk === 'audio' ? 'i-volume-2' : 'i-image';
+                return '<svg class="i-sm kico" aria-hidden="true"><use href="#' + ic + '"/></svg>';
+            }).join('');
+            var totalMb = arr.reduce(function (a, f) { return a + (f.size || 0); }, 0);
             return '<section class="shelf" data-shelf="' + esc(k) + '">' +
                 '<div class="shelf-head">' +
                     '<span class="bar" style="--pc:' + (p.dot || '#8B93A1') + '"></span>' +
                     '<b>' + esc(label) + '</b>' +
+                    '<span class="kinds">' + kico + '</span>' +
                     '<span class="n">' + arr.length + '</span>' +
-                    '<span class="meta">项 · 最近 ' + esc(shortDate(first.savedAt)) + '</span>' +
+                    '<span class="meta">项 · ' + fmt(totalMb) + ' · 最近 ' + esc(shortDate(first.savedAt)) + '</span>' +
+                    '<span class="grow"></span>' +
                     '<button type="button" class="open" data-shelf-open="' + esc(k) + '">查看全部 ' + arr.length + ' 项 →</button>' +
                 '</div>' +
                 '<div class="shelf-line">' + arr.slice(0, SHELF_MAX).map(card).join('') + '</div>' +
