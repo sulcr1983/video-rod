@@ -2099,3 +2099,16 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
   9. 引用计数（`refCount` / `countBy` / `findBy`）一律排除 `trashed`：否则「最后一条活跃引用」永远判不出来，文件删不掉；删掉的东西重新下载也会被判成「库里已有」。
 - **影响**：`js/library/{trash,db,indexer,dedup,app,sw-library}.js`。
 - **验收**：`tools/cdp-trash-empty-repro.py` 18/18（含清空后 file store/IDB 缩略图双双归零、恢复一条、幂等清空、空壳目录收尾、三种扫描不复活）；`tools/cdp-trash-dup-index-test.py` 9/9（重复索引自愈 + 幽灵行清理 + 搬运窗口竞态）；`library-move-e2e` 9/9；`library-buttons-e2e` 29 按钮 0 JS 错误。
+
+## ADR-075 发布物只认 HEAD：构建脚本强制拒绝脏工作区（2026-11-09）
+
+- **日期**：2026-11-09 ｜ **状态**：✅ 苏哥「帮我把协作坑规范一下」｜ **修订**：ADR-068（加载边界不变，补构建纪律）
+- **背景**：`dist/` 是所有会话共用的运行目录，且不进 git。谁带着未提交源码跑 `build-dist`，半成品就会被打进去并被浏览器加载，事后**没有任何 diff 可查**。2026-11-09 一天内两次抓到 dist 混入另一会话未提交的 `js/douyin-note.js` / `js/background.js`；此前还发生过「93MB 打包事故」同源问题（产物不可控）。
+- **决策**：
+  1. `tools/build-dist.js` 新增三道闸：裸跑遇「影响 dist 的未提交改动」→ **拒绝并列出文件**（exit 1）；`--allow-dirty` 才放行且打印清单；`--from-head` 用 `git worktree` 检出 HEAD 干净树构建（发布唯一正确姿势）。
+  2. 新增 `--check`：逐文件比对 dist 与 HEAD，不一致列出差异并 exit 1，作为**部署前门禁**。
+  3. `tools/pack-dist.js` 打包前自动跑 `--check`，不一致直接中止（`--allow-dirty` 仅供自测）。
+  4. 规则写进 `docs/ARTIFACT-MANAGEMENT.md` §2.4 + README 安装段，脚本里也留了引用（写死在报错文案里）。
+- **为什么不用 `git archive | tar`**：Windows GNU tar 把 `C:\…` 当远程主机（`Cannot connect to C: resolve failed`）；worktree 是 git 原生能力，不依赖 tar、不动工作区。
+- **影响**：`tools/build-dist.js`、`tools/pack-dist.js`、`README.md`、`docs/ARTIFACT-MANAGEMENT.md`。
+- **验收**：脏工作区裸跑被拒（列出 6 个文件）；`--allow-dirty --dry-run` 打印清单不落盘；`--from-head` 产出 166 文件且 `--check` 全等；人为塞一个 `dist/js/__tamper.js` → `--check` 报「多出」、`pack-dist` 中止；恢复后 `--check` 再次全等。

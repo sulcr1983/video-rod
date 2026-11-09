@@ -27,6 +27,7 @@ const { execFileSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const DRY = process.argv.includes('--dry-run');
+const ALLOW_DIRTY = process.argv.includes('--allow-dirty');
 
 function argVal(flag) {
   const i = process.argv.indexOf(flag);
@@ -61,8 +62,25 @@ function fmt(b) {
 
 function main() {
   if (!fs.existsSync(DIST)) {
-    console.error('dist/ 不存在 —— 先跑：node tools/build-dist.js');
+    console.error('dist/ 不存在 —— 先跑：node tools/build-dist.js --from-head');
     process.exit(1);
+  }
+
+  /* 发布前门禁（2026-11-09，ADR-075）：dist 必须恰好是 HEAD 的产物。
+   * 没有这道门，谁带着未提交改动跑过 build-dist，脏代码就会跟着 zip 发出去，
+   * 而且 dist 不进 git，事后完全看不出来。--allow-dirty 只给自测打包用。 */
+  if (!ALLOW_DIRTY) {
+    try {
+      execFileSync(process.execPath, [path.join(__dirname, 'build-dist.js'), '--check'],
+        { cwd: ROOT, stdio: 'inherit' });
+    } catch (e) {
+      console.error('\n✗ 打包中止：dist/ 与 HEAD 不一致（见上）。');
+      console.error('  修好再打：node tools/build-dist.js --from-head');
+      console.error('  只是自测要看包：node tools/pack-dist.js --allow-dirty');
+      process.exit(1);
+    }
+  } else {
+    console.log('⚠ --allow-dirty：跳过「dist == HEAD」检查（此包禁止对外发布）');
   }
 
   const files = [];

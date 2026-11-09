@@ -68,7 +68,7 @@ D:\test\download\
 ### 2.1 规则
 
 - `edge://extensions` / `chrome://extensions` 里 **只允许加载 `video-rod\dist\`**，禁止再加载仓库根目录。
-- `dist/` 由 `node tools/build-dist.js` 生成，**禁止手工往里放文件**。
+- `dist/` 由 `node tools/build-dist.js` 生成，**禁止手工往里放文件**；构建方式必须遵守 **§2.4 构建纪律**（默认拒绝脏工作区）。
 - `dist/` 已在 `.gitignore` 中，永不提交。
 
 ### 2.2 `dist/` 里允许有什么
@@ -83,7 +83,7 @@ D:\test\download\
 | `img/` | 图标与 UI 图 |
 | `js/` | 全部脚本（含 `js/lib/`、`js/library/`、`js/yt/`） |
 | `lib/` | 第三方库（含 `lib/plyr/`） |
-| `_locales/` | 11 种语言 |
+| `_locales/` | 仅 `en` + `zh_CN`（2026-11-09 裁语言，其余 9 种留在源码不进包） |
 | `catch-script/` | 运行时注入脚本（`background.js` 动态 importScripts 需要） |
 
 黑名单（**永不进 dist**）：`docs/` `deliverables/` `tools/` `test-site/` `archive/` `dist/` 自身、`.work/`、`.git/`、`*.md`、`manifest.firefox.json`、`node_modules/`、任何 `*.zip`。
@@ -95,14 +95,43 @@ D:\test\download\
 改完源码后必须：
 
 ```bash
-node tools/build-dist.js          # 重新生成 dist/
+node tools/build-dist.js --from-head     # 交付/发布：只打已提交的 HEAD
+node tools/build-dist.js --check         # 门禁：dist 是否与 HEAD 逐文件一致
 # 然后 edge://extensions 上点「重新加载」
 ```
 
-验收三条：
+验收四条：
 1. `dist/` 内不含 `docs`、`tools`、`deliverables`、`test-site`（脚本自检，不全则报错退出）。
-2. 扩展详情页显示的大小 ≈ 扩展本体大小（不应再出现百 MB 级数字）。
-3. 所有功能页能打开、控制台 0 error。
+2. `--check` 通过（166 个文件，与 HEAD 零差异）。
+3. 扩展详情页显示的大小 ≈ 扩展本体大小（不应再出现百 MB 级数字）。
+4. 所有功能页能打开、控制台 0 error。
+
+### 2.4 构建纪律（多会话并行，2026-11-09 定）
+
+**背景（两次真实踩坑）**：`dist/` 是**所有会话共用**的运行目录，且**不进 git**（`.gitignore` 里），
+所以谁带着未提交的源码跑一次 `build-dist`，半成品就会被打进去、被浏览器加载 —— 而且
+**事后没有任何 diff 可查**，只能靠人肉发现。曾在同一天两次抓到 dist 混进另一个会话未提交的
+`js/douyin-note.js`、`js/background.js`。
+
+**规则（脚本强制，不靠自觉）**：
+
+| 场景 | 命令 | 行为 |
+|---|---|---|
+| 交付 / 发布 / 让用户加载 | `node tools/build-dist.js --from-head` | 从 `git worktree` 检出 **HEAD 干净树**构建，只含已提交代码 |
+| 自测（要看未提交改动的效果） | `node tools/build-dist.js --allow-dirty` | 允许脏工作区，构建时**打印**哪些未提交文件进了包 |
+| 裸跑 | `node tools/build-dist.js` | 工作区有影响 dist 的未提交改动 → **直接拒绝并列出文件**，exit 1 |
+| 部署前门禁 | `node tools/build-dist.js --check` | 逐文件对比 dist 与 HEAD；不一致列出差异，exit 1 |
+| 打包 | `node tools/pack-dist.js` | **先跑 `--check`**，不一致就中止；自测打包用 `--allow-dirty` |
+
+三条铁律：
+1. **发布物只能是 HEAD 的产物**（`--from-head`），任何 `--allow-dirty` 构建出的 dist 都**不得外发**。
+2. 并行会话各自测试时用**自己的隔离实例**（`tools/cdp-run.py` 会起独立 profile），改完 dist 要在自己那轮收尾时恢复 `--from-head`。
+3. 交付前必须留一条 `--check` 的通过输出作为证据（和测试结果一起贴进交接）。
+4. `tools/cdp-run.py` 默认加载的是**仓库根源码**（`VR_EXT` 可覆盖），所以自动化全绿 ≠ 发布物没问题；
+   涉及发布时，关键套件要再对 dist 跑一遍：`VR_EXT=<repo>/dist python tools/cdp-run.py <套件>`。
+
+> 为什么不用 `git archive` 管道给 `tar`：Windows 的 GNU tar 把 `C:\…` 当远程主机，直接 `tar: Cannot connect to C: resolve failed`；
+> worktree 是 git 原生能力，不依赖 tar、不动工作区。
 
 ---
 

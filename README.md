@@ -128,16 +128,21 @@ video-rod/
 2. **生成可加载目录**（仓库根混着文档、测试和产物，不能直接加载）：
 
    ```bash
-   node tools/build-dist.js
+   node tools/build-dist.js --from-head     # 只打已提交的 HEAD（干净、可发布）
+   node tools/build-dist.js --check         # 校验 dist 与 HEAD 逐文件一致
    ```
 
-   产物在 `dist/`（约 5 MB，只含扩展运行时文件）。
+   产物在 `dist/`（约 4.6 MB / 166 个文件，只含扩展运行时文件）。
+
+   > **改着代码自己测**：`node tools/build-dist.js --allow-dirty`（会把未提交改动打进 dist，
+   > 仅供本机自测，别拿这个包发人）。裸跑 `node tools/build-dist.js` 在有未提交改动时会直接拒绝，
+   > 避免把别人没写完的代码打进去 —— 规则见 `docs/ARTIFACT-MANAGEMENT.md` §2.4。
 3. 浏览器地址栏打开 `chrome://extensions`（Edge 为 `edge://extensions`）
 4. 右上角打开「**开发者模式**」
 5. 点「**加载已解压的扩展程序**」，选择 **`dist/` 目录**（不是仓库根）
 6. 完成。图标会出现在工具栏（被折叠就点拼图图标 📌 钉住）
 
-> 改了源码后重跑 `node tools/build-dist.js`，再在扩展页点「重新加载」。
+> 改了源码后重跑 `node tools/build-dist.js --from-head`（或提交前自测用 `--allow-dirty`），再在扩展页点「重新加载」。
 > 直接加载仓库根会让扩展体积虚胖（文档、测试产物、`.git` 全被算进去）。
 > 详见 [`docs/ARTIFACT-MANAGEMENT.md`](docs/ARTIFACT-MANAGEMENT.md)。
 
