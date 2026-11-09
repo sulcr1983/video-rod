@@ -2094,6 +2094,7 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
   4. **扫描不许复活**：`build()` 的 downloads / snapshot 源跳过 `trashed` 行；downloads 源里新出现的条目必须真实探盘；snapshot 源逐条探盘（快照只是线索，磁盘才是真相）；`reconcile()` 不对 trashed 行做存在性判定；快照 payload 不写 trashed 行。
   5. **启动对账 `VRTrash.sweep()`**：修三类脏数据 —— 死回收站条目（回收站里没有实体）、搬失败残留（文件其实还在原位）、前缀重复索引（保留带前缀那条并合并星标/标签）。只动索引，不动文件。
   6. **清空时清「幽灵行」**：与刚删条目 `absPath` 相同、磁盘上又确实没有的活跃行一并删掉（死卡的最后一环）。
-  7. 引用计数（`refCount` / `countBy` / `findBy`）一律排除 `trashed`：否则「最后一条活跃引用」永远判不出来，文件删不掉；删掉的东西重新下载也会被判成「库里已有」。
+  7. **搬运窗口保护**：删除时先打 `trashPending`，搬完再撤；`sweep()` 跳过带标记的行、且跳过 15 秒内刚打标的行。否则启动自愈正好撞上用户刚点的删除，会把「已打标、文件还没搬走」判成「文件还在原位」打回 ok，自己造出一张死卡（2026-11-09 压测复现并修复）。
+  8. 引用计数（`refCount` / `countBy` / `findBy`）一律排除 `trashed`：否则「最后一条活跃引用」永远判不出来，文件删不掉；删掉的东西重新下载也会被判成「库里已有」。
 - **影响**：`js/library/{trash,db,indexer,dedup,app,sw-library}.js`。
-- **验收**：`tools/cdp-trash-empty-repro.py` 17/17（含清空后 file store/IDB 缩略图双双归零、恢复一条、幂等清空、三种扫描不复活）；`tools/cdp-trash-dup-index-test.py` 7/7（重复索引自愈 + 幽灵行清理）；`library-move-e2e` 9/9；`library-buttons-e2e` 29 按钮 0 JS 错误。
+- **验收**：`tools/cdp-trash-empty-repro.py` 17/17（含清空后 file store/IDB 缩略图双双归零、恢复一条、幂等清空、三种扫描不复活）；`tools/cdp-trash-dup-index-test.py` 9/9（重复索引自愈 + 幽灵行清理 + 搬运窗口竞态）；`library-move-e2e` 9/9；`library-buttons-e2e` 29 按钮 0 JS 错误。

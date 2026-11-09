@@ -114,6 +114,44 @@ time.sleep(3.2)
 s2 = db_state()
 check("C3 刷新后主页 0 张死卡", [s2["cards"], s2["n"]], [0, 0])
 
+# ---------------- D. 自愈与「删除进行中」的竞态 ----------------
+# 场景：删到回收站时先打标、再搬文件。启动自愈如果正好在这个窗口里跑，
+# 会看到「标了 trashed 但文件还在原位」→ 把条目打回 ok，文件却已经搬走 → 死卡。
+# 约定：带 trashPending 的条目，自愈这一轮必须放过。
+RACE = """(async function () {
+  const root = await navigator.storage.getDirectory();
+  const r = await root.getDirectoryHandle('video-rod', { create: true });
+  const rel = 'video-rod/X/u/视频/race.mp4';
+  const fs = 'X/u/视频/race.mp4';
+  const segs = fs.split('/'); const name = segs.pop();
+  let d = r;
+  for (const s of segs) { d = await d.getDirectoryHandle(s, { create: true }); }
+  const fh = await d.getFileHandle(name, { create: true });
+  const w = await fh.createWritable(); await w.write('RACE'); await w.close();
+  await VRDB.putFiles([{ relPath: rel, absPath: 'D:/fake/Downloads/video-rod/' + fs,
+    platform: 'x', platformName: 'X', type: 'video', fileName: 'race.mp4', size: 4,
+    mtime: Date.now(), starred: 0, tags: [], state: 'trashed', trashBatch: 'b-race',
+    trashedAt: Date.now(), trashPending: 1 }]);
+  return 1;
+})()"""
+ev(RACE)
+race1 = ev("""(async function(){
+  const r = await VRTrash.sweep();
+  const row = (await VRDB.getAllFiles()).find(x => x.relPath.endsWith('race.mp4'));
+  return { revived: r.revived, state: row && row.state, pending: row && row.trashPending };
+})()""")
+check("D1 搬运中的条目不被打回 ok", [race1["revived"], race1["state"]], [0, "trashed"])
+
+# 标记撤掉、且已过 15 秒新鲜期（文件仍在原位）→ 这一轮才允许打回 ok
+race2 = ev("""(async function(){
+  const rel = 'video-rod/X/u/视频/race.mp4';
+  await VRDB.patchFile(rel, { trashPending: 0, trashedAt: Date.now() - 60000 });
+  const r = await VRTrash.sweep();
+  const row = await VRDB.getFile(rel);
+  return { revived: r.revived, state: row && row.state };
+})()""")
+check("D2 真·文件还在原位才打回 ok", [race2["revived"], race2["state"]], [1, "ok"])
+
 errs = cdp.errors()
 if errs:
     print("\n控制台：")

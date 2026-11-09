@@ -349,7 +349,11 @@
                         state: ST_TRASHED,
                         trashBatch: batch,
                         trashedAt: Date.now(),
-                        trashNoFile: refOnly ? 1 : 0
+                        trashNoFile: refOnly ? 1 : 0,
+                        /* 正在搬的标记：sweep() 在这个窗口里不能判定「文件还在原位 →
+                         * 打回 ok」，否则会把刚删的条目复活成一张死卡
+                         * （2026-11-09 压力测试抓到：启动自愈正好撞上删除动作）。 */
+                        trashPending: 1
                     });
                     if (!patched) { marked = false; }
                 }
@@ -365,12 +369,17 @@
                     } catch (e) {
                         /* 回滚打标：文件没搬成，索引必须回到 ok，否则卡片凭空消失 */
                         if (dbReady() && entry) {
-                            await patchRow(rel, { state: 'ok', trashBatch: '', trashedAt: 0, trashNoFile: 0 });
+                            await patchRow(rel, {
+                                state: 'ok', trashBatch: '', trashedAt: 0,
+                                trashNoFile: 0, trashPending: 0
+                            });
                         }
                         failed.push({ relPath: rel, code: errCode(e), message: e.message || '' });
                         continue;
                     }
                 }
+                /* 搬完了，撤掉「正在搬」标记 */
+                await patchRow(rel, { trashPending: 0 });
 
                 var it = rowToItem(Object.assign({}, entry || {}, {
                     relPath: rel,
@@ -810,8 +819,15 @@
 
         /* a/b：修回收站状态 */
         var trashRows = rows.filter(isTrashed);
+        var FRESH_MS = 15000;      /* 刚打标的先不判，等这一轮删除彻底走完 */
         for (var i = 0; i < trashRows.length; i++) {
             var r = trashRows[i];
+            /* 正在搬运（或在搬运途中崩了，标记还在）→ 这一轮跳过。
+             * 原实现没有这个保护：sweep 在启动 2.5s 后跑，正好撞上用户刚点的删除，
+             * 看到「已打标、文件还没搬走」就把条目打回 ok，结果是文件进了回收站、
+             * 卡片却留在主页 —— 自己造出一个死卡（2026-11-09 压测复现）。 */
+            if (r.trashPending) { continue; }
+            if (Number(r.trashedAt) && Date.now() - Number(r.trashedAt) < FRESH_MS) { continue; }
             var fsRel = stripPrefix(r.relPath, rr.prefix);
             if (await exists(rr.handle, fsRel)) {
                 /* 文件其实没搬走：打回 ok（比留在回收站里强，否则用户以为删了） */
