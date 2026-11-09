@@ -27,3 +27,7 @@ __pycache__/
 
 # 测试站视频夹具（从 .work/media 复制，可随时重建）
 /test-site/media/
+
+# 公开前治理（2026-11-09）：未引用的截图留证在本地，不进 git
+# 规范见 docs/ARTIFACT-MANAGEMENT.md §4.2（只有被文档引用的截图才可进 git）
+/archive/deliverables-unreferenced/

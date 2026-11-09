@@ -4,8 +4,9 @@
 >
 > 猫抓（cat-catch）的全站嗅探内核 × Plucker 式的"下载到指定文件夹" × B站/YouTube 主动抓取 × Eagle 式的本地素材库。
 
-**私有仓库 · 本机自用 · 不上架不分发**（开发者模式 Load unpacked 安装）。
+**开源发布 · 遵循 GPL-3.0**（开发者模式 Load unpacked 安装；亦可自行打包分发）。
 作者：Sunny ｜ 代号 Video Rod ｜ 基于猫抓的衍生作品（GPL-3.0）
+欢迎 Issue 与 PR；衍生分发请保留上游 LICENSE 与署名。
 
 ---
 
@@ -332,6 +333,6 @@ python tools/library-integrity-check.py --port 9480 # 库完整性 8 项
 ## 许可证
 
 本项目为猫抓的衍生作品：**整体遵循 GPLv3**，保留上游 LICENSE 与署名。
-**私有仓库、本机自用、不分发**，因此不产生分发义务；集成自 Apache-2.0 项目的代码保留其版权声明。
+本仓库已公开开源，因此**产生完整的 GPL 分发义务**：衍生分发时必须一并提供 GPLv3 源码与本 LICENSE，并保留上游署名；集成自 Apache-2.0 项目的代码保留其版权声明。
 
 > ⚠️ `.env` 等含凭据的文件已被 `.gitignore` 屏蔽，请勿手动提交。

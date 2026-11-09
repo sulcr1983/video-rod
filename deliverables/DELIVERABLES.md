@@ -339,10 +339,10 @@ video-rod/
 | 抖音取流模块（ADR-031） | `js/douyin.js` + `js/background.js`(抖音分支/DNR) + `js/naming.js`(extractDouyin) | v1.1 | 已定稿 | 页面主世界同源 `aweme/v1/web/aweme/detail/`；URL `/video/<id>` 或 `?modal_id=<id>` 定位作品；按短边分辨率降序选最高档；DNR session rule set Referer/Origin 解决 CDN 403。v1.1 增加微博同类问题：通用直链优先页面 fetch→blob→`<a download>`，失败回退 downloads+DNR；微博 `$render_data` 取作者/正文命名 |
 | B站取流模块 | `js/bili-whole.js` | v1.0 | 已定稿 | popup 与 SW 共用的 B站主世界取流核心（ADR-029/补记），从 `popup-videorod.js` 抽出；background `importScripts` 加载 |
 | 悬浮按钮测试脚本 | `tools/overlay-pos.py`、`tools/overlay-check.py`、`tools/test-video-overlay.py`、`tools/shot-overlay.py` | v1.0 | 已定稿 | 位置诊断/通用站点体检/端到端验证/早期截图；CDP 截图统一 `fromSurface:false`，避免白底破图伪影 |
-| 悬浮按钮截图 | `deliverables/assets/overlay-douyin.png` | 2026-10-19 | 已定稿 | 抖音 1920×887 实拍：按钮在右上角（right gap 14px、top 76px），不与播放器控件重叠 |
+| 悬浮按钮截图 | `deliverables/assets/overlay-douyin.jpg` | 2026-10-19 | 已定稿 | 抖音 1920×887 实拍：按钮在右上角（right gap 14px、top 76px），不与播放器控件重叠 |
 | 抖音/微博/X/小红书真机验收记录 | `docs/TESTING.md` §10 | v1.8 | 已定稿 | 按钮 O1-O6、抖音 D1-D10、微博 W1-W6、主页批量 B1-B7、X 主页 X1-X9、小红书 H1-H6；4K hevc+aac 7,260,920 B；99MB complete；微博 540×960+aac 5,817,304 B；X 视频 8,401,119 B、图片 232,912 B；小红书 webp 64,510 B；稳妥限速/失败暂停 |
 | 媒体库目录复盘（2026-10-19） | `docs/INCIDENT-20261019-LIBRARY-DIR.md` | v1.0 | 已定稿 | 解释 `hasMediaEntries` 白名单、E/F 混淆、原生选择器窗口、外部目录污染与重命名 API；含修复提交和当前状态 |
-| 媒体库修复后截图 | `deliverables/assets/library-after.png` | 2026-10-19 | 已定稿 | F 盘 22 项：X 10 / 小红书 7 / 其他 5；`xbd-downloader` 与“老黄的分享”已隔离 |
+| 媒体库修复后截图 | `deliverables/assets/library-after.jpg` | 2026-10-19 | 已定稿 | F 盘 22 项：X 10 / 小红书 7 / 其他 5；`xbd-downloader` 与“老黄的分享”已隔离 |
 | 媒体库扫描/CRUD 修复 | `js/library.js`（walk/rename/parentDir） | v1.1 | 已定稿 | 跳过 `xbd-downloader`、`老黄的分享`、`_index/_trash/_thumbs`；`move(parentDir,newName)` 修复星愿重命名 `NotAllowedError`；临时文件实测重命名/删除通过 |
 | 媒体库 P3 批量/标签 | `library.html` + `css/library.css` + `js/library.js` | v1.0 | 已定稿 | 选择模式/全选/反选/清除；批量移动到 `平台/博主/images|videos`；批量删除到 `_trash`；标签 `_index/tags.json`；临时文件验收 23→22，移动/删除/标签均通过（`cdcc9f8`） |
 | 媒体库 P4 缩略图/查重 | `library.html` + `css/library.css` + `js/library.js` | v1.0 | 已定稿 | 图片缩略图 480px 持久化 `_index/thumbs`（8 张）；SHA-256 `_index/hashes.json`（22 文件，3 组/9 个重复标记）；查重按钮；本地视频 `preload=metadata` 可 seek（`223fdc1`）。边界：远程 HTTP Range 未做（视频首帧缩略图已由 v1.33 补上） |

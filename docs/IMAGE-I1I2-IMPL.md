@@ -33,7 +33,7 @@
 | 5 | `manifest.json` | 修改 | 注册 `lib-image-util.js` + `image-hover.js`（http/https、`document_idle`、`all_frames:false`） |
 | 6 | `tools/test-image-util.js` | 新增 | Node 单测（≥30 条） |
 | 7 | `tools/cdp-image-test.py` | 新增 | 端到端：悬停 → 按钮 → 点击 → 落盘 → 候选优先 |
-| 8 | `deliverables/assets/image-hover-button.png` / `image-hover-done.png` | 新增 | 验收截图 |
+| 8 | `deliverables/assets/image-hover-button.jpg` / `image-hover-done.png` | 新增 | 验收截图 |
 
 **不改**：`library.html`、`css/library.css`、`js/library/ui.js`、`trash*.js`、`lightbox.js`、`video.js`、`keyboard.js`、`options.html`、五份共享文档。
 

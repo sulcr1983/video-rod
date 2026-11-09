@@ -624,7 +624,7 @@
   2. **命中判定不用 `video.mouseenter`**：微博/抖音/B站都会在 `video` 上盖一层自己的覆盖层（封面、播放键、作者条），鼠标实际落在覆盖层上，`video` 收不到事件。改成 `document` 上听 `mousemove`（60ms 节流）+ 按 `video` 矩形命中；滚动出视口、鼠标出窗、窗口失焦时收起。
   3. **定位右上角**：按钮右缘距视频右缘 14px；`top` 按视频高度让开 12%（16~76px），避开播放器顶部控件；`z-index: 2147483000`；全屏时隐藏。清晰度菜单右对齐，避免顶出屏幕。
   4. **按钮只负责画 UI**：取流/命名/下载全部走 background 的 `vrVideoOptions` / `vrVideoDownload`，与 `x-button.js` 同一套路。
-- **验证**：B站、普通测试页、抖音均已实测；抖音 1920×887 视频上按钮 `right=1906`（距视频右缘 14px）、`top=76`，截图 `deliverables/assets/overlay-douyin.png`。
+- **验证**：B站、普通测试页、抖音均已实测；抖音 1920×887 视频上按钮 `right=1906`（距视频右缘 14px）、`top=76`，截图 `deliverables/assets/overlay-douyin.jpg`。
 - **边界**：X/Twitter 已有专属 `x-button.js`，不在其地盘重复加；只处理 ≥200×120 的 `video`；全屏不显示；B站/抖音的实际下载仍在页面主世界跑（见 ADR-029/031）。
 
 ## ADR-031 抖音取流/命名 + 媒体 CDN 的 Referer 回放（参考 CocoCut / yt-dlp）
@@ -925,7 +925,7 @@
   - 媒体库扫描 F，得到 **22 项**：X 10、小红书 7、其他 5（历史根目录文件）。
 - **外部目录隔离**：`xbd-downloader`（704 文件）和 `老黄的分享`（17 个微信图片/视频）**保留在磁盘，但不进入媒体库扫描**；避免“其他”分类被外部下载淹没。仍保留 `_index/_trash/_thumbs` 跳过。
 - **重命名修复**：星愿的 `FileSystemFileHandle.move(newName)` 抛 `NotAllowedError`；改为 `move(parentDir, newName)`，与删除到 `_trash` 的 `move(dir, name)` 一致。`move()` 返回 `undefined`，不得读取返回值的 `.name`。
-- **验证**：临时文件 `test3.png` 预览 → 重命名 `test3-renamed.png`（toast「已重命名」）→ 删除到 `_trash`（toast「已移到回收站」）→ 媒体库回到 22 项；截图 `deliverables/assets/library-after.png`。
+- **验证**：临时文件 `test3.png` 预览 → 重命名 `test3-renamed.png`（toast「已重命名」）→ 删除到 `_trash`（toast「已移到回收站」）→ 媒体库回到 22 项；截图 `deliverables/assets/library-after.jpg`。
 - **边界**：F 是唯一媒体库；E 的 junction 只解决“浏览器默认下载目录仍在 E”的问题。根目录 5 个历史文件暂归“其他”，P3 再做归档。
 
 ---

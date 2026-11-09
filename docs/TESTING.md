@@ -418,7 +418,7 @@ node tools/test-panel-css.js       # 11  pointer-events 契约 + 四个关闭入
 | O5 | 全屏/滚出视口/切标签页自动收起 | ✅ 逻辑覆盖 |
 | O6 | X/Twitter 不重复加按钮 | ✅ `video-overlay.js` 在 x.com/twitter.com 直接 return，走 `x-button.js` |
 
-- 证据：`deliverables/assets/overlay-douyin.png`（右上角按钮实拍）。
+- 证据：`deliverables/assets/overlay-douyin.jpg`（右上角按钮实拍）。
 - 脚本：`tools/overlay-pos.py`（B站位置诊断）、`tools/overlay-check.py`（通用站点体检）、`tools/test-video-overlay.py`（端到端）。
 - 截图必须用 CDP `fromSurface:false`；`fromSurface:true` 在窗口被遮时会拍出白底破图残影（测试伪影，不是 UI）。
 
@@ -633,7 +633,7 @@ node tools/test-panel-css.js       # 11  pointer-events 契约 + 四个关闭入
 
 - [x] A–I 全组跑通：**42/42 通过**，控制台 **0 error / 0 warning**
 - 脚本：`tools/cdp-library-test.py`（端口用 `CDP` 环境变量覆盖，默认 `http://127.0.0.1:9333`）
-- 截图：`deliverables/assets/library-v13-grid.png`、`library-v13-lightbox.png`、`library-v13-video.png`
+- 截图：`deliverables/assets/library-v13-grid.jpg`、`library-v13-lightbox.png`、`library-v13-video.png`
 - 环境：Chrome 155 + profile `.work/profiles/chrome-prototype`，视口 1440×900
 - 首轮 2 项失败的根因是**测试脚本自身**，非产品缺陷：
   - S32 右键菜单：dispatch 前未清理上次菜单状态、未加 `cancelable:true`、未等一帧 → 已修
