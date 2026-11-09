@@ -38,6 +38,95 @@
      * @param {string} url
      * @returns {number} 分辨率高度；解析不到返回 0
      */
+    /* ---------- 字节分片地址还原 ----------
+     *
+     * 为什么需要（苏哥 2026-11-09 报「MSN 这个视频下载不了」）：
+     * 越来越多的播放器不用 HLS/DASH，而是把**单个 MP4 按字节切片**反复拉：
+     *   https://cdn/video/xxx.mp4_bd.mp4?start=0&end=15&_t=1794229126342
+     * 响应是 206 + `Content-Range: bytes 48846-679008/3505399` —— 拿到的是**碎片**。
+     * 直接下这个地址，落盘的是几百 KB 的 moof 片段，播放器打不开（表现为「下载不了」）。
+     * 已知同类：Instagram 的 `bytestart/byteend`（早前只在 IG 分支特判过）。
+     *
+     * 正解：把分片参数剥掉，向同一个地址要完整文件。
+     * 实测 MSN：去参后同一 URL 返回 200 + Content-Length 3505399（完整 3.5MB）。
+     *
+     * 铁律（必须保守，剥错 = 签名失效 403）：
+     *   ① 只在**确认是字节分片**时才动手（成对的 start/end 或 bytestart/byteend）；
+     *   ② 其余查询参数一律原样保留（签名 ef/sig/token 都在这里）；
+     *   ③ 防缓存戳（_t/ts/…）只在已判定分片时顺带剥 —— 单独出现不影响下载。
+     */
+    var SEG_PAIRS = [['start', 'end'], ['bytestart', 'byteend']];
+
+    function parseQuery(url) {
+        var s = String(url || '');
+        var i = s.indexOf('?');
+        if (i < 0) { return null; }
+        var h = s.indexOf('#');
+        var q = h > i ? s.slice(i + 1, h) : s.slice(i + 1);
+        var hash = h > i ? s.slice(h) : '';
+        var parts = [];
+        q.split('&').forEach(function (kv) {
+            if (!kv) { return; }
+            var eq = kv.indexOf('=');
+            parts.push({
+                raw: kv,
+                key: (eq < 0 ? kv : kv.slice(0, eq)),
+                val: (eq < 0 ? '' : kv.slice(eq + 1))
+            });
+        });
+        return { base: s.slice(0, i), hash: hash, parts: parts };
+    }
+
+    /**
+     * 是否为「按字节切片」的媒体地址，以及剥掉分片参数后的完整地址。
+     * @param {string} url
+     * @returns {{segmented:boolean, url:string, removed:string[]}}
+     *          segmented=false 时 url 原样返回。
+     */
+    function unsegmentUrl(url) {
+        var s = String(url || '');
+        var out = { segmented: false, url: s, removed: [] };
+        if (!s || !/^https?:/i.test(s)) { return out; }
+        var q = parseQuery(s);
+        if (!q || !q.parts.length) { return out; }
+
+        var byKey = {};
+        q.parts.forEach(function (p) { byKey[p.key.toLowerCase()] = p; });
+
+        /* ① 成对出现且都是「纯数字」或「数字-N」→ 字节分片 */
+        var segKeys = [];
+        for (var i = 0; i < SEG_PAIRS.length; i++) {
+            var a = byKey[SEG_PAIRS[i][0]];
+            var b = byKey[SEG_PAIRS[i][1]];
+            if (!a || !b) { continue; }
+            if (!/^\d+$/.test(a.val) || !/^\d+$/.test(b.val)) { continue; }
+            if (parseInt(b.val, 10) <= parseInt(a.val, 10)) { continue; }
+            segKeys.push(a.key, b.key);
+            break;
+        }
+        /* ② range=0-1234 / bytes=0-1234 这类（query 形式） */
+        var rg = byKey['range'] || byKey['byterange'];
+        if (rg && /^(?:bytes=)?\d+-\d*$/i.test(rg.val)) { segKeys.push(rg.key); }
+        if (!segKeys.length) { return out; }
+
+        /* ③ 已确认分片：顺带剥防缓存时间戳（纯数字、>=10 位） */
+        q.parts.forEach(function (p) {
+            var k = p.key.toLowerCase();
+            if (/^(?:_t|_ts|_time|ts|timestamp)$/.test(k) && /^\d{10,}$/.test(p.val)) {
+                segKeys.push(p.key);
+            }
+        });
+
+        var drop = {};
+        segKeys.forEach(function (k) { drop[k.toLowerCase()] = 1; });
+        var keep = q.parts.filter(function (p) { return !drop[p.key.toLowerCase()]; });
+        out.segmented = true;
+        out.removed = q.parts.filter(function (p) { return drop[p.key.toLowerCase()]; })
+            .map(function (p) { return p.key; });
+        out.url = q.base + (keep.length ? ('?' + keep.map(function (p) { return p.raw; }).join('&')) : '') + q.hash;
+        return out;
+    }
+
     function heightFromUrl(url) {
         var s = String(url || '');
         if (!s) { return 0; }
@@ -332,6 +421,7 @@
         labelOf: labelOf,
         weiboMidFromUrl: weiboMidFromUrl,
         pickWeiboHdUrl: pickWeiboHdUrl,
+        unsegmentUrl: unsegmentUrl,
         parseHlsMaster: parseHlsMaster,
         pickBestVariant: pickBestVariant,
         parseDashMpd: parseDashMpd

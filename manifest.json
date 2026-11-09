@@ -96,7 +96,7 @@
       ],
       "run_at": "document_start",
       "world": "MAIN",
-      "all_frames": false
+      "all_frames": true
     },
     {
       "matches": [

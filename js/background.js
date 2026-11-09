@@ -3040,6 +3040,20 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     }
     // 从 content-script 或 catch-script 传来的媒体url
     if (Message.Message == "addMedia") {
+        /* 优先用发送方所在 tab：net-sniff 现在也跑在 iframe 里（MSN/新闻站的
+         * 播放器都在 iframe），此时 href 是 **iframe 的 URL**，
+         * 拿它去 tabs.query 里比对永远匹配不到 → 会落到「当前激活 tab」。
+         * 用户切到别的标签之后，挖到的地址就归错页了。 */
+        const senderTabId = sender && sender.tab && sender.tab.id;
+        if (senderTabId != null && senderTabId >= 0) {
+            findMedia({
+                url: Message.url, tabId: senderTabId, extraExt: Message.extraExt,
+                mime: Message.mime, requestId: Message.requestId,
+                requestHeaders: Message.requestHeaders, initiator: Message.href
+            }, true, true);
+            sendResponse("ok");
+            return true;
+        }
         chrome.tabs.query({}, function (tabs) {
             for (let item of tabs) {
                 if (item.url == Message.href) {
@@ -4771,6 +4785,213 @@ async function vrIgVideoUrls(tabId) {
     }
 }
 
+/** 取「同一媒体」的主干键：目录 + 文件名去掉变体后缀与扩展名。
+ *
+ *  典型变体（实测 MSN）：
+ *    https://msn2.go2yd.com/video/087d2e….mp4            原始直链（403，需签名）
+ *    https://msn2.go2yd.com/video/087d2e….mp4_bd.mp4     转码直链（可用）
+ *  两者是同一个片子。主干 = 目录 + 32 位 hash。
+ *
+ *  只有主干足够长（≥16）才当媒体名，否则 `video.mp4` 这种会把整站合成一条。
+ */
+function vrMediaStem(url) {
+    const s = String(url || '').split('#')[0].split('?')[0];
+    const i = s.lastIndexOf('/');
+    const dir = i >= 0 ? s.slice(0, i) : '';
+    let name = i >= 0 ? s.slice(i + 1) : s;
+    /* 反复剥：`x.mp4_bd.mp4` 要剥两层（先扩展名、再变体后缀，然后再一次扩展名）
+     * 才能和 `x.mp4` 落到同一个主干。只剥一遍会得到 `x.mp4` ≠ `x`（实测踩到）。 */
+    let prev = '';
+    for (let guard = 0; guard < 6 && name !== prev; guard++) {
+        prev = name;
+        name = name.replace(/\.(?:mp4|webm|mov|mkv|flv|m4v|ts|m4s|m3u8|mpd|mp3|m4a|aac)$/i, '');
+        /* 常见变体后缀：_bd / _hd / _sd / -hd / _1080p / _720p … */
+        name = name.replace(/[-_](?:bd|hd|sd|ld|uhd|fhd|\d{3,4}p)$/i, '');
+    }
+    if (name.length < 16) { return ''; }
+    return dir + '/' + name;
+}
+
+/** 候选归一化：分片还原 + 同媒体归并。
+ *  @param {Array} list 嗅探缓存里的候选（形如 {url, ext, size, type}）
+ *  @returns {Array} 归并后的候选；被还原的项带 srcUrl（原始分片地址，下载失败时回退）
+ */
+function vrNormalizeCandidates(list) {
+    const VQ = self.VRVideoQuality;
+    const byStem = new Map();
+    const out = [];
+
+    /* 信息完整度：有 content-type 和体积的，是「浏览器真拉成功过」的实测记录 */
+    const score = function (x) {
+        return (x && x.type ? 2 : 0) + (Number(x && x.size) ? 1 : 0);
+    };
+
+    (list || []).forEach(function (m) {
+        if (!m || !m.url) { return; }
+
+        const seg = VQ && VQ.unsegmentUrl ? VQ.unsegmentUrl(m.url) : { segmented: false, url: m.url };
+        const item = Object.assign({}, m);
+        if (seg.segmented) {
+            item.srcUrl = m.url;      // 原始分片地址，只在完整地址失败时回退
+            item.url = seg.url;
+            item.segmented = true;
+        }
+
+        /* 归并键：优先按「同媒体主干」，主干认不出来才退回整条 URL */
+        const stem = vrMediaStem(item.url);
+        const key = stem || item.url;
+        const prev = byStem.get(key);
+        if (!prev) {
+            byStem.set(key, item);
+            out.push(item);
+            return;
+        }
+
+        /* 已有同媒体的：保留信息更全的那条，另一条只用来补缺 */
+        const win = score(item) > score(prev) ? item : prev;
+        const lose = win === item ? prev : item;
+        if (!win.srcUrl && lose.srcUrl) { win.srcUrl = lose.srcUrl; }
+        if (!win.size && lose.size) { win.size = lose.size; }
+        if (!win.type && lose.type) { win.type = lose.type; }
+        if (!win.height && lose.height) { win.height = lose.height; }
+        if (!win.segmented && lose.segmented) { win.segmented = true; }
+        if (win !== prev) {
+            const i = out.indexOf(prev);
+            if (i >= 0) { out[i] = win; }
+            byStem.set(key, win);
+        }
+    });
+
+    return out;
+}
+
+/** 出列表前给候选做一次可达性预检。
+ *
+ *  为什么必须有（苏哥 2026-11-09「MSN 这个视频下载不了」）：
+ *  同一个片子会被嗅探记成两条 ——
+ *    · `.../video/<hash>.mp4`          原始直链，需签名 → 直接请求 **403**
+ *    · `.../video/<hash>.mp4_bd.mp4`   转码直链 → 200 可用
+ *  页面预加载时先发的是前者，于是列表里一半是死链，用户点哪条都失败。
+ *  光靠「有没有 content-type」分不出来（死链那条可能压根没记录响应头）。
+ *
+ *  规则（保守，宁可留下不可用的，也不误杀可用的）：
+ *    · 明确 4xx/5xx        → 丢弃（服务器自己说不行）
+ *    · 2xx / 206            → 留下，并回填 type 与真实大小（Content-Range 的总长）
+ *    · 网络错误 / CORS 拦截 → 留下（扩展探测不了 ≠ 不可用）
+ *
+ *  请求都在页面主世界发，自带 Referer/Cookie —— 扩展上下文发会被 CDN 拒。
+ *  每条 3 秒超时，整批并发，不阻塞列表打开。
+ */
+async function vrProbeCandidates(tabId, list) {
+    const rows = (list || []).filter(function (m) { return m && /^https?:/i.test(m.url || ''); });
+    if (!rows.length) { return list; }
+
+    /* 已经有 type + 体积的，说明浏览器真拉成功过，不用再探 */
+    const need = rows.filter(function (m) { return !(m.type && Number(m.size)); });
+    if (!need.length) { return list; }
+
+    let results = [];
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            args: [need.map(function (m) { return m.url; })],
+            func: function (urls) {
+                return Promise.all(urls.map(function (u) {
+                    return new Promise(function (res) {
+                        var done = false;
+                        var finish = function (o) { if (done) { return; } done = true; res(o); };
+                        var ac = new AbortController();
+                        var tm = setTimeout(function () {
+                            try { ac.abort(); } catch (e) { /* ignore */ }
+                            finish({ u: u, state: 'timeout' });
+                        }, 3000);
+                        fetch(u, { headers: { Range: 'bytes=0-1' }, signal: ac.signal })
+                            .then(function (resp) {
+                                clearTimeout(tm);
+                                var cr = resp.headers.get('content-range') || '';
+                                var cl = Number(resp.headers.get('content-length')) || 0;
+                                var total = 0;
+                                var m = /\/(\d+)\s*$/.exec(cr);
+                                if (m) { total = Number(m[1]) || 0; }
+                                if (!total && cl && resp.status === 200) { total = cl; }
+                                finish({
+                                    u: u, state: 'http', status: resp.status,
+                                    type: (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(),
+                                    size: total
+                                });
+                            }, function () {
+                                clearTimeout(tm);
+                                /* 网络/CORS 失败：不当成「不可用」 */
+                                finish({ u: u, state: 'neterr' });
+                            });
+                    });
+                }));
+            }
+        }), 8000, 'candidate-probe');
+        results = (r && r[0] && r[0].result) || [];
+    } catch (e) { return list; }     // 探测失败：原样返回，不影响列表
+
+    const byUrl = {};
+    results.forEach(function (x) { if (x && x.u) { byUrl[x.u] = x; } });
+
+    const alive = [];
+    const dead = [];
+    rows.forEach(function (m) {
+        const p = byUrl[m.url];
+        if (p && p.state === 'http' && p.status >= 400) { dead.push(m); return; }
+        if (p && p.state === 'http') {
+            if (!m.type && p.type && /^(video|audio|image)\//.test(p.type)) { m.type = p.type; }
+            if (!Number(m.size) && p.size) { m.size = p.size; }
+        }
+        alive.push(m);
+    });
+
+    /* 全被判死 → 原样放回，标记 probeDead。
+     * 绝不能因为探测结果把列表清空：探测在页面主世界跑，可能受 CORS/防盗链
+     * 影响而误杀（抖音 video/tos、部分 CDN 只认特定 Referer）。
+     * 有可用的就只给可用的（MSN 那种一半死链的场景）；一个可用都没有时
+     * 宁可把死链列出来让用户看到名字，也不显示「本页没有视频」。 */
+    if (!alive.length && dead.length) {
+        dead.forEach(function (m) { m.probeDead = true; });
+        return dead;
+    }
+    return alive;
+}
+
+/**
+ * 抖音图文页取原图列表（Fiber，主世界注入）。
+ * 只在 /note/<id> 有 images[]；普通视频页返回 NO_IMAGES，由调用方忽略。
+ */
+async function vrDouyinImages(sender) {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (!(tabId > 0)) { return { ok: false, error: 'NO_TAB' }; }
+    if (!self.VR_DOUYIN || typeof self.VR_DOUYIN.noteFunc !== 'function') {
+        return { ok: false, error: 'NO_MODULE' };
+    }
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            func: self.VR_DOUYIN.noteFunc
+        }), 6000, 'douyin-note');
+        const info = r && r[0] && r[0].result;
+        if (!info || !Array.isArray(info.images) || !info.images.length) {
+            return { ok: false, error: 'NO_IMAGES' };
+        }
+        return {
+            ok: true,
+            meta: {
+                awemeId: info.awemeId || '',
+                title: info.title || '',
+                nickname: info.nickname || '',
+                uniqueId: info.uniqueId || '',
+                images: info.images
+            }
+        };
+    } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+}
+
 async function vrVideoOptions(tabId) {
     const out = { site: 'generic', options: [] };
 
@@ -4889,6 +5110,24 @@ async function vrVideoOptions(tabId) {
     let list = (cacheData[tabId] || []).filter(function (m) {
         return m && m.url && VR_VIDEO_EXT.test(m.ext || '') && !VR_STATIC_ASSET.test(m.url || '');
     });
+    /* 归一化：字节分片还原 + 同一媒体归并（苏哥 2026-11-09「MSN 这个视频下不了」）。
+     *
+     * 现象：一个页面本该是 6 个视频，列表里却有 23 条 —— 同一个视频被记录多次
+     * （播放器按字节切片反复拉，每次一个 requestId），而每条都只是**碎片**。
+     * 拿这种地址去下，落盘的是几百 KB 的 moof，播放器打不开 = 「下载不了」。
+     *
+     * 规则（见 VRVideoQuality.unsegmentUrl）：
+     *   ① ?start=0&end=15&_t=… 这类分片参数剥掉，向同一地址要完整文件（实测 200 + 全量）；
+     *   ② 同一 URL 的多条只留信息最全的一条（有 content-type / 有体积的优先）；
+     *   ③ 同一目录下主干相同的变体（x.mp4 / x.mp4_bd.mp4）视为同一媒体 —— 只对
+     *      主干足够长（≥16 位 hash/UUID）的生效，避免把 video.mp4 这种通用名误合。 */
+    list = vrNormalizeCandidates(list);
+
+    /* 可达性预检：把 403 死链从列表里清掉，顺便回填真实体积。
+     * 这一步是「下载不了」的另一半原因 —— 归并只解决碎片，
+     * 若留下的那条本身是 403，点了照样失败。 */
+    list = await vrProbeCandidates(tabId, list);
+
     /* 高清优先：先按 URL 里的分辨率档位，再按体积，最后才偏好「正在播放」。
      * 旧规则把正在播放的无条件置顶 —— 微博信息流默认播 720p，
      * 于是一键下载永远只拿到 720p，用户以为站点最高就这档（2026-11-07 实测）。 */
@@ -5025,10 +5264,16 @@ async function vrVideoOptions(tabId) {
         const h = m.height || self.VRVideoQuality.heightFromUrl(m.url);
         return {
             id: 'm' + i, kind: 'url', url: m.url,
+            /* 原始分片地址：只在完整地址下不了时回退用，正常不碰 */
+            srcUrl: m.srcUrl || '',
+            segmented: !!m.segmented,
             height: h,
             label: self.VRVideoQuality.labelOf(m),
-            note: i === 0 ? ((playing && m.url === playing) ? '最高清 · 当前播放' : '最高清')
-                : ((playing && m.url === playing) ? '当前播放' : '')
+            /* 预检判死的条目仍会列出来（否则列表空着更让人慌），
+             * 但要说清原因 —— 直接说「下不了」等于没说。 */
+            note: m.probeDead ? '地址已失效 · 先播放几秒再试'
+                : (i === 0 ? ((playing && m.url === playing) ? '最高清 · 当前播放' : '最高清')
+                    : ((playing && m.url === playing) ? '当前播放' : ''))
         };
     });
     return out;

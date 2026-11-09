@@ -198,6 +198,55 @@ eq('D3 都没有', Q.labelOf({ url: 'https://x/a.mp4' }), 'MP4');
     eq('G7 空输入返回空', Q.parseDashMpd(''), []);
 }
 
+/* ---------- H. 字节分片地址还原（苏哥 2026-11-09「MSN 下载不了」） ----------
+ * 播放器把单个 MP4 按字节切片反复拉（206 + Content-Range），
+ * 直接下这个地址只会得到碎片。必须剥掉分片参数向同一地址要完整文件。
+ * 铁律：只在确认是分片时才动手，签名参数一律保留。 */
+{
+    // 实测 MSN：https://msn2.go2yd.com/video/xxx.mp4_bd.mp4?start=0&end=15&_t=1794229126342
+    const h1 = Q.unsegmentUrl('https://msn2.go2yd.com/video/abc.mp4_bd.mp4?start=0&end=15&_t=1794229126342');
+    eq('H1 MSN 分片→识别', h1.segmented, true);
+    eq('H2 MSN 分片→还原干净地址', h1.url, 'https://msn2.go2yd.com/video/abc.mp4_bd.mp4');
+    eq('H3 MSN 分片→记录剥掉的键', h1.removed.sort(), ['_t', 'end', 'start']);
+
+    // Instagram：bytestart/byteend 是分片，但 efg/oh 是签名，必须留
+    const h4 = Q.unsegmentUrl('https://scontent.cdninstagram.com/v/t50/x.mp4?bytestart=0&byteend=99999&efg=AbCdEf&oh=0123abcd');
+    eq('H4 IG 分片→识别', h4.segmented, true);
+    eq('H5 IG 分片→保留签名参数', h4.url, 'https://scontent.cdninstagram.com/v/t50/x.mp4?efg=AbCdEf&oh=0123abcd');
+
+    // 只有 start 没有 end：可能是业务参数（播放起点），不许动
+    const h6 = Q.unsegmentUrl('https://x.com/v.mp4?start=30');
+    eq('H6 单个 start 不动', h6.segmented, false);
+    eq('H7 单个 start 原样返回', h6.url, 'https://x.com/v.mp4?start=30');
+
+    // start/end 不是纯数字（ISO 时间戳等）：不是字节分片，不许动
+    const h8 = Q.unsegmentUrl('https://x.com/v.mp4?start=2026-11-09T00:00:00Z&end=2026-11-10T00:00:00Z');
+    eq('H8 非数字 start/end 不动', h8.segmented, false);
+
+    // end <= start：不是有效的字节区间，不许动
+    const h9 = Q.unsegmentUrl('https://x.com/v.mp4?start=100&end=50');
+    eq('H9 区间非法不动', h9.segmented, false);
+
+    // 普通签名地址（B站/抖音）：一个参数都不能少
+    const h10 = Q.unsegmentUrl('https://upos.example.com/v.mp4?a=6383&mime_type=video_mp4&token=abc');
+    eq('H10 普通地址不动', h10.segmented, false);
+    eq('H11 普通地址原样返回', h10.url, 'https://upos.example.com/v.mp4?a=6383&mime_type=video_mp4&token=abc');
+
+    // range=0-1234 的 query 形式
+    const h12 = Q.unsegmentUrl('https://cdn.x.com/v.mp4?range=0-1048575&sig=zzz');
+    eq('H12 range 形式→识别', h12.segmented, true);
+    eq('H13 range 形式→剥 range 留签名', h12.url, 'https://cdn.x.com/v.mp4?sig=zzz');
+
+    // 无 query / 空串 / 非 http：一律原样
+    eq('H14 无 query 不动', Q.unsegmentUrl('https://x.com/v.mp4').segmented, false);
+    eq('H15 空串不动', Q.unsegmentUrl('').url, '');
+    eq('H16 blob: 不动', Q.unsegmentUrl('blob:https://x.com/abc').segmented, false);
+
+    // 带 hash 的地址：hash 要留在末尾
+    const h17 = Q.unsegmentUrl('https://x.com/v.mp4?bytestart=0&byteend=9#t=3');
+    eq('H18 分片还原保留 hash', h17.url, 'https://x.com/v.mp4#t=3');
+}
+
 console.log('');
 console.log(pass + ' passed, ' + fail + ' failed');
 if (fail) {

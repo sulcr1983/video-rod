@@ -191,6 +191,34 @@ b = await chrome.runtime.sendMessage({ rfa: "sham", rfb: b })  // 发给 tubly.d
 
 ---
 
+### 3.7 复读两个视频下载器 —— ✅ 抄了「iframe 覆盖」，❌ 谁都没解决字节分片
+
+> 2026-11-09，苏哥发来 MSN 视频页「下载不了」，要求「看人家是怎么嗅探各种视频格式的」。
+
+**它们各自的判定**
+
+- **Video Downloader Plus 4.0.0**：扩展名白名单 21 项（`mp4 webm m3u8 mpd mp3 m4v mkv ts aac mov m4a flac avi ogg wav mpg wmv flv 3gp m2ts mts`）+ 少量 MIME。
+  比我们多 `m2ts` / `mts` / `mpg` 三项。
+- **Video Downloader Pro 0.1.11**：`document_start` 全站注入且 **`all_frames: true`**，MIME 分 `direct` / `stream` 两类，HLS/DASH 并列。
+
+**抄了什么**
+
+1. **iframe 覆盖**。我们 `net-sniff.js` 原来是 `all_frames: false` —— 只注入顶层。
+   MSN / 新闻站的播放器都在 iframe 里，接口响应一条都挖不到。已改 `all_frames: true`。
+2. 顺带修了 `addMedia` 的归位：iframe 发来的 `href` 是 iframe 的 URL，
+   拿它去 `tabs.query` 比对永远匹配不到，会落到「当前激活 tab」。
+
+**它们也没做到的（我们自己补）**
+
+两家的嗅探都是「看到请求就收录」，**没有一家处理 `?start=0&end=15` 这种字节分片地址**。
+MSN 就是这种：播放器把单个 MP4 按字节切片反复拉，每次响应都是 206 片段。
+抄它们的做法只会得到一堆碎片。我们的解法见 `docs/SNIFF-RULES.md` §5.1。
+
+**明确不抄**：`m2ts` / `mts` / `mpg` 暂不补进 `G.Ext` 默认值 —— 白名单是用户可见设置项，
+加默认值需要配套的设置迁移，否则老用户拿不到，属于「改了等于没改」。
+
+---
+
 ## 四、汇总：抄了什么 / 不抄什么
 
 | 能力 | 来源 | 状态 | 落点 |
@@ -200,6 +228,8 @@ b = await chrome.runtime.sendMessage({ rfa: "sham", rfb: b })  // 发给 tubly.d
 | URL `WxH` 尺寸解析 | DownXVideo | ✅ 已实现 | `video-quality.js` `heightFromUrl` |
 | DASH MPD 解析 | Video Downloader Pro | ✅ 已实现 | `video-quality.js` `parseDashMpd` |
 | 微博 `statuses/show` 取高清 | 笃笃 | ✅ 已实现（限信息流） | `background.js` `vrWeiboHdProbe` |
+| iframe 嗅探覆盖 | Plus / Pro | ✅ 已实现（2026-11-09） | `manifest.json` `net-sniff` → `all_frames: true` |
+| 字节分片还原 | **三家都没有** | ✅ 自研 | `video-quality.js` `unsegmentUrl` |
 | 5 线程分段下载 | Chrono | ⏸ 待立项 | — |
 | `a.download` 作文件名 | Chrono | ⏸ 待评估 | — |
 | 云端代理解析 | Tubly | ❌ 不抄（隐私） | — |
