@@ -194,6 +194,20 @@ def main():
     })()""" % json.dumps(REL[0]))
     check("B7 二次删除入新批次", [rm2["moved"], rm2["st"]], [1, 3])
 
+    # 空目录收尾：三条都搬走后，源目录不该留空壳（对齐资源管理器）
+    shells = ev(cdp, sid, r"""(async function(){
+      const root = await VRTrash.resolveRoot();
+      async function gone(rel){
+        const segs = rel.split('/'); let d = root.handle;
+        try { for (const s of segs) { d = await d.getDirectoryHandle(s); } return false; }
+        catch (e) { return true; }
+      }
+      return { b站: await gone('B站'), x: await gone('X'),
+               trash: await gone('_回收站') };
+    })()""")
+    check("B8 搬空后的目录已收尾（_回收站 保留）",
+          [shells["b站"], shells["x"], shells["trash"]], [True, True, False])
+
     # ---------- 清空回收站（点 UI 按钮，和用户路径一致）----------
     empty = ev(cdp, sid, r"""(async function(){
       document.getElementById('trashBtn') && document.getElementById('trashBtn').click();

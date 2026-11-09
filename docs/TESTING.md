@@ -200,6 +200,20 @@ node tools/test-panel-css.js       # 11  pointer-events 契约 + 四个关闭入
 > 这类缺陷不是 JS 逻辑，普通单测抓不到；真机验证又慢又怕风控，所以用文本契约钉住：
 > `.vr-panel.on` / `.vr-mask.on` 必须显式 `pointer-events:auto`。
 
+### 4.4 抖音图文页图片入口（2026-11-09 新增，11 条断言）
+
+改 `js/douyin.js`（noteFunc）、`js/douyin-note.js`、`js/background.js`（vrDouyinImages / vrImgBatch authorFull）、
+`js/image-page.js`（扫描门槛 / 档位）后必须跑：
+
+```bash
+python tools/test-douyin-note.py      # 11  热重载 → 图文浮层按钮 → 点击落盘 15 张 → 侧边栏扫描
+```
+
+> 三条口径必须同时成立，少一条就是回归：
+> 1. 按钮张数 = Fiber `awemeInfo.images[]` 长度（不是 DOM 上的 `<img>` 数——图文页大图是 slide 的 background-image）；
+> 2. 落盘走 **FSA 直写**，`chrome.downloads.search` 里**没有**条目，只能查磁盘；
+> 3. 归档目录含作者段（`抖音/摄影师沙皮/<作品标题>/`），文件名带 `_01…_15` 序号。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |
@@ -1078,23 +1092,20 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 | 引擎 | `trash.js`（VRTrash）：软删除到 `_回收站/<批次>/<原相对路径>`、批次 `_manifest.json`、恢复、彻底删除、清空、审计日志 |
 | 界面 | `trash-ui.js`（VRTrashUI）：卡片右键菜单、悬停 `⋯`、回收站抽屉、确认框、Toast |
 | 入口 | 卡片右键 / `⋯`、查看器信息面板「移到回收站」、侧栏底部「回收站 N」 |
-| 索引 | 删除成功 → `VRDB.deleteFiles()`；恢复 → `VRDB.putFiles()`；缺失文件只清索引 |
+| 索引 | 删除 = 行打 `state='trashed'`（不删行）；恢复 = 打回 `ok`；清空 = 删副本 + 删缩略图（IDB+磁盘）+ 删行 |
+| 清空 | `VRTrash.empty()` 幂等：删物理副本 → 删缩略图 → 删索引行 → 删空批次目录 → 收掉被搬空的空壳目录 |
 | 安全 | 需要 `readwrite` 句柄；无权限返回 `LIB_E_NO_PERM` 并提示去设置页授权；恢复不覆盖同名文件 |
 
-### 18.2 端到端验收（`tools/cdp-trash-test.py`）
+### 18.2 端到端验收（ADR-074 之后，2026-11-09）
 
-| 组 | 断言 | 结果 |
+旧的 `tools/cdp-trash-test.py` 是 `#libGrid` 那一版 UI 的用例，随页面重构早已跑不动（选择器全失效），已删除；由下面两套取代：
+
+| 套件 | 断言 | 结果 |
 |---|---|---|
-| A | 模块加载、OPFS 2 文件 + 索引 2 条、页面 2 卡 | 4/4 |
-| B | remove 批次、清单、索引移除、文件移动、源文件消失、页面同步 | 6/6 |
-| C | 右键菜单可见、5 个菜单项、星标文案、确认框、取消、确认删除、空态 | 7/7 |
-| D | 抽屉 2 批次 / 2 项 / 统计、单条恢复、文件回原路径 | 4/4 |
-| E | 彻底删除需确认、批次清空、无残留文件 | 3/3 |
-| F | 无句柄报 `LIB_E_NO_PERM` | 1/1 |
-| G | 清空回收站 | 1/1 |
-| L | 控制台 0 error | 1/1 |
+| `tools/cdp-trash-empty-repro.py` | 删除标 trashed（行保留）→ 主页 0 卡 → 恢复一条 → 二次删除 → 搬空目录收尾 → UI 清空 → file 表 0 / IDB 缩略图 0 / 回收站目录空 / 再清空幂等 → snapshot·reconcile·full 三种扫描不复活 | **18/18** |
+| `tools/cdp-trash-dup-index-test.py` | 同一物理文件两条索引（有/无 `video-rod` 前缀）：启动自愈归并、清空清「幽灵行」、搬运窗口内不误判复活 | **9/9** |
 
-合计 **27/27**。
+跑法：`python tools/cdp-run.py tools/cdp-trash-empty-repro.py`（自动起隔离 Edge 实例）。
 
 ### 18.3 截图
 
@@ -1142,8 +1153,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 
 ### 19.3 回归
 
-`cdp-library-page-test.py` 30/30、`cdp-trash-test.py` 27/27、`cdp-viewer-test.py` 27/27。
-`cdp-trash-test.py` 的 C2 断言同步为 `preview / open / copy / star / rename / trash`（条数不变）。
+`cdp-library-page-test.py` 30/30、`cdp-trash-empty-repro.py` 18/18、`cdp-trash-dup-index-test.py` 9/9、`cdp-viewer-test.py` 27/27。
 
 ### 19.4 截图
 

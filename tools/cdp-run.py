@@ -51,7 +51,8 @@ SUITES = {
         ("cdp", "tools/cdp-indexer-test.py"),
         ("cdp", "tools/cdp-library-page-test.py"),
         ("cdp", "tools/cdp-viewer-test.py"),
-        ("cdp", "tools/cdp-trash-test.py"),
+        ("cdp", "tools/cdp-trash-empty-repro.py"),
+        ("cdp", "tools/cdp-trash-dup-index-test.py"),
         ("cdp", "tools/cdp-batch-test.py"),
         ("cdp", "tools/cdp-image-test.py"),
         ("cdp", "tools/cdp-image-batch-test.py"),
@@ -69,7 +70,8 @@ SUITES = {
     "library": [
         ("cdp", "tools/cdp-library-page-test.py"),
         ("cdp", "tools/cdp-viewer-test.py"),
-        ("cdp", "tools/cdp-trash-test.py"),
+        ("cdp", "tools/cdp-trash-empty-repro.py"),
+        ("cdp", "tools/cdp-trash-dup-index-test.py"),
         ("cdp", "tools/cdp-batch-test.py"),
     ],
     "image": [

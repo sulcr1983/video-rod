@@ -206,6 +206,46 @@
         } catch (e) { /* 日志失败不阻断 */ }
     }
 
+    /* ---------------- 空目录收尾 ---------------- */
+
+    /** 这些顶层目录即使空了也不许删（里面是程序自己的账本/回收站） */
+    var KEEP_TOP = { '_回收站': 1, '_library': 1, '_migration': 1, '_selftest': 1 };
+
+    /**
+     * 把「被搬空的目录」从下往上删掉，遇到第一个非空目录就停。
+     *
+     * 为什么必须有：删除只会把文件搬进 `_回收站`，源目录空了却留在磁盘上。
+     * 删几十条之后用户的素材夹里全是空壳目录（2026-11-09 实测真实库有 20+ 个空目录），
+     * 看起来像"删了个寂寞"。资源管理器删文件是会顺手收尾的，这里对齐。
+     *
+     * @param {string} dirRel 被搬空目录的相对路径（相对库根，已剥 subdir 前缀）
+     * @returns {Promise<number>} 删掉的目录数
+     */
+    async function pruneEmptyDirs(rootHandle, dirRel) {
+        var segs = split(dirRel);
+        if (!segs.length) { return 0; }
+        var chain = [rootHandle];
+        var cur = rootHandle;
+        for (var i = 0; i < segs.length; i++) {
+            try { cur = await cur.getDirectoryHandle(segs[i], { create: false }); }
+            catch (e) { return 0; }        // 目录已经不在了
+            chain.push(cur);
+        }
+        var removed = 0;
+        for (var j = segs.length; j >= 1; j--) {
+            if (j === 1 && KEEP_TOP[segs[0]]) { break; }   // 程序账本目录不删
+            var empty = true;
+            try {
+                for await (var e of chain[j].entries()) { empty = false; break; }
+            } catch (e2) { break; }
+            if (!empty) { break; }
+            try { await chain[j - 1].removeEntry(segs[j - 1]); }
+            catch (e3) { break; }
+            removed++;
+        }
+        return removed;
+    }
+
     /* ---------------- 缩略图 ---------------- */
 
     /** 删除缩略图：IDB thumb 表（t:<relPath>）+ 磁盘 webp 一起清。
@@ -380,6 +420,11 @@
                 }
                 /* 搬完了，撤掉「正在搬」标记 */
                 await patchRow(rel, { trashPending: 0 });
+                /* 源目录空了就顺手收掉（从下往上，遇到非空即停） */
+                var dirRel = split(fsRel).slice(0, -1).join('/');
+                if (dirRel) {
+                    try { await pruneEmptyDirs(rr.handle, dirRel); } catch (eD) { /* 收尾失败不影响删除 */ }
+                }
 
                 var it = rowToItem(Object.assign({}, entry || {}, {
                     relPath: rel,
@@ -804,8 +849,9 @@
      * 对账自愈：启动/授权后跑一次，修三类历史脏数据（只动索引，不动文件）。
      *   a) state='trashed' 但回收站里没有实体（且不是 refOnly）→ 已无可恢复内容，清掉；
      *   b) state='trashed' 但文件还在原位置（上次搬失败回滚没做干净）→ 打回 ok；
-     *   c) 同一文件两条索引（有/无 subdir 前缀）→ 保留带前缀的那条，合并星标/标签。
-     * @returns {Promise<{revived:number, dropped:number, merged:number, thumbs:number}>}
+     *   c) 同一文件两条索引（有/无 subdir 前缀）→ 保留带前缀的那条，合并星标/标签；
+     *   d) 被搬空的空壳目录 → 从下往上删掉（对齐资源管理器行为）。
+     * @returns {Promise<{revived:number, dropped:number, merged:number, thumbs:number, pruned:number}>}
      */
     async function sweep() {
         var out = { revived: 0, dropped: 0, merged: 0, thumbs: 0 };
@@ -903,6 +949,17 @@
         if (out.revived || out.dropped || out.merged) {
             try { await root.VRDB.log('trash.sweep', {}, out); } catch (e4) { /* 忽略 */ }
         }
+
+        /* d：顺手把「被搬空的目录」收掉（历史遗留的空壳目录靠这一趟清掉）。
+         * 只对回收站条目的原目录动手，且 pruneEmptyDirs 本身遇到非空即停，不会误删。 */
+        var pruned = 0;
+        for (var k = 0; k < trashRows.length; k++) {
+            var dRel = split(stripPrefix(trashRows[k].relPath, rr.prefix)).slice(0, -1).join('/');
+            if (!dRel) { continue; }
+            try { pruned += await pruneEmptyDirs(rr.handle, dRel); } catch (eP) { /* 忽略 */ }
+        }
+        out.pruned = pruned;
+
         return out;
     }
 
@@ -917,6 +974,7 @@
         purge: purge,
         empty: empty,
         sweep: sweep,
+        pruneEmptyDirs: pruneEmptyDirs,
         resolveRoot: resolveRoot,
         preflightRestore: preflightRestore,
         /* app.js 的「移动到…」需要；原实现调用未导出的 moveFile，必然失败。 */
