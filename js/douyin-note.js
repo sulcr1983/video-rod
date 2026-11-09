@@ -107,13 +107,22 @@
         btn.appendChild(ico);
         btn.appendChild(labelEl);
         btn.appendChild(numEl);
-        btn.addEventListener('click', ev => {
-            ev.preventDefault();
-            ev.stopPropagation();
+        /* 点击必须 capture + pointerup 双保险。
+         * 2026-11-09 苏哥报「点了没反应」：抖音页面的全局事件监听偶发在捕获阶段
+         * 截断冒泡，挂在按钮上的普通 click 监听收不到；自动化点一次能中、真人点
+         * 不中，极难复现。capture 阶段先抢，pointerup 再兜一层（400ms 去重）。 */
+        let lastFire = 0;
+        const fire = ev => {
+            try { ev.preventDefault(); ev.stopPropagation(); } catch (e) { /* 忽略 */ }
+            const now = Date.now();
+            if (now - lastFire < 400) { return; }     // click / pointerup 双触发去重
+            lastFire = now;
             start();
-        });
+        };
+        btn.addEventListener('click', fire, true);
+        btn.addEventListener('pointerup', fire, true);
         btn.addEventListener('keydown', ev => {
-            if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); start(); }
+            if (ev.key === 'Enter' || ev.key === ' ') { fire(ev); }
         });
         /* 按钮自己会跟着容器走，鼠标进出不用收起来（它不是悬停态 UI） */
         btn.addEventListener('pointerdown', ev => ev.stopPropagation());
@@ -173,7 +182,7 @@
 
     /* ---------------- 状态 ---------------- */
 
-    function paint(st) {
+    function paint(st, text) {
         if (!btn) { return; }
         state = st || 'idle';
         btn.classList.toggle('busy', state === 'busy');
@@ -182,14 +191,14 @@
         const ico = btn.querySelector('svg');
         const icon = state === 'done' ? ICON_OK : state === 'warn' ? ICON_BAD : ICON_DOWN;
         if (ico) { ico.outerHTML = icon; }
-        labelEl.textContent = state === 'busy' ? '正在下载…'
+        labelEl.textContent = text || (state === 'busy' ? '正在下载…'
             : state === 'done' ? '已开始下载'
                 : state === 'warn' ? '下载失败，点我重试'
-                    : '下载本作品图片';
+                    : '下载本作品图片');
     }
 
-    function flash(st, ms) {
-        paint(st);
+    function flash(st, ms, text) {
+        paint(st, text);
         setTimeout(() => { if (state === st) { paint('idle'); } }, ms || 2200);
     }
 
@@ -265,10 +274,25 @@
         return raw.slice(0, 60) || '抖音图文';
     }
 
+    /** 统一提示出口：优先用批量模块的 toast，退化到按钮文案 */
+    function say(text) {
+        try {
+            const B = self.VRImgBridge;
+            if (B && typeof B.toast === 'function') { B.toast(text); return; }
+        } catch (e) { /* 忽略 */ }
+        try { labelEl.textContent = text; } catch (e2) { /* 忽略 */ }
+    }
+
     function start() {
         if (state === 'busy') { return; }
         if (!meta || !meta.images || !meta.images.length) {
-            flash('warn', 1800);
+            /* 2026-11-09 苏哥报「点了没反应」：作品数据可能还没读到（Fiber 慢/被清空），
+             * 原来这里只闪一下黄字就没了 —— 现在现场补读一次，补不到也明说。 */
+            flash('busy', 1200, '正在读取作品…');
+            load(location.pathname).then(() => {
+                if (meta && meta.images && meta.images.length) { start(); }
+                else { flash('warn', 3000, '没读到作品图片，点我重试'); }
+            });
             return;
         }
         const B = self.VRImgBridge;
@@ -298,11 +322,30 @@
             authorFull: authorFull,
             creatorId: meta.uniqueId || ''
         }).then(out => {
-            const fail = out && out.fail ? out.fail : 0;
-            const okN = out && out.succeeded ? out.succeeded : 0;
-            if (fail && !okN) { flash('warn', 3200); }
-            else { flash('done', 2400); }
-        }).catch(() => { flash('warn', 3200); });
+            /* 三种终态要分清楚，否则「全部已存在」会被显示成「已下载 15 张」——
+             * 用户看到没新增文件，就会觉得点了没反应（2026-11-09 实报）。 */
+            const okN = (out && out.succeeded) || 0;
+            const skipN = (out && out.skipped) || 0;
+            const failN = (out && out.fail) || 0;
+            const fresh = Math.max(0, okN - skipN);
+            if (failN && !fresh) {
+                flash('warn', 4200, skipN ? '失败 ' + failN + ' 张，点我重试' : '下载失败，点我重试');
+                say('有 ' + failN + ' 张没下来，稍后可以再点一次');
+                return;
+            }
+            if (!fresh && skipN) {
+                flash('done', 5000, '已存在 ' + skipN + ' 张');
+                say('这 ' + skipN + ' 张之前下过了，没有重复下载');
+                return;
+            }
+            if (skipN) {
+                flash('done', 5000, '新下 ' + fresh + ' 张 · 已存在 ' + skipN);
+                say('新下 ' + fresh + ' 张，另有 ' + skipN + ' 张已存在，已跳过');
+                return;
+            }
+            flash('done', 5000, '已下载 ' + fresh + ' 张');
+            say('已下载 ' + fresh + ' 张（资源库 · ' + (meta.nickname || '抖音') + '）');
+        }).catch(() => { flash('warn', 4200, '下载失败，点我重试'); });
     }
 
     /* ---------------- 启动 / SPA 跟随 ---------------- */

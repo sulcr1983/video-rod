@@ -338,8 +338,11 @@
             pgCancel.textContent = '已取消';
         } else if (state === 'done') {
             /* 跳过 = 库里已有（同平台重复）或内容相同（跨平台只留一份）。
-             * 必须显式说出来，否则用户会以为「点了没反应」。 */
-            pgText.innerHTML = '已下载 <b>' + b.ok + '</b> 张' +
+             * **不能在「已下载」里算跳过**：全部已存在时显示「已下载 15 张」，
+             * 用户打开文件夹一张新图都没有，结论就是「点了没反应」（2026-11-09 实报）。
+             * ok 里含 duplicate，所以真实新增 = ok - skipped。 */
+            const freshN = Math.max(0, b.ok - (b.skipped || 0));
+            pgText.innerHTML = '已下载 <b>' + freshN + '</b> 张' +
                 (b.skipped ? '，已存在跳过 <b>' + b.skipped + '</b> 张' : '') +
                 (b.fail ? '，失败 <b>' + b.fail + '</b> 张' : '');
             pgBox.classList.add('done');
@@ -467,6 +470,10 @@
                             ok: true,
                             succeeded: typeof res.succeeded === 'number' ? res.succeeded : res.ok,
                             fail: res.fail || 0,
+                            /* skipped 必须回传：调用方（抖音图文浮层）靠它区分
+                             * 「真下了 N 张」和「N 张早就存在」，漏了就会把全跳过
+                             * 显示成「已下载 15 张」——用户以为点了没反应（2026-11-09 实报）。 */
+                            skipped: res.skipped || 0,
                             canceled: !!res.canceled,
                             failures: res.failures || []
                         });
@@ -481,6 +488,7 @@
                         if (b && b.total > 0 && b.done >= b.total) {
                             settle({
                                 ok: b.fail === 0, succeeded: b.ok, fail: b.fail,
+                                skipped: b.skipped || 0,
                                 canceled: state === 'canceling',
                                 failures: (b.failures || []), viaProgress: true
                             });
@@ -490,6 +498,7 @@
                             settle({
                                 ok: false, succeeded: b ? b.ok : 0,
                                 fail: b ? Math.max(0, b.total - b.done) + b.fail : list.length,
+                                skipped: (b && b.skipped) || 0,
                                 canceled: false, failures: (b && b.failures) || [],
                                 message: '回执丢失且进度未收齐'
                             });

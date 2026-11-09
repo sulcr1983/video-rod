@@ -200,13 +200,13 @@ node tools/test-panel-css.js       # 11  pointer-events 契约 + 四个关闭入
 > 这类缺陷不是 JS 逻辑，普通单测抓不到；真机验证又慢又怕风控，所以用文本契约钉住：
 > `.vr-panel.on` / `.vr-mask.on` 必须显式 `pointer-events:auto`。
 
-### 4.4 抖音图文页图片入口（2026-11-09 新增，11 条断言）
+### 4.4 抖音图文页图片入口（2026-11-09 新增，13 条断言）
 
 改 `js/douyin.js`（noteFunc）、`js/douyin-note.js`、`js/background.js`（vrDouyinImages / vrImgBatch authorFull）、
 `js/image-page.js`（扫描门槛 / 档位）后必须跑：
 
 ```bash
-python tools/test-douyin-note.py      # 11  热重载 → 图文浮层按钮 → 点击落盘 15 张 → 侧边栏扫描
+python tools/test-douyin-note.py      # 13  热重载 → 浮层按钮 → 点击终态文案 → 落盘 15 张 → 侧边栏扫描
 ```
 
 > 三条口径必须同时成立，少一条就是回归：

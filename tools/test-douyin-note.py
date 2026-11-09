@@ -127,9 +127,21 @@ def main():
         """, sid)
     t0 = time.time()
     cdp.eval("document.getElementById('vr-note-host').shadowRoot.querySelector('.vr-nd').click(); 1", psid)
-    time.sleep(2)
+    time.sleep(1.5)
     st2 = cdp.eval("document.getElementById('vr-note-host').shadowRoot.querySelector('.vr-nd').className", psid)
-    check("T5 点击后进入下载态", "busy" in str(st2) or "done" in str(st2), str(st2))
+    check("T5 点击后有反应（busy 或直接 done）", "busy" in str(st2) or "done" in str(st2), str(st2))
+    # 终态文案必须说清「新下」还是「已存在」——2026-11-09 苏哥报「点了没反应」，
+    # 根因就是全跳过时也显示「已下载 15 张」。
+    txt = cdp.eval("document.getElementById('vr-note-host').shadowRoot.querySelector('.vr-nd').textContent", psid)
+    toast = cdp.eval("""(()=>{const pg=document.getElementById('vr-img-batch-host');
+      if(!pg||!pg.shadowRoot) return '';
+      return [...pg.shadowRoot.querySelectorAll('div')].map(n=>n.childElementCount? '' : n.textContent.trim())
+        .filter(t=>t.indexOf('之前下过')>=0 || t.indexOf('已下载')>=0).join('|');})()""", psid)
+    print("TERMINAL:", txt, "|", toast)
+    check("T5b 终态文案区分「已存在/已下载」",
+          ("已存在" in str(txt)) or ("已下载" in str(txt)) or ("新下" in str(txt)), str(txt))
+    check("T5c 有明确提示（toast 或进度条）",
+          len(str(toast)) > 0 or "已存在" in str(txt) or "已下载" in str(txt), str(toast))
 
     # 等落盘（最多 40s）。判据=作品文件夹里的成品张数（不是 chrome.downloads：
     # 图片走 FSA 直写，下载记录里根本没有条目）。已下载去重会让重复跑不再写盘，
