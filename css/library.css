@@ -2068,3 +2068,87 @@ h1 {
   font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .shelf-line .card .card-sub i{font-style:normal;color:var(--line);margin:0 3px}
+
+
+/* ==========================================================
+ * 工具条控件统一（2026-11-10 苏哥反馈：选择 / 排序 / 视图切换三个高度、质感不一致）
+ * 定一个控件基准高 30px：同高、同圆角、同一套「静止透明 + hover 浮现」的表面处理。
+ * 只作用于 .toolbar .tools，批量条 / 抽屉 / 详情里的 .btn 不受影响。
+ * ========================================================== */
+.toolbar .tools{gap:8px;align-items:center}
+.toolbar .tools > *{margin:0;align-self:center}
+.toolbar .tools > .btn{
+  height:30px;padding:0 10px;box-sizing:border-box;font-size:12px;font-weight:550;
+  border:1px solid transparent;background:transparent;box-shadow:none;color:var(--ink-2);
+}
+.toolbar .tools > .btn:hover{background:var(--surface-2);border-color:var(--line);color:var(--ink)}
+/* 排序：外壳只做定位，视觉全交给 .ddbtn。
+ * 原来 .select 自带 padding + 边框，里面的 .ddbtn 又有一层 padding —— 两层叠加把胶囊撑到 40px，
+ * 比旁边 28px 的「选择」高出一截，这就是三个控件不齐的真正原因。 */
+.toolbar .select{display:flex;align-items:center;padding:0;border:0;background:transparent;gap:0}
+.toolbar .ddbtn{
+  height:30px;padding:0 10px;margin:0;box-sizing:border-box;font-size:12px;
+  border:1px solid transparent;background:transparent;color:var(--ink-2);
+}
+.toolbar .ddbtn:hover{background:var(--surface-2);border-color:var(--line);color:var(--ink)}
+.toolbar .dd.open .ddbtn{background:var(--surface-2);border-color:var(--line);color:var(--ink)}
+/* 视图切换：轨道与按钮同高（30 - 2×2 padding = 26） */
+.toolbar .viewtoggle{height:30px;box-sizing:border-box;padding:2px;align-items:center}
+.toolbar .viewtoggle button{height:26px;padding:0 7px;box-sizing:border-box}
+
+
+/* ==========================================================
+ * 2026-11-10 布局归位
+ * ① 搜索从标题行下沉到工具条：查询动作（搜索/类型/时间/筛选）聚成一条带。
+ * ② 左栏路径卡：rb-body 原来是行内 span，路径与「点击更换目录」挤在一行被折断——
+ *    改成纵向 flex，路径单行省略，hint 独立成行。
+ * ③ 扫描状态与扫描按钮并排放在页头右侧（同一件事的两个部分）。
+ * ========================================================== */
+.toolbar .tools > .searchbox{
+  width:236px;flex:0 0 236px;height:30px;box-sizing:border-box;
+  padding:0 9px;gap:7px;border-radius:var(--r-sm);
+  background:transparent;border:1px solid transparent;box-shadow:none;
+}
+.toolbar .tools > .searchbox:hover{border-color:var(--line);background:var(--surface-2)}
+.toolbar .tools > .searchbox:focus-within{
+  border-color:color-mix(in srgb,var(--accent) 42%,transparent);
+  background:var(--surface);box-shadow:0 0 0 3px var(--accent-soft);
+}
+.toolbar .tools > .searchbox input{font-size:12.5px}
+.toolbar .tools > .searchbox kbd{font-size:10.5px;padding:0 4px;line-height:1.5}
+.toolbar .tools > .searchbox .sc-clear{width:15px;height:15px;flex:0 0 15px}
+
+.root-btn .rb-body{display:flex;flex-direction:column;justify-content:center;min-width:0;overflow:hidden}
+.root-btn .rb-path{display:block;max-width:100%}
+.root-btn .rb-hint{display:block;white-space:nowrap}
+
+.crumb-acts{align-items:center}
+.crumb-acts .scan-note{margin-right:4px}
+.crumb-acts .scan-note ~ .btn{margin-left:0}
+
+
+/* ==========================================================
+ * 2026-11-10 平台内页平铺 + 播放器控件可读性
+ * ========================================================== */
+/* 平台内页：复用货架的卡样式（.shelf-line 的作用域规则），只把布局换成网格、关掉右缘渐隐 */
+.shelf-line.is-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(152px,1fr));
+  gap:14px 12px;overflow:visible;align-items:start;
+}
+.shelf-line.is-grid::after{display:none}
+.shelf-line.is-grid .card{width:auto;flex:initial}
+
+/* 播放器：Plyr 的进度条默认 5px 轨 + 13px 滑块，在竖屏视频（播放器只有 400px 宽）上几乎不可点。
+   这里把轨、滑块、图标、间距一起放大一档，保持深色皮肤不变。 */
+.vr-player{
+  --plyr-range-track-height: 8px;
+  --plyr-range-thumb-height: 18px;
+  --plyr-range-thumb-width: 18px;
+  --plyr-control-icon-size: 20px;
+  --plyr-control-spacing: 13px;
+  --plyr-font-size-time: 12.5px;
+}
+.vr-player .plyr__controls{padding:16px 14px 12px}
+.vr-player .plyr__progress input[type="range"]{cursor:pointer}
+.vr-player .plyr__progress__buffer{border-radius:4px}
+.vr-player .plyr__progress:hover input[type="range"]{transform:translateY(-1px)}

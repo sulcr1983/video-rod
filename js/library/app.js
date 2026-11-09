@@ -704,7 +704,9 @@
             arr.forEach(function (f) { kinds[f.kind] = 1; });
             var kico = Object.keys(kinds).slice(0, 3).map(function (kk) {
                 var ic = kk === 'video' ? 'i-film' : kk === 'anim' ? 'i-repeat-1' : kk === 'audio' ? 'i-volume-2' : 'i-image';
-                return '<svg class="i-sm kico" aria-hidden="true"><use href="#' + ic + '"/></svg>';
+                /* 必须带 .i：图标是 stroke 绘制（.i 里 fill:none;stroke:currentColor），
+                 * 只写 .i-sm 会退回默认 fill:black，在深底上就是两个黑方块。 */
+                return '<svg class="i i-sm kico" aria-hidden="true"><use href="#' + ic + '"/></svg>';
             }).join('');
             var totalMb = arr.reduce(function (a, f) { return a + (f.size || 0); }, 0);
             return '<section class="shelf" data-shelf="' + esc(k) + '">' +
@@ -762,7 +764,8 @@
             items.push({ k: 'time', t: '时间：' + ({ today: '今天', week: '本周', month: '本月' }[S.time] || S.time) });
         }
         if (S.starOnly) { items.push({ k: 'star', t: '仅已星标' }); }
-        if (S.plat && S.plat !== 'all') { items.push({ k: 'plat', t: '平台：' + (platLabel(S.plat) || S.plat) }); }
+        /* 平台不再进条件栏：面包屑「媒体库 / 抖音」已经说明了当前在哪，
+         * 条件栏是"我筛了什么"的清单，平台是"我在哪一层"，两者重复会显得啰嗦。 */
         if (S.q && S.q.trim()) { items.push({ k: 'q', t: '搜索：' + S.q.trim() }); }
         (S.tags || []).forEach(function (t) { items.push({ k: 'tag:' + t, t: '标签：' + t }); });
         /* R6 的抽屉条件也要进条件栏，否则「筛过了但看不见」 */
@@ -791,8 +794,17 @@
             win.on = false;
             grid.style.paddingTop = '';
             grid.style.paddingBottom = '';
-            grid.className = 'shelves' + (S.select ? ' selecting' : '');
-            grid.innerHTML = shelvesHTML(rows);
+            /* 已经在某个平台里（面包屑「媒体库 / 抖音」）时不再套货架：
+             * 全部资源按平台分行是为了"分得清"，进了平台内页就只剩这一个平台，
+             * 再套一层行头 + 「查看全部 33 项」等于让用户点进自己所在的地方。
+             * 这里直接平铺，一屏看全。 */
+            if (S.plat && S.plat !== 'all') {
+                grid.className = 'shelves' + (S.select ? ' selecting' : '');
+                grid.innerHTML = '<div class="shelf-line is-grid">' + rows.map(card).join('') + '</div>';
+            } else {
+                grid.className = 'shelves' + (S.select ? ' selecting' : '');
+                grid.innerHTML = shelvesHTML(rows);
+            }
             S.shown = rows.length;
         } else {
             grid.className = 'grid list' + (S.select ? ' selecting' : '');
@@ -1956,7 +1968,20 @@
                     if (S.sel.has(id)) { S.sel.delete(id); } else { S.sel.add(id); }
                     render(); return;
                 }
-                openPreview(FILES.find(function (f) { return f.id === id; }));
+                /* 胶片条跟随「当前所在分组」而不是整个媒体库：
+                 * 在「全部资源」里点开 X 的一张图，底部却排出抖音的舞蹈视频，
+                 * 上下文会断。货架视图里一张卡属于哪个平台行，就用那个平台的全部素材做序列
+                 * （不止行内可见的 12 张）；列表视图保持原来的 S.list 行为。 */
+                var line = c.closest('.shelf-line');
+                var scopeList = null;
+                if (line) {
+                    var sec = line.closest('.shelf');
+                    var sk = sec ? sec.getAttribute('data-shelf') : '';
+                    if (sk) {
+                        scopeList = (S.rows || []).filter(function (x) { return (x.plat || 'web') === sk; });
+                    }
+                }
+                openPreview(FILES.find(function (f) { return f.id === id; }), scopeList);
             });
         }
 
@@ -2372,9 +2397,12 @@
     window.addEventListener('focus', function () { refreshPermState(); });
 
     /* ---------- 预览（R5 接入真实查看器，当前提示） ---------- */
-    function openPreview(f) {
+    function openPreview(f, list) {
         if (!f) { return; }
-        if (root.VRPreview && root.VRPreview.open) { root.VRPreview.open(f, S.list); return; }
+        /* 胶片条的范围由调用方决定：从货架行点开 = 该平台全部素材（当前"子文件夹"），
+         * 从列表视图 / 收藏夹 / 搜索点开 = 当前筛选结果 S.list。 */
+        var arr = (list && list.length) ? list : S.list;
+        if (root.VRPreview && root.VRPreview.open) { root.VRPreview.open(f, arr); return; }
         toast('预览器 R5 接入中');
     }
 

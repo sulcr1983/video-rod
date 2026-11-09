@@ -155,7 +155,10 @@
           <svg class="i" style="width:12px;height:12px"><use href="#i-trash-2"/></svg>
           回收站 <b id="trashCnt" hidden>0</b>
         </button>
-        <button class="btn small" id="resetBtn" title="重新选择根目录">换目录</button>
+        <!-- 2026-11-10：原来这里是「换目录」，与顶部路径卡重复（都是 openOptions）。
+             换目录只保留顶部路径卡一个入口，空出的位置给「设置」——左栏底部放库级工具，
+             页头右上就只剩「扫描」这一组动作。 -->
+        <button class="btn small" id="settingsBtn" title="设置"><svg class="i" style="width:12px;height:12px"><use href="#i-settings"/></svg>设置</button>
       </div>
     </div>
   </aside>
@@ -166,22 +169,14 @@
         <div class="crumb-row">
           <div class="crumb" id="crumb"><b>媒体库</b><span class="sep">/</span><span>全部平台</span></div>
           <div class="crumb-acts">
+            <!-- 扫描状态与扫描动作是同一件事，必须挨着：原来状态在标题行、按钮在右上角，中间隔了半个屏幕 -->
+            <span class="scan-note"><i class="sdot"></i><span id="syncText">2 分钟前扫描完成</span></span>
             <button class="btn small" id="rescanBtn" title="只补新下载的，秒级完成"><svg class="i i-sm"><use href="#i-refresh-cw"/></svg>快速扫描</button>
             <button class="btn small" id="rescanFullBtn" title="遍历整个文件夹，别处拷进来/别的浏览器下的也能认出来"><svg class="i i-sm"><use href="#i-folder-open"/></svg>全量扫描</button>
-            <button class="btn small" id="settingsBtn"><svg class="i i-sm"><use href="#i-settings"/></svg>设置</button>
           </div>
         </div>
         <div class="ph-title-row">
           <h1 id="pageTitle">全部资源</h1>
-          <span class="scan-note"><i class="sdot"></i><span id="syncText">2 分钟前扫描完成</span></span>
-          <div class="searchbox">
-            <svg class="i i-sm"><use href="#i-search"/></svg>
-            <input id="search" placeholder="搜索… 空格=交集 -词=排除">
-            <button type="button" id="searchClear" class="sc-clear" hidden aria-label="清除搜索">
-              <svg class="i" style="width:11px;height:11px"><use href="#i-x"/></svg>
-            </button>
-            <kbd title="按 / 聚焦搜索框，Esc 清空">/</kbd>
-          </div>
         </div>
       </div>
     </section>
@@ -201,9 +196,19 @@
         <button data-type="audio">音频 <b>0</b></button>
       </div>
       <div class="tools">
+        <!-- 2026-11-10：搜索是「查询」动作，必须和筛选同一视觉带。
+             原来放在标题行右端，与筛选条隔着一整行，眼睛要来回跳两次。 -->
+        <div class="searchbox">
+          <svg class="i i-sm"><use href="#i-search"/></svg>
+          <input id="search" placeholder="搜索… 空格=交集 -词=排除">
+          <button type="button" id="searchClear" class="sc-clear" hidden aria-label="清除搜索">
+            <svg class="i" style="width:11px;height:11px"><use href="#i-x"/></svg>
+          </button>
+          <kbd title="按 / 聚焦搜索框，Esc 清空">/</kbd>
+        </div>
         <button class="btn small" id="selectBtn"><svg class="i i-sm"><use href="#i-square-check"/></svg>选择</button>
         <span class="select">
-          <svg class="i i-sm" style="color:var(--faint);opacity:.7"><use href="#i-list"/></svg>
+          <!-- 排序图标不重复画：右侧视图切换已经用了同一个 list 图标，两个并排会让人误以为是同一个功能 -->
           <!-- B-63：原生 select 的弹层由系统渲染（白底/蓝高亮），深色皮肤下无法覆盖。
                保留原生控件（隐藏）+ 自绘下拉同步 value 并派发 change，原逻辑零改动。 -->
           <select id="sort" class="hidden">
