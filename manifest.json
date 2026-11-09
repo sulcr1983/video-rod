@@ -184,6 +184,7 @@
         "http://*/*"
       ],
       "js": [
+        "js/vr-msg.js",
         "js/lib-image-util.js",
         "js/lib-download-scan.js",
         "js/site-name.js",

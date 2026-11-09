@@ -1087,8 +1087,9 @@
         }
     }
 
-    /** 逐条经 SW VRSave 保存；如实汇总（已归档 / 待归档 / 失败） */
-    function vrRunBatchSw() {
+    /** 逐条经 SW VRSave 保存；如实汇总（已归档 / 待归档 / 失败）
+     *  single=true 时按单文件口吻汇总（单卡下载复用同一执行器，B-52）。 */
+    function vrRunBatchSw(single) {
         var items = vrBatchPlan.slice();
         vrBatchPlan = [];
         var tabId = (typeof G !== 'undefined' && G && G.tabId) || -1;
@@ -1104,7 +1105,7 @@
             if (fixed) { vrReplanWithXhsAuthor(items); }
             var okN = 0, pendN = 0, failN = 0, firstErr = '';
             var step = function (i) {
-                if (i >= items.length) { vrBatchSummary(okN, pendN, failN, firstErr); return; }
+                if (i >= items.length) { vrBatchSummary(okN, pendN, failN, firstErr, single); return; }
                 var d = items[i];
                 var rel = d.downFileName || vrFullPath(d);
                 var settled = false;
@@ -1155,8 +1156,20 @@
         });
     }
 
-    /** 单通道批量汇总：三个数字必须如实 */
-    function vrBatchSummary(okN, pendN, failN, errName) {
+    /** 单通道汇总：三个数字必须如实。
+     *  single=true → 改成单文件口吻，别让用户点一张图却看到「批量完成」。 */
+    function vrBatchSummary(okN, pendN, failN, errName, single) {
+        if (single) {
+            if (failN) {
+                tip('下载失败：' + (errName || '未知') + '（可重试）');
+            } else if (pendN) {
+                tip('已发起下载（未归档：文件落系统下载目录；在资源库设置里授权素材目录后可自动归档）');
+            } else {
+                tip('已保存到素材库');
+            }
+            try { if (typeof updateCounts === 'function') updateCounts(); } catch (e) { /* 忽略 */ }
+            return;
+        }
         var msg = '批量完成：' + okN + ' 个已归档';
         if (pendN) {
             msg += '，' + pendN + ' 个已发起下载（未归档：文件将落系统下载目录；在资源库设置里授权素材目录后可自动归档）';
@@ -1287,6 +1300,24 @@
                     }
                     d.downFileName = full;
                     markDownloaded(full);
+                    /* ADR-069 单写盘通道：单卡也走 SW VRSave，与批量同一条链路。
+                     * 以前这里是「设好名字 → 放行给猫抓 popup.js 直调 chrome.downloads」，
+                     * 后果是三件事全丢：① 不预登记资源库（下完库里查不到）
+                     * ② 没有进度（面板上干等）③ ADR-040 后 downloads 不认 filename，
+                     * 可能落成 UUID / 丢子目录。批量早就收敛了，单卡漏了（B-52）。 */
+                    vrBatchPlan = [d];
+                    batchTotal = 1;
+                    batchDone = 0;
+                    batchFail = 0;
+                    if (vrCanSwBatch()) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        vrRunBatchSw(true);
+                    } else {
+                        /* 走不了单通道（aria2 / m3u8 / mpd）→ 清干净，交给原通道。
+                         * 不清的话残留的 plan 会被下一次批量误用。 */
+                        vrBatchPlan = [];
+                    }
                 }
                 return;
             }

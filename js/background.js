@@ -5167,27 +5167,11 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         // 保留子目录和文件名保护；普通站点/抖音都走这条。
         if (pageUrl) { await vrSetMediaHeadersFor(pick.url, pageUrl); }
 
-        /* 真实字节进度 → 页内按钮。
-         * FSA 直写（常见路径）本来是个黑盒：save.js 的 pumpBlob/pumpUrl 会按 4MB
-         * 分片回报 onProgress(got,total)，但从来没人接，所以按钮永远 0%。
-         * 这里把它转成百分比推过去。节流：只有整数百分比变化才发。 */
-        let lastPct = -1;
-        const reportProgress = function (got, total) {
-            const t = Number(total) || 0;
-            const g = Number(got) || 0;
-            if (!t) { return; }
-            const pct = Math.max(0, Math.min(99, Math.round(g / t * 100)));
-            if (pct === lastPct) { return; }
-            lastPct = pct;
-            try {
-                chrome.tabs.sendMessage(tabId, {
-                    Message: 'vrVideoProgress', name: filename,
-                    pct: pct, phase: '下载中'
-                });
-            } catch (e) { /* 页面没了就停 */ }
-        };
+        /* 真实字节进度 → 页内按钮。统一走 vrProgressReporter，
+         * 不再在这里手写 sendMessage（B-52：进度必须只有一个出口）。 */
+        const P = vrProgressReporter(tabId, filename);
 
-        const id = await vrDownloadWithName(pick.url, filename, { meta: trace, onProgress: reportProgress });
+        const id = await vrDownloadWithName(pick.url, filename, { meta: trace, onProgress: P.bytes });
         let pageDl = null;
         /* FSA 直写成功时没有 downloadId，返回的是 {__fsa:true, path} —— 对象不是数字。
          * 原代码直接把对象丢给 vrWaitDownload，后者拿它当 downloads.search({id}) 的 id，
@@ -5198,11 +5182,7 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         if (id && typeof id === 'object' && id.__fsa) {
             /* 直写已经结束（saveFile 返回即写完），补一个终态。
              * 没有终点消息的话按钮会永远卡在「…」，比 0% 更糟。 */
-            try {
-                chrome.tabs.sendMessage(tabId, {
-                    Message: 'vrVideoProgress', name: filename, done: true, ok: true
-                });
-            } catch (e) { /* 页面没了 */ }
+            P.done(true, '', 0);
             vrMarkDownloaded(filename);
             return finish({ ok: true, kind: 'fsa', filename: filename, path: id.path || filename });
         }
@@ -5214,14 +5194,15 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
                 vrDropDownload(id);
             } else if (outcome && outcome.state === 'complete') {
                 vrMarkDownloaded(filename);
+                P.done(true, '', 0);
                 return finish({ ok: true, kind: 'url', filename: filename });
             } else {
                 /* 2.5 秒内没下完 = 还在跑（大文件基本都走这里）。
-                 * 交给进度观察器按真实字节报百分比，完成/中断由它推终态。
+                 * 交给统一 reporter 的字节轮询报百分比，完成/中断由它推终态。
                  * 必须带 started：视频页按钮看到它才会保持 busy 等进度，
                  * 否则会立刻显示「完成」——苏哥 2026-11-09 报的「一直 0%」
                  * 就是这个：没人报进度 + 2.5 秒就报成功。 */
-                vrWatchUrlDownload(tabId, filename, id);
+                P.watch(id);
                 return finish({ ok: true, started: true, kind: 'url', filename: filename });
             }
         }
@@ -5309,34 +5290,101 @@ async function vrVideoDownload(tabId, optionId, wantBest) {
         });
     }
 
-    // 下载在页面里跑，后台盯着进度，完成后主动通知按钮
-    vrWatchBiliDownload(tabId, name);
+    // 下载在页面里跑，后台盯着进度，完成后主动通知按钮（走统一 reporter）
+    vrWatchBiliDownload(tabId, name, vrProgressReporter(tabId, name));
     return finish({ ok: true, kind: pick.kind, filename: name, started: true });
 }
 
-/** 盯 downloads 任务的真实字节进度，转成百分比推给页内按钮。
+/* ==========================================================
+ * 统一下载进度上报（B-52｜苏哥 2026-11-09「所有网站的进度统一一下」）
+ * ----------------------------------------------------------
+ * 现状问题：进度是**每个站点各写一套**，所以覆盖必然不全。
+ *   · B站：读页面里的 window.__vrBiliDL —— 只有它有
+ *   · 通用站/抖音：走 downloads API 或 FSA 直写 —— 谁都不报，永远 0%
+ *   · FSA 直写：save.js 的 pumpBlob/pumpUrl 早就有 onProgress(got,total)，
+ *     但从来没人接
  *
- *  为什么需要（苏哥 2026-11-09「进度条老是 0%」）：
- *  页内按钮的百分比原先只有 B站 那条链路会推（vrWatchBiliDownload 读页面里的
- *  window.__vrBiliDL），通用站/抖音走 downloads API，**没有任何人报进度** ——
- *  而且 vrWaitDownload 只等 2.5 秒，超时就当成功返回，按钮立刻显示「完成」，
- *  下载其实还在跑。用户看到的就是「一直 0%，然后突然说好了」。
+ * 收敛方案：一个 reporter 对象，三条链路共用同一条出口。
+ *   ① downloads 任务   → P.watch(downloadId)
+ *   ② FSA / fetch 流   → P.bytes(got, total)
+ *   ③ 页面内自跑(B站)  → P.note(phase, pct) / P.done()
  *
- *  这里按 bytesReceived/totalBytes 报真实百分比，完成/中断时推终态。
- *  抖音那种「downloads 被 CDN 403 → 页面 fetch 兜底」的路径没有 downloadId，
- *  由调用方改推 indeterminate（按钮显示 …，不假装 0%）。
- */
-function vrWatchUrlDownload(tabId, name, id) {
-    if (typeof id !== 'number' || !isFinite(id)) { return; }
+ * 契约：
+ *   · bytes() 只报 0–99，绝不报 100（100 由 done() 负责，避免"100% 但还在写"）
+ *   · 拿不到总字节时报 indeterminate（界面显示「…」），不假装 0%
+ *   · done() 只生效一次，之后任何上报都被丢掉
+ *   · 新加下载通道请复用本对象，**不要再自己拼 chrome.tabs.sendMessage**
+ * ========================================================== */
+function vrProgressReporter(tabId, name) {
+    var closed = false;
+    var lastPct = -1;
+    var sentIndet = false;
+
+    function send(payload) {
+        if (closed) { return; }
+        try {
+            chrome.tabs.sendMessage(tabId, Object.assign(
+                { Message: 'vrVideoProgress', name: name }, payload));
+        } catch (e) { /* 页面关了就静默 */ }
+    }
+
+    return {
+        /** 已知字节：报真实百分比；拿不到总量则报「不确定」。 */
+        bytes: function (got, total) {
+            if (closed) { return; }
+            var t = Number(total) || 0;
+            var g = Number(got) || 0;
+            if (!t) {
+                if (!sentIndet) { sentIndet = true; send({ indeterminate: true, phase: '下载中' }); }
+                return;
+            }
+            var pct = Math.max(0, Math.min(99, Math.round(g / t * 100)));
+            if (pct === lastPct) { return; }
+            lastPct = pct;
+            send({ pct: pct, phase: '下载中' });
+        },
+        /** 带阶段文字的进度（B站 合成/转码这类没有字节的阶段用）。 */
+        note: function (phase, pct) {
+            if (closed) { return; }
+            var p = (pct == null) ? null : Math.max(0, Math.min(99, Math.round(Number(pct) || 0)));
+            if (p != null && p === lastPct) { return; }
+            if (p != null) { lastPct = p; }
+            send({ pct: (p == null ? 0 : p), phase: phase || '' });
+        },
+        /** 交给 downloads 任务的字节轮询。 */
+        watch: function (id) {
+            if (closed || typeof id !== 'number' || !isFinite(id)) { return; }
+            vrWatchDownloadId(id, function (payload) {
+                if (payload.done) {
+                    closed = true;
+                    send(payload);
+                    return;
+                }
+                if (payload.pct != null) {
+                    if (payload.pct === lastPct) { return; }
+                    lastPct = payload.pct;
+                }
+                send(payload);
+            });
+        },
+        /** 终态。只生效一次；之后所有上报丢弃。 */
+        done: function (ok, err, bytes) {
+            if (closed) { return; }
+            closed = true;
+            send({ done: true, ok: !!ok, error: err || '', bytes: Number(bytes) || 0 });
+        },
+        isClosed: function () { return closed; }
+    };
+}
+
+/** 按 downloadId 轮询真实字节进度，回调 {pct} 或 {done,ok,error,bytes}。
+ *  30 分钟硬上限，防定时器泄漏。 */
+function vrWatchDownloadId(id, cb) {
     let ticks = 0;
     let lastPct = -1;
-    const push = function (payload) {
-        try { chrome.tabs.sendMessage(tabId, Object.assign({ Message: 'vrVideoProgress', name: name }, payload)); }
-        catch (e) { /* 页面关了就停 */ }
-    };
     const timer = setInterval(async function () {
         ticks++;
-        if (ticks > 1800) {            // 约 30 分钟兜底，防定时器泄漏
+        if (ticks > 3600) {            // 500ms × 3600 ≈ 30 分钟
             clearInterval(timer);
             return;
         }
@@ -5357,29 +5405,31 @@ function vrWatchUrlDownload(tabId, name, id) {
 
         if (d.state === 'complete') {
             clearInterval(timer);
-            try { vrMarkDownloaded(name); } catch (e) { /* 记账失败不影响下载结果 */ }
-            push({ done: true, ok: true, bytes: got || Number(d.fileSize) || 0 });
+            try { vrMarkDownloaded(d.filename || ''); } catch (e) { /* 记账失败不影响下载结果 */ }
+            cb({ done: true, ok: true, bytes: got || Number(d.fileSize) || 0 });
             return;
         }
         if (d.state === 'interrupted') {
             clearInterval(timer);
-            push({ done: true, ok: false, error: d.error || '下载中断' });
+            cb({ done: true, ok: false, error: d.error || '下载中断' });
             return;
         }
         if (!total) {                  // 服务器没给 Content-Length：老实说不知道进度
-            push({ indeterminate: true, phase: '下载中' });
+            cb({ indeterminate: true, phase: '下载中' });
             return;
         }
         const pct = Math.max(0, Math.min(99, Math.round(got / total * 100)));
         if (pct !== lastPct) {
             lastPct = pct;
-            push({ pct: pct, phase: '下载中' });
+            cb({ pct: pct, phase: '下载中' });
         }
     }, 500);
 }
 
-/** 盯页面里的下载进度，结束/出错时推消息给按钮 */
-function vrWatchBiliDownload(tabId, name) {
+/** B站：下载在页面主世界里自己跑，进度写在 window.__vrBiliDL。
+ *  这里只做「读页面状态 → 转给统一 reporter」，不自己发消息。 */
+function vrWatchBiliDownload(tabId, name, P) {
+    const rep = P || vrProgressReporter(tabId, name);
     let ticks = 0;
     const timer = setInterval(async function () {
         ticks++;
@@ -5392,29 +5442,17 @@ function vrWatchBiliDownload(tabId, name) {
             st = r && r[0] && r[0].result;
         } catch (e) { /* 页面关了 */ }
 
-        const timeout = ticks > 300;   // 约 5 分钟
+        const timeout = ticks > 600;   // 约 10 分钟（合成大文件可能久）
         if (!st || !st.done) {
             if (st && !timeout) {
-                try {
-                    chrome.tabs.sendMessage(tabId, {
-                        Message: 'vrVideoProgress', name: name,
-                        pct: Math.round(st.pct || 0), phase: st.phase || ''
-                    });
-                } catch (e) { /* 页面没按钮了 */ }
+                rep.note(st.phase || '', st.pct);
                 return;
             }
             if (!timeout) { return; }
         }
         clearInterval(timer);
-        try {
-            chrome.tabs.sendMessage(tabId, {
-                Message: 'vrVideoProgress', name: name,
-                done: true,
-                ok: !!(st && !st.error),
-                error: (st && st.error) || (timeout ? '超时' : ''),
-                bytes: (st && st.bytes) || 0
-            });
-        } catch (e) { /* 页面关了就算了 */ }
+        const err = (st && st.error) || (timeout ? '超时' : '');
+        rep.done(!err, err, (st && st.bytes) || 0);
     }, 1000);
 }
 
@@ -5486,13 +5524,22 @@ async function vrSaveContextMedia(info, isImage) {
     }
     const filename = (dir + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
 
-    vrDownloadWithName(info.srcUrl, filename).then(function (id) {
+    /* 右键秒存也上进度（B-52 统一）：同一个 reporter，页内按钮一样能看到百分比。
+     * 以前这条路径什么都不报，用户点了只能干等。 */
+    const P = vrProgressReporter(tabId, filename);
+    vrDownloadWithName(info.srcUrl, filename, { onProgress: P.bytes }).then(function (id) {
         // 同上：FSA 成功返回对象，只有真 null 才是失败
         if (id === null || id === undefined) {
+            P.done(false, '下载失败');
             console.warn('[video-rod] 秒存失败', chrome.runtime.lastError);
-        } else {
-            vrMarkDownloaded(filename);
+            return;
         }
+        if (id && typeof id === 'object' && id.__fsa) {
+            P.done(true, '', 0);
+        } else {
+            P.watch(id);        // 走下载器：按真实字节继续报，完成时 reporter 收尾
+        }
+        vrMarkDownloaded(filename);
     });
 }
 

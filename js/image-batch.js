@@ -534,20 +534,20 @@
 
     /* ---------------- 消息 ---------------- */
 
+    /* 与 image-hover 共用 js/vr-msg.js 的实现；批量任务超时给长（120s）。
+     * 原来这里和 image-hover 各有一份逐字相同的 send()，只有超时值不同。 */
     function send(msg, cb) {
+        if (self.VRMsg && typeof self.VRMsg.send === 'function') {
+            return self.VRMsg.send(msg, cb, 120000);
+        }
         let done = false;
-        const finish = res => {
-            if (done) { return; }
-            done = true;
-            cb(res);
-        };
+        const finish = res => { if (!done) { done = true; cb(res); } };
         try {
             chrome.runtime.sendMessage(msg, res => {
                 const err = chrome.runtime.lastError;
                 finish(err ? null : res);
             });
         } catch (e) { finish(null); }
-        // 批量可能跑很久，回执超时给 120s
         setTimeout(() => finish(null), 120000);
     }
 

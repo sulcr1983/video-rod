@@ -614,16 +614,17 @@
 
     /* ---------------- 点击 ---------------- */
 
+    /* 消息收发统一走 js/vr-msg.js（与 image-batch 共用一份实现）。
+     * 本地保留同名薄封装只是为了不改下面几十处调用点。 */
     function send(msg, cb) {
+        if (self.VRMsg && typeof self.VRMsg.send === 'function') {
+            return self.VRMsg.send(msg, cb, 8000);
+        }
+        /* 极端情况（vr-msg.js 没加载）退化：仍然是「只回调一次」 */
         let done = false;
-        const finish = res => {
-            if (done) { return; }
-            done = true;
-            cb(res);
-        };
+        const finish = res => { if (!done) { done = true; cb(res); } };
         try {
             chrome.runtime.sendMessage(msg, res => {
-                // 必须读一次 lastError，否则控制台会报 "Unchecked runtime.lastError"
                 const err = chrome.runtime.lastError;
                 finish(err ? null : res);
             });
