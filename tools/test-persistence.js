@@ -214,13 +214,19 @@ async function asyncEq(name, promise, expect) {
     T.shouldRefresh(entry, null) === true);
 
   ok('mtime+size 都一致时不重建',
-    T.shouldRefresh(entry, { mtime: 1000, size: 100 }) === false);
+    T.shouldRefresh(entry, { mtime: 1000, size: 100, ver: T.THUMB_VER }) === false);
+
+  ok('生成器版本不一致要重建（老图升级）',
+    T.shouldRefresh(entry, { mtime: 1000, size: 100, ver: (T.THUMB_VER || 2) - 1 }) === true);
+
+  ok('老数据没有 ver 字段 → 重建',
+    T.shouldRefresh(entry, { mtime: 1000, size: 100 }) === true);
 
   ok('mtime 变了要重建',
-    T.shouldRefresh(entry, { mtime: 2000, size: 100 }) === true);
+    T.shouldRefresh(entry, { mtime: 2000, size: 100, ver: T.THUMB_VER }) === true);
 
   ok('size 变了要重建（同 mtime 也能发现）',
-    T.shouldRefresh(entry, { mtime: 1000, size: 200 }) === true);
+    T.shouldRefresh(entry, { mtime: 1000, size: 200, ver: T.THUMB_VER }) === true);
 
   // 关键：文件被替换后 mtime 可能**变小**，只比大小会漏判
   ok('mtime 变小也要重建',

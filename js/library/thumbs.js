@@ -8,7 +8,16 @@
 (function (root) {
     'use strict';
 
+    /* 版本标记：排查「页面到底加载了哪一版脚本」用（扩展页有强缓存，
+     * 只 reload 页面不一定拿得到新文件）。生产无副作用。 */
+    try { root.__THUMB_VER = 'b52-seek-1/3'; } catch (e0) { }
+
     var MAX_RUNNING = 2;
+    /* 缩略图生成器版本。改动取帧逻辑后必须 +1，否则老缓存永远命中、
+     * 用户看到的还是旧图（源文件 mtime/size 没变，freedesktop 那套失效判定不会触发）。
+     * v2：视频取帧从「第 1 秒」改成「时长 1/3 处」——原实现 Math.min(1, dur/3)
+     *     把 seek 位置锁死在 1 秒，开场是空镜的视频缩略图全是开头那一帧。 */
+    var THUMB_VER = 2;
     var MAX_EDGE = 400;   /* F8：卡片最宽 268px，400 已够 1.5x，5 万张约省 30-40% */
     var QUALITY = 0.66;
     var TIMEOUT = 8000;
@@ -45,6 +54,9 @@
     function shouldRefresh(entry, src) {
         if (!entry) { return true; }
         if (!src) { return true; }
+        /* 生成器版本不一致 → 重建。老缩略图没有 ver 字段（视为 0），
+         * 所以只要 bump THUMB_VER，全库会按新逻辑重画一次。 */
+        if (Number(src.ver || 0) !== THUMB_VER) { return true; }
         if (src.mtime == null || src.size == null) { return true; }
         if (Number(src.mtime) !== Number(entry.mtime)) { return true; }
         if (Number(src.size) !== Number(entry.size)) { return true; }
@@ -101,9 +113,17 @@
                     settled = true;
                     clearTimeout(graceful);
                     /* 先把解码好的这一帧交给调用方画进 canvas，再清 src。
-                     * 原实现先 cleanup() 会清掉帧 → 画出来空白。 */
+                     * 原实现先 cleanup() 会清掉帧 → 画出来空白。
+                     *
+                     * 2026-11-09：从 0ms 改成 300ms。clearTimeout 后 `cleanup()` 里的
+                     * `v.load()` 会把 videoWidth 归零，而 generate() 里
+                     * `await loadVideoFrame(...)` 之后还要读 `source.videoWidth`——
+                     * 一旦这条微任务被排到 macrotask 后面（大文件解码/页签繁忙时会发生），
+                     * 读到的就是 0 → `if (!w || !h) return null` → 缩略图静默不生成且
+                     * 失败计数仍是 0（实测：巨墙那条 40MB 视频，缩略图永远是首帧/不出图）。
+                     * 留 300ms 后调用方肯定已经画完。 */
                     resolve(v);
-                    setTimeout(cleanup, 0);
+                    setTimeout(cleanup, 300);
                 }
 
                 /* 首帧已可画：大文件等 seek 太慢时直接用它兜底 */
@@ -116,7 +136,16 @@
                 function seekFor() {
                     if (settled) { return; }
                     try {
-                        var t = Math.min(1, Math.max(0, (v.duration || 2) / 3));
+                        var dur = Number(v.duration) || 0;
+                        /* ⚠️ 原实现是 `Math.min(1, Math.max(0, dur / 3))` ——
+                         * 那个 1 本意是「下限至少 1 秒」，写成 min 之后变成**上限 1 秒**，
+                         * 于是所有视频缩略图都取自第 1 秒（注释说的 1/3 从来没生效过）。
+                         * 后果：开头是空镜/铺垫的视频，缩略图全是开头那一帧，
+                         * 用户看图以为下错了片子（2026-11-09 苏哥实测：
+                         * 《临渊》先导片第 1 秒是海滩、第 62 秒才是巨墙本体）。
+                         * 正确写法：目标 = 时长/3，且不超过片尾前 0.1 秒、不早于 0.5 秒。 */
+                        var t = dur > 0 ? Math.min(dur - 0.1, Math.max(0.5, dur / 3)) : 0;
+                        if (t <= 0) { drawFirst(); return; }
                         if (Math.abs((v.currentTime || 0) - t) < 0.05) { drawFirst(); return; }
                         v.currentTime = t;
                     } catch (e) {
@@ -134,9 +163,16 @@
                 v.onloadeddata = function () {
                     if (settled) { return; }
                     seekFor();
-                    /* 3 秒内 seek 还没回来就用当前首帧兜底 —— 比原来无条件盲等 3 秒快，
-                     * 只在真卡住时才等满。 */
-                    graceful = setTimeout(drawFirst, 3000);
+                    /* 首帧兜底的等待窗口**必须随片长走**。
+                     * 原来固定 3 秒：40MB / 3 分钟的本地视频 seek 到 1/3 处
+                     * 经常来不及，于是退回第 0 帧 —— 结果「开头是海滩、62 秒才是巨墙」
+                     * 这种片子，缩略图永远显示海滩，用户以为下错了视频
+                     * （2026-11-09 实测：文件时长 188.6s 与作品一致、62s 画面就是巨墙，
+                     *  但缩略图是海滩，纯属兜底太早）。
+                     * 现在 3s + 0.03×秒数，封顶 15s（仍远小于 VIDEO_TIMEOUT=30s）。 */
+                    var dur = Number(v.duration) || 0;
+                    var grace = Math.min(15000, 3000 + Math.round(dur * 30));
+                    graceful = setTimeout(drawFirst, grace);
                 };
 
                 v.onseeked = draw;
@@ -319,10 +355,16 @@ function announce(relPath, payload) {
 
     async function cached(entry) {
         if (!entry || !dbReady()) { return null; }
+        /* 生成器版本先行判定：老缩略图没有 ver 字段（视为 0），
+         * bump THUMB_VER 后全库按新逻辑重画一次。
+         * 这一条必须放在磁盘兜底之前 —— 否则「磁盘上那张旧图」会一直被步骤②命中，
+         * 取帧逻辑改了也永远用不上（2026-11-09 实测踩到）。 */
+        if (!entry.thumbSrc || Number(entry.thumbSrc.ver || 0) !== THUMB_VER) {
+            return null;
+        }
         /* 失效判定（B-33 / freedesktop 规范 §7）：
-         * 源文件的 mtime 或 size 变了，说明内容已换，旧缩略图必须作废。
-         * 缺 thumbSrc（老数据）时保守视为需重建 —— 宁可多生成一次，也不显示错图。 */
-        if (entry.thumbSrc && shouldRefresh(entry, entry.thumbSrc)) {
+         * 源文件的 mtime 或 size 变了，说明内容已换，旧缩略图必须作废。 */
+        if (shouldRefresh(entry, entry.thumbSrc)) {
             return null;        /* 交给 generate 重建，并覆盖磁盘文件 */
         }
         /* ① IDB 命中：最快路径，正常浏览都走这里 */
@@ -390,16 +432,30 @@ function announce(relPath, payload) {
              * 顺序理由：
              *   · 落盘失败 → 只写 IDB，功能照常，只是重装后要重新生成（静默降级）
              *   · 落盘成功 → 记录 thumbFile + thumbSrc，重装后可直接读盘
-             * 两者都不会留下「引用了不存在的文件」的状态。 */
-            var thumbFile = await saveToDisk(entry.relPath, blob);
-            if (thumbFile) {
-                patch.thumbFile = thumbFile;
-                patch.thumbSrc = {
-                    mtime: Number(entry.mtime) || 0,
-                    size: Number(entry.size) || 0
-                };
+             * 两者都不会留下「引用了不存在的文件」的状态。
+             *
+             * ⚠️ 2026-11-09：落盘必须带超时。浏览器重启后 FSA 目录句柄的写权限
+             * 可能还没续上（需要用户手势重新授权），此时 createWritable 会一直挂着，
+             * 于是整条 generate 永远不 resolve —— 表现为「缩略图一张都不出，
+             * 失败计数还是 0」，排查时完全看不出原因（实测探针定位到 saveToDisk）。
+             * 落盘只是加速项，超时就放弃，IDB 里的 blob 已经够了。 */
+            var thumbFile = null;
+            try {
+                thumbFile = await Promise.race([
+                    saveToDisk(entry.relPath, blob),
+                    new Promise(function (res) { setTimeout(function () { res(null); }, 3000); })
+                ]);
+            } catch (e) {
+                thumbFile = null;
             }
-            await root.VRDB.putThumb(thumbKey, blob, canvas.width, canvas.height);
+            if (thumbFile) { patch.thumbFile = thumbFile; }
+            /* thumbSrc 无条件写（带 ver）：即使这次落盘超时没写磁盘，
+             * 也要把「已按 vN 生成过」记下来，否则每次进视口都重建一次。 */
+            patch.thumbSrc = {
+                mtime: Number(entry.mtime) || 0,
+                size: Number(entry.size) || 0,
+                ver: THUMB_VER
+            };
             /* patchFile 失败不能吞：吞了就会出现「thumb 表里有 blob、条目却没 thumbKey」，
              * 于是 cached() 永不命中，每次进视口都重新抽 30 秒。
              * 注意 db.js:104-110 在条目不存在时返回 null 而不是抛错，必须显式检查。 */
@@ -446,6 +502,11 @@ function announce(relPath, payload) {
                                     it.relPath, (err && err.message) || err);
                             }
                         } catch (e) { /* 忽略 */ }
+                        /* 重建失败就沿用磁盘上那张旧图 —— 版本升级后本来是「重画」，
+                         * 画不出来时宁可显示旧图，也不要变成灰块。 */
+                        return loadFromDisk(it.relPath).then(function (blob) {
+                            if (blob) { announce(it.relPath, { blob: blob, w: 0, h: 0 }); }
+                        }, function () { /* 没有旧图就算了 */ });
                     })
                     .then(function () {
                         running--;
@@ -499,6 +560,7 @@ function announce(relPath, payload) {
         retry: retry,
         clear: function () { queue.length = 0; failed = Object.create(null); },
         shouldRefresh: shouldRefresh,
+        THUMB_VER: THUMB_VER,
         /* 落盘能力（B-33） */
         saveToDisk: saveToDisk,
         loadFromDisk: loadFromDisk,
