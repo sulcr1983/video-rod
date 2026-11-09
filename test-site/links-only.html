@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>纯静态下载站（页面上没有 video）</title>
+<style>
+  body { font: 14px/1.7 system-ui, sans-serif; margin: 28px; background: #f6f7f9; color: #111; max-width: 760px; }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  .hint { color: #666; margin-bottom: 18px; }
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+  code { background: #eceef2; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>纯静态下载站：页面里一个 &lt;video&gt; 都没有</h1>
+  <p class="hint">
+    模拟老式下载站 / 网盘直链页：只有 <code>&lt;a href="xxx.mp4"&gt;</code>，没有播放器。<br>
+    预期：右下角出现「下载链接 N」，点开可逐条下载（走统一的命名 / 归档 / 入库 / 内容校验）。
+  </p>
+
+  <h2 style="font-size:15px">资源列表</h2>
+  <ul>
+    <li><a href="media/sample.mp4">资源 A · 完整版（MP4）</a></li>
+    <li><a href="media/sample.mp4?quality=low">资源 A · 低清版</a></li>
+    <li><a href="media/wide.png">一张图片（不该出现在下载链接里）</a></li>
+    <li><a href="#" title="无效链接">无扩展名的站内链接（不该出现）</a></li>
+    <li><a href="media/sample.mp4">重复链接（应去重）</a></li>
+  </ul>
+
+  <h2 style="font-size:15px">嵌入型（老播放器写法）</h2>
+  <embed src="media/sample.mp4" width="1" height="1" style="opacity:0">
+  <object data="media/sample.mp4" width="1" height="1" style="opacity:0"></object>
+
+  <p class="hint" style="margin-top:24px">
+    预期结果：扫出 2 条 MP4（sample.mp4 和 ?quality=low 那条），图片与无效链接被过滤，重复项去重。
+  </p>
+</body>
+</html>

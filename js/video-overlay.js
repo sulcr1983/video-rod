@@ -452,9 +452,16 @@
 
     function scan() {
         try {
-            document.querySelectorAll('video').forEach(function (v) {
+            const vs = document.querySelectorAll('video');
+            vs.forEach(function (v) {
                 if (usable(v)) { bind(v); }
             });
+            /* 页面一旦有了 video，链接兜底按钮就让位 —— 它只为「一个 video 都没有」
+             * 的页面存在，不该和悬浮键抢戏。 */
+            if (vs.length && linkBtn && linkBtn.style.display !== 'none') {
+                linkBtn.style.display = 'none';
+                hideLinks();
+            }
         } catch (e) { /* DOM 抖动，下轮再试 */ }
     }
 
@@ -511,4 +518,118 @@
     scan();
     // 播放器常常是稍后才插入 video，头几秒多扫几次
     [500, 1500, 3000].forEach(function (d) { setTimeout(scan, d); });
+
+    /* ---------- 纯静态下载站：链接兜底入口 ----------
+     * 触发条件很窄：**页面里一个 <video> 都没有**。
+     * 这时候悬浮键永远挂不出来（没有 video 可挂），而页面上明明有
+     * `<a href="xxx.mp4">点此下载</a>` —— 老式下载站、网盘直链页全是这种。
+     * Download Master 靠「把所有链接甩给用户挑」号称全站可下，我们收敛成
+     * 一个按钮（右下角），不是把几十条链接糊在页面上。
+     * 一旦页面出现 video，这个按钮自动消失，不与悬浮键抢戏。 */
+    var linkBtn = null, linkPanel = null, linkBusy = false, linkDone = false;
+
+    function ensureLinkUI() {
+        if (linkBtn && linkBtn.isConnected) { return; }
+        linkBtn = document.createElement('button');
+        linkBtn.type = 'button';
+        linkBtn.textContent = '下载链接';
+        linkBtn.style.cssText =
+            'position:fixed;right:16px;bottom:96px;z-index:2147483646;display:none;' +
+            'padding:8px 13px;border-radius:18px;border:0;cursor:pointer;' +
+            'background:rgba(24,26,30,.94);color:#f0b24b;font-size:12px;font-weight:600;' +
+            'box-shadow:0 4px 16px rgba(0,0,0,.35);font-family:system-ui,sans-serif';
+        linkBtn.addEventListener('click', toggleLinkPanel);
+        (document.body || document.documentElement).appendChild(linkBtn);
+
+        linkPanel = document.createElement('div');
+        linkPanel.style.cssText =
+            'position:fixed;right:16px;bottom:136px;z-index:2147483646;display:none;' +
+            'min-width:240px;max-width:420px;max-height:52vh;overflow:auto;padding:6px;' +
+            'border-radius:12px;background:rgba(18,20,24,.97);color:#e8eaed;' +
+            'box-shadow:0 8px 28px rgba(0,0,0,.5);font-family:system-ui,sans-serif';
+        (document.body || document.documentElement).appendChild(linkPanel);
+    }
+
+    function hideLinks() {
+        if (linkPanel) { linkPanel.style.display = 'none'; }
+    }
+
+    function toggleLinkPanel(ev) {
+        if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+        if (!linkPanel) { return; }
+        if (linkPanel.style.display === 'block') { hideLinks(); return; }
+        var links = (linkBtn && linkBtn.__links) || [];
+        if (!links.length) { return; }
+        linkPanel.innerHTML = '';
+        links.forEach(function (it) {
+            var row = document.createElement('button');
+            row.type = 'button';
+            row.style.cssText =
+                'display:block;width:100%;text-align:left;padding:8px 10px;margin:2px 0;' +
+                'border:0;border-radius:8px;background:transparent;color:#e8eaed;' +
+                'font-size:12px;cursor:pointer;line-height:1.4;font-family:inherit';
+            row.addEventListener('mouseenter', function () { row.style.background = 'rgba(255,255,255,.12)'; });
+            row.addEventListener('mouseleave', function () { row.style.background = 'transparent'; });
+            var name = it.label || '';
+            try { name = name || decodeURIComponent(String(it.url).split('/').pop() || ''); } catch (e) { name = name || it.url; }
+            row.innerHTML = '<b></b><span></span>';
+            row.querySelector('b').textContent = String(name).slice(0, 46);
+            row.querySelector('b').style.cssText = 'font-weight:600;display:block';
+            row.querySelector('span').textContent = String(it.url).slice(-60);
+            row.querySelector('span').style.cssText = 'opacity:.55;font-size:10.5px;word-break:break-all';
+            row.addEventListener('click', function (e) {
+                e.stopPropagation();
+                e.preventDefault();
+                row.disabled = true;
+                row.style.opacity = '.5';
+                try {
+                    chrome.runtime.sendMessage(
+                        { Message: 'vrLinkDownload', url: it.url, pageUrl: location.href },
+                        function (res) {
+                            if (chrome.runtime.lastError || !res || !res.ok) {
+                                row.style.opacity = '1';
+                                row.disabled = false;
+                                row.querySelector('span').textContent = '下载失败：' +
+                                    ((res && (res.reason || res.error)) || '未知原因');
+                                return;
+                            }
+                            row.querySelector('span').textContent = '已开始下载';
+                        });
+                } catch (err) {
+                    row.disabled = false;
+                    row.style.opacity = '1';
+                }
+            });
+            linkPanel.appendChild(row);
+        });
+        linkPanel.style.display = 'block';
+    }
+
+    function maybeScanLinks() {
+        if (linkDone || linkBusy) { return; }
+        try { if (document.querySelectorAll('video').length) { return; } } catch (e) { return; }
+        linkBusy = true;
+        try {
+            chrome.runtime.sendMessage({ Message: 'vrScanLinks' }, function (res) {
+                linkBusy = false;
+                linkDone = true;
+                if (chrome.runtime.lastError || !res || !res.ok) { return; }
+                var links = res.links || [];
+                if (!links.length) { return; }
+                ensureLinkUI();
+                linkBtn.__links = links;
+                linkBtn.textContent = '下载链接 ' + links.length;
+                linkBtn.style.display = 'block';
+            });
+        } catch (e) { linkBusy = false; }
+    }
+    setTimeout(maybeScanLinks, 3500);
+    // SPA 换页后可能从「有视频」变成「没视频」，再补一次
+    window.addEventListener('popstate', function () { linkDone = false; setTimeout(maybeScanLinks, 1500); });
+    document.addEventListener('click', function (ev) {
+        if (linkPanel && linkPanel.style.display === 'block' &&
+            !linkPanel.contains(ev.target) && ev.target !== linkBtn) {
+            hideLinks();
+        }
+    }, true);
 })();

@@ -199,7 +199,7 @@ function startKeepAlive(platform) {
 
 ---
 
-### 差距 4 ★★★☆☆ DOM 扫描漏了 `a` / `source` / `embed` / `object`
+### 差距 4 ✅ 已实施 —— DOM 扫描漏了 `a` / `source` / `embed` / `object`
 
 我们扫 `<video>`（悬浮键）和 `<img>`（图片浮标），**没有扫链接**。
 
@@ -211,7 +211,26 @@ function startKeepAlive(platform) {
 
 net-sniff 的 `PATHY_RE` 能补一部分（从接口 JSON 里挖），但**纯静态页**（下载站、老站）没有 JSON 可挖。
 
-**建议**：`video-overlay` 的 `scan()` 增加 `source[src]`（这是最便宜的补漏，且 `<source>` 就在 video 里，不增加打扰）；`popup` 增加一个「扫本页链接」按钮（对齐 Download Master 的做法，按扩展名过滤后列出）。
+**已实施（2026-11-09）**：`vrScanMediaLinks` + `vrLinkDownload`（后台）+ 链接兜底按钮（`video-overlay`）
+
+**触发条件刻意做得很窄**：只在**页面里一个 `<video>` 都没有**时才扫描并出按钮。
+一旦页面出现 video，按钮自动隐藏 —— 不与悬浮键抢戏。
+
+| 细节 | 做法 |
+|---|---|
+| 扫什么 | `a[href]` / `source[src]` / `embed[src]` / `object[data]` |
+| 过滤 | 只收扩展名明确是媒体的；跳过 `blob:` / `data:` / `javascript:`；同 URL 去重 |
+| 排序 | 视频优先 → 路径短的靠前（带长 query 的广告跳转链通常很长）|
+| 上限 | 最多 24 条，避免下载站把页面刷成一片按钮 |
+| 交互 | 右下角一个「下载链接 N」按钮，点开逐条选；条目显示链接文字 + 结尾路径 |
+| 下载 | 走 `vrLinkDownload` → `vrDownloadWithName`：命名模板 / 归档目录 / 资源库 / **内容校验**全部复用 |
+| 编码兜底 | 下载站常把地址 URL 编码一层（`xxx%2Emp4`），先 `decodeURIComponent` 再判 |
+
+**验收（`test-site/links-only.html`，页面 0 个 video）**：
+
+- 按钮出现：`下载链接 2`（页面有 5 个链接 + 2 个 embed/object，图片和无效链接被过滤、重复项去重）
+- 点开面板：`[资源 A · 完整版（MP4）, 资源 A · 低清版]`（用链接文字当标题）
+- 点第一条 → 落盘 **1,128,375 字节**，与源文件**完全一致**
 
 ---
 
@@ -255,11 +274,11 @@ Chrono 有 5 线程 Range 分段（`max_threads_config: 5`、`finished_bytes`、
 |---|---|---|---|
 | P0 | **下载后内容校验** | 直接消灭「下了一堆假文件」，今天已经在库里见到实证 | ✅ **已实施**（`vrDownloadLooksInvalid` + `vrDiscardBadDownload`，9 条用例全过）|
 | ~~P0~~ | ~~SW 保活~~ | 核实后确认我们的 500ms 轮询自带保活，**不用抄** | ⛔ 已排除（见 §3 差距 3）|
-| P1 | **`source[src]` 扫描** | 最便宜的补漏，`<video><source>` 是很常见的写法 | 待办 |
+| P1 | **DOM 扫链接（a/source/embed/object）** | 纯静态下载站唯一出路 | ✅ **已实施**（`vrScanMediaLinks` + 链接兜底按钮，真机落盘验证）|
 | P1 | **popup「扫本页链接」** | 对齐 Download Master 的兜底思路，纯静态页也能救 | 中 |
-| P2 | **录制兜底** | 真正的「什么都能下」，但代价是实时时长 + 重编码，要产品上想清楚入口 | 大 |
-| P3 | ffmpeg.wasm 兜底合并 | 遇到失败样本再做 | 中 |
-| P3 | 多线程分段下载 | 体验优化，非功能缺口 | 大 |
+| ~~P2~~ | ~~录制兜底~~ | — | ✅ 已完成（B-58）|
+| P3 | ffmpeg.wasm 兜底合并 | **暂不做**：没有真实失败样本，我们的 m3u8/mpd 合并器目前够用。引 wasm 会让扩展体积涨 3~5MB，为一个假想问题付这个代价不划算。**等真的遇到合并失败的站点再做**，那时也有样本可验 | ⏸ |
+| P3 | 多线程分段下载 | **不做**：`chrome.downloads` 本身就是多连接下载，自研 Range 分片的真实收益远小于风险（要重写落盘层、要处理断点续传与完整性校验）。Chrono 那套是为「它自己当下载器」设计的，我们不是 | ⛔ |
 
 ---
 

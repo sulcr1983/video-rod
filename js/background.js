@@ -2913,6 +2913,29 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         });
         return true;
     }
+    /* ================= 纯静态下载站：直接按 URL 下 =================
+     * 什么时候用：页面里压根没有 <video>（下载站、老站、网盘直链），
+     * 悬浮键挂不出来、嗅探也抓不到 —— 但页面上明明有 <a href="xxx.mp4">。
+     * Download Master 就是靠「扫所有链接甩给用户」做到「全站可下」的，
+     * 我们补上这一环，但只作为**最后一条路**：有视频元素时不启用。
+     */
+    if (Message.Message == "vrScanLinks") {
+        const tabId = (sender && sender.tab && sender.tab.id != null)
+            ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
+        vrScanMediaLinks(tabId).then(function (r) { sendResponse(r); })
+            .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
+        return true;
+    }
+    if (Message.Message == "vrLinkDownload") {
+        const tabId = (sender && sender.tab && sender.tab.id != null)
+            ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
+        vrLinkDownload(tabId, Message.url || '', Message.pageUrl || '').then(function (r) {
+            sendResponse(r);
+        }).catch(function (e) {
+            sendResponse({ ok: false, error: String((e && e.message) || e) });
+        });
+        return true;
+    }
     if (Message.Message == "vrVideoDownload") {
         const tabId = (sender && sender.tab && sender.tab.id != null)
             ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
@@ -3782,6 +3805,111 @@ try {
         port.onDisconnect.addListener(function () { vrCapFlush(key); });
     });
 } catch (e) { /* 注册失败不影响其他功能 */ }
+
+/** 扫页面上的媒体链接 —— 纯静态下载站（`<a href="xxx.mp4">`）的唯一入口。
+ *
+ *  为什么要它：页面里没有 <video> 时，悬浮键挂不出来、嗅探也抓不到，
+ *  但用户明明看得到「点此下载」。Download Master 就是靠「把页面所有链接
+ *  甩给用户挑」做到号称全站可下的 —— 它连 webRequest 都没用。
+ *  我们补这一环，但**只作为最后一条路**：页面有 video 时不走这里。
+ */
+async function vrScanMediaLinks(tabId) {
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: function () {
+                var MEDIA = /\.(mp4|webm|mov|mkv|flv|m4v|avi|wmv|mp3|m4a|aac|flac|wav|ogg|m3u8|mpd)$/i;
+                var VID = /\.(mp4|webm|mov|mkv|flv|m4v|m3u8|mpd)$/i;
+                var out = [];
+                var seen = Object.create(null);
+
+                var add = function (raw, label) {
+                    if (!raw) { return; }
+                    var u = '';
+                    try { u = new URL(raw, location.href).href; } catch (e) { return; }
+                    if (!/^https?:/i.test(u)) { return; }          // 跳过 blob:/data:/javascript:
+                    if (!MEDIA.test(u.split('?')[0].split('#')[0])) { return; }
+                    if (seen[u]) { return; }
+                    seen[u] = 1;
+                    out.push({ url: u, label: String(label || '').replace(/\s+/g, ' ').trim().slice(0, 60) });
+                };
+
+                var links = document.querySelectorAll('a[href]');
+                for (var i = 0; i < links.length && out.length < 60; i++) {
+                    var a = links[i];
+                    var h = a.getAttribute('href') || '';
+                    /* 下载站常把地址 URL 编码一层（xxx%2Emp4），先解一次再判 */
+                    if (/%2[EFef]|%3[0-9A-Fa-f]/i.test(h)) {
+                        try { h = decodeURIComponent(h); } catch (e) { /* 保持原样 */ }
+                    }
+                    add(h, a.textContent || a.getAttribute('title') || '');
+                }
+                ['source[src]', 'embed[src]', 'object[data]'].forEach(function (sel) {
+                    var els = document.querySelectorAll(sel);
+                    for (var j = 0; j < els.length && out.length < 60; j++) {
+                        add(els[j].getAttribute('src') || els[j].getAttribute('data'),
+                            sel.split('[')[0]);
+                    }
+                });
+
+                /* 视频排前面，然后路径短的靠前（带长 query 的广告跳转链通常很长） */
+                out.sort(function (x, y) {
+                    var vx = VID.test(x.url) ? 0 : 1, vy = VID.test(y.url) ? 0 : 1;
+                    if (vx !== vy) { return vx - vy; }
+                    return x.url.length - y.url.length;
+                });
+                return { ok: true, links: out.slice(0, 24) };
+            }
+        }), 6000, 'scan-links');
+        return (r && r[0] && r[0].result) || { ok: true, links: [] };
+    } catch (e) {
+        return { ok: false, error: String((e && e.message) || e), links: [] };
+    }
+}
+
+/** 按单条 URL 下载：走统一落盘（命名模板 / 归档目录 / 资源库 / 内容校验都在里面） */
+async function vrLinkDownload(tabId, url, pageUrl) {
+    if (!/^https?:/i.test(url)) { return { ok: false, reason: 'bad-url' }; }
+    var ext = '';
+    try { ext = (new URL(url).pathname.split('.').pop() || '').toLowerCase(); } catch (e) { ext = ''; }
+    if (!/^[a-z0-9]{2,5}$/.test(ext)) { ext = 'mp4'; }
+
+    var filename = '';
+    try { filename = await vrNameInTab(tabId, ext, null); }
+    catch (e) { filename = 'video-rod/link_' + Date.now() + '.' + ext; }
+    if (!filename) { filename = 'video-rod/link_' + Date.now() + '.' + ext; }
+
+    var page = pageUrl || '';
+    if (!page) { try { var t = await chrome.tabs.get(tabId); page = (t && t.url) || ''; } catch (e) { /* ignore */ } }
+    try { if (page) { await vrSetMediaHeadersFor(url, page); } } catch (e) { /* 规则失败不影响下载 */ }
+
+    var trace = {
+        pageUrl: page || '', mediaUrl: url, sourceUrl: url,
+        platform: (self.VRPath && self.VRPath.detectPlatform) ? self.VRPath.detectPlatform(page || '') : '',
+        type: 'video'
+    };
+
+    var id = await vrDownloadWithName(url, filename, { meta: trace });
+    if (id === null || id === undefined) { return { ok: false, reason: 'download-failed' }; }
+    if (typeof id === 'object' && id.__fsa) {
+        return { ok: true, kind: 'fsa', filename: filename, path: id.path || filename };
+    }
+    var outcome = await vrWaitDownload(id, 2500);
+    if (outcome && outcome.state === 'interrupted') {
+        vrDropDownload(id);
+        return { ok: false, reason: 'interrupted' };
+    }
+    if (outcome && outcome.state === 'complete') {
+        if (vrDownloadLooksInvalid(outcome)) {
+            vrDiscardBadDownload(id);
+            return { ok: false, reason: 'invalid-content' };
+        }
+        vrMarkDownloaded(filename);
+        return { ok: true, kind: 'url', filename: filename };
+    }
+    vrWatchDownloadId(id, function () { });      // 大文件：交给进度观察器收尾
+    return { ok: true, started: true, filename: filename };
+}
 
 /** 清掉快速失败的下载记录和残留文件（微博 403 会落一个 .htm） */
 function vrDropDownload(id) {
