@@ -949,8 +949,13 @@
                 continue;
             }
             /* downloads 源里「库里没有过」的条目 = 新下载，也可能是删掉之后下载记录还没清。
-             * 只对这类做一次真实探盘（成本只跟新增条数走），别再信 d.exists。 */
-            if (mode === 'downloads' && !old && rr.handle) {
+             * 只对这类做一次真实探盘（成本只跟新增条数走），别再信 d.exists。
+             *
+             * 2026-11-09（B-67）扩展：**旧条目也要探**。原来只在 !old 时探，于是
+             * 「文件删了、下载记录还在」的条目会被原样复活成 state=ok 的实体卡
+             * —— 实测库里出现 30 条卡片、磁盘只有 15 个文件，多出来的全是打不开的幽灵。
+             * 探盘成本只跟下载记录条数走（几十~几百），可以接受。 */
+            if (mode === 'downloads' && rr.handle) {
                 var ghost = await fileExists(rr.handle, stripPrefix(it.relPath, rr.prefix));
                 if (ghost === 'missing') { skippedGhost++; continue; }
             }
@@ -998,6 +1003,19 @@
         }
 
         if (out.length) { await root.VRDB.putFiles(out); }
+
+        /* 2026-11-09（B-67）：重建索引后补一次内容指纹。
+         * 为什么必须补：downloads / snapshot 源里没有 sha256，而旧条目可能已经被删过，
+         * 于是「同内容不同 URL」的判重链就断了 —— 用户点一次下载又落一份（苏哥报的现象，
+         * 实测库里 15 张作品图全是「无 fingerprint、无 sourceUrl」的裸条目）。
+         * 只补前 200 条、且不 await：不能让库页为了几千次读盘卡住；补不上就靠下载时兜底。 */
+        try {
+            if (root.VRDedup && typeof root.VRDedup.hashMissing === 'function') {
+                Promise.resolve().then(function () {
+                    return root.VRDedup.hashMissing({ maxHash: 200 });
+                }).catch(function () { /* 补不上不影响索引结果 */ });
+            }
+        } catch (eH) { /* 去重模块未加载 */ }
         if (typeof root.VRDB.log === 'function') {
             try {
                 await root.VRDB.log('index.build', { mode: mode },

@@ -713,7 +713,9 @@ function vrDownloadWithName(url, filename, extra) {
                 // 这里返回一个「假 downloadId」会污染记账表（那张表靠真 id 撤账），
                 // 所以统一返回 null 并打标记，让调用方知道「下成功了但不是下载器下的」。
                 vrAbortFilename(url, filename);
-                return { __fsa: true, path: r.path };
+                /* relPath 用 save.js 回传的真实落盘路径（同名会被 freeName 改成 _01），
+                 * 不能用入参预测的那个 —— 否则后续判重/删文件会打到别的条目上。 */
+                return { __fsa: true, path: r.path, relPath: r.relPath || filename };
             }
             if (r && r.ok && r.mode === 'downloads') {
                 // 契约要求「名字可能被浏览器改名（ADR-040）要如实告知用户」：
@@ -1215,7 +1217,19 @@ async function vrImgDownload(msg) {
     // 这是**成功**，不能当失败处理——否则批量下载会把已落盘的图计成失败。
     if (downloadId && typeof downloadId === 'object' && downloadId.__fsa) {
         if (ruleId) { vrImgClearRefererRule(ruleId); }   // 没发下载请求，规则立刻撤
-        return { ok: true, fsa: true, downloadId: null, path: downloadId.path || relPath };
+        /* 真实落盘路径（freeName 可能已经把文件名改成 _01），判重与删文件都必须用它 */
+        const relReal = String(downloadId.relPath || relPath);
+        /* 落盘后立刻做内容判重（2026-11-09，B-67）：
+         * URL 归一键挡得住「同图换签名/镜像/格式」，挡不住「同图换路径/换桶」，
+         * 也挡不住「别的平台同一个文件」。以前只靠用户手动点「扫描重复」，
+         * 所以苏哥体感就是「点了还是多出一份」。这里算 sha256 → 命中就删掉
+         * 刚落盘的副本 → 库里留一条引用卡（物理一份、索引多份）。 */
+        const ded = await vrImgContentDedupe(relReal);
+        return {
+            ok: true, fsa: true, duplicate: !!ded.dup, skipped: !!ded.dup,
+            downloadId: null, path: relReal,
+            refOf: ded.refOf || '', sha256: ded.hash || ''
+        };
     }
     if (downloadId === null || downloadId === undefined) {
         // 没发起下载，规则立刻撤
@@ -1238,7 +1252,14 @@ async function vrImgDownload(msg) {
         if (off && off.ok && off.blobUrl) {
             const id2 = await vrDownloadWithName(off.blobUrl, relPath, { meta: meta });
             if (id2 && typeof id2 === 'object' && id2.__fsa) {
-                return { ok: true, fsa: true, downloadId: null, path: id2.path || relPath };
+                /* 离屏兜底也是 FSA 落盘，同样要过内容判重（同样用真实落盘路径） */
+                const relReal2 = String(id2.relPath || relPath);
+                const ded2 = await vrImgContentDedupe(relReal2);
+                return {
+                    ok: true, fsa: true, duplicate: !!ded2.dup, skipped: !!ded2.dup,
+                    downloadId: null, path: relReal2,
+                    refOf: ded2.refOf || '', sha256: ded2.hash || ''
+                };
             }
             if (id2 !== null && id2 !== undefined) {
                 return { ok: true, downloadId: id2, path: relPath, via: 'offscreen' };
@@ -1321,6 +1342,25 @@ async function vrImgBatch(msg, sender) {
     /* 本批次的平台键：账本按「平台 + 归一键」记账（同平台去重、跨平台放行） */
     const platKey = (self.VRPath && self.VRPath.detectPlatform)
         ? String(self.VRPath.detectPlatform(pageUrl) || '') : '';
+
+    /* 抖音图文页补作者（2026-11-09，B-67）。
+     * 作者只存在于 React Fiber（DOM 选择器已哈希化，拿不到）；侧边栏/面板通道
+     * 消息里从来没有作者，路径层于是退回「待整理」，而页面浮标那条通道有作者 →
+     * 同一作品被劈成两个文件夹，用户看到的就是「重复」。这里注入一次补上。 */
+    let dyAuthor = String((msg && msg.authorFull) || '');
+    if (!dyAuthor && platKey === 'douyin' && /\/note\//i.test(pageUrl)) {
+        const dyTabId = sender && sender.tab && sender.tab.id;
+        if (dyTabId > 0) {
+            try {
+                const dm = await vrDouyinImages(sender);
+                if (dm && dm.ok && dm.meta && dm.meta.nickname) {
+                    dyAuthor = String(dm.meta.nickname) +
+                        (dm.meta.uniqueId ? '(@' + String(dm.meta.uniqueId) + ')' : '');
+                }
+            } catch (eDy) { /* 拿不到就落「待整理」，不伪造作者 */ }
+        }
+    }
+
     const items = raw.slice(0, VR_IMG_BATCH_MAX);
     const state = { canceled: false, done: 0, ok: 0, fail: 0, skipped: 0, total: items.length, lastEmit: 0, failures: [] };
     VR_IMG_BATCH.set(batchId, state);
@@ -1332,6 +1372,11 @@ async function vrImgBatch(msg, sender) {
 
     // 已下载去重表：同 URL 不再重复下
     const seen = await vrImgSeenUrls();
+    /* 本批内去重（2026-11-09，B-67）：一次扫描里同一张图经常出现多次
+     * （同一 sprite 用在多个元素、缩略图+大图同源）。原来只查跨批账本，
+     * 同批的重复会各下一份 —— 390 张里能多下 6~10 份完全相同的文件。
+     * 收集阶段 add 之前没有 await，单线程下不会漏。 */
+    const batchSeen = new Set();
 
     let cursor = 0;
     const worker = async function () {
@@ -1352,6 +1397,15 @@ async function vrImgBatch(msg, sender) {
                 vrImgProgressThrottle(batchId, state);
                 continue;
             }
+            /* 同一批里出现两次（不同 URL、同一张图）→ 第二次直接跳过 */
+            if (key) {
+                if (batchSeen.has(key)) {
+                    state.done++; state.ok++; state.skipped++;
+                    vrImgProgressThrottle(batchId, state);
+                    continue;
+                }
+                batchSeen.add(key);
+            }
             try {
                 const r = await vrImgDownload({
                     url: url,
@@ -1367,7 +1421,7 @@ async function vrImgBatch(msg, sender) {
                      * 小红书走 state 覆盖；其它站点（抖音图文浮层）由消息自带。 */
                     authorFull: (xhs && xhs.ok && xhs.author)
                         ? String(xhs.author) + (xhs.authorId ? '(@' + String(xhs.authorId) + ')' : '')
-                        : String((msg && msg.authorFull) || ''),
+                        : (dyAuthor || String((msg && msg.authorFull) || '')),
                     creatorId: (xhs && xhs.ok)
                         ? String(xhs.authorId || '')
                         : String((msg && msg.creatorId) || '')
@@ -4651,6 +4705,106 @@ async function vrFindExistingMedia(item) {
         }
         return null;
     } catch (e) { return null; }
+}
+
+async function vrResolveContentOrigin(hit, selfRel) {
+    try {
+        if (!hit) { return null; }
+        let cur = hit;
+        let hops = 0;
+        /* 引用只允许一跳，指向实体。历史上出现过「两张互相指向的引用卡」
+         * （2026-11-09 实测：一条实体都不剩，预览全挂）—— 这里顺着 refOf
+         * 追到实体；追不到（链断/自指/环）就当没有原件，让当前条目自己当实体。 */
+        while (cur && cur.isRef && cur.refOf && hops++ < 6) {
+            if (cur.refOf === selfRel) { return null; }
+            const next = await self.VRDB.getFile(cur.refOf);
+            if (!next) { return null; }
+            cur = next;
+        }
+        if (!cur || cur.isRef) { return null; }
+        if (selfRel && cur.relPath === selfRel) { return null; }
+        return cur;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * 落盘后的**内容**判重（2026-11-09，B-67）。
+ *
+ * 为什么需要第三道：URL 归一键只认「同一个素材地址的不同变体」，认不出
+ * 「同一张图换了路径/换了图床桶/另一个平台发的」。苏哥的原话是「点了还是
+ * 多一份」—— 实测就是这类：sha256 相同、URL 不同、URL 级永远放行。
+ *
+ * 做法：算指纹 → 库里已有同指纹（非引用/非回收站）→ 删掉刚落盘的副本 →
+ * 库里把这条标成 isRef 引用卡（物理一份、索引多份，符合苏哥口径）。
+ *
+ * 两条铁律（都踩过）：
+ *   ① 删文件只能走 FSA 句柄（VRSave.removeFile）。fetch(file://,DELETE)
+ *      返回 ok 但根本不删 —— 会出现「库说引用、盘上还在」。
+ *   ② 先改库、后删文件，且**只有条目真的在库里**才删；否则会留下一条
+ *      指向已删文件的死卡。删失败就回滚成实体条目，宁可留着副本也不说谎。
+ *
+ * @param {string} relPath 库内相对路径（与入库 relPath 同口径）
+ * @returns {Promise<{hash:string, dup:boolean, removed:boolean, refOf:string}>}
+ */
+async function vrImgContentDedupe(relPath) {
+    const out = { hash: '', dup: false, removed: false, refOf: '' };
+    try {
+        const D = self.VRDedup, S = self.VRSave, DB = self.VRDB;
+        if (!D || typeof D.hashFile !== 'function' || !DB || !relPath) { return out; }
+        if (!S || typeof S.resolveAbsPath !== 'function' || typeof S.removeFile !== 'function') { return out; }
+
+        const abs = await S.resolveAbsPath(relPath);
+        if (!abs) { return out; }
+        const hash = await D.hashFile(abs);
+        if (!hash) { return out; }
+        out.hash = hash;
+
+        const origin = await vrResolveContentOrigin(await D.findByHash(hash, relPath), relPath);
+        if (!origin) {
+            /* 首次见到这个内容（或者命中的是坏引用链）：记住指纹，让「同一批里
+             * 连下两份」也能判出来；同时显式把 isRef 归零，自愈历史坏链。 */
+            if (typeof D.rememberHash === 'function') { D.rememberHash(hash, relPath, abs); }
+            try { await DB.patchFile(relPath, { sha256: hash, isRef: 0, refOf: '' }); } catch (e0) { /* 条目可能还没入库 */ }
+            return out;
+        }
+
+        out.dup = true;
+        out.refOf = String(origin.relPath || '');
+        let patched = null;
+        try {
+            patched = await DB.patchFile(relPath, {
+                sha256: hash,
+                isRef: 1,
+                refOf: origin.relPath,
+                absPath: origin.absPath || abs
+            });
+        } catch (e1) { patched = null; }
+
+        if (!patched) {
+            /* 条目不在库（relPath 口径不一致，比如用户自定义目录）→ 绝不能删文件，
+             * 否则磁盘少一份、库里也查不到，用户直接丢图。 */
+            out.dup = false;
+            return out;
+        }
+
+        const gone = await S.removeFile(relPath);
+        if (gone) {
+            out.removed = true;
+            return out;
+        }
+
+        /* 删不掉：回滚成实体条目。库与磁盘必须一致 —— 宁可承认「有副本」，
+         * 也不能出现「库说没有、盘上躺着一份」的幽灵状态。 */
+        out.removed = false;
+        try {
+            await DB.patchFile(relPath, { isRef: 0, refOf: '', absPath: abs });
+        } catch (e2) { /* 回滚失败也只能记账，下次「扫描重复」会修 */ }
+        return out;
+    } catch (e) {
+        return out;
+    }
 }
 
 /** 去重标识：不依赖 URL 的签名/token 参数。同作品同媒体视为重复。

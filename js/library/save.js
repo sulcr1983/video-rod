@@ -659,9 +659,6 @@
                         var relOut = dirs.concat([w.name]).join('/');
                         /* 优先用写盘后读回的真实大小；拿不到才退回源对象大小 */
                         var size = Number(w.size) || ((typeof src === 'string') ? 0 : (src.size || 0));
-                        var out = { ok: true, mode: 'fsa', path: relOut, size: size };
-                        if (o.ingest === false) { return out; }
-
                         /* 入库用的 relPath 必须把前缀补回来。
                          * relOut 是把根句柄那一层剥掉后的「磁盘相对路径」（如 微博/xxx/视频/a.mp4），
                          * 而 parseRelPath 期望首段是 subdir（video-rod/微博/xxx/视频/a.mp4）。
@@ -670,6 +667,13 @@
                          * （资源库不分组、查重也按 platform 预筛而失效）。
                          * 注意：这里**只影响入库元数据**，落盘路径仍用 relOut，不会多建目录。 */
                         var relForDb = (prefix ? prefix + '/' : '') + relOut;
+                        /* ⚠️ relPath 必须原样交给调用方（2026-11-09 B-67）。
+                         * freeName 会把同名文件改成 xxx_01.jpg —— 调用方在下载**前**
+                         * 预测的路径因此不等于真实落盘路径。拿着预测路径去查重/删文件，
+                         * 会删掉别人的文件、把别人的条目改成引用（实测：库里出现两张
+                         * 互相指向的引用卡，一张实体都不剩）。 */
+                        var out = { ok: true, mode: 'fsa', path: relOut, relPath: relForDb, size: size };
+                        if (o.ingest === false) { return out; }
                         /* 绝对路径回填：指纹去重要按它读文件。
                          * 拿不到绝对路径（自选文件夹）就传空串 —— 降级为「无指纹」，
                          * 绝不用「子目录 + 文件名」伪造一个不存在的路径。 */
@@ -688,6 +692,64 @@
                     });
             });
         });
+    }
+
+    /* ==========================================================
+     * 指纹去重用的两个能力（2026-11-09，B-67）
+     *
+     * 为什么放在这里而不是 dedup.js：
+     *   删文件必须用 FSA 句柄（dir.removeEntry）。`fetch(file://, {method:'DELETE'})`
+     *   会返回 ok 但**根本不删文件** —— 上一版「整理」就栽在这上面：库改成引用、
+     *   磁盘副本还在，比不去重更糟。句柄只有 probeEnv 能拿，而 probeEnv 在本模块。
+     * ========================================================== */
+
+    /**
+     * 库内相对路径 → 磁盘绝对路径（拿不到返回空串，绝不猜）。
+     * 只读路径解析，不碰文件；给 dedup.hashFile 用（它按绝对路径 fetch）。
+     */
+    function resolveAbsPath(relPath) {
+        var parts = splitRel(relPath);
+        if (!parts) { return Promise.resolve(''); }
+        return resolvePrefix().then(function (pfx) {
+            return resolveAbsRoot(pfx).then(function (absRoot) {
+                if (!absRoot) { return ''; }
+                var dirs = stripPrefix(parts.dirs, pfx);
+                return absRoot + '/' + dirs.concat([parts.fileName]).join('/');
+            });
+        }).catch(function () { return ''; });
+    }
+
+    /**
+     * 按库内相对路径删一个物理文件。
+     * 判据是「文件确实不存在了」（removeEntry 偶发静默失败时不能谎报）。
+     * @returns {Promise<boolean>}
+     */
+    function removeFile(relPath) {
+        var parts = splitRel(relPath);
+        if (!parts) { return Promise.resolve(false); }
+        return probeEnv().then(function (env) {
+            if (!env.root) { return false; }
+            return resolvePrefix().then(function (pfx) {
+                var dirs = stripPrefix(parts.dirs, pfx);
+                var p = Promise.resolve(env.root);
+                dirs.forEach(function (seg) {
+                    p = p.then(function (d) {
+                        return d.getDirectoryHandle(seg, { create: false });
+                    });
+                });
+                return p.then(function (dir) {
+                    return dir.removeEntry(parts.fileName).catch(function () {
+                        /* 已经不在 / 名字被下载器改过 —— 下面用 getFileHandle 复核 */
+                    }).then(function () {
+                        return dir.getFileHandle(parts.fileName).then(function () {
+                            return false;      // 还在 → 没删掉
+                        }, function (e) {
+                            return !!(e && e.name === 'NotFoundError');
+                        });
+                    });
+                });
+            });
+        }).catch(function () { return false; });
     }
 
     /* ---------------- 测试用 ---------------- */
@@ -710,6 +772,9 @@
         // 环境探测（暴露出来便于调试与页面上下文复用）
         probeEnv: probeEnv,
         resolvePrefix: resolvePrefix,
+        // 指纹去重（2026-11-09）：绝对路径解析 + 真删（FSA removeEntry）
+        resolveAbsPath: resolveAbsPath,
+        removeFile: removeFile,
         _resetPrefixCache: _resetPrefixCache
     };
 })(typeof self !== 'undefined' ? self : this);

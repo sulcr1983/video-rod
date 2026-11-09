@@ -83,6 +83,12 @@
       "ts": 1794224140.244193,
       "reason": "验证缩略图取帧修复（seek 1/3）——原先卡在第1秒",
       "headless": false
+    },
+    {
+      "at": "2026-11-09T22:40:14",
+      "ts": 1794235214.384907,
+      "reason": "验证录制兜底（captureStream + MediaRecorder）",
+      "headless": false
     }
   ],
   "closes": [
@@ -1568,6 +1574,118 @@
       "suites": [
         {
           "n": "e2e-sw",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T23:33:26",
+      "summary": "6/9 套件通过，用时 119.7s",
+      "report": "deliverables\\test-runs\\2026-11-09-2333-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        },
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        },
+        {
+          "n": "skin",
+          "ok": false
+        },
+        {
+          "n": "download-path",
+          "ok": true
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        },
+        {
+          "n": "qa-preview-page",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T23:35:20",
+      "summary": "1/1 套件通过，用时 53.6s",
+      "report": "deliverables\\test-runs\\2026-11-09-2335-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
+          "ok": true
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T23:46:34",
+      "summary": "6/9 套件通过，用时 101.4s",
+      "report": "deliverables\\test-runs\\2026-11-09-2346-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-sw",
+          "ok": true
+        },
+        {
+          "n": "dedup",
+          "ok": true
+        },
+        {
+          "n": "stage-rewrite",
+          "ok": true
+        },
+        {
+          "n": "skin",
+          "ok": false
+        },
+        {
+          "n": "download-path",
+          "ok": true
+        },
+        {
+          "n": "e2e-buttons",
+          "ok": false
+        },
+        {
+          "n": "e2e-popup",
+          "ok": true
+        },
+        {
+          "n": "e2e-overlay",
+          "ok": true
+        },
+        {
+          "n": "qa-preview-page",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "at": "2026-11-09T23:47:48",
+      "summary": "1/1 套件通过，用时 53.5s",
+      "report": "deliverables\\test-runs\\2026-11-09-2347-e2e-all.md",
+      "live": false,
+      "suites": [
+        {
+          "n": "e2e-buttons",
           "ok": true
         }
       ]

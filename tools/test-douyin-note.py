@@ -132,7 +132,14 @@ def main():
     check("T5 点击后有反应（busy 或直接 done）", "busy" in str(st2) or "done" in str(st2), str(st2))
     # 终态文案必须说清「新下」还是「已存在」——2026-11-09 苏哥报「点了没反应」，
     # 根因就是全跳过时也显示「已下载 15 张」。
-    txt = cdp.eval("document.getElementById('vr-note-host').shadowRoot.querySelector('.vr-nd').textContent", psid)
+    # 2026-11-09 二修后：内容判重会「先落盘、算指纹、命中就删」，15 张要跑好几秒，
+    # 所以必须轮询等终态，不能点完 1.5s 就读文案（那时还是「正在下载…」）。
+    txt = ""
+    for _ in range(40):
+        time.sleep(1)
+        txt = cdp.eval("document.getElementById('vr-note-host').shadowRoot.querySelector('.vr-nd').textContent", psid)
+        if "已存在" in str(txt) or "已下载" in str(txt) or "新下" in str(txt) or "失败" in str(txt):
+            break
     toast = cdp.eval("""(()=>{const pg=document.getElementById('vr-img-batch-host');
       if(!pg||!pg.shadowRoot) return '';
       return [...pg.shadowRoot.querySelectorAll('div')].map(n=>n.childElementCount? '' : n.textContent.trim())

@@ -34,6 +34,10 @@
         other: '其他'
     };
 
+    /** 收录平台拿不到作者时的目录段。
+     *  不用域名：域名会伪装成「作者」，让同一作品从不同通道落进两个文件夹。 */
+    var FALLBACK_CREATOR = '待整理';
+
     /**
      * 兼容早期/特例落盘的英文目录段（IG 走 background.js 硬编码 'instagram/videos'）。
      * 只用于「反解识别」，不改写入规则——老文件认得出、新文件仍走中文字典。
@@ -266,15 +270,27 @@
         var type = typeOf(o);
 
         var creator = creatorSegment(o.authorFull, o.creatorId || creatorIdFromUrl(pageUrl));
-        /* 拿不到作者时用域名兜底：否则一个站点的所有无主素材会平铺在同一层。
-         * 但站点段可能已经是同一个域名（未收录站点），重复写会得到
-         * 「example.com/example.com」这种两层同名的怪路径，所以要去重。 */
+        /* 拿不到作者时的兜底（2026-11-09 B-67 改口径）。
+         *
+         * 原来一律用域名兜底 —— 对收录平台是灾难：抖音图文从侧边栏下载时
+         * 作者拿不到，落成「抖音/www.douyin.com/<标题>/」，而页面浮标那条通道
+         * 有作者，落成「抖音/摄影师沙皮/<标题>/」。同一个作品的图被劈成两个
+         * 文件夹，用户在库里看到的就是「重复」，怎么去重都去不掉。
+         *
+         * 现在：收录平台用「待整理」（作者确实没拿到，诚实标注，且不会伪造
+         * 一个假作者）；未收录站点仍用域名 —— 那时站点段就是域名，域名才有
+         * 区分意义（不写会全平铺在一层）。 */
         if (!creator) {
-            var host = hostOf(pageUrl);
-            if (host) {
-                var hSeg = cleanSeg(host);
-                if (hSeg && hSeg.toLowerCase() !== String(site.dir).toLowerCase()) {
-                    creator = hSeg;
+            var knownPlatform = !!(site && PLATFORM_DIR[site.key]);
+            if (knownPlatform) {
+                creator = FALLBACK_CREATOR;
+            } else {
+                var host = hostOf(pageUrl);
+                if (host) {
+                    var hSeg = cleanSeg(host);
+                    if (hSeg && hSeg.toLowerCase() !== String(site.dir).toLowerCase()) {
+                        creator = hSeg;
+                    }
                 }
             }
         }

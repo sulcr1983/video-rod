@@ -5,22 +5,23 @@
 #   T4 重建索引 → 指纹 (sha256) 与引用标记不被抹掉
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cdp_client import Cdp, find_ext_id  # noqa: E402
 
 ROOT = "D:/personal/Downloads/video-rod"
-NOTE_DIR = os.path.join(ROOT, "抖音")
-IMG = ("https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/"
-       "oMqdCgDQIFAzQeC7iAEnAGAAE1oyf9ndqlaHwO~tplv-dy-aweme-images:q75.webp"
-       "?biz_tag=aweme_images&from=327834062&lk3s=138a59ce&s=PackSourceEnum_AWEME_DETAIL"
-       "&sc=image&se=false&x-expires=1796821200&x-signature=AdV%2Ba1gQeMfZvRGe4vBpWGMeGVE%3D")
-# 同一张图的 jpeg 版本：路径不同、签名不同、但归类键相同（测账本命中）
-IMG2 = IMG.replace(":q75.webp", ":q75.jpeg").replace(
-    "x-signature=AdV%2Ba1gQeMfZvRGe4vBpWGMeGVE%3D",
-    "x-signature=MIVAtgCFcOj9EFS62sxYJtJAhlg%3D")
+PORT = 18080
+# 用本地图：抖音图床的签名 URL 会过期（过期后下到的是错误页，字节和库里那批
+# 对不上，内容判重就永远命中不了 —— 踩过）。素材脚本自己造，不依赖被 gitignore
+# 的 test-site/media。
+IMG = "http://127.0.0.1:%d/media/dedupe-a.jpg" % PORT
+# 同一个文件的另一个地址（换 query）：归一键忽略 query → 应命中同一账本键
+IMG2 = IMG + "?v=2"
 NOTE_PAGE = "https://www.douyin.com/note/7705250862063743461"
 TITLE = "INTEG-DEDUP-" + str(int(time.time()))[-6:] + "-DELETEME"
 
@@ -38,13 +39,24 @@ def check(name, cond, extra=''):
 
 
 def count_files():
+    """统计整库图片数（跨平台用例会落到 微博/ 目录，只数 抖音/ 会假通过）。"""
     n = 0
-    for dirpath, _dn, fns in os.walk(NOTE_DIR):
+    for dirpath, _dn, fns in os.walk(ROOT):
+        if "_library" in dirpath or "_回收站" in dirpath:
+            continue
         n += len([x for x in fns if x.lower().endswith((".jpeg", ".jpg", ".webp", ".png"))])
     return n
 
 
 def main():
+    tmp = tempfile.mkdtemp(prefix="vr-dedupe-live-")
+    media = os.path.join(tmp, "media")
+    os.makedirs(media, exist_ok=True)
+    open(os.path.join(media, "dedupe-a.jpg"), "wb").write(
+        b"\xff\xd8\xff\xe0" + b"L" * 3000)
+    srv = subprocess.Popen([sys.executable, "-m", "http.server", str(PORT)], cwd=tmp,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(2)
     cdp = Cdp("http://127.0.0.1:9480")
     ext, sw = find_ext_id(cdp)
     # 改过 background/indexer，必须先热重载，否则跑的是旧代码
@@ -140,7 +152,7 @@ def main():
     check("T1b 文件数 +1", n1 == n0 + 1, "%d→%d" % (n0, n1))
 
     # T2 同一张图再来一次（账本命中）→ 跳过，不再落盘
-    r2 = json.loads(batch(IMG, TITLE + "-B"))
+    r2 = json.loads(batch(IMG2, TITLE + "-B"))
     n2 = count_files()
     print("T2 result:", r2, "files:", n2)
     check("T2a 重复点击被跳过", r2.get("skipped") == 1, str(r2))
@@ -186,6 +198,12 @@ def main():
           "%s→%s" % (n_before_rebuild, n_after_rebuild))
 
     print("\nRESULT: %d/%d PASS" % (PASS, PASS + FAIL))
+    srv.terminate()
+    try:
+        srv.wait(timeout=5)
+    except Exception:
+        srv.kill()
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

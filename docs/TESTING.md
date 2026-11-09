@@ -246,6 +246,29 @@ python tools/test-sidebar-tiers.py    # 真机 390×780：5 个档位必须全�
 > 侧边栏 380px 放不下 5 个档位，「超大」被裁掉且没有可滚动提示（苏哥截图报过）。
 > 契约钉死：档位行必须 `flex-wrap: wrap`，且 `allInside === true`。
 
+### 4.7 内容级去重 / 作者段（2026-11-09 新增，27 条断言）
+
+改 `js/background.js`（vrImgContentDedupe / vrResolveContentOrigin / vrImgBatch）、
+`js/library/save.js`（resolveAbsPath / removeFile / 回传 relPath）、
+`js/library/path.js`（作者兜底）后必须跑：
+
+```bash
+python tools/test-dedupe-content.py   # 12  同内容不同 URL / 同批同键 / 抖音图文作者段
+python tools/test-dedupe-live.py      # 15  账本、库内来源键、跨平台留一份、重建索引
+```
+
+> 四条口径必须同时成立：
+> 1. 同内容不同 URL → 物理**只留 1 份**，库里是「1 实体 + 1 引用」，引用 `refOf` 指向实体；
+> 2. 同一批里同归一键 → 第二次直接计入「已存在跳过」，不落盘；
+> 3. 抖音图文侧边栏批量 → 目录是 `抖音/<昵称>/…`，**不得**出现 `抖音/www.douyin.com/…`；
+> 4. 删文件只走 `VRSave.removeFile`（FSA removeEntry + 复核）。
+>    `fetch(file://,{method:'DELETE'})` 返回 ok 但不删文件，用它会造出「库说引用、盘上还在」。
+> 5. `VRIndex.build()` 之后条目必须仍带 `sha256`（重建会补指纹）；
+>    `downloads` 模式不得复活「文件已删、下载记录还在」的幽灵条目。
+>
+> ⚠️ 跑 e2e 时必须 `--isolated`：非隔离的 e2e 会清真实库（实测 72 条 → 9 条），
+> 恢复方式是 `VRIndex.build({mode:'full'})` + `VRDedup.hashMissing()`。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |
