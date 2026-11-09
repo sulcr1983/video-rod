@@ -33,6 +33,17 @@ const ALLOW_DIRS = ['css', 'img', 'js', 'lib', 'catch-script'];
  *  裁到 en + zh_CN 后仍满足 manifest.default_locale=en 的回退要求。 */
 const ALLOW_LOCALES = ['en', 'zh_CN'];
 
+/** 按需库：源码保留、默认不进包（2026-11-09）
+ *
+ *  mqtt.min.js = 361 KB，本 fork 里是死代码：
+ *   · G.mqttEnable 在 init.js 硬编码 false
+ *   · options 页 0 个 MQTT 配置项
+ *   · sendToMQTT 第一步 if (!G.mqttEnable) reject
+ *   → HTML 已改为按需注入（popup-utils.js 的 vrEnsureMqttLib），
+ *     将来开启 G.mqttEnable 时把本行去掉即可恢复。
+ */
+const OPTIONAL_LIBS = ['lib/mqtt.min.js'];
+
 /** 允许带进 dist 的根文件 */
 const ALLOW_ROOT_FILES = ['manifest.json'];
 
@@ -109,6 +120,20 @@ function main() {
       process.exit(1);
     }
     walk(abs, path.join('_locales', loc), files);
+  }
+
+  // 剔除按需库（源码保留，只是不进包）
+  const optSet = new Set(OPTIONAL_LIBS.map(x => x.replace(/\\/g, '/')));
+  const kept = [];
+  let dropped = 0;
+  for (const f of files) {
+    if (optSet.has(f.rel.replace(/\\/g, '/'))) { dropped++; continue; }
+    kept.push(f);
+  }
+  if (dropped) {
+    console.log(`  （按需库不入包：${OPTIONAL_LIBS.join(', ')}）`);
+    files.length = 0;
+    for (const f of kept) files.push(f);
   }
 
   const total = files.reduce((n, f) => n + f.size, 0);

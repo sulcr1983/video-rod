@@ -205,8 +205,8 @@ WORK = Path(os.environ.get("VR_WORK") or Path(__file__).resolve().parents[2] / "
 
 | 状态 | 期望显示 |
 |---|---|
-| `dist/` 加载 | **约 4.5 MB**（扩展本体，170 文件，实测 4.54 MB） |
-| **发布 zip（上传商店用）** | **约 1.34 MB**（实测 `video-rod-2.7.2.1.zip` = 1.34 MB / 压缩率 70%） |
+| `dist/` 加载 | **约 4.1 MB**（扩展本体，165 文件，实测 4.12 MB） |
+| **发布 zip（上传商店用）** | **约 1.22 MB**（实测 `video-rod-2.7.2.1.zip` = 1.22 MB / 压缩率 70%） |
 | 若仍加载仓库根 | 不应被允许（见 §2.1），会随 `work`/`deliverables` 膨胀到 **93 MB 级** |
 
 `edge://extensions` 的数字 = 加载目录的磁盘占用，**不是**扩展代码的真实大小。它虚胖的唯一原因就是加载了不该加载的目录。
@@ -220,6 +220,19 @@ WORK = Path(os.environ.get("VR_WORK") or Path(__file__).resolve().parents[2] / "
 但**发布包只带 `en` + `zh_CN`**（`build-dist.js` 的 `ALLOW_LOCALES`）：
 11 语言 = 308 KB → 双语 = 46 KB。安全依据：`js/polyfill.js` 只硬引用
 `_locales/zh_CN/messages.json`，无其它语言硬依赖。
+
+### 5.0.1 死代码处置（2026-11-09）
+
+| 项 | 处置 | 依据 |
+|---|---|---|
+| `lib/mqtt.min.js`（361 KB） | **按需加载**：HTML 不再静态引用，改由 `popup-utils.js` 的 `vrEnsureMqttLib()` 在 `G.mqttEnable` 为真时注入；`build-dist.js` 的 `OPTIONAL_LIBS` 默认不进包 | `G.mqttEnable` 在 `init.js` 硬编码 false + options 页 0 个 MQTT 配置项 + `sendToMQTT` 第一步就 reject —— 从来没被真正执行过。上游代码一行没删，将来开启 MQTT 仍可用 |
+| `js/library/{ui,trash-ui,batch,video}.js`（66.9 KB） | **移入 `archive/legacy-library-v2/`**（留证，不删） | 现行 `library.html` 零引用；`ctx-menu.js` 注释已自证「那套是旧版库页的 DOM」；`VRBatch`/`VRVideo`/`VRTrashUI` 全局符号引用数 0。详见 `archive/legacy-library-v2/README.md` |
+| `_locales/` 9 种语言（262 KB） | 源码保留，发布包只带 `en` + `zh_CN` | `js/polyfill.js` 只硬引用 `_locales/zh_CN/messages.json` |
+
+> 验收：`tools/qa-preview-page.py`（新增，12/12）专测 preview 页 ——
+> 它此前是**测试盲区**（全仓只有 popup.js 三处动态打开，无任何测试覆盖），
+> 而这次恰好改了它的 script 加载。该套件还验证了「库缺失时按需注入明确
+> reject，不静默挂起」这个真风险点。
 
 ### 5.1 发布包（2026-11-09 新增）
 

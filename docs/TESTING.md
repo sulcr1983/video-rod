@@ -1497,3 +1497,4 @@ YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进�
 
 | qa-pack-verify | `python tools/qa-pack-verify.py` | 发布包真实加载：解压 zip → 用解压物（不是仓库根）启动 Edge → SW 存活/popup 可开/能嗅探/体积<8MB。6/6 |
 | pack-dist.js | `node tools/pack-dist.js`（`--dry-run` 只报告） | 发布包打包（只打 dist/，禁带目录自检，体积红线 12MB 警告/20MB 失败）。产物 `..\work\vr-release\video-rod-<ver>.zip` |
+| qa-preview-page | `python tools/qa-preview-page.py --port 9490` | preview 独立窗口页专项（补测试盲区）：script 加载清单、mqtt 默认不静态加载、按需注入缺库时明确 reject。12/12 |

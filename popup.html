@@ -383,7 +383,8 @@
   </div>
 
   <script src="lib/base64.js"></script>
-  <script src="lib/mqtt.min.js"></script>
+  <!-- [video-rod fork] MQTT 库改为按需加载：默认不加载 361KB 死代码，
+       G.mqttEnable 为真时由 popup-utils.js 动态注入（见 vrEnsureMqttLib） -->
   <script src="js/popup-utils.js"></script>
   <script src="js/bili-whole.js"></script>
   <script src="js/vr-download-hook.js"></script>

@@ -101,6 +101,39 @@ function aria2AddUri(data, success, error) {
 }
 
 // MQTT 相关功能
+/* [video-rod fork] MQTT 库按需加载（2026-11-09）
+ *
+ * 为什么改：lib/mqtt.min.js = 361 KB，而 MQTT 功能在本 fork 里是**死代码** ——
+ *   · G.mqttEnable 在 init.js 里硬编码 false
+ *   · options 页没有任何 MQTT 配置项（0 处）
+ *   · sendToMQTT 第一步就是 if (!G.mqttEnable) reject
+ * 即：它被 <script> 加载进每个 popup/preview 上下文，却从来不会被执行。
+ *
+ * 做法：不删上游代码（保留与上游的可合并性），改成**用到时才注入**。
+ *   · 默认路径：0 字节开销（页面启动不加载这个库）
+ *   · 将来若开启 G.mqttEnable：sendToMQTT 会自动把库注回来，功能照旧
+ */
+let __vrMqttLibPromise = null;
+function vrEnsureMqttLib() {
+    if (typeof window !== 'undefined' && window.mqtt) {
+        return Promise.resolve(window.mqtt);
+    }
+    if (!__vrMqttLibPromise) {
+        __vrMqttLibPromise = new Promise((resolve, reject) => {
+            try {
+                const s = document.createElement('script');
+                s.src = chrome.runtime.getURL('lib/mqtt.min.js');
+                s.onload = () => resolve(window.mqtt);
+                s.onerror = () => reject(new Error('MQTT 库加载失败'));
+                (document.head || document.documentElement).appendChild(s);
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
+    return __vrMqttLibPromise;
+}
+
 /**
  * 发送数据到 MQTT 服务器
  * @param {Object} data - 要发送的媒体数据
@@ -112,6 +145,14 @@ function sendToMQTT(data, config) {
             reject("MQTT is not enabled");
             return;
         }
+        // [video-rod fork] 库改为按需注入（见 vrEnsureMqttLib）
+        vrEnsureMqttLib().then(() => doSendToMQTT(data, config)).then(resolve, reject);
+    });
+}
+
+/** [video-rod fork] sendToMQTT 的原实现体（拆出来便于按需注入后调用） */
+function doSendToMQTT(data, config) {
+    return new Promise((resolve, reject) => {
 
         // 使用配置的标题长度，如果未设置则默认为100
         const titleLength = G.mqttTitleLength || 100;
