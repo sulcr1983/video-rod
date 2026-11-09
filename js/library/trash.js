@@ -267,6 +267,78 @@
         return n;
     }
 
+    /** 只有「路径明确不存在」才返回 true。权限/IO 抖动一律返回 false，
+     *  绝不允许据此删索引行（ADR-030：错删比留着更糟）。 */
+    function isNotFoundErr(e) {
+        var n = e && e.name;
+        return n === 'NotFoundError' || n === 'TypeMismatchError';
+    }
+
+    async function pathGone(handle, rel) {
+        var segs = split(rel);
+        if (!segs.length || segs.indexOf('..') !== -1) { return false; }
+        var name = segs.pop();
+        var dir = handle;
+        for (var i = 0; i < segs.length; i++) {
+            try { dir = await dir.getDirectoryHandle(segs[i]); }
+            catch (e) { return isNotFoundErr(e); }
+        }
+        try { await dir.getFileHandle(name); return false; }
+        catch (e2) { return isNotFoundErr(e2); }
+    }
+
+    /**
+     * 清「活死卡」：索引行还在（没标 trashed），但磁盘上原路径的文件确实没了，
+     * 回收站清单里也没有它。这类行点开必然报错，苏哥说的「清空后索引还有出现」
+     * 就是它们 —— 文件随清空删掉了，行却因为删行失败 / 状态被改回 / 清单孤儿而留下。
+     *
+     * 安全边界：
+     *  - 只认 pathGone()（明确 NotFound）；权限/IO 抖动不动；
+     *  - pendingArchive（待归档）、isRef（虚拟引用）、trashed 行跳过；
+     *  - 回收站清单里还挂着的 relPath 跳过（它归回收站管，别越权删）；
+     *  - includeMissing=false 时不碰 state='missing'（ADR-030 铁律：自动自愈不许删）；
+     *    true 只在用户显式点「清空回收站」时用，那时语义就是「彻底清干净」。
+     * @returns {Promise<number>} 清掉的索引行数
+     */
+    async function dropDeadCards(rr, opt) {
+        var o = opt || {};
+        if (!rr || !rr.handle || !dbReady()) { return 0; }
+        var protectedRels = {};
+        try {
+            var disks = await diskBatches(rr);
+            disks.forEach(function (d) {
+                (d.items || []).forEach(function (it) {
+                    if (it && it.relPath) { protectedRels[it.relPath] = 1; }
+                });
+            });
+        } catch (e) { /* 读不到清单就当没有保护项，下面仍有 pathGone 兜底 */ }
+
+        var rows = await allRows();
+        var candidates = rows.filter(function (r) {
+            if (!r || !r.relPath || isTrashed(r)) { return false; }
+            if (r.pendingArchive || r.isRef) { return false; }
+            if (!o.includeMissing && r.state === 'missing') { return false; }
+            if (protectedRels[r.relPath]) { return false; }
+            return true;
+        });
+        var dead = [];
+        /* 分批并发探盘：大库不能一条条 await，否则开页自愈会拖住首屏。 */
+        var CHUNK = 16;
+        for (var i = 0; i < candidates.length; i += CHUNK) {
+            var chunk = candidates.slice(i, i + CHUNK);
+            var probes = await Promise.all(chunk.map(function (r) {
+                return pathGone(rr.handle, stripPrefix(r.relPath, rr.prefix));
+            }));
+            for (var k = 0; k < chunk.length; k++) {
+                if (probes[k]) { dead.push(chunk[k].relPath); }
+            }
+        }
+        if (!dead.length) { return 0; }
+        try { await root.VRDB.deleteFiles(dead); } catch (e) { return 0; }
+        await dropThumbs(dead);
+        return dead.length;
+    }
+
     /* ---------------- 索引读写 ---------------- */
 
     async function allRows() {
@@ -357,9 +429,21 @@
 
             try {
                 if (!(await exists(rr.handle, fsRel))) {
-                    /* 磁盘上本来就没有：不进回收站，索引和缩略图一起清掉 */
-                    if (dbReady()) { await root.VRDB.deleteFiles([rel]); }
-                    await dropThumbs([rel]);
+                    /* 已经在回收站里的条目被再删一次：原位置当然没文件。
+                     * 必须连回收站副本一起彻底删掉，否则只删索引行会留下
+                     * 一个没有清单主人的孤儿批次（2026-11-10 端到端实测抓到：
+                     * empty() 报 purged=0，却悄悄删掉了一整个批次目录）。 */
+                    var prior = null;
+                    if (dbReady()) {
+                        try { prior = await root.VRDB.getFile(rel); } catch (eG) { prior = null; }
+                    }
+                    if (isTrashed(prior)) {
+                        await purgeOne(rr, prior.trashBatch || NO_BATCH, rel);
+                    } else {
+                        /* 磁盘上本来就没有：不进回收站，索引和缩略图一起清掉 */
+                        if (dbReady()) { await root.VRDB.deleteFiles([rel]); }
+                        await dropThumbs([rel]);
+                    }
                     cleaned++;
                     continue;
                 }
@@ -689,7 +773,13 @@
         } catch (e) { /* 文件已不在，继续清索引 */ }
 
         if (dbReady()) {
-            try { await root.VRDB.deleteFiles([relPath]); } catch (e2) { /* 忽略 */ }
+            try {
+                await root.VRDB.deleteFiles([relPath]);
+                /* 读回验证：删不掉就再试一次。原来这里 catch 里啥也不做，
+                 * 索引行就这么静默留下来了（empty() 末尾另有统一重删+核验）。 */
+                var leftRow = await root.VRDB.getFile(relPath);
+                if (leftRow) { await root.VRDB.deleteFiles([relPath]); }
+            } catch (e2) { /* 忽略 */ }
         }
         await dropThumbs([relPath]);
     }
@@ -814,6 +904,7 @@
         await ensureRW(rr.handle);
 
         var rows = await trashedRows();
+        var disks = await diskBatches(rr);
         var n = 0;
         var purgedAbs = [];
         for (var i = 0; i < rows.length; i++) {
@@ -821,8 +912,20 @@
                 purgedAbs.push(rows[i].absPath);
                 await purgeOne(rr, rows[i].trashBatch || NO_BATCH, rows[i].relPath);
                 n++;
-            } catch (e) { /* 单条失败继续，最后统一清目录 */ }
+            } catch (e) { /* 单条失败继续，最后统一重删 */ }
         }
+
+        /* 清理集合 = 索引里的回收站行 ∪ 磁盘清单里的孤儿条目。
+         * 清单是跨浏览器备份：索引行可能因为删行失败 / 状态被改回 / 老版本
+         * 只写清单不打标而「活着」，只按 trashedRows() 清就会漏掉它们。 */
+        var kill = {};
+        rows.forEach(function (r) { if (r.relPath) { kill[r.relPath] = 1; } });
+        disks.forEach(function (d) {
+            (d.items || []).forEach(function (it) {
+                if (it && it.relPath) { kill[it.relPath] = 1; }
+            });
+        });
+        var killRels = Object.keys(kill);
 
         /* 死卡收尾：同一物理文件可能还有一条「无前缀」的活跃索引，
          * 文件已经跟着这次清空没了，它就成了点开报错、删也删不掉的卡片。
@@ -830,19 +933,50 @@
         var ghosts = await dropGhostRows(rr, purgedAbs);
 
         /* 目录兜底：没有索引行的孤儿批次也一并删掉 */
-        var disks = await diskBatches(rr);
         for (var j = 0; j < disks.length; j++) {
             await removeBatchDir(rr.handle, disks[j].batch);
         }
 
+        /* 批量重删 + 验证：purgeOne 里的 deleteFiles 是逐条且吞错的，
+         * 一旦 IDB 事务抖动就会「文件删了、行还在」，而 ops 照样报 purged=N
+         * （苏哥最忌讳的静默失效）。这里统一再删一遍并读库核对。 */
+        var verified = 0;
+        var leftover = 0;
+        if (killRels.length && dbReady()) {
+            try { await root.VRDB.deleteFiles(killRels); } catch (eD) { /* 下面验证会抓到 */ }
+            var still = (await allRows()).filter(function (r) { return kill[r.relPath]; });
+            if (still.length) {
+                try {
+                    await root.VRDB.deleteFiles(still.map(function (r) { return r.relPath; }));
+                } catch (eD2) { /* 忽略，交给验证 */ }
+            }
+            var after = (await allRows()).filter(function (r) { return kill[r.relPath]; });
+            leftover = after.length;
+            verified = killRels.length - leftover;
+            await dropThumbs(killRels);
+            if (leftover) { console.warn('[trash] 清空后仍有 ' + leftover + ' 条索引删不掉'); }
+        }
+
+        /* 最后一道：文件已随清空消失、索引行却还挂在 ok/missing 上的「活死卡」。
+         * 只有用户显式点「清空回收站」才连 missing 一起清（语义即彻底清干净）；
+         * 平时启动自愈的 sweep() 用保守口径，绝不碰 missing（ADR-030）。 */
+        var dead = await dropDeadCards(rr, { includeMissing: true });
+
         if (dbReady()) {
             try {
                 await root.VRDB.log('trash.empty',
-                    { batches: disks.length, items: n, ghosts: ghosts }, { purged: n });
+                    { batches: disks.length, items: n, ghosts: ghosts, verified: verified, dead: dead },
+                    { purged: n, leftover: leftover });
             } catch (e) { /* 忽略 */ }
         }
-        await writeOps(rr.handle, 'empty', { batches: disks.length, items: n, ghosts: ghosts });
-        return { batches: disks.length, purged: n, ghosts: ghosts };
+        await writeOps(rr.handle, 'empty', {
+            batches: disks.length, items: n, ghosts: ghosts,
+            verified: verified, dead: dead, leftover: leftover
+        });
+        return {
+            batches: disks.length, purged: n, ghosts: ghosts,
+            verified: verified, dead: dead, leftover: leftover
+        };
     }
 
     /**
@@ -850,11 +984,12 @@
      *   a) state='trashed' 但回收站里没有实体（且不是 refOnly）→ 已无可恢复内容，清掉；
      *   b) state='trashed' 但文件还在原位置（上次搬失败回滚没做干净）→ 打回 ok；
      *   c) 同一文件两条索引（有/无 subdir 前缀）→ 保留带前缀的那条，合并星标/标签；
-     *   d) 被搬空的空壳目录 → 从下往上删掉（对齐资源管理器行为）。
-     * @returns {Promise<{revived:number, dropped:number, merged:number, thumbs:number, pruned:number}>}
+     *   d) 被搬空的空壳目录 → 从下往上删掉（对齐资源管理器行为）；
+     *   e) 「活死卡」：state=ok 但文件确实不在磁盘、回收站清单里也没有 → 删行+缩略图。
+     * @returns {Promise<{revived:number, dropped:number, merged:number, thumbs:number, pruned:number, dead:number}>}
      */
     async function sweep() {
-        var out = { revived: 0, dropped: 0, merged: 0, thumbs: 0 };
+        var out = { revived: 0, dropped: 0, merged: 0, thumbs: 0, pruned: 0, dead: 0 };
         var rr = await resolveRoot();
         if (!rr.handle || !dbReady()) { return out; }
 
@@ -946,7 +1081,12 @@
             }
         }
 
-        if (out.revived || out.dropped || out.merged) {
+        /* e：活死卡自愈，保守口径 —— 只清 state=ok 且文件确实不存在的行，
+         * 绝不碰 missing（ADR-030 铁律：自动对账不许删用户已知缺失的条目）。
+         * 这样就算上次清空时删行静默失败 / 状态被改回，下次开库也能自愈。 */
+        out.dead = await dropDeadCards(rr, { includeMissing: false });
+
+        if (out.revived || out.dropped || out.merged || out.pruned || out.dead) {
             try { await root.VRDB.log('trash.sweep', {}, out); } catch (e4) { /* 忽略 */ }
         }
 
@@ -998,6 +1138,7 @@
         purge: purge,
         empty: empty,
         sweep: sweep,
+        dropDeadCards: dropDeadCards,
         pruneEmptyDirs: pruneEmptyDirs,
         resolveRoot: resolveRoot,
         preflightRestore: preflightRestore,

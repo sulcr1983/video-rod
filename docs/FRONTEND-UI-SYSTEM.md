@@ -385,9 +385,9 @@
 
 ### 13.4 验收（ADR-074 之后）
 
-`tools/cdp-trash-empty-repro.py` **18/18** + `tools/cdp-trash-dup-index-test.py` **9/9**（2026-11-09）。
+`tools/cdp-trash-empty-repro.py` **23/23** + `tools/cdp-trash-dup-index-test.py` **9/9**（2026-11-10 复测）。
 覆盖：删除标状态、清单先行、恢复、彻底删除、清空级联（副本+缩略图+索引）、幂等重入、空壳目录收尾、
-三种扫描不复活、重复索引自愈。旧的 `tools/cdp-trash-test.py`（`#libGrid` 时代）已删除。
+三种扫描不复活、重复索引自愈、**清空核验（verified/leftover）、死卡兜底、重复删除无孤儿批次**。旧的 `tools/cdp-trash-test.py`（`#libGrid` 时代）已删除。
 
 ### 13.5 实施记录（2026-10-24）
 

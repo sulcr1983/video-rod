@@ -1172,7 +1172,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 
 | 套件 | 断言 | 结果 |
 |---|---|---|
-| `tools/cdp-trash-empty-repro.py` | 删除标 trashed（行保留）→ 主页 0 卡 → 恢复一条 → 二次删除 → 搬空目录收尾 → UI 清空 → file 表 0 / IDB 缩略图 0 / 回收站目录空 / 再清空幂等 → snapshot·reconcile·full 三种扫描不复活 | **18/18** |
+| `tools/cdp-trash-empty-repro.py` | 删除标 trashed（行保留）→ 主页 0 卡 → 恢复一条 → 二次删除 → 搬空目录收尾 → UI 清空 → file 表 0 / IDB 缩略图 0 / 回收站目录空 / 再清空幂等 → snapshot·reconcile·full 三种扫描不复活 → **清空核验 verified/leftover、注入死卡兜底、重复删除无孤儿批次** | **23/23** |
 | `tools/cdp-trash-dup-index-test.py` | 同一物理文件两条索引（有/无 `video-rod` 前缀）：启动自愈归并、清空清「幽灵行」、搬运窗口内不误判复活 | **9/9** |
 
 跑法：`python tools/cdp-run.py tools/cdp-trash-empty-repro.py`（自动起隔离 Edge 实例）。
@@ -1223,7 +1223,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 
 ### 19.3 回归
 
-`cdp-library-page-test.py` 30/30、`cdp-trash-empty-repro.py` 18/18、`cdp-trash-dup-index-test.py` 9/9、`cdp-viewer-test.py` 27/27。
+`cdp-library-page-test.py` 30/30、`cdp-trash-empty-repro.py` 23/23、`cdp-trash-dup-index-test.py` 9/9、`cdp-viewer-test.py` 27/27。
 
 ### 19.4 截图
 
@@ -1585,7 +1585,7 @@ YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进�
 
 | 套件 | 命令 | 测什么 |
 |---|---|---|
-| cdp-trash-empty-repro | `python tools/cdp-run.py tools/cdp-trash-empty-repro.py` | 删除→索引标 trashed（行保留）→主页 0 卡→恢复一条→二次删除→UI 清空→file/thumb 双双归零→幂等再清空→snapshot/reconcile/full 三种扫描不复活。17/17 |
+| cdp-trash-empty-repro | `python tools/cdp-run.py tools/cdp-trash-empty-repro.py` | 删除→索引标 trashed（行保留）→主页 0 卡→恢复一条→二次删除→UI 清空→file/thumb 双双归零→幂等再清空→snapshot/reconcile/full 三种扫描不复活→清空核验与死卡兜底、重复删除无孤儿。23/23 |
 | cdp-trash-dup-index-test | `python tools/cdp-run.py tools/cdp-trash-dup-index-test.py` | 同一物理文件两条索引（有/无 `video-rod` 前缀）：启动自愈按前缀归并、清空时清「幽灵行」，主页 0 死卡。7/7 |
 
 **口径（改回收站前必读）**：

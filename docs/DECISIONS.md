@@ -2097,8 +2097,16 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
   7. **搬运窗口保护**：删除时先打 `trashPending`，搬完再撤；`sweep()` 跳过带标记的行、且跳过 15 秒内刚打标的行。否则启动自愈正好撞上用户刚点的删除，会把「已打标、文件还没搬走」判成「文件还在原位」打回 ok，自己造出一张死卡（2026-11-09 压测复现并修复）。
   8. **空壳目录收尾**：文件搬进回收站后，从源目录往上删掉变空的目录（遇到非空即停，`_回收站`/`_library`/`_migration`/`_selftest` 顶层永不删）。资源管理器删文件会顺手收尾，这里对齐；否则删几十条之后素材夹里全是空目录（真实库实测 20+ 个）。
   9. 引用计数（`refCount` / `countBy` / `findBy`）一律排除 `trashed`：否则「最后一条活跃引用」永远判不出来，文件删不掉；删掉的东西重新下载也会被判成「库里已有」。
+  10. **清空必须核验 + 死卡兜底（2026-11-10 复发补强，见 `deliverables/reviews/2026-11-10-回收站清空后死卡复发诊断.md`）**：
+      `purgeOne()` 的 `deleteFiles` 原来逐条且吞错，`empty().purged` 只数循环次数、从不读库核对 ——
+      IDB 事务抖动或多页面并发写时就是「文件删了、行还在」，ops 日志却照样报成功（静默失效）。
+      现在：清理集合 = `trashedRows()` ∪ 磁盘清单 manifest 的所有 `relPath`；统一批量重删后**读库核验**，
+      返回 `verified` / `leftover`；新增 `dropDeadCards()` 清掉「文件明确不存在、回收站清单里也没有」的
+      `ok` / `missing` 死卡（分批并发探盘、只认 `NotFoundError`、跳过 `pendingArchive`/`isRef`/`trashed`）。
+      `empty()` 用 `includeMissing:true`（用户显式清空即清干净），`sweep()` 用 `false`（**绝不碰 missing**，守 ADR-030）。
+      另修 `remove()` 重复删除同一条目时只删索引行、把回收站副本变成孤儿的缺陷。
 - **影响**：`js/library/{trash,db,indexer,dedup,app,sw-library}.js`。
-- **验收**：`tools/cdp-trash-empty-repro.py` 18/18（含清空后 file store/IDB 缩略图双双归零、恢复一条、幂等清空、空壳目录收尾、三种扫描不复活）；`tools/cdp-trash-dup-index-test.py` 9/9（重复索引自愈 + 幽灵行清理 + 搬运窗口竞态）；`library-move-e2e` 9/9；`library-buttons-e2e` 29 按钮 0 JS 错误。
+- **验收（2026-11-10 复测）**：`tools/cdp-trash-empty-repro.py` **23/23**（新增清空核验 `verified/leftover`、死卡兜底、重复删除无孤儿）；`tools/cdp-trash-dup-index-test.py` 9/9；`library-move-e2e` 9/9；`library-buttons-e2e` 28 按钮 0 JS 错误；`library-permission-e2e` 8/8。真实库端到端：`empty` 返回 `purged=3 / verified=3 / dead=2 / leftover=0`，刷新 0 复活。
 
 ## ADR-075 发布物只认 HEAD：构建脚本强制拒绝脏工作区（2026-11-09）
 

@@ -208,8 +208,30 @@ def main():
     check("B8 搬空后的目录已收尾（_回收站 保留）",
           [shells["b站"], shells["x"], shells["trash"]], [True, True, False])
 
+    # 注入两条「文件已不存在」的死卡：一条 ok、一条 missing。
+    # 复现苏哥 2026-11-10 现场——清空之后索引里还挂着点开就报错的卡片。
+    ghost = ev(cdp, sid, r"""(async function(){
+      const rr = await VRTrash.resolveRoot();
+      const mk = (name, state) => ({ relPath: 'video-rod/X/u/图片/' + name,
+        absPath: rr.absRoot + '/X/u/图片/' + name, fileName: name, size: 1,
+        mtime: Date.now(), state: state, type: 'image', starred: 0, tags: [] });
+      await VRDB.putFiles([mk('ghost-ok.png','ok'), mk('ghost-missing.png','missing')]);
+      return (await VRDB.getAllFiles()).length;
+    })()""")
+    print("   注入死卡后索引行数：", ghost)
+    print("   死卡明细：", ev(cdp, sid, r"""(async function(){
+      return (await VRDB.getAllFiles()).filter(r => r.relPath.indexOf('ghost-') >= 0)
+        .map(r => ({ n: r.relPath.split('/').pop(), s: r.state || 'ok' }));
+    })()"""))
+
     # ---------- 清空回收站（点 UI 按钮，和用户路径一致）----------
     empty = ev(cdp, sid, r"""(async function(){
+      /* 接住 UI 触发的 empty() 返回值，断言「删行核验 / 死卡兜底」真的跑了 */
+      const orig = VRTrash.empty;
+      let emResult = null;
+      VRTrash.empty = async function () {
+        const r = await orig.apply(this, arguments); emResult = r; return r;
+      };
       document.getElementById('trashBtn') && document.getElementById('trashBtn').click();
       await new Promise(r => setTimeout(r, 400));
       const openBefore = document.getElementById('drawer').classList.contains('show');
@@ -221,7 +243,8 @@ def main():
       const ok = document.getElementById('confirmOk');
       if (ok) { ok.click(); }
       await new Promise(r => setTimeout(r, 1200));
-      return { drawerOpen: openBefore, items: items, confirm: maskShown,
+      VRTrash.empty = orig;
+      return { drawerOpen: openBefore, items: items, confirm: maskShown, em: emResult,
                drawerAfter: document.getElementById('drawer').classList.contains('show'),
                cards: document.querySelectorAll('#grid .card').length,
                db: (await VRDB.getAllFiles()).length,
@@ -259,6 +282,13 @@ def main():
       } catch (e) { return { ok: false, err: e.message }; }
     })()""")
     check("C6 再清空一次幂等", [again["ok"], again["purged"], again["st"]], [True, 0, 0])
+    em = empty.get("em") or {}
+    check("C7 清空核验：索引行确实删掉、无残留", [em.get("verified"), em.get("leftover")], [3, 0])
+    ghosts_left = ev(cdp, sid, r"""(async function(){
+      return (await VRDB.getAllFiles()).filter(r => r.relPath.indexOf('ghost-') >= 0).length;
+    })()""")
+    check("C8 清空兜底：注入的 ok / missing 两条死卡都不在了", ghosts_left, 0)
+    check("C9 死卡兜底确实执行（empty.dead >= 1）", em.get("dead", 0) >= 1, True)
 
     # ---------- 扫描会不会把删掉的复活 ----------
     rev_snap = ev(cdp, sid, r"""(async function(){
@@ -291,6 +321,23 @@ def main():
     check("D1 快照重建不复活已删条目", rev_snap["count"], 0)
     check("D2 对账重建不复活已删条目", rev_rec["count"], 0)
     check("D3 全量重建不复活已删条目", rev_full["count"], 0)
+
+    # ---------- E：同一条目重复删除，不得留下孤儿副本 ----------
+    ev(cdp, sid, SETUP)
+    ev(cdp, sid, r"(async function(){ await VRTrash.remove([%s]); return true; })()" % json.dumps(REL[0]))
+    twice = ev(cdp, sid, r"(async function(){ const r = await VRTrash.remove([%s]); return { moved: r.moved, cleaned: r.cleaned }; })()" % json.dumps(REL[0]))
+    em2 = ev(cdp, sid, r"""(async function(){
+      const e = await VRTrash.empty();
+      const rr = await VRTrash.resolveRoot();
+      let dirs = [];
+      try { const d = await rr.handle.getDirectoryHandle('_回收站');
+        for await (const [k] of d.entries()) dirs.push(k); } catch (x) {}
+      return { leftover: e.leftover, batches: dirs.length,
+               rows: (await VRDB.getAllFiles()).filter(r => r.relPath === %s).length };
+    })()""" % json.dumps(REL[0]))
+    print("   重复删除：", twice, "empty:", em2)
+    check("E1 二次删除不再搬文件（走彻底删除分支）", [twice["moved"], twice["cleaned"]], [0, 1])
+    check("E2 清空后无索引残留、无孤儿批次", [em2["leftover"], em2["batches"], em2["rows"]], [0, 0, 0])
 
     errs = cdp.errors()
     if errs:
