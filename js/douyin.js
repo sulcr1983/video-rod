@@ -343,5 +343,154 @@
         }
     }
 
-    return { parseAwemeId, qualityOf, labelFor, normalize, metaFrom, probeFunc, playerFunc };
+    /* ==========================================================
+     * 图文页（/note/<id>）取原图列表
+     * ----------------------------------------------------------
+     * 苏哥 2026-11-09 报：抖音图文页「没有图片下载按钮、扩展嗅探不到内容」。
+     * 定位结果（真机取证，见 deliverables/reviews/2026-11-09-抖音图文页诊断.md）：
+     *  1. 图文作品的照片**不是 <img>**，是轮播每一页那个 1369×876 的透明 <button> 的
+     *     background-image（页面上同时存在 10+ 个并排的 slide 按钮）。
+     *     → 悬停按钮只绑 <img>，永远不触发；DOM 扫描也只能拿到容器尺寸。
+     *  2. 这些图的真身（无水印、带高清尺寸）只在 React Fiber 的 `awemeInfo.images[]` 里：
+     *     每项 { width, height, uri, urlList[webp,jpeg], downloadUrlList(带水印，弃用) }。
+     *     → 和视频那条路一样：不碰签名、不调接口，读页面自己已经拿到的数据。
+     *
+     * 注意：Fiber 里的 expando 只在**页面主世界**可见，必须 world:'MAIN' 注入。
+     * ========================================================== */
+
+    /** 在页面主世界执行：爬 Fiber 取当前图文作品的原图列表。
+     *  会被 chrome.scripting.executeScript 序列化，不能引用外部变量。 */
+    function noteFunc() {
+        try {
+            function fiberOf(el) {
+                if (!el) { return null; }
+                var ks = Object.keys(el);
+                for (var i = 0; i < ks.length; i++) {
+                    if (ks[i].indexOf('__reactFiber$') === 0) { return el[ks[i]]; }
+                }
+                return null;
+            }
+            function isAweme(o) {
+                return !!(o && (o.awemeId || o.aweme_id));
+            }
+
+            /* 从候选锚点出发广度遍历 Fiber，收集带 awemeId 的 awemeInfo（最多 8 条），
+             * 再按「作品 ID 对得上 → 有 images → 图最多」挑当前这条。
+             * 只取第一条会抓到推荐位（图文页右侧有推荐视频卡）。 */
+            var anchors = ['.basePlayerContainer', '[class*="note-detail"]',
+                '[class*="swiper"]', 'main', '#root'];
+            var hits = [], nodes = 0;
+
+            function collect(f, depth) {
+                if (!f || depth > 32 || nodes > 12000 || hits.length >= 8) { return; }
+                nodes++;
+                var p = f.memoizedProps;
+                if (p) {
+                    if (isAweme(p.awemeInfo)) { hits.push(p.awemeInfo); }
+                    else if (isAweme(p.itemInfo)) { hits.push(p.itemInfo); }
+                    else {
+                        var ch = p.children;
+                        if (ch && ch.props && isAweme(ch.props.awemeInfo)) {
+                            hits.push(ch.props.awemeInfo);
+                        } else if (Array.isArray(ch)) {
+                            for (var i = 0; i < ch.length; i++) {
+                                var c = ch[i];
+                                if (c && c.props && isAweme(c.props.awemeInfo)) {
+                                    hits.push(c.props.awemeInfo);
+                                }
+                            }
+                        }
+                    }
+                }
+                collect(f.child, depth + 1);
+                collect(f.sibling, depth);
+            }
+
+            for (var a = 0; a < anchors.length && hits.length < 8; a++) {
+                var el = document.querySelector(anchors[a]);
+                var up = el, f = null;
+                for (var u = 0; u < 12 && up && !f; u++) {
+                    f = fiberOf(up);
+                    if (!f) { up = up.parentElement; }
+                }
+                if (f) { collect(f, 0); }
+            }
+            if (!hits.length) { return null; }
+
+            var want = '';
+            var m = String(location.pathname || '').match(/\/note\/(\d{6,})/);
+            if (m) { want = m[1]; }
+
+            function imgCount(x) {
+                var v = x && (x.images || x.imagePostInfoList);
+                return Array.isArray(v) ? v.length : 0;
+            }
+            var pick = null;
+            if (want) {
+                for (var i = 0; i < hits.length; i++) {
+                    if (String(hits[i].awemeId || hits[i].aweme_id || '') === want) {
+                        pick = hits[i];
+                        break;
+                    }
+                }
+            }
+            if (!pick) {
+                /* URL 没 ID（首页弹层）或对不上：取图最多的那条 */
+                for (var j = 0; j < hits.length; j++) {
+                    if (!pick || imgCount(hits[j]) > imgCount(pick)) { pick = hits[j]; }
+                }
+            }
+            if (!pick) { return null; }
+
+            var rawList = pick.images || pick.imagePostInfoList || [];
+            if (!Array.isArray(rawList) || !rawList.length) { return null; }
+
+            var images = [];
+            for (var k = 0; k < rawList.length; k++) {
+                var x = rawList[k] || {};
+                var list = x.urlList || x.url_list || [];
+                if (typeof list === 'string') { list = [list]; }
+                var cands = [];
+                for (var c2 = 0; c2 < list.length; c2++) {
+                    var u2 = list[c2];
+                    if (typeof u2 === 'string' && u2 && cands.indexOf(u2) < 0) { cands.push(u2); }
+                }
+                if (!cands.length) { continue; }
+                /* 主地址优先 jpeg：同分辨率下兼容性最好（Windows 相册/webp 老软件）；
+                 * webp 作候选兜底。抖音给的是压缩档（q75），不是原图，如实对待。 */
+                var jpeg = '', webp = '';
+                for (var c3 = 0; c3 < cands.length; c3++) {
+                    if (!jpeg && /\.jpe?g(\?|$)/i.test(cands[c3])) { jpeg = cands[c3]; }
+                    if (!webp && /\.webp(\?|$)/i.test(cands[c3])) { webp = cands[c3]; }
+                }
+                var primary = jpeg || webp || cands[0];
+                /* 候选链：主地址排第一，其余（含另一格式）跟在后面兜底 */
+                var chain = [primary];
+                for (var c4 = 0; c4 < cands.length; c4++) {
+                    if (cands[c4] !== primary) { chain.push(cands[c4]); }
+                }
+                images.push({
+                    url: primary,
+                    candidates: chain,
+                    w: Number(x.width) || 0,
+                    h: Number(x.height) || 0
+                });
+            }
+            if (!images.length) { return null; }
+
+            var author = pick.authorInfo || pick.author || {};
+            return {
+                awemeId: String(pick.awemeId || pick.aweme_id || want || ''),
+                title: String(pick.desc || pick.itemTitle || ''),
+                nickname: String(author.nickname || author.nick_name || ''),
+                uniqueId: String(author.uniqueId || author.unique_id || author.shortId || ''),
+                images: images,
+                from: 'fiber'
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    return { parseAwemeId, qualityOf, labelFor, normalize, metaFrom, probeFunc, playerFunc, noteFunc };
 });

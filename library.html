@@ -16,6 +16,7 @@
   <script src="js/library/path.js" defer></script>
   <script src="js/library/site-registry.js" defer></script>
   <script src="js/library/db.js" defer></script>
+  <script src="js/library/dedup.js" defer></script>
   <script src="js/library/localfile.js" defer></script>
   <script src="js/library/thumbs.js" defer></script>
   <script src="js/library/indexer.js" defer></script>
@@ -601,6 +602,11 @@
         <div class="sd-k">索引</div>
         <div class="sd-v" id="sdIndexVal">—</div>
         <button class="btn small" id="sdRebuildBtn">重建索引</button>
+      </div>
+      <div class="sd-item">
+        <div class="sd-k">内容去重</div>
+        <div class="sd-v" id="sdDupVal">—</div>
+        <button class="btn small" id="sdDupBtn">扫描重复</button>
       </div>
       <div class="sd-item">
         <div class="sd-k">回收站</div>

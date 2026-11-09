@@ -140,6 +140,7 @@
         "http://*/*"
       ],
       "js": [
+        "js/vr-capture.js",
         "js/video-overlay.js"
       ],
       "run_at": "document_idle",
@@ -205,6 +206,16 @@
         "js/image-panel.js",
         "js/image-album.js",
         "js/image-drag.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://www.douyin.com/*"
+      ],
+      "js": [
+        "js/douyin-note.js"
       ],
       "run_at": "document_idle",
       "all_frames": false

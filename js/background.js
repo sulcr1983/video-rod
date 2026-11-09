@@ -1119,7 +1119,9 @@ async function vrImgDownload(msg) {
         const plat = (P.detectPlatform ? P.detectPlatform(pageUrl) : '');
         const dupe = await vrFindExistingMedia({ site: plat, kind: 'image', url: url, pageUrl: pageUrl });
         if (dupe) {
-            return { ok: true, duplicate: true, path: dupe.relPath, downloadId: null };
+            /* 苏哥口径（2026-11-09）：同一平台不允许重复下。命中就跳过，
+             * 并把 skipped 带回去，批量进度才能报「N 张已存在」。 */
+            return { ok: true, duplicate: true, skipped: true, path: dupe.relPath, downloadId: null };
         }
     } catch (e) { /* 查重失败不阻断下载 */ }
     const ext = vrImgExt(url, msg && msg.contentType);
@@ -1182,7 +1184,13 @@ async function vrImgDownload(msg) {
         creatorFull: '', creatorId: '',
         type: 'image',
         pageUrl: pageUrl,
-        title: String((msg && msg.title) || '')
+        title: String((msg && msg.title) || ''),
+        /* 2026-11-09 去重根因：这里原来只给 relPath/title，**没给 sourceUrl/mediaUrl**，
+         * 入库条目因此没有来源键 → 下次下载 vrFindExistingMedia 永远查不到
+         * → 「同一张图点几次就下几份」。补上后，库里条目可被认出并跳过。
+         * mediaUrl 存原始签名直链也没关系：比对侧会先过 vrCanonMediaUrl。 */
+        sourceUrl: url,
+        mediaUrl: url
     };
     try {
         const p = P.parseRelPath(relPath) || {};
@@ -1271,6 +1279,7 @@ function vrImgProgressThrottle(batchId, state) {
             done: state.done,
             ok: state.ok,
             fail: state.fail,
+            skipped: state.skipped || 0,
             total: state.total
         }, function () {
             // 必须读一次 lastError：content 页可能已关闭
@@ -1309,8 +1318,11 @@ async function vrImgBatch(msg, sender) {
         }
     }
 
+    /* 本批次的平台键：账本按「平台 + 归一键」记账（同平台去重、跨平台放行） */
+    const platKey = (self.VRPath && self.VRPath.detectPlatform)
+        ? String(self.VRPath.detectPlatform(pageUrl) || '') : '';
     const items = raw.slice(0, VR_IMG_BATCH_MAX);
-    const state = { canceled: false, done: 0, ok: 0, fail: 0, total: items.length, lastEmit: 0, failures: [] };
+    const state = { canceled: false, done: 0, ok: 0, fail: 0, skipped: 0, total: items.length, lastEmit: 0, failures: [] };
     VR_IMG_BATCH.set(batchId, state);
 
     if (!items.length) {
@@ -1329,11 +1341,14 @@ async function vrImgBatch(msg, sender) {
             if (idx >= items.length) { return; }
             const it = items[idx] || {};
             const url = String(it.url || '');
-            const key = vrImgDedupeKey(url);
+            const key = vrImgDedupeKey(url, platKey);
+            const rawKey = url.split('#')[0].trim();
 
-            if (key && seen[key]) {
-                // 已经下过：算成功跳过，不重复落盘
-                state.done++; state.ok++;
+            /* 老账本里存的是「整条 URL」，新账本存归一键 —— 两边都要认，
+             * 否则升级后会把历史下过的图重下一遍。 */
+            if ((key && seen[key]) || (rawKey && seen[rawKey])) {
+                // 已经下过：跳过，不重复落盘
+                state.done++; state.ok++; state.skipped++;
                 vrImgProgressThrottle(batchId, state);
                 continue;
             }
@@ -1348,14 +1363,23 @@ async function vrImgBatch(msg, sender) {
                      * 用户要的是「九张图一个文件夹」，而不是九张平铺。 */
                     pageTitle: (xhs && xhs.ok && xhs.title) || pageTitle,
                     title: (xhs && xhs.ok && xhs.title) || it.title || pageTitle || '图片',
-                    /* state 权威作者（格式与 popup 通道/路径引擎一致：昵称(@id)） */
+                    /* state 权威作者（格式与 popup 通道/路径引擎一致：昵称(@id)）。
+                     * 小红书走 state 覆盖；其它站点（抖音图文浮层）由消息自带。 */
                     authorFull: (xhs && xhs.ok && xhs.author)
                         ? String(xhs.author) + (xhs.authorId ? '(@' + String(xhs.authorId) + ')' : '')
-                        : '',
-                    creatorId: (xhs && xhs.ok) ? String(xhs.authorId || '') : ''
+                        : String((msg && msg.authorFull) || ''),
+                    creatorId: (xhs && xhs.ok)
+                        ? String(xhs.authorId || '')
+                        : String((msg && msg.creatorId) || '')
                 });
                 if (r && r.ok) {
                     state.ok++;
+                    /* 下载前查重命中（库里已有同平台同一张）：
+                     * 不落盘、只算「跳过」，并且要把 URL 记进账本，下次直接命中。 */
+                    if (r.duplicate) { state.skipped++; }
+                    /* 只记「平台|归一键」。整条 URL 不再入账：它会让跨平台同图
+                     * 被误判成重复，导致库里缺一张卡。旧账本里的整条 URL 仍会被
+                     * 上面的 rawKey 检查认出来（一次性向后兼容）。 */
                     if (key) { seen[key] = 1; vrImgRememberUrl(key); }
                 } else {
                     state.fail++;
@@ -1389,6 +1413,7 @@ async function vrImgBatch(msg, sender) {
         batchId: batchId,
         done: state.done,
         succeeded: state.ok,
+        skipped: state.skipped || 0,
         fail: state.fail,
         failures: state.failures.slice(0, 50),
         canceled: state.canceled
@@ -1928,9 +1953,19 @@ async function vrAlbumStop(msg) {
 /* 已下载去重表：chrome.storage.local 键 vrImgDownloaded，上限 2000 条按时间淘汰 */
 var VR_IMG_SEEN_MAX = 2000;
 
-function vrImgDedupeKey(url) {
-    const u = String(url || '').split('#')[0].trim();
-    return u || '';
+function vrImgDedupeKey(url, site) {
+    /* 去重键必须是「同一张图的不变量」，不是整条 URL。
+     * 2026-11-09 苏哥报「点多几次就不断下载」：原来 return 整条 URL，
+     * 而抖音/小红书图床每次加载都会换 x-signature / 镜像子域 / tplv 格式参数，
+     * 于是同一张图每次都是「新图」——去重表形同虚设。
+     * 统一走 vrCanonMediaUrl（它已经处理了小红书 spectrum 与抖音图床）。 */
+    const canon = vrCanonMediaUrl(url) || String(url || '').split('#')[0].trim();
+    /* 键要带平台：苏哥口径是「同一平台不许重复，不同平台保留一份但索引可以多份」。
+     * 不带平台的话，微博下同一张图会被抖音那条账本挡住 —— 用户看不到任何反馈，
+     * 库里也不会出现微博这张卡。带平台后：同平台命中 → 跳过；跨平台 → 走内容指纹
+     * 判重，物理只留一份、库里补一条引用卡（见 VRDedup.afterDownload）。 */
+    const pk = String(site || '').trim().toLowerCase();
+    return pk ? (pk + '|' + canon) : canon;
 }
 
 function vrImgSeenUrls() {
@@ -2243,6 +2278,15 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message && Message.Message == "vrQueueName") {
         vrQueueFilename(Message.url, Message.filename, Message.conflictAction, Message.meta);
         sendResponse({ ok: true });
+        return true;
+    }
+    /* 抖音图文页（/note/<id>）取原图列表。
+     * 图文作品的照片是轮播 slide 的 CSS 背景图，页面上没有大 <img>，
+     * 通用 DOM 扫描只能拿到容器尺寸、拿不到真身；真身在 React Fiber 里。
+     * 这里主世界注入一次，把 images[]（无水印 urlList）取回来给页面浮层。 */
+    if (Message && Message.Message == "vrDouyinImages") {
+        vrDouyinImages(sender).then(function (r) { sendResponse(r); })
+            .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
         return true;
     }
     // ---- M11 多段自动合并（直连管线版）----
@@ -2608,6 +2652,24 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         return true;
     }
     // 图片批量下载（I3）：并发池 + 进度广播 + 可取消
+    /* 历史条目补算内容指纹（库页「扫描重复」整理前调用）。
+     * 只能在 SW 跑：只有它能读本地文件算 SHA-256。删文件则相反 ——
+     * 必须由库页用 FSA 句柄删，所以这里只做「算」，不碰任何文件。 */
+    if (Message && (Message.Message === 'vrDedup.hashMissing' || Message.action === 'vrDedup.hashMissing')) {
+        (async function () {
+            try {
+                if (!self.VRDedup || typeof self.VRDedup.hashMissing !== 'function') {
+                    sendResponse({ ok: false, message: '去重模块未加载', hashed: 0 });
+                    return;
+                }
+                const r = await self.VRDedup.hashMissing({ maxHash: Number(Message.maxHash) || 500 });
+                sendResponse(Object.assign({ ok: true }, r));
+            } catch (e) {
+                sendResponse({ ok: false, message: String((e && e.message) || e), hashed: 0 });
+            }
+        })();
+        return true;
+    }
     if (Message && (Message.Message === 'vrImg.batch' || Message.action === 'vrImg.batch')) {
         vrImgBatch(Message, sender).then(function (res) {
             sendResponse(res);
@@ -4268,6 +4330,16 @@ function vrCanonMediaUrl(raw) {
             const m = path.match(/\/spectrum\/(.+)$/i);
             if (m) { return 'xhscdn.com/spectrum/' + m[1].toLowerCase(); }
             return 'xhscdn.com' + path.toLowerCase();
+        }
+        /* 抖音图床（2026-11-09）：同一个素材每次加载都会换镜像节点和签名，
+         * 真正常量只有「桶 + 素材 ID」：
+         *   p3-pc-sign.douyinpic.com/tos-cn-i-0813c000-ce/<id>~tplv-dy-aweme-images:q75.webp
+         *   p9-pc.douyinpic.com/tos-cn-i-0813c000-ce/<id>~tplv-dy-aweme-images:q75.jpeg
+         * `~tplv-` 之后是「处理指令/格式」，同一张图会在 webp/jpeg/q75 之间来回换，
+         * 不剥掉就永远判不出「这是同一张」。**只用于识别**，下载仍用原始 URL。 */
+        if (/(^|\.)douyinpic\.com$/i.test(host)) {
+            path = path.replace(/~tplv-[^/]*$/i, '');
+            return ('douyinpic.com' + path).toLowerCase();
         }
         return (host + path).toLowerCase();
     } catch (e) {

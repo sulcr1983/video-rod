@@ -413,6 +413,117 @@
         }
     }
 
+    /**
+     * 存量整理（写操作）：同指纹组里只保留一条物理文件，其余改「引用」并删掉自己的副本。
+     *
+     * 为什么需要：afterDownload 只处理「这次下载」产生的重复；历史遗留的副本
+     * （去重失效期间下的、手动复制进来的）不会自己消失。苏哥 2026-11-09 口径：
+     * 「不同平台保留一份，索引可以多份」—— 物理删到 1 份，索引一条不少。
+     *
+     * 安全边界：
+     *   · 只处理 sha256 相同且都已入库的条目；没有指纹的一律不碰（认不出就别猜）
+     *   · 删物理失败 → 该条不改，绝不制造「指向已删文件」的卡
+     *   · 原件优先选「有 absPath 且非 missing」的那条
+     * @returns {Promise<{groups:number, merged:number, failed:number, removedBytes:number}>}
+     */
+    /**
+     * 补算历史指纹（可选步骤，必须在 SW 里跑：只有 SW 能读本地文件）。
+     * 不补指纹，历史重复永远合并不了 —— 它们入库时内容去重还没生效，全是无指纹条目。
+     */
+    async function hashMissing(o) {
+        var opt = o || {};
+        var out = { hashed: 0, failed: 0, total: 0 };
+        try {
+            if (!root.VRDB || !root.VRDB.getAllFiles || !root.VRDB.patchFile) { return out; }
+            var all = await root.VRDB.getAllFiles();
+            var todo = (all || []).filter(function (e) {
+                return e && !e[HASH_FIELD] && !e[REF_FIELD] && e.state !== 'trashed' &&
+                    e.absPath && (Number(e.size) || 0) < FULL_LIMIT;
+            }).slice(0, opt.maxHash || 500);
+            out.total = todo.length;
+            for (var i = 0; i < todo.length; i++) {
+                var h = '';
+                try { h = await hashFile(todo[i].absPath); } catch (e0) { h = ''; }
+                if (!h) { out.failed++; continue; }
+                try {
+                    await root.VRDB.patchFile(todo[i].relPath, { [HASH_FIELD]: h });
+                    out.hashed++;
+                } catch (e1) { out.failed++; }
+            }
+            return out;
+        } catch (e) { return out; }
+    }
+
+    /**
+     * 存量整理（写操作）：同指纹组里只保留一条物理文件，其余改「引用」。
+     *
+     * 关键：**删物理文件必须由调用方给 remove 回调**。
+     * 早先这里用 fetch(file://, {method:'DELETE'}) —— 浏览器对 file:// 的 DELETE
+     * 请求会返回 ok 但根本不删文件，于是索引被改成引用、磁盘副本还在（2026-11-09 实测）：
+     * 库和磁盘不一致，比不去重更糟。没有 remove 就只报告、不动库。
+     *
+     * @param {object} o {remove?: async function(relPath)=>boolean}
+     * @returns {Promise<{groups,merged,failed,removedBytes,repaired,noRemover}>}
+     */
+    async function compact(o) {
+        var opt = o || {};
+        var out = { groups: 0, merged: 0, failed: 0, removedBytes: 0, repaired: 0, noRemover: 0 };
+        try {
+            if (!root.VRDB || !root.VRDB.getAllFiles || !root.VRDB.patchFile) { return out; }
+            var remove = (typeof opt.remove === 'function') ? opt.remove : null;
+            var all = await root.VRDB.getAllFiles();
+
+            /* 修复上一次「删文件失败却改了库」的残留：
+             * 引用条目自己的 relPath 上居然还存在文件 → 那份副本该删。 */
+            if (remove) {
+                for (var ri = 0; ri < all.length; ri++) {
+                    var re = all[ri];
+                    if (!re || !re[REF_FIELD] || !re.relPath || re.relPath === re.refOf) { continue; }
+                    var okr = false;
+                    try { okr = await remove(re.relPath); } catch (eR) { okr = false; }
+                    if (okr) { out.repaired++; }
+                }
+            }
+
+            var by = {};
+            (all || []).forEach(function (e) {
+                if (!e || !e[HASH_FIELD] || e.state === 'trashed' || e[REF_FIELD]) { return; }
+                (by[e[HASH_FIELD]] = by[e[HASH_FIELD]] || []).push(e);
+            });
+            var hashes = Object.keys(by);
+            for (var gi = 0; gi < hashes.length; gi++) {
+                var g = by[hashes[gi]];
+                if (g.length < 2) { continue; }
+                out.groups++;
+                if (!remove) { out.noRemover += g.length - 1; continue; }
+                var origin = null;
+                for (var oi = 0; oi < g.length; oi++) {
+                    if (g[oi].absPath && g[oi].state !== 'missing') { origin = g[oi]; break; }
+                }
+                if (!origin) { origin = g[0]; }
+                for (var i = 0; i < g.length; i++) {
+                    var e = g[i];
+                    if (e.relPath === origin.relPath) { continue; }
+                    var okDel = false;
+                    try { okDel = await remove(e.relPath); } catch (e2) { okDel = false; }
+                    if (!okDel) { out.failed++; continue; }   /* 删不掉就不动库，宁可不合并 */
+                    try {
+                        var patch = {};
+                        patch[REF_FIELD] = 1;
+                        patch.refOf = origin.relPath;
+                        patch.absPath = origin.absPath || '';
+                        await root.VRDB.patchFile(e.relPath, patch);
+                        out.merged++;
+                        out.removedBytes += Number(e.size) || 0;
+                    } catch (e3) { out.failed++; }
+                }
+            }
+            return out;
+        } catch (e) {
+            return out;
+        }
+    }
+
     root.VRDedup = {
         hashFile: hashFile,
         hashBlob: hashBlob,
@@ -423,6 +534,8 @@
         onDelete: onDelete,
         renameDisplay: renameDisplay,
         scan: scan,
+        compact: compact,
+        hashMissing: hashMissing,
         stats: stats,
         HASH_FIELD: HASH_FIELD,
         REF_FIELD: REF_FIELD,

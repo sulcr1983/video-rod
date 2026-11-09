@@ -639,6 +639,17 @@
         if (!out.mime && old.mime) { out.mime = old.mime; }
         if (!out.sourceUrl && old.sourceUrl) { out.sourceUrl = old.sourceUrl; }
         if (!out.absPath && old.absPath) { out.absPath = old.absPath; }
+        /* 2026-11-09 去重根因（苏哥报「点几次下几份」）：
+         * 这里原来不保留内容指纹与引用标记 —— 重建一次索引，所有 sha256 全丢，
+         * 于是「不同平台同图只留一份」的内容去重彻底失效，历史重复也再也认不出来。
+         * 指纹/引用必须跟条目同生共死。 */
+        if (old.sha256 && !out.sha256) { out.sha256 = old.sha256; }
+        if (old.hashKind && !out.hashKind) { out.hashKind = old.hashKind; }
+        if (old.refOf && !out.refOf) { out.refOf = old.refOf; }
+        /* isRef：只有「磁盘上真的出现了这个路径的文件」（item.absPath 与旧值不同）
+         * 才说明它不再是引用；否则保持引用语义，避免把虚拟路径当实体卡。 */
+        var refNowReal = item.absPath && old.absPath && item.absPath !== old.absPath;
+        out.isRef = (old.isRef && !refNowReal) ? 1 : 0;
         /* F2 溯源：重建索引时保住「原帖/直链/作者ID/作品ID」，
            否则重建一次索引，来源就全变「未记录」了（ADR-052 铁律） */
         ['pageUrl', 'mediaUrl', 'authorUid', 'authorHandle', 'authorState', 'workId', 'dlAt'].forEach(function (k) {
@@ -781,6 +792,11 @@
             if (f.mime) { item.mime = String(f.mime); }
             if (f.sourceUrl) { item.sourceUrl = String(f.sourceUrl); }
             if (f.mediaUrl) { item.mediaUrl = String(f.mediaUrl); }
+            /* 指纹与引用：快照是跨浏览器/重装后的唯一来源，丢了就再也认不出重复 */
+            if (f.sha256) { item.sha256 = String(f.sha256); }
+            if (f.hashKind) { item.hashKind = String(f.hashKind); }
+            if (f.refOf) { item.refOf = String(f.refOf); }
+            if (f.isRef) { item.isRef = 1; }
             if (f.pageUrl) { item.pageUrl = String(f.pageUrl); }
             if (f.creatorFull) { item.creatorFull = String(f.creatorFull); }
             if (f.title) { item.title = String(f.title); }
@@ -955,6 +971,10 @@
             oldFiles.forEach(function (f) {
                 if (!f || !f.relPath || seen[f.relPath]) { return; }
                 if (f.state === 'trashed') { return; }
+                /* 引用条目（isRef）本来就没有自己的物理文件：它的 relPath 是虚拟路径，
+                 * 实体在 refOf 指向的原件上。扫不到是正常的，标 missing 会让用户
+                 * 看到一条「文件缺失」的死卡 —— 保持原样放回。 */
+                if (f.isRef) { out.push(Object.assign({}, f)); return; }
                 var rel = String(f.relPath).replace(/\\/g, '/');
                 if (f.pendingArchive || rel.indexOf('/') < 0) {
                     if (f.state === 'missing' || !f.pendingArchive) {
@@ -965,6 +985,15 @@
                 missing++;
                 if (f.state === 'missing') { return; }
                 out.push(Object.assign({}, f, { state: 'missing' }));
+            });
+        } else if (mode === 'downloads') {
+            /* 2026-11-09 严重缺陷修复：downloads 模式原来**丢弃所有不在下载记录里的条目**。
+             * 而 FSA 直写的素材（YouTube / 抖音图文 / 小红书批量…）根本没有 chrome.downloads
+             * 记录 —— 一次「重建索引」就把它们从库里抹掉（实测 109 条 → 8 条，磁盘文件还在）。
+             * downloads 源「没看到」不等于「文件没了」，照 ADR-030 一律保留原样。 */
+            oldFiles.forEach(function (f) {
+                if (!f || !f.relPath || seen[f.relPath]) { return; }
+                out.push(Object.assign({}, f));
             });
         }
 
@@ -1055,6 +1084,8 @@
         for (var i = 0; i < files.length; i++) {
             var f = files[i];
             if (!f || !f.relPath) { continue; }
+            /* 引用条目没有自己的物理文件，存在性对账会把它们全标 missing（同 missing 段）。 */
+            if (f.isRef) { continue; }
             var state = null;
             var d = (f.downloadId !== undefined && f.downloadId !== null) ? byId[f.downloadId] : null;
             if (d) {

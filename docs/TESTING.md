@@ -214,6 +214,25 @@ python tools/test-douyin-note.py      # 11  热重载 → 图文浮层按钮 →
 > 2. 落盘走 **FSA 直写**，`chrome.downloads.search` 里**没有**条目，只能查磁盘；
 > 3. 归档目录含作者段（`抖音/摄影师沙皮/<作品标题>/`），文件名带 `_01…_15` 序号。
 
+### 4.5 下载去重链路（2026-11-09 新增，55 条断言）
+
+改 `js/background.js`（vrCanonMediaUrl / vrImgDedupeKey / vrImgBatch / vrImgDownload）、
+`js/library/dedup.js`、`js/library/indexer.js`、`js/library/trash.js`、`library.html` 后必须跑：
+
+```bash
+node tools/test-dedupe-key.js        # 19  归一键（抖音镜像/签名/tplv、小红书时间戳）+ compact
+node tools/dedup-test.mjs            # 21  内容去重引用制（afterDownload / onDelete）
+python tools/test-dedupe-live.py     # 15  同平台跳过 / 账本清空仍跳过 / 跨平台留一份 / 重建索引不丢指纹
+```
+
+> 三条口径必须同时成立：
+> 1. 同平台换签名/换格式/换镜像 → `skipped=1` 且**文件数不变**；
+> 2. 跨平台同图 → `skipped=0` 但**文件数不变**，库内多一条 `isRef=1`（引用）条目；
+> 3. `VRIndex.build({mode:'downloads'})` 后，`sha256` / `isRef` / 条目数都不能减少
+>    （FSA 直写素材没有下载记录，曾因此被整批抹掉）。
+>
+> 删除能力必须走 FSA：`fetch(file://, {method:'DELETE'})` 返回 ok 但**不删文件**（实测踩过）。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

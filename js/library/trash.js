@@ -963,6 +963,30 @@
         return out;
     }
 
+    /**
+     * 按「库内相对路径」删一个物理文件（去重整理专用）。
+     * 只删文件、不碰索引；调用方负责确认这份文件确实是多余的副本。
+     * @returns {Promise<boolean>} 文件最终确实不在了 → true
+     */
+    async function removeAt(relPath) {
+        try {
+            var rr = await resolveRoot();
+            if (!rr || !rr.handle) { return false; }
+            await ensureRW(rr.handle);
+            var fsRel = stripPrefix(String(relPath || ''), rr.prefix);
+            var segs = split(fsRel);
+            var name = segs.pop();
+            if (!name) { return false; }
+            var dir = segs.length ? await dirAt(rr.handle, segs, false) : rr.handle;
+            if (!dir) { return false; }
+            try { await dir.removeEntry(name); } catch (e1) { /* 可能已经不在了 */ }
+            /* 以「文件确实不存在」为成功判据：removeEntry 偶发静默失败时不能谎报 */
+            return !(await exists(rr.handle, fsRel));
+        } catch (e) {
+            return false;
+        }
+    }
+
     root.VRTrash = {
         TRASH_DIR: TRASH,
         STATE: ST_TRASHED,
@@ -979,6 +1003,7 @@
         preflightRestore: preflightRestore,
         /* app.js 的「移动到…」需要；原实现调用未导出的 moveFile，必然失败。 */
         moveFile: moveFile,
-        exists: exists
+        exists: exists,
+        removeAt: removeAt
     };
 })(typeof self !== 'undefined' ? self : this);

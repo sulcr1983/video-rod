@@ -258,9 +258,14 @@
         setBusy(true);
         try {
             const raw = await scanInPage({
-                /* 扫描门槛跟随「全部」档位：档位默认 0（全部），
-                 * 不应再拿 imgMinSize(100) 去砍掉一截 —— 否则列表数与档位标注不符。 */
-                minSize: tierMin > 0 ? tierMin : 1,
+                /* 采集门槛恒为 1：**档位是前端筛选，不是采集门槛**。
+                 * 2026-11-09 苏哥报「抖音图文页点扩展后嗅探不到本页内容」，
+                 * 根因就在这里：浏览器里存着 imgTierMin=2000（之前点过「超大」档），
+                 * 下次打开侧边栏就把它当成扫描门槛传下去 → 1066×1424 的作品图
+                 * 在 scanImages 阶段被整批判死 → 列表只剩源码正则抓来的无尺寸地址，
+                 * 全是「尺寸未知」，看着就像没嗅探到东西。
+                 * 档位只该影响 visibleItems（显示），不该影响采不采。 */
+                minSize: 1,
                 bgScan: settings.imgBgScan !== false,
                 /* 源码通道（2026-11-07 抄星愿「图片下载器」）：
                  * 懒加载站点把图只写在脚本/JSON 里，只扫 DOM 会整批漏掉。 */
@@ -278,8 +283,25 @@
             }
             downloaded = (await storageGet('vrImgDownloaded')) || {};
             buildItems(raw);
+            /* 档位自愈：上次存的档位把本页真图全筛掉了（列表只剩「尺寸未知」的
+             * 源码地址），自动退回「全部」并记住 —— 否则用户看到的就是
+             * 「一张真图都没有、全是尺寸未知」，误判成没嗅探到（2026-11-09 抖音图文页）。
+             * 判据用「有尺寸的图被筛光」而不是「列表为空」，避免盖掉用户的筛选意图。 */
+            let tierResetTo = 0;
+            if (tierMin > 0) {
+                const withSize = items.filter(it => it.w > 0 && it.h > 0);
+                const kept = withSize.filter(it => shortSide(it.w, it.h) >= tierMin);
+                if (withSize.length && !kept.length) {
+                    tierResetTo = tierMin;
+                    tierMin = 0;
+                    saveTierMin(0);
+                }
+            }
             autoSelect();
             renderAll();
+            if (tierResetTo) {
+                setFootNote('本页没有 ≥' + tierResetTo + ' 的图，已切回「全部」');
+            }
         } catch (e) {
             showEmpty('扫描失败', String((e && e.message) || e));
         } finally {
@@ -572,7 +594,10 @@
     el.tiers.addEventListener('click', ev => {
         const b = ev.target.closest ? ev.target.closest('.ip-tier') : null;
         if (!b || b.disabled) { return; }
-        tierMin = parseInt(b.getAttribute('data-min'), 10) || 100;
+        tierMin = parseInt(b.getAttribute('data-min'), 10);
+        /* 「全部」档 data-min=0：早先写 `|| 100` 会把它偷偷变成 100 门槛，
+         * 下次扫描又拿 100 去筛图（档位本该只管显示）。显式判 NaN 才不会吞 0。 */
+        if (!Number.isFinite(tierMin)) { tierMin = 0; }
         saveTierMin(tierMin);
         // 改档位等于改「什么算值得下」，重算默认勾选
         autoSelect();

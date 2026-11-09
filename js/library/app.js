@@ -3110,6 +3110,43 @@
                         var saved = fmt(r.reclaimBytes / 1048576);
                         if (val) { val.textContent = r.groups.length + ' 组 · ' + r.items + ' 条 · 可省 ' + saved; }
                         toast('发现 ' + r.groups.length + ' 组重复（' + r.items + ' 条，可省 ' + saved + '）');
+                        /* 扫描只报告；整理必须用户点头（会删物理副本，不可逆）。
+                         * 苏哥口径：物理只留一份，索引保留多份（引用制）。 */
+                        var ask = '发现 ' + r.groups.length + ' 组内容相同的素材，共 ' + r.items + ' 条。\n' +
+                            '整理后物理文件只留 1 份（约省 ' + saved + '），库里仍保留全部索引卡片。\n' +
+                            '被合并的卡片会变成指向原件的引用，可正常预览/重命名。\n\n现在整理吗？';
+                        if (root.confirm && root.confirm(ask)) {
+                            dupBtn.textContent = '整理中…';
+                            /* 两步走：
+                             * ① 补算历史指纹 —— 必须回 SW（扩展页读 file:// 受限）
+                             * ② 合并 —— 必须在本页（删文件要用 FSA 句柄，SW 没有）
+                             * 删不掉就不改库：宁可少合并，也不能让索引指向已删文件。 */
+                            var h = await new Promise(function (res) {
+                                try {
+                                    root.chrome.runtime.sendMessage(
+                                        { Message: 'vrDedup.hashMissing', maxHash: 800 },
+                                        function (x) {
+                                            void (root.chrome.runtime.lastError);
+                                            res(x || { ok: false });
+                                        });
+                                } catch (e) { res({ ok: false }); }
+                            });
+                            if (!h || !h.ok) { toast('补算指纹失败：' + ((h && h.message) || '未知')); }
+                            var c = await root.VRDedup.compact({
+                                remove: function (rel) {
+                                    return (root.VRTrash && root.VRTrash.removeAt)
+                                        ? root.VRTrash.removeAt(rel) : Promise.resolve(false);
+                                }
+                            });
+                            if (val) {
+                                val.textContent = '已合并 ' + c.merged + ' 条 · 释放 ' + fmt(c.removedBytes / 1048576) +
+                                    ((h && h.hashed) ? ' · 补指纹 ' + h.hashed : '') +
+                                    (c.failed ? ' · 失败 ' + c.failed : '');
+                            }
+                            toast('整理完成：合并 ' + c.merged + ' 条，释放 ' + fmt(c.removedBytes / 1048576));
+                            try { if (root.VRIndex && root.VRIndex.scheduleSnapshot) { root.VRIndex.scheduleSnapshot(2000); } } catch (eS) { /* 忽略 */ }
+                            await load();
+                        }
                     }
                 } catch (e) {
                     toast('扫描重复失败：' + ((e && e.message) || '未知'));

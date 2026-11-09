@@ -337,7 +337,10 @@
             pgCancel.disabled = true;
             pgCancel.textContent = '已取消';
         } else if (state === 'done') {
+            /* 跳过 = 库里已有（同平台重复）或内容相同（跨平台只留一份）。
+             * 必须显式说出来，否则用户会以为「点了没反应」。 */
             pgText.innerHTML = '已下载 <b>' + b.ok + '</b> 张' +
+                (b.skipped ? '，已存在跳过 <b>' + b.skipped + '</b> 张' : '') +
                 (b.fail ? '，失败 <b>' + b.fail + '</b> 张' : '');
             pgBox.classList.add('done');
             // 跑完了就没有「取消」可言，禁用掉（否则用户会以为还能停）
@@ -345,6 +348,7 @@
             pgCancel.textContent = '已完成';
         } else {
             pgText.innerHTML = '正在下载 <b>' + b.done + '</b>/' + b.total +
+                (b.skipped ? ' · 跳过 <b>' + b.skipped + '</b>' : '') +
                 (b.fail ? ' · 失败 <b>' + b.fail + '</b>' : '');
         }
     }
@@ -422,6 +426,7 @@
                     done: 0,
                     ok: 0,
                     fail: 0,
+                    skipped: 0,        // 库里已有/本次重复 → 直接跳过，不重复占盘
                     failures: []
                 };
                 state = 'running';
@@ -435,6 +440,11 @@
                     pageUrl: location.href,
                     pageTitle: String(document.title || '').slice(0, 120),
                     siteName: pageSiteNameNow(),
+                    /* 作者可选：抖音图文这类「页面有权威作者」的通道传进来，
+                     * 归档才能落到 <平台>/<作者>/ 下，而不是一堆域名目录。
+                     * 不传就维持原样（由 SW 侧解析站名兜底）。 */
+                    authorFull: o.authorFull || '',
+                    creatorId: o.creatorId || '',
                     concurrency: concurrency,
                     batchId: batch.batchId
                 }, res => {
@@ -443,6 +453,7 @@
                         if (state === 'running' || state === 'canceling') {
                             batch.ok = out.succeeded;
                             batch.fail = out.fail;
+                            batch.skipped = out.skipped || batch.skipped || 0;
                             batch.done = out.succeeded + out.fail;
                             batch.failures = out.failures;
                             state = out.canceled ? 'canceled' : 'done';
@@ -558,6 +569,7 @@
             batch.done = msg.done;
             batch.ok = msg.ok;
             batch.fail = msg.fail;
+            batch.skipped = msg.skipped || 0;
             batch.total = msg.total || batch.total;
             if (state === 'running' || state === 'canceling') {
                 renderProgress();
