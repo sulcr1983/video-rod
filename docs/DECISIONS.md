@@ -2082,3 +2082,18 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
   3. 新增「未知」档按钮（tierMin=-2 面板 `currentList` 特判），懒加载图可单独筛出勾选。
   4. 「全部/未知」按钮计数走 `c.total/c.unknown` 特判（c 无 all 键）。
 - **验收**：test-image-tier D8/D9/D10 新断言 + 60/60 全过；fixture N7a/b/c 3/3（shadow DOM 内按钮存在、all=3、默认选中）；离线全量无回归（skin 20/20、buttons 32/32）。
+
+## ADR-074 回收站改为「索引状态 + 磁盘实体」，清空必须级联索引与缩略图（2026-11-09）
+
+- **日期**：2026-11-09 ｜ **状态**：✅ 苏哥拍板「A+B 一次做完」｜ **修订**：ADR-033（保留磁盘批次目录，改真源与清空语义）
+- **背景**：苏哥实测「删到回收站 → 清空 → 素材又回主页，文件没了但卡片和缩略图还在」。诊断见 `deliverables/reviews/2026-11-09-回收站清空失效诊断.md`：`empty()` 只删 `_回收站/` 目录、不碰索引与缩略图；`remove()` 先搬文件后删索引且无回滚；同一物理文件存在「有/无 `video-rod` 前缀」两条索引时删一条会留死卡；IDB `thumb` 表从未清理（`deleteThumbs` 存在但无人调用）。
+- **决策**：
+  1. **真源改为索引**：删到回收站 = 索引行打 `state='trashed'` + `trashBatch` + `trashedAt`（**不删行**）；`_manifest.json` 降级为跨浏览器备份（IDB 被清后按清单恢复，ADR-033 原意保留）。
+  2. **清空/彻底删除一处做完**：删物理副本 → 删缩略图（IDB `t:<relPath>` + 磁盘 webp）→ 删索引行，函数幂等，半状态下次再点即收尾。
+  3. **顺序按 freedesktop Trash 规范**：清单先写 pending → 搬文件 → 回写终态；每行「先打标 → 再搬 → 搬失败回滚打标」，宁可「标记了但文件还在」（sweep 自愈），不许「卡片在、文件没了」。
+  4. **扫描不许复活**：`build()` 的 downloads / snapshot 源跳过 `trashed` 行；downloads 源里新出现的条目必须真实探盘；snapshot 源逐条探盘（快照只是线索，磁盘才是真相）；`reconcile()` 不对 trashed 行做存在性判定；快照 payload 不写 trashed 行。
+  5. **启动对账 `VRTrash.sweep()`**：修三类脏数据 —— 死回收站条目（回收站里没有实体）、搬失败残留（文件其实还在原位）、前缀重复索引（保留带前缀那条并合并星标/标签）。只动索引，不动文件。
+  6. **清空时清「幽灵行」**：与刚删条目 `absPath` 相同、磁盘上又确实没有的活跃行一并删掉（死卡的最后一环）。
+  7. 引用计数（`refCount` / `countBy` / `findBy`）一律排除 `trashed`：否则「最后一条活跃引用」永远判不出来，文件删不掉；删掉的东西重新下载也会被判成「库里已有」。
+- **影响**：`js/library/{trash,db,indexer,dedup,app,sw-library}.js`。
+- **验收**：`tools/cdp-trash-empty-repro.py` 17/17（含清空后 file store/IDB 缩略图双双归零、恢复一条、幂等清空、三种扫描不复活）；`tools/cdp-trash-dup-index-test.py` 7/7（重复索引自愈 + 幽灵行清理）；`library-move-e2e` 9/9；`library-buttons-e2e` 29 按钮 0 JS 错误。

@@ -252,7 +252,7 @@
      *
      * @param {string} field 比较的字段名（如 'sha256'）
      * @param {*} value 期望值
-     * @param {object} opts { limit, excludeRelPath }
+     * @param {object} opts { limit, excludeRelPath, excludeState }
      * @returns {Promise<Array>} 命中的条目（最多 limit 条）
      */
     function findBy(field, value, opts) {
@@ -269,7 +269,8 @@
                     var cur = req.result;
                     if (!cur || out.length >= limit) { resolve(out); return; }
                     var v = cur.value;
-                    if (v && v[field] === value && v.relPath !== o.excludeRelPath) {
+                    if (v && v[field] === value && v.relPath !== o.excludeRelPath &&
+                        !(o.excludeState && v.state === o.excludeState)) {
                         out.push(v);
                     }
                     cur.continue();
@@ -279,9 +280,17 @@
         });
     }
 
-    /** 统计某字段等于 value 的条目数（引用计数用，恒定内存） */
-    function countBy(field, value) {
+    /**
+     * 统计某字段等于 value 的条目数（引用计数用，恒定内存）
+     *
+     * @param {object} [opts] { excludeState: 'trashed' } —— 引用计数只算「活跃」条目。
+     *   回收站条目在 2026-11-09 之后不再删行、只把 state 打成 'trashed'，
+     *   若计数时把它算进去，最后一条活跃引用被删时会误判「还有人在用」，
+     *   物理文件就永远留在原地，回收站里那条也永远删不掉。
+     */
+    function countBy(field, value, opts) {
         if (!field) { return Promise.resolve(0); }
+        var skip = (opts && opts.excludeState) || '';
         return open().then(function (db) {
             return new Promise(function (resolve, reject) {
                 var t = db.transaction(['file'], 'readonly');
@@ -290,7 +299,8 @@
                 req.onsuccess = function () {
                     var cur = req.result;
                     if (!cur) { resolve(n); return; }
-                    if (cur.value && cur.value[field] === value) { n++; }
+                    var v = cur.value;
+                    if (v && v[field] === value && !(skip && v.state === skip)) { n++; }
                     cur.continue();
                 };
                 req.onerror = function () { reject(req.error); };

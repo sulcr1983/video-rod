@@ -171,8 +171,10 @@
             if (!hash) { return null; }
             /* 游标查询（c-3）：只取命中的 1 条，不再把整表读进内存 */
             if (root.VRDB && root.VRDB.findBy) {
+                /* 排除回收站条目：删进回收站的东西重新下载时必须能下下来，
+                 * 否则会被判成「库里已有」直接跳过（2026-11-09）。 */
                 var hit = await root.VRDB.findBy(HASH_FIELD, hash, {
-                    limit: 1, excludeRelPath: excludeRelPath
+                    limit: 1, excludeRelPath: excludeRelPath, excludeState: 'trashed'
                 });
                 if (hit && hit.length) { return hit[0]; }
             } else if (root.VRDB && root.VRDB.getAllFiles) {
@@ -181,6 +183,7 @@
                     var e = all[i];
                     if (!e || e[HASH_FIELD] !== hash) { continue; }
                     if (excludeRelPath && e.relPath === excludeRelPath) { continue; }
+                    if (e.state === 'trashed') { continue; }
                     return e;
                 }
             }
@@ -201,19 +204,22 @@
         knownHash[hash] = { relPath: relPath, absPath: absPath || '' };
     }
 
-    /** 同指纹条目数（引用计数） */
+    /** 同指纹条目数（引用计数）
+     *  约定：只算「活跃」条目。回收站条目（state='trashed'）不再删行，
+     *  若统计进来，最后一条活跃引用被删时会误判「还有人在用」，
+     *  物理文件永远留在原地、回收站那条也永远清不掉（2026-11-09）。 */
     async function refCount(hash) {
         try {
             if (!hash || !root.VRDB) { return 0; }
             /* 游标计数（c-3）：恒定内存，避免整表读入 */
             if (root.VRDB.countBy) {
-                return await root.VRDB.countBy(HASH_FIELD, hash);
+                return await root.VRDB.countBy(HASH_FIELD, hash, { excludeState: 'trashed' });
             }
             if (!root.VRDB.getAllFiles) { return 0; }
             var all = await root.VRDB.getAllFiles();
             var n = 0;
             for (var i = 0; i < all.length; i++) {
-                if (all[i] && all[i][HASH_FIELD] === hash) { n++; }
+                if (all[i] && all[i][HASH_FIELD] === hash && all[i].state !== 'trashed') { n++; }
             }
             return n;
         } catch (e) {
@@ -295,12 +301,14 @@
             /* 用游标计数（c-3）：原来 getAllFiles() 把整表拉进内存，
              * 而查重/删除每次下载都会跑一遍，上万条时是明显的浪费。 */
             if (root.VRDB.countBy) {
-                remaining = await root.VRDB.countBy(HASH_FIELD, hash);
+                /* 排除回收站条目：它们不再删行，算进来会误判「还有人在用」 */
+                remaining = await root.VRDB.countBy(HASH_FIELD, hash, { excludeState: 'trashed' });
                 if (remaining > 0) { remaining--; }   /* 减去自己 */
             } else {
                 var all0 = await root.VRDB.getAllFiles();
                 for (var i0 = 0; i0 < all0.length; i0++) {
-                    if (all0[i0] && all0[i0][HASH_FIELD] === hash && all0[i0].relPath !== entry.relPath) { remaining++; }
+                    if (all0[i0] && all0[i0][HASH_FIELD] === hash && all0[i0].relPath !== entry.relPath &&
+                        all0[i0].state !== 'trashed') { remaining++; }
                 }
             }
             out.refCount = remaining;

@@ -934,7 +934,11 @@
         }
         RAW = {};
         list.forEach(function (e) { RAW[e.relPath] = e; });
-        FILES = list.map(toCardModel);
+        /* 2026-11-09：回收站条目在索引里保留行（state='trashed'），
+         * 主页必须把它们过滤掉 —— 否则「删到回收站」之后卡片照旧在，
+         * 用户会以为删除没生效。真源统一由 VRTrash.list() 读。 */
+        FILES = list.filter(function (e) { return !root.VRTrash || e.state !== 'trashed'; })
+            .map(toCardModel);
         /* 收藏条目只保留仍在库里的 id；测试夹具/已删除文件不再占收藏夹。 */
         try {
             var changed = false;
@@ -1498,7 +1502,7 @@
                         }
                     });
                     S.sel.clear(); S.select = false;
-                    await load();
+                    await load(); await refreshDrawer();
                     var movedN = (rr && rr.moved) || 0;
                     var failedN = (rr && rr.failed && rr.failed.length) || 0;
                     var msg = '已移入回收站：' + movedN + ' 项';
@@ -2028,7 +2032,10 @@
      * 都在 bindMissing 的闭包里，所以这里只注册回调，具体函数在 bindMissing 内注入。 */
     var ctxHooks = null;
     function initCtxMenu(hooks) {
-        ctxHooks = hooks;
+        /* boot() 里还会无参调一次 initCtxMenu()（只做接线）；如果无条件赋值，
+         * 会把 bindMissing 注册的那份回调（rename/reveal/remove）覆盖成 undefined，
+         * 表现为右键「移到回收站 / 重命名 / 在文件夹中定位」点了没反应（2026-11-09 实测）。 */
+        if (hooks) { ctxHooks = hooks; }
         if (!root.VRCtxMenu) { return; }
         root.VRCtxMenu.init({
             toast: toast,
@@ -2585,6 +2592,8 @@
         drawer.classList.add('show');
         if (mask) { mask.classList.add('show'); }
         trRender();
+        /* 徽标在抽屉头部：只刷列表不刷计数，会出现「列表 1 项、角标 0」。 */
+        try { await refreshDrawer(); } catch (e) { /* 忽略 */ }
         await trReload();
     }
 
@@ -2655,7 +2664,7 @@
                 } catch (e) { failN++; }
             }
             TR.busy = false;
-            await refreshDrawer(); await trReload();
+            await load(); await refreshDrawer(); await trReload();
             toast(failN ? ('已彻底删除 ' + okN + ' 项，' + failN + ' 项失败') : ('已彻底删除 ' + okN + ' 项'));
         });
     }
@@ -2865,7 +2874,7 @@
                 ask('把「' + (df.title || df.fileName) + '」移入回收站？文件还能恢复。', async function () {
                     try {
                         await root.VRTrash.remove([df.relPath]);
-                        await load();
+                        await load(); await refreshDrawer();
                         toast('已移入回收站');
                     } catch (err) { toast('删除失败：' + ((err && err.message) || '未知')); }
                 });
@@ -2891,7 +2900,7 @@
                 try {
                     var rr0 = await root.VRTrash.remove([f.relPath]);
                     if (root.VRPreview) { root.VRPreview.close(); }
-                    await load();
+                    await load(); await refreshDrawer();
                     if (rr0 && rr0.moved > 0 && rr0.batch) {
                         toast('已移入回收站', {
                             label: '撤销', ms: 8000,
@@ -2931,7 +2940,7 @@
                             await root.VRTrash.remove([f.relPath]);
                             if (root.VRPreview) { root.VRPreview.close(); }
                             toast('已移入回收站');
-                            await load();
+                            await load(); await refreshDrawer();
                         } catch (e) { toast('删除失败：' + ((e && e.message) || '未知')); }
                     });
                 }
@@ -3191,7 +3200,7 @@
                         await root.VRTrash.purge(batch2, rel2);
                         delete TR.picked[pk2];
                         toast('已彻底删除');
-                        await refreshDrawer(); await trReload();
+                        await load(); await refreshDrawer(); await trReload();
                     } catch (err) {
                         toast('彻底删除失败：' + (err && err.message || '未知'));
                         purgeBtn.disabled = false;
@@ -3257,7 +3266,9 @@
                         await root.VRTrash.empty();
                         TR.picked = {};
                         toast('回收站已清空');
-                        await refreshDrawer(); await trReload();
+                        /* 清空同时删了索引行与缩略图：主页必须重新读一次库，
+                         * 否则「清空了但卡片还在」——原实现只刷回收站抽屉。 */
+                        await load(); await refreshDrawer(); await trReload();
                     } catch (e) { toast('清空失败：' + (e && e.message || '未知')); }
                 });
         }); }
@@ -3338,6 +3349,38 @@
 
         /* 孤儿缩略图清理：首屏之后延迟跑一次，静默失败（B-33） */
         try { scheduleThumbGC(); window.__vrBoot.push('thumbGC'); } catch (e) { /* 忽略 */ }
+
+        /* 回收站/索引对账自愈：修历史脏数据（死回收站条目、前缀重复索引）。
+         * 见 VRTrash.sweep()：只动索引，不动文件，失败静默。 */
+        try { scheduleTrashSweep(); window.__vrBoot.push('trashSweep'); } catch (e) { /* 忽略 */ }
+    }
+
+    /**
+     * 启动后延迟跑一次回收站索引对账（2026-11-09）。
+     *
+     * 为什么必须自愈而不是让用户点：
+     *   存量库里有两类脏数据是「删除/清空操作本身修不掉」的 ——
+     *   ① 同一物理文件有两条索引（老版本没有 video-rod 前缀），删一条另一条变死卡；
+     *   ② 上次清空做到一半（缩略图/索引没删干净），残留条目永远恢复不了也删不掉。
+     *   用户没有任何入口能修它们，只能靠启动时静默收尾。
+     */
+    function scheduleTrashSweep() {
+        var run = function () {
+            try {
+                if (!root.VRTrash || typeof root.VRTrash.sweep !== 'function') { return; }
+                if (!window.__vrPerm || !window.__vrPerm.handle) { return; }   // 没授权就别碰
+                root.VRTrash.sweep().then(function (r) {
+                    if (!r) { return; }
+                    if (r.revived || r.dropped || r.merged) {
+                        try { console.info('[trash-sweep] 修复索引脏数据', r); } catch (e) { /* 忽略 */ }
+                        /* 真的动了数据才重绘：没动就别白白重排一次列表 */
+                        try { load(); } catch (e2) { /* 忽略 */ }
+                        try { refreshDrawer(); } catch (e3) { /* 忽略 */ }
+                    }
+                }, function () { /* 静默 */ });
+            } catch (e) { /* 静默：对账失败不影响浏览 */ }
+        };
+        setTimeout(run, 2500);
     }
 
     if (document.readyState === 'loading') {

@@ -1,0 +1,1071 @@
+{
+ "time": "2026-11-09 20:11:05",
+ "rounds": [
+  {
+   "label": "首屏-顶栏与筛选",
+   "total": 12,
+   "items": [
+    {
+     "name": " tree-node active 00全部资源0",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": ""
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": ""
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#rescanBtn btn small 快速扫描",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": ""
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#settingsBtn btn small 设置",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": " active 全部 0",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "  图片 0",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "image"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "  动图 0",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "image"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "anim"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "  视频 0",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "anim"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "video"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "  音频 0",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "video"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#selectBtn btn small 选择",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": " active ",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "  ",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "grid"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#emptyAction btn small 授权素材目录",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "快速扫描失败：没有文件夹读取权限"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "newErrs": []
+    }
+   ]
+  },
+  {
+   "label": "侧栏与输入",
+   "total": 5,
+   "items": [
+    {
+     "name": "#rootBtn root-btn 系统下载目录\\video-rod 点击更换目录",
+     "skipped": "打开设置新标签（页面跳转）"
+    },
+    {
+     "name": "#treeSearch  ",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#resetBtn btn small 换目录",
+     "skipped": "打开设置新标签（页面跳转）"
+    },
+    {
+     "name": "#search  ",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#sort  最新保存 最早保存 文件最大 标题 A-Z",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "newErrs": []
+    }
+   ]
+  },
+  {
+   "label": "设置抽屉",
+   "total": 5,
+   "items": [
+    {
+     "name": "#setClose sd-x ✕",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#sdDirBtn btn small 更换目录",
+     "skipped": "打开设置新标签（页面跳转）"
+    },
+    {
+     "name": "#sdScanBtn btn small 立即扫描",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "全量扫描失败：没有文件夹读取权限。若是首次使用，请在设置里「更换目录」授权一次文件夹去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#sdRebuildBtn btn small 重建索引",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "全量扫描失败：没有文件夹读取权限。若是首次使用，请在设置里「更换目录」授权一次文件夹去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#sdTrashBtn btn small 打开",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "newErrs": []
+    }
+   ]
+  },
+  {
+   "label": "胶片条抽查",
+   "total": 0,
+   "items": []
+  },
+  {
+   "label": "预览层",
+   "total": 0,
+   "items": []
+  },
+  {
+   "label": "批量条",
+   "total": 7,
+   "items": [
+    {
+     "name": "#batchAll btn small 全选",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#batchInvert btn small 反选",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#batchClear btn small 清除",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#batchFav btn small 加入收藏夹",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "先选素材去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#batchMove btn small 移动到…",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "先选素材去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "先选素材去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#batchTrash btn small danger 删除到回收站",
+     "skipped": "删除"
+    },
+    {
+     "name": "#batchExit btn small ghost 退出",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "先选素材去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "先选素材去授权"
+     },
+     "newErrs": []
+    }
+   ]
+  }
+ ],
+ "player": "{\"ok\":false}",
+ "filmStatic": {
+  "count": 0,
+  "withIndex": 0,
+  "withNo": 0,
+  "withThumb": 0
+ },
+ "pageErrors": [],
+ "summary": {
+  "totalButtons": 29,
+  "clicked": 25,
+  "skippedDestructive": 4,
+  "jsErrors": 0,
+  "pageErrors": 0,
+  "passed": true
+ }
+}

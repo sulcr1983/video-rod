@@ -1498,3 +1498,18 @@ YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进�
 | qa-pack-verify | `python tools/qa-pack-verify.py` | 发布包真实加载：解压 zip → 用解压物（不是仓库根）启动 Edge → SW 存活/popup 可开/能嗅探/体积<8MB。6/6 |
 | pack-dist.js | `node tools/pack-dist.js`（`--dry-run` 只报告） | 发布包打包（只打 dist/，禁带目录自检，体积红线 12MB 警告/20MB 失败）。产物 `..\work\vr-release\video-rod-<ver>.zip` |
 | qa-preview-page | `python tools/qa-preview-page.py --port 9490` | preview 独立窗口页专项（补测试盲区）：script 加载清单、mqtt 默认不静态加载、按需注入缺库时明确 reject。12/12 |
+
+---
+
+## 附 · 回收站状态机（ADR-074，2026-11-09 新增）
+
+| 套件 | 命令 | 测什么 |
+|---|---|---|
+| cdp-trash-empty-repro | `python tools/cdp-run.py tools/cdp-trash-empty-repro.py` | 删除→索引标 trashed（行保留）→主页 0 卡→恢复一条→二次删除→UI 清空→file/thumb 双双归零→幂等再清空→snapshot/reconcile/full 三种扫描不复活。17/17 |
+| cdp-trash-dup-index-test | `python tools/cdp-run.py tools/cdp-trash-dup-index-test.py` | 同一物理文件两条索引（有/无 `video-rod` 前缀）：启动自愈按前缀归并、清空时清「幽灵行」，主页 0 死卡。7/7 |
+
+**口径（改回收站前必读）**：
+1. `state='trashed'` 的索引行**不删**，主页/树/统计/判重/下载查重全部要排除它；
+2. 清空 = 删物理副本 + 删缩略图（IDB `t:<relPath>` + 磁盘 webp）+ 删索引行，必须幂等；
+3. `_manifest.json` 只是跨浏览器备份，真源是索引；
+4. 任何扫描源（downloads / snapshot）都必须有磁盘证据才能新增条目，`d.exists` 不可信。

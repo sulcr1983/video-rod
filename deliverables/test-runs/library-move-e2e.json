@@ -1,0 +1,47 @@
+[
+ {
+  "name": "VRTrash.moveFile 已导出",
+  "pass": true,
+  "detail": "function"
+ },
+ {
+  "name": "VRTrash.exists 已导出",
+  "pass": true,
+  "detail": "function"
+ },
+ {
+  "name": "移动后源文件消失",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "移动后目标文件存在",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "移动后内容一致",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "同名目标被拒绝（LIB_E_EXISTS）",
+  "pass": true,
+  "detail": "LIB_E_EXISTS"
+ },
+ {
+  "name": "拒绝后目标未被覆盖",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "拒绝后源文件保留",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "能移回原路径且内容一致",
+  "pass": true,
+  "detail": ""
+ }
+]

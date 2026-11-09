@@ -392,14 +392,20 @@
         }
         if (t === 'vrLib.list') {
             root.VRDB.getAllFiles().then(function (list) {
-                sendResponse({ ok: true, list: list });
+                /* 回收站条目不算「库里的素材」，调用方（弹窗/命名/判重）只该看到活跃条目 */
+                sendResponse({
+                    ok: true,
+                    list: (list || []).filter(function (x) { return x && x.state !== 'trashed'; })
+                });
             }).catch(function (e) {
                 sendResponse({ ok: false, code: 'LIB_E_DB', message: String(e) });
             });
             return true;
         }
         if (t === 'vrLib.stats') {
-            root.VRDB.count().then(function (n) {
+            root.VRDB.getAllFiles().then(function (list) {
+                /* 只算活跃条目：回收站条目不删行，直接 count() 会虚高 */
+                var n = (list || []).filter(function (x) { return x && x.state !== 'trashed'; }).length;
                 sendResponse({ ok: true, count: n });
             }).catch(function (e) {
                 sendResponse({ ok: false, code: 'LIB_E_DB', message: String(e) });

@@ -2,36 +2,41 @@
  {
   "name": "启动链包含 perm 状态检查",
   "pass": true,
-  "detail": "['start', 'bind', 'bindMissing', 'ctx', 'confirm', 'favs', 'root', 'perm', 'load:101', 'drawer', 'thumbGC']"
+  "detail": "['start', 'bind', 'bindMissing', 'ctx', 'confirm', 'favs', 'root', 'perm', 'load:0', 'drawer', 'thumbGC', 'trashSweep']"
  },
  {
   "name": "__vrPerm 已暴露",
   "pass": true,
-  "detail": "{'handle': {}, 'writable': True, 'permState': 'granted', 'fileAccess': True, 'issues': [], 'rootInvalid': False, 'expectedName': ''}"
+  "detail": "{'handle': None, 'writable': False, 'permState': '', 'fileAccess': True, 'issues': ['当前为只读模式：浏览/预览可用；点「授权素材目录」选择素材库根目录。'], 'rootInvalid': False, 'expectedName': ''}"
  },
  {
   "name": "提示条存在",
   "pass": true,
-  "detail": "{'hidden': True, 'text': '', 'auth': '查看设置', 'disabled': {'batchMove': False, 'batchTrash': False, 'pvDelete': False, 'pvMove': False}, 'hasBanner': True, 'hasAuth': True}"
+  "detail": "{'hidden': False, 'text': '当前为只读模式：浏览/预览可用；点「授权素材目录」选择素材库根目录。', 'auth': '授权素材目录', 'disabled': {'batchMove': False, 'batchTrash': False, 'pvDelete': False, 'pvMove': False}, 'hasBanner': True, 'hasAuth': True}"
  },
  {
   "name": "授权按钮存在",
   "pass": true,
-  "detail": "{'hidden': True, 'text': '', 'auth': '查看设置', 'disabled': {'batchMove': False, 'batchTrash': False, 'pvDelete': False, 'pvMove': False}, 'hasBanner': True, 'hasAuth': True}"
+  "detail": "{'hidden': False, 'text': '当前为只读模式：浏览/预览可用；点「授权素材目录」选择素材库根目录。', 'auth': '授权素材目录', 'disabled': {'batchMove': False, 'batchTrash': False, 'pvDelete': False, 'pvMove': False}, 'hasBanner': True, 'hasAuth': True}"
  },
  {
-  "name": "可写时不显示只读提示",
+  "name": "只读时显示提示条",
   "pass": true,
-  "detail": "{'hidden': True, 'text': '', 'auth': '查看设置', 'disabled': {'batchMove': False, 'batchTrash': False, 'pvDelete': False, 'pvMove': False}, 'hasBanner': True, 'hasAuth': True}"
+  "detail": "{'hidden': False, 'text': '当前为只读模式：浏览/预览可用；点「授权素材目录」选择素材库根目录。', 'auth': '授权素材目录', 'disabled': {'batchMove': False, 'batchTrash': False, 'pvDelete': False, 'pvMove': False}, 'hasBanner': True, 'hasAuth': True}"
  },
  {
-  "name": "可写时移动/删除按钮启用",
+  "name": "只读提示说明原因",
+  "pass": true,
+  "detail": "当前为只读模式：浏览/预览可用；点「授权素材目录」选择素材库根目录。"
+ },
+ {
+  "name": "只读时移动/删除按钮仍可点击",
   "pass": true,
   "detail": "{'batchMove': False, 'batchTrash': False, 'pvDelete': False, 'pvMove': False}"
  },
  {
   "name": "file:// 可用时不误报",
   "pass": true,
-  "detail": ""
+  "detail": "当前为只读模式：浏览/预览可用；点「授权素材目录」选择素材库根目录。"
  }
 ]

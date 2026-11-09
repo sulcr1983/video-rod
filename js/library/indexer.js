@@ -321,7 +321,13 @@
      */
     function snapshotPayload(files, favorites, meta) {
         var m = meta || {};
-        var list = Array.isArray(files) ? files : [];
+        /* 2026-11-09：回收站条目（state='trashed'）不写进快照。
+         * 快照的用途是「换浏览器/重装后凭它把库恢复出来」，
+         * 而 trashed 条目的文件已经搬进 _回收站，写进去只会让新浏览器里
+         * 凭空多出一批点开就空的卡片（跨浏览器也没有回收站 UI 去处理它们）。 */
+        var list = (Array.isArray(files) ? files : []).filter(function (f) {
+            return f && f.relPath && f.state !== 'trashed';
+        });
         var out = {
             schema: 2,
             version: 1,
@@ -640,6 +646,15 @@
         });
         if (out.downloadId === null && old.downloadId !== undefined) { out.downloadId = old.downloadId; }
         out.state = 'ok';
+        /* 2026-11-09：回收站条目（state='trashed'）在索引里**保留行**，
+         * 只有文件重新出现在磁盘上（full/reconcile 真的扫到了）才算恢复。
+         * 这里负责把 trashed 标记清掉，否则恢复出来的条目会一直藏在回收站里。 */
+        if (old.state === 'trashed') {
+            out.state = 'ok';
+            out.trashBatch = '';
+            out.trashedAt = 0;
+            out.trashNoFile = 0;
+        }
         /* 未整理状态每次扫描重新计算：下载/快照源带平台，文件系统源认不出才置 1。
          * 置 1 时清掉旧平台，避免旧值把未整理条目又塞回某个平台。 */
         out.untracked = item.untracked ? 1 : 0;
@@ -731,11 +746,18 @@
         var files = snap.json.files || [];
         var out = [];
         var pfx = prefix ? (prefix + '/') : '';
+        var vanished = 0;
         for (var i = 0; i < files.length; i++) {
             var f = files[i] || {};
             var relPath = String(f.relPath || '').replace(/\\/g, '/');
             if (!relPath || skipRel(relPath) || splitRel(relPath).indexOf('..') !== -1) { continue; }
             var relFromRoot = (pfx && relPath.indexOf(pfx) === 0) ? relPath.slice(pfx.length) : relPath;
+            /* 2026-11-09：快照只是**线索**，磁盘才是真相。
+             * 快照可能是删/清空之前写的，直接照抄会把已删素材复活
+             * （「清空回收站后一开库页又回来了」的第二个通道）。
+             * 这里逐个探一次文件是否存在；读不到（unknown）时保守保留。 */
+            var probe = await fileExists(handle, relFromRoot);
+            if (probe === 'missing') { vanished++; continue; }
             var item = entryFromRel(relPath, (absRoot ? absRoot + '/' + relFromRoot : ''), f.size, f.mtime);
             if (f.platform) {
                 /* 快照里的平台也走同一条解析：老快照可能存的是 'web'，
@@ -774,6 +796,7 @@
                 onProgress({ phase: 'snapshot', done: i + 1, total: files.length });
             }
         }
+        out.vanished = vanished;      /* 快照里有、磁盘上已经没有的条数（不上报给用户，只记日志） */
         return out;
     }
 
@@ -894,19 +917,44 @@
 
         var seen = {};
         var out = [];
-        scanned.forEach(function (it) {
-            if (!it || !it.relPath) { return; }
+        var skippedTrashed = 0;
+        var skippedGhost = 0;
+        for (var si = 0; si < scanned.length; si++) {
+            var it = scanned[si];
+            if (!it || !it.relPath) { continue; }
+            var old = oldMap[it.relPath];
+            /* 2026-11-09：回收站条目不许被「没有磁盘证据」的源复活。
+             * downloads（chrome.downloads 历史）与 snapshot（_library/index.json）
+             * 都不校验文件是否还在，Edge 实测 d.exists 在文件已删时仍返回 true，
+             * 一旦掺进来，用户清空回收站后一开库页素材就"自己回来了"。
+             * full / reconcile 是遍历磁盘得到的，扫到即文件存在，走 mergeEntry 正常恢复。 */
+            if (old && old.state === 'trashed' && (mode === 'downloads' || mode === 'snapshot')) {
+                skippedTrashed++;
+                continue;
+            }
+            /* downloads 源里「库里没有过」的条目 = 新下载，也可能是删掉之后下载记录还没清。
+             * 只对这类做一次真实探盘（成本只跟新增条数走），别再信 d.exists。 */
+            if (mode === 'downloads' && !old && rr.handle) {
+                var ghost = await fileExists(rr.handle, stripPrefix(it.relPath, rr.prefix));
+                if (ghost === 'missing') { skippedGhost++; continue; }
+            }
             seen[it.relPath] = 1;
-            out.push(mergeEntry(oldMap[it.relPath], it));
-        });
+            out.push(mergeEntry(old, it));
+        }
+        if (skippedGhost) {
+            try { console.info('[vrLib] 下载记录里有', skippedGhost, '条文件已不存在，已跳过'); } catch (eG) { /* 忽略 */ }
+        }
 
         // 全量源扫不到的旧条目：标 missing，不删除（ADR-030）
         // ADR-070 例外：下载器兜底条目（relPath 无目录层级 / pendingArchive）
         // 本来就不在库根树里，扫描永远扫不到 —— 不得标「文件缺失」，保持「待归档」。
+        // 2026-11-09：回收站条目（state='trashed'）既不参与 missing 判定，也不许被覆盖，
+        // 它已经搬去 _回收站 了，磁盘上本来就扫不到。
         var missing = 0;
         if (mode !== 'downloads' && opts.markMissing !== false) {
             oldFiles.forEach(function (f) {
                 if (!f || !f.relPath || seen[f.relPath]) { return; }
+                if (f.state === 'trashed') { return; }
                 var rel = String(f.relPath).replace(/\\/g, '/');
                 if (f.pendingArchive || rel.indexOf('/') < 0) {
                     if (f.state === 'missing' || !f.pendingArchive) {
@@ -931,6 +979,7 @@
             total: scanned.length,
             ok: scanned.length,
             missing: missing,
+            skippedTrashed: skippedTrashed,
             mode: mode,
             truncated: !!scanned.truncated,
             /* 超限/超深必须上报（红队 c-1/c-2）：
@@ -984,7 +1033,12 @@
 
     async function reconcile() {
         if (!dbReady()) { throw makeErr('LIB_E_DB', 'VRDB 未加载'); }
-        var files = await root.VRDB.getAllFiles();
+        /* 回收站条目（state='trashed'）不参与存在性对账：
+         * 它们的文件已经搬进 _回收站，按「磁盘上找不到」处理会被标成 missing，
+         * 于是又变回主页上的一张卡片（2026-11-09）。 */
+        var files = (await root.VRDB.getAllFiles()).filter(function (f) {
+            return f && f.state !== 'trashed';
+        });
         var rr = await resolveRoot();
 
         var byId = {};
@@ -1155,7 +1209,9 @@
     /* ---------------- 状态 ---------------- */
 
     async function status() {
-        var files = dbReady() ? await root.VRDB.getAllFiles() : [];
+        var all = dbReady() ? await root.VRDB.getAllFiles() : [];
+        /* 「库里有几项」只算活跃条目：回收站条目不删行，算进来会让计数虚高 */
+        var files = all.filter(function (f) { return f && f.state !== 'trashed'; });
         var rr = await resolveRoot();
         var snapAt = 0;
         if (dbReady()) {
@@ -1163,6 +1219,7 @@
         }
         return {
             count: files.length,
+            trashed: all.length - files.length,
             missing: files.filter(function (f) { return f && f.state === 'missing'; }).length,
             hasRoot: !!rr.handle,
             absRoot: rr.absRoot,
