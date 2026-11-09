@@ -247,6 +247,21 @@ eq('D3 都没有', Q.labelOf({ url: 'https://x/a.mp4' }), 'MP4');
     eq('H18 分片还原保留 hash', h17.url, 'https://x.com/v.mp4#t=3');
 }
 
+/* ---------- I. 同媒体变体（苏哥 2026-11-09「MSN 下不了」的根因） ----------
+ * 原始直链有签名墙，转码变体免签。实测：xxx.mp4 → 403，xxx.mp4_bd.mp4 → 206 完整。 */
+{
+    eq('I1 mp4 变体', Q.variantUrls('https://msn2.go2yd.com/video/abc.mp4'),
+        ['https://msn2.go2yd.com/video/abc.mp4_bd.mp4']);
+    eq('I2 带 query 时先剥掉', Q.variantUrls('https://cdn.x.com/v/abc.mp4?token=1'),
+        ['https://cdn.x.com/v/abc.mp4_bd.mp4']);
+    eq('I3 webm 也适用', Q.variantUrls('https://x.com/a.webm'),
+        ['https://x.com/a.webm_bd.webm']);
+    eq('I4 m3u8 不适用（清单不是文件）', Q.variantUrls('https://x.com/a.m3u8'), []);
+    eq('I5 无扩展名不适用', Q.variantUrls('https://x.com/video/tos/abc'), []);
+    eq('I6 空串', Q.variantUrls(''), []);
+    eq('I7 非 http', Q.variantUrls('blob:https://x.com/a.mp4'), []);
+}
+
 console.log('');
 console.log(pass + ' passed, ' + fail + ' failed');
 if (fail) {

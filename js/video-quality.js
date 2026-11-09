@@ -78,6 +78,35 @@
     }
 
     /**
+     * 「同媒体变体」候选地址。
+     *
+     * 为什么需要（苏哥 2026-11-09「MSN 的视频为什么下不了」）：
+     * 有些 CDN 对**原始直链**做签名墙，但同一份文件的**转码变体**是免签的。
+     * 实测 MSN / 一点资讯（go2yd 系）：
+     *   …/video/xxx.mp4              → 403（签名过期/缺失）
+     *   …/video/xxx.mp4_bd.mp4       → 206 + 完整 Content-Range  ✅
+     * 而播放器只会在**真的开始播**的时候才去拉转码地址 —— 用户不播就永远只有死链。
+     *
+     * 这是命名规律，不是站点判断：对没有该规律的站，试一下就是 404，无副作用。
+     * 调用方只在原地址明确失败（4xx/5xx）时才试，正常路径一次请求都不多花。
+     *
+     * @param {string} url
+     * @returns {string[]} 去掉 query/hash 的变体地址
+     */
+    function variantUrls(url) {
+        var s = String(url || '');
+        var out = [];
+        if (!s || !/^https?:/i.test(s)) { return out; }
+        var clean = s.split('#')[0].split('?')[0];
+        var m = /\.(mp4|webm|mov|mkv|m4v)$/i.exec(clean);
+        if (!m) { return out; }
+        var ext = m[1].toLowerCase();
+        /* xxx.mp4 → xxx.mp4_bd.mp4（一点资讯的转码变体命名） */
+        out.push(clean + '_bd.' + ext);
+        return out;
+    }
+
+    /**
      * 是否为「按字节切片」的媒体地址，以及剥掉分片参数后的完整地址。
      * @param {string} url
      * @returns {{segmented:boolean, url:string, removed:string[]}}
@@ -422,6 +451,7 @@
         weiboMidFromUrl: weiboMidFromUrl,
         pickWeiboHdUrl: pickWeiboHdUrl,
         unsegmentUrl: unsegmentUrl,
+        variantUrls: variantUrls,
         parseHlsMaster: parseHlsMaster,
         pickBestVariant: pickBestVariant,
         parseDashMpd: parseDashMpd

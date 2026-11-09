@@ -108,7 +108,7 @@ doc.querySelectorAll('img')
 
 ---
 
-## 五、本次修的五个缺陷
+## 五、本次修的六个缺陷
 
 ### 5.1 字节分片被当成完整文件（核心）
 
@@ -203,6 +203,54 @@ https://cdn/video/087d2e….mp4_bd.mp4 ┘ → 主干 …/video/087d2e…  → �
 
 ---
 
+### 5.6 死链变体探测 —— MSN「怎么都下不了」的真正解法
+
+**背景**（苏哥 2026-11-09 追问「为什么 MSN 的视频无法下载？不是号称哪儿都能下吗」）
+
+先说清楚 **Plus 是怎么做的**：读了它 4.0.0 的 `service_worker.js`，
+它的下载就是一句
+
+```js
+chrome.downloads.download({ url, filename, conflictType: 'uniquify', saveAs: true })
+```
+
+**抓到的地址原样甩给浏览器**，没有任何去重、没有分片还原、没有变体探测。
+也就是说它并不比我们强 —— 它只是「看到什么下什么」，碎片也照下。
+
+**我们真正缺的是这一步**：
+
+| 地址形态 | 实测结果 |
+|---|---|
+| `…/video/xxx.mp4` | **403**（签名墙。Referer / Origin / UA 六种组合全试过，全 403）|
+| `…/video/xxx.mp4_bd.mp4` | **206** + `Content-Range: bytes 0-1/9143424` ← **免签可用** |
+
+播放器只会在**真的开始播**的时候才去拉转码地址（`_bd` 变体），
+用户不播就永远只看到死链 —— 这就是「怎么都下不了」的完整原因。
+
+**修法**：`VRVideoQuality.variantUrls()` + `vrProbeCandidates` 第二轮探测
+
+```
+第一轮：所有候选照常探 Range: bytes=0-1
+   ↓ 4xx/5xx 的
+第二轮：试「同媒体变体」（xxx.mp4 → xxx.mp4_bd.mp4）
+   ↓ 变体 2xx 的
+把候选地址换成变体，原死链留作 srcUrl 回溯
+```
+
+**这是命名规律，不是站点判断**：对没有该规律的站试一下就是 404，无副作用。
+而且只在原地址**明确失败**时才触发，正常路径一次请求都不多花。
+
+**端到端验证（2026-11-09 21:59）**：
+
+- 页面只抓到 3 条 403 裸链（视频没播）→ 变体探测后 3 条全部变成 `_bd.mp4`
+- 点下载 → 落盘 `msn.cn/www.msn.cn/如果 把豪华礼盒植物攻击速度提高亿万倍….mp4`
+- **23.33 MB**，结构 `ftyp + moov(183034) + free + mdat(24276172)` —— 完整可播
+
+**已知小缺口**：`Content-Range` 不是 CORS 安全列表头，页面侧读不到 →
+变体回来的候选显示「MP4」而不是具体体积。不影响下载，只影响列表上的大小显示。
+
+---
+
 ## 六、已知边界（说清做不到的）
 
 | 情况 | 现状 | 原因 |
@@ -223,7 +271,8 @@ https://cdn/video/087d2e….mp4_bd.mp4 ┘ → 主干 …/video/087d2e…  → �
 | 类型/扩展名白名单 | `js/init.js` | `G.OptionLists.Ext / Type`（29/63）|
 | 分片还原 | `js/video-quality.js` | `unsegmentUrl` |
 | 候选归并 | `js/background.js` | `vrNormalizeCandidates` / `vrMediaStem` |
-| 可达性预检 | `js/background.js` | `vrProbeCandidates` |
+| 可达性预检 + 变体探测 | `js/background.js` | `vrProbeCandidates` |
+| 同媒体变体地址 | `js/video-quality.js` | `variantUrls` |
 | 页面侧挖地址 | `js/net-sniff.js` | `scan` / `guessExt` |
 | 图片扫描 | `js/lib-image-util.js` | `scanImages`（632）|
 | 候选排序 | `js/video-quality.js` | `sortCandidates` |

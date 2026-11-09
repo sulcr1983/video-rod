@@ -4893,49 +4893,94 @@ async function vrProbeCandidates(tabId, list) {
     const need = rows.filter(function (m) { return !(m.type && Number(m.size)); });
     if (!need.length) { return list; }
 
-    let results = [];
-    try {
-        const r = await vrWithTimeout(chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            args: [need.map(function (m) { return m.url; })],
-            func: function (urls) {
-                return Promise.all(urls.map(function (u) {
-                    return new Promise(function (res) {
-                        var done = false;
-                        var finish = function (o) { if (done) { return; } done = true; res(o); };
-                        var ac = new AbortController();
-                        var tm = setTimeout(function () {
-                            try { ac.abort(); } catch (e) { /* ignore */ }
-                            finish({ u: u, state: 'timeout' });
-                        }, 3000);
-                        fetch(u, { headers: { Range: 'bytes=0-1' }, signal: ac.signal })
-                            .then(function (resp) {
-                                clearTimeout(tm);
-                                var cr = resp.headers.get('content-range') || '';
-                                var cl = Number(resp.headers.get('content-length')) || 0;
-                                var total = 0;
-                                var m = /\/(\d+)\s*$/.exec(cr);
-                                if (m) { total = Number(m[1]) || 0; }
-                                if (!total && cl && resp.status === 200) { total = cl; }
-                                finish({
-                                    u: u, state: 'http', status: resp.status,
-                                    type: (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(),
-                                    size: total
+    /* 在页面主世界探测：自带 Referer/Cookie，扩展上下文发会被部分 CDN 拒。
+     * Range: bytes=0-1 只取 2 字节，代价可忽略。 */
+    const probe = async function (urls) {
+        if (!urls || !urls.length) { return []; }
+        try {
+            const r = await vrWithTimeout(chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                args: [urls],
+                func: function (list) {
+                    return Promise.all(list.map(function (u) {
+                        return new Promise(function (res) {
+                            var done = false;
+                            var finish = function (o) { if (done) { return; } done = true; res(o); };
+                            var ac = new AbortController();
+                            var tm = setTimeout(function () {
+                                try { ac.abort(); } catch (e) { /* ignore */ }
+                                finish({ u: u, state: 'timeout' });
+                            }, 3000);
+                            fetch(u, { headers: { Range: 'bytes=0-1' }, signal: ac.signal })
+                                .then(function (resp) {
+                                    clearTimeout(tm);
+                                    var cr = resp.headers.get('content-range') || '';
+                                    var cl = Number(resp.headers.get('content-length')) || 0;
+                                    var total = 0;
+                                    var m = /\/(\d+)\s*$/.exec(cr);
+                                    if (m) { total = Number(m[1]) || 0; }
+                                    if (!total && cl && resp.status === 200) { total = cl; }
+                                    finish({
+                                        u: u, state: 'http', status: resp.status,
+                                        type: (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase(),
+                                        size: total
+                                    });
+                                }, function () {
+                                    clearTimeout(tm);
+                                    /* 网络/CORS 失败：不当成「不可用」 */
+                                    finish({ u: u, state: 'neterr' });
                                 });
-                            }, function () {
-                                clearTimeout(tm);
-                                /* 网络/CORS 失败：不当成「不可用」 */
-                                finish({ u: u, state: 'neterr' });
-                            });
-                    });
-                }));
-            }
-        }), 8000, 'candidate-probe');
-        results = (r && r[0] && r[0].result) || [];
-    } catch (e) { return list; }     // 探测失败：原样返回，不影响列表
+                        });
+                    }));
+                }
+            }), 8000, 'candidate-probe');
+            return (r && r[0] && r[0].result) || [];
+        } catch (e) { return []; }
+    };
 
     const byUrl = {};
-    results.forEach(function (x) { if (x && x.u) { byUrl[x.u] = x; } });
+    (await probe(need.map(function (m) { return m.url; }))).forEach(function (x) {
+        if (x && x.u) { byUrl[x.u] = x; }
+    });
+
+    /* ---- 第二轮：死链试「同媒体变体」 ----
+     *
+     * 苏哥 2026-11-09「MSN 的视频为什么下不了」的根因就在这里：
+     * 原始直链是**签名墙**的（403，换什么 Referer/Origin/UA 都没用，实测 6 种组合全 403），
+     * 而同一份文件的转码变体是**免签**的：
+     *   …/video/xxx.mp4        → 403
+     *   …/video/xxx.mp4_bd.mp4 → 206 + 完整 Content-Range  ✅
+     * 播放器只在「真的开始播」时才去拉转码地址，用户不播就永远只看到死链。
+     * 所以这里主动试一次变体 —— 不用等用户播放。 */
+    const VQ = self.VRVideoQuality;
+    const deadRows = rows.filter(function (m) {
+        const p = byUrl[m.url];
+        return p && p.state === 'http' && p.status >= 400;
+    });
+    if (deadRows.length && VQ && typeof VQ.variantUrls === 'function') {
+        const pairs = [];
+        deadRows.forEach(function (m) {
+            VQ.variantUrls(m.url).forEach(function (alt) { pairs.push({ src: m.url, alt: alt }); });
+        });
+        if (pairs.length) {
+            const byAlt = {};
+            (await probe(pairs.map(function (x) { return x.alt; }))).forEach(function (x) {
+                if (x && x.u) { byAlt[x.u] = x; }
+            });
+            pairs.forEach(function (x) {
+                const p = byAlt[x.alt];
+                if (!p || p.state !== 'http' || p.status >= 400) { return; }
+                const m = rows.filter(function (y) { return y.url === x.src; })[0];
+                if (!m) { return; }
+                /* 换地址，并把原死链留作回溯 */
+                m.srcUrl = m.srcUrl || m.url;
+                m.url = x.alt;
+                m.variant = true;
+                delete byUrl[x.src];
+                byUrl[x.alt] = p;
+            });
+        }
+    }
 
     const alive = [];
     const dead = [];
