@@ -50,14 +50,90 @@
     var playerBox = null;
     var playerRatio = 0;
     var posterUrl = '';
+    var spdWrap = null;      /* 倍速直选按钮外层（.vr-spdwrap） */
+    var spdBtn = null;
+    var spdMenu = null;
+    var spdDocClose = null;  /* 菜单开着时挂 document 的关闭监听 */
+
+    function spdCloseMenu() {
+        if (spdWrap) { spdWrap.classList.remove('on'); }
+        if (spdDocClose) {
+            document.removeEventListener('pointerdown', spdDocClose);
+            spdDocClose = null;
+        }
+    }
 
     function destroyPlayer() {
+        spdCloseMenu();
+        spdWrap = null; spdBtn = null; spdMenu = null;
         if (plyr) { try { plyr.destroy(); } catch (e) { /* ignore */ } }
         plyr = null;
         if (posterUrl) { try { URL.revokeObjectURL(posterUrl); } catch (e) { /* ignore */ } }
         posterUrl = '';
         playerBox = null;
         playerRatio = 0;
+    }
+
+    /** 倍速直选：Plyr 原生把倍速藏在齿轮二级菜单——点一次出来 Settings 面板、
+     * 还要点一次 Speed，且全是英文。齿轮唯一的职责就是倍速，直接退役，
+     * 控件条上放一个「1×」按钮，点一下弹出倍速菜单，当前倍速金色高亮。 */
+    function updSpdBtn() {
+        if (spdBtn) { spdBtn.textContent = S.rate + '×'; }
+        if (spdMenu) {
+            var items = spdMenu.querySelectorAll('.vr-spdo');
+            for (var i = 0; i < items.length; i++) {
+                items[i].classList.toggle('on', parseFloat(items[i].getAttribute('data-rate')) === S.rate);
+            }
+        }
+    }
+
+    function buildSpeedCtl() {
+        if (!plyr || !plyr.elements || !plyr.elements.container) { return; }
+        var bar = plyr.elements.container.querySelector('.plyr__controls');
+        if (!bar) { return; }
+        spdWrap = document.createElement('span');
+        spdWrap.className = 'plyr__controls__item vr-spdwrap';
+        spdBtn = document.createElement('button');
+        spdBtn.type = 'button';
+        spdBtn.className = 'plyr__control vr-spd';
+        spdBtn.title = '倍速';
+        spdBtn.setAttribute('aria-label', '倍速');
+        spdMenu = document.createElement('span');
+        spdMenu.className = 'vr-spdm';
+        var opts = [0.1, 0.2, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+        for (var i = 0; i < opts.length; i++) {
+            (function (r) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'vr-spdo';
+                b.setAttribute('data-rate', String(r));
+                b.textContent = r + '×';
+                b.addEventListener('click', function () {
+                    plyr.speed = r;   /* Plyr 3.x 官方 setter，内部同步 config 并触发 ratechange */
+                    updSpdBtn();
+                    spdCloseMenu();
+                });
+                spdMenu.appendChild(b);
+            })(opts[i]);
+        }
+        spdBtn.addEventListener('click', function () {
+            var open = spdWrap.classList.toggle('on');
+            if (open && !spdDocClose) {
+                /* 点按钮本身不算「点外面」：pointerdown 命中按钮时跳过，click 再正常 toggle */
+                spdDocClose = function (ev) {
+                    if (spdWrap && spdWrap.contains(ev.target)) { return; }
+                    spdCloseMenu();
+                };
+                document.addEventListener('pointerdown', spdDocClose);
+            } else if (!open) { spdCloseMenu(); }
+        });
+        spdWrap.appendChild(spdBtn);
+        spdWrap.appendChild(spdMenu);
+        /* 位置放在画中画按钮前面（原齿轮的位置），找不到就排到末尾 */
+        var pip = bar.querySelector('[data-plyr="pip"]');
+        if (pip && pip.parentNode === bar) { bar.insertBefore(spdWrap, pip); }
+        else { bar.appendChild(spdWrap); }
+        updSpdBtn();
     }
 
     /** 按视频真实宽高比给播放器外壳定尺寸，不再一律塞进 16:9 的默认框 */
@@ -238,9 +314,9 @@
                     var iconUrl = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL)
                         ? chrome.runtime.getURL('lib/plyr/plyr.svg') : 'lib/plyr/plyr.svg';
                     plyr = new root.Plyr(v, {
+                        /* 2026-11-10：去掉 settings 齿轮——倍速改由控件条上的 1× 直选按钮负责（见 buildSpeedCtl） */
                         controls: ['play-large', 'play', 'progress', 'current-time',
-                                   'mute', 'volume', 'settings', 'pip', 'fullscreen'],
-                        settings: ['speed'],
+                                   'mute', 'volume', 'pip', 'fullscreen'],
                         speed: { selected: S.rate, options: [0.1, 0.2, 0.5, 0.75, 1, 1.25, 1.5, 2, 3] },
                         iconUrl: iconUrl,
                         /* 键盘语义由本模块统一定义（↑↓ 切素材、←→ 调进度），
@@ -251,7 +327,9 @@
                     });
                     plyr.on('ratechange', function () {
                         if (plyr && plyr.speed) { S.rate = plyr.speed; }
+                        updSpdBtn();
                     });
+                    buildSpeedCtl();
                     fitPlayer();
                 } catch (e) { plyr = null; }
             }

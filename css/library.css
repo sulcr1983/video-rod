@@ -1814,7 +1814,10 @@ h1 {
   display: flex; align-items: center; justify-content: center;
 }
 .vr-player .plyr {
-  flex: none; max-width: none; overflow: hidden;
+  flex: none; max-width: none;
+  /* 2026-11-10：改 visible——倍速菜单要向上弹出播放器边界；
+     圆角裁切下沉到 .plyr__video-wrapper，视频内容不受影响 */
+  overflow: visible;
   background: #0B0A09; border-radius: 10px;
   --plyr-color-main: #E8B04B;
   --plyr-video-background: #0B0A09;
@@ -1832,7 +1835,7 @@ h1 {
   --plyr-font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-family: var(--plyr-font-family);
 }
-.vr-player .plyr__video-wrapper { height: 100%; background: #0B0A09; }
+.vr-player .plyr__video-wrapper { height: 100%; background: #0B0A09; border-radius: 10px; overflow: hidden; }
 .vr-player .plyr video {
   width: 100%; height: 100%; object-fit: contain; background: #0B0A09;
 }
@@ -2152,3 +2155,24 @@ h1 {
 .vr-player .plyr__progress input[type="range"]{cursor:pointer}
 .vr-player .plyr__progress__buffer{border-radius:4px}
 .vr-player .plyr__progress:hover input[type="range"]{transform:translateY(-1px)}
+
+/* 倍速直选（2026-11-10 苏哥）：Plyr 原生倍速藏在齿轮二级菜单——点两次还全英文。
+   齿轮退役，控件条直接显示当前倍速（如 1×），点一下弹菜单，当前倍速金色高亮。 */
+.vr-player .vr-spdwrap{position:relative}
+.vr-player .vr-spd{
+  font-size:12.5px;font-weight:650;letter-spacing:.02em;
+  min-width:36px;padding:4px 8px;
+}
+.vr-player .vr-spdm{
+  display:none;position:absolute;right:0;bottom:calc(100% + 10px);min-width:72px;
+  padding:6px;background:#221F1A;border:1px solid #3A332B;border-radius:10px;
+  box-shadow:0 12px 36px rgba(0,0,0,.6);z-index:5;
+}
+.vr-player .vr-spdwrap.on .vr-spdm{display:block}
+.vr-player .vr-spdo{
+  display:block;width:100%;padding:7px 10px;background:none;border:0;border-radius:6px;
+  color:#EFEAE0;font-size:12.5px;font-weight:500;text-align:left;cursor:pointer;
+  font-family:inherit;
+}
+.vr-player .vr-spdo:hover{background:rgba(232,176,75,.14)}
+.vr-player .vr-spdo.on{color:#E8B04B;font-weight:650}
