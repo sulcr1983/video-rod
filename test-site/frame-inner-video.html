@@ -9,10 +9,11 @@
 </style>
 </head>
 <body>
-  <!-- 不要求真能播：悬浮键的挂载只看元素尺寸，不看能否解码。
-       这样可以离线验证「iframe 里的 video 有没有被扫到」。 -->
+  <!-- 真实可播的样例，用于验证录制兜底：先播放再录。
+       media/ 目录被 .gitignore 忽略，sample.mp4 需自备（1.1MB 的小视频即可）：
+       curl -sL -o media/sample.mp4 https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4 -->
   <video id="v" controls muted playsinline
          poster="../media/wide.png"
-         src="../media/sample-not-found.mp4"></video>
+         src="../media/sample.mp4"></video>
 </body>
 </html>

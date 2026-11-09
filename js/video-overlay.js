@@ -63,7 +63,11 @@
         '.vr-vob-item:hover{background:rgba(255,255,255,.13)}',
         '.vr-vob-item b{font-weight:600}',
         '.vr-vob-item span{opacity:.6;font-size:11px}',
-        '.vr-vob-empty{padding:9px 11px;font-size:12px;color:#9aa0a6;line-height:1.5}'
+        '.vr-vob-empty{padding:9px 11px;font-size:12px;color:#9aa0a6;line-height:1.5}',
+        /* 录制兜底：和普通清晰度项在视觉上分开，别让人误以为这是另一档画质 */
+        '.vr-vob-cap{border-top:1px solid rgba(255,255,255,.12);margin-top:4px;padding-top:9px;border-radius:0 0 7px 7px}',
+        '.vr-vob-cap b{color:#f0b24b}',
+        '.vr-vob-cap[disabled]{opacity:.45;pointer-events:none}'
     ].join('');
     (document.head || document.documentElement).appendChild(STYLE);
 
@@ -212,6 +216,8 @@
             if (!opts.length) {
                 menu.innerHTML = '<div class="vr-vob-empty">这个页面的视频还没被嗅探到。<br>' +
                     '先播放几秒再点这里。</div>';
+                /* 没有候选时更要给录制入口 —— 这正是录制存在的意义 */
+                appendCaptureItem(menu);
                 return;
             }
             menu.innerHTML = '';
@@ -229,8 +235,72 @@
                 });
                 menu.appendChild(b);
             });
+            appendCaptureItem(menu);
         });
     });
+
+    /* ---------- 录制兜底（抄 Video Downloader Pro 的 captureStream） ----------
+     * 放在菜单最后一项：正常情况用不上，但「地址全都拿不到」时它是唯一出路。
+     * 明确写出代价（要播完、画质是重编码），不让用户以为这是无损下载。 */
+    var capTimer = 0;
+    function stopCapTimer() {
+        if (capTimer) { clearInterval(capTimer); capTimer = 0; }
+    }
+    function appendCaptureItem(host) {
+        var cap = window.__vrCap;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'vr-vob-item vr-vob-cap';
+        btn.innerHTML = '<b></b><span></span>';
+        var bEl = btn.querySelector('b');
+        var sEl = btn.querySelector('span');
+
+        var paint = function (recording, t0) {
+            if (!recording) {
+                bEl.textContent = '录下来';
+                sEl.textContent = cap ? '要播完 · 画质是重编码' : '当前页不支持录制';
+                btn.disabled = !cap;
+                return;
+            }
+            bEl.textContent = '停止录制';
+            var s = Math.floor((Date.now() - t0) / 1000);
+            sEl.textContent = '已录 ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' · 点这里停止';
+        };
+
+        var recStart = 0;
+        var recording = false;
+        paint(false);
+
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            if (!window.__vrCap) { return; }
+            if (!recording) {
+                var r = null;
+                try { r = window.__vrCap.start(); } catch (err) { r = { ok: false, message: '录制启动失败' }; }
+                if (!r || !r.ok) {
+                    sEl.textContent = (r && r.message) || '这个视频录不了';
+                    return;
+                }
+                recording = true;
+                recStart = Date.now();
+                paint(true, recStart);
+                stopCapTimer();
+                capTimer = setInterval(function () { paint(true, recStart); }, 1000);
+                return;
+            }
+            /* 停止：先关计时，再让后台拼盘落盘 */
+            recording = false;
+            stopCapTimer();
+            bEl.textContent = '正在保存…';
+            sEl.textContent = '录到的内容会直接存进资源库';
+            try {
+                window.__vrCap.stop().then(function () { closeMenu(); }, function () { closeMenu(); });
+            } catch (err) { closeMenu(); }
+        });
+
+        host.appendChild(btn);
+    }
 
     /* ---------- 下载 ---------- */
     /* 兜底超时：后台说「已开始」后如果迟迟收不到任何进度（页面被切/后台被回收），

@@ -3639,6 +3639,150 @@ function vrDiscardBadDownload(id) {
     } catch (e) { /* ignore */ }
 }
 
+/* ==================================================================
+ * 视频录制兜底（L5）—— 抄 Video Downloader Pro v0.1.11
+ *
+ * 什么时候用：L1~L4 全部失败，而页面上有一个能播的 video。
+ * 这是「什么都能下」的最后一张牌 —— MSE 流、加密可播、短时效签名、
+ * 只给分片的直播，前面所有路都走不通时，只有录下来这条路。
+ *
+ * 数据通路：内容脚本 vr-capture.js 每 2 秒切一个 MediaRecorder chunk，
+ * 攒 8 个就 base64 推上来（走 Port）。这里按序累积，done 时拼 Blob 落盘。
+ * 为什么不在页面里拼好再一次性传：几百 MB 的 base64 会直接撑爆消息体积。
+ * ================================================================== */
+var vrCapSessions = new Map();      // `${tabId}:${frameId}` -> { parts, tabId, frameId, meta, error }
+
+function vrCapKey(tabId, frameId) { return String(tabId) + ':' + String(frameId || 0); }
+
+function vrCapB64ToU8(b64) {
+    /* 必须先清洗：FileReader 在部分环境会按 76 字符折行，
+     * atob 不容忍换行/空格，直接抛 "not correctly encoded"（实测踩到）。 */
+    var s = String(b64 || '').replace(/[^A-Za-z0-9+/=]/g, '');
+    /* 补回被削掉的 padding */
+    var pad = s.length % 4;
+    if (pad === 2) { s += '=='; } else if (pad === 3) { s += '='; }
+    var bin = atob(s);
+    var u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { u8[i] = bin.charCodeAt(i); }
+    return u8;
+}
+
+/** 收尾：拼 Blob → 落盘 → 清会话。parts 为空时静默清理（用户中途取消过）。 */
+async function vrCapFlush(key) {
+    var sess = vrCapSessions.get(key);
+    if (!sess) { return null; }
+    vrCapSessions.delete(key);
+
+    var parts = sess.parts || [];
+    if (!parts.length) {
+        if (sess.error) { return { ok: false, reason: sess.error }; }
+        return null;
+    }
+
+    var mime = (sess.meta && sess.meta.mimeType) || 'video/webm';
+    var ext = /mp4/i.test(mime) ? 'mp4' : 'webm';
+    var bytes = parts.reduce(function (n, p) { return n + p.length; }, 0);
+
+    var filename = '';
+    try {
+        filename = await vrNameInTab(sess.tabId, ext, null);
+    } catch (e) {
+        filename = 'video-rod/录制_' + Date.now() + '.' + ext;
+    }
+    if (!filename) { filename = 'video-rod/录制_' + Date.now() + '.' + ext; }
+
+    var save = self.VRSave;
+    if (!save || typeof save.saveFile !== 'function') {
+        return { ok: false, reason: 'no-save' };
+    }
+    var blob = new Blob(parts, { type: mime });
+    var r = null;
+    try {
+        r = await save.saveFile({ relPath: filename, blobOrUrl: blob, mime: mime, prefer: 'auto' });
+    } catch (e) {
+        return { ok: false, reason: 'save-failed', error: String((e && e.message) || e) };
+    }
+    /* 录制产物也要进资源库：不然用户下完在库里找不到，等于白录 */
+    try {
+        if (self.VRLib && typeof self.VRLib.record === 'function') {
+            var tab = null;
+            try { tab = await chrome.tabs.get(sess.tabId); } catch (e) { /* ignore */ }
+            self.VRLib.record(filename, {
+                platform: (self.VRPath && self.VRPath.detectPlatform) ? self.VRPath.detectPlatform((tab && tab.url) || '') : '',
+                type: 'video',
+                title: filename.split('/').pop().replace(/\.[^.]+$/, ''),
+                pageUrl: (tab && tab.url) || '',
+                relPath: filename,
+                recorded: true
+            });
+        }
+    } catch (e) { /* 入库失败不影响文件本身 */ }
+
+    try {
+        chrome.tabs.sendMessage(sess.tabId, {
+            Message: 'vrVideoProgress', name: filename,
+            done: true, ok: !!(r && r.ok !== false), bytes: bytes, phase: '录制完成'
+        });
+    } catch (e) { /* 页面没了 */ }
+
+    return { ok: !!(r && r.ok !== false), path: filename, bytes: bytes, mode: r && r.mode };
+}
+
+/* 录制分片入口。
+ *
+ * 为什么用 Port 传 ArrayBuffer，而不是 sendMessage 传 base64：
+ *   base64 那条路实测走不通 —— 字符串在传输环节被改动，后台 atob 稳定报
+ *   "The string to be decoded is not correctly encoded"（清洗字符也救不回来）。
+ *   Port 的 postMessage 走结构化克隆，二进制直传，没有编码这一步。
+ * 代价是 Port 会随 SW 回收断开 —— 所以每块都 ensurePort() 重连，且 onDisconnect 时
+ * 把已收到的部分先落盘（录了一半也比全丢强）。
+ */
+try {
+    chrome.runtime.onConnect.addListener(function (port) {
+        if (!port || port.name !== 'vrCap') { return; }
+        var tabId = port.sender && port.sender.tab && port.sender.tab.id;
+        if (!(tabId > 0)) { return; }
+        var frameId = (port.sender && port.sender.frameId) || 0;
+        var key = vrCapKey(tabId, frameId);
+
+        var sess = vrCapSessions.get(key);
+        if (!sess) {
+            sess = { parts: [], tabId: tabId, frameId: frameId, meta: null, error: null, done: false };
+            vrCapSessions.set(key, sess);
+        }
+
+        port.onMessage.addListener(function (m) {
+            if (!m || !m.type) { return; }
+            if (m.type === 'chunk') {
+                try {
+                    /* 页面侧发的是数字数组（Chrome 消息是 JSON 序列化，ArrayBuffer 传不过来） */
+                    var arr = m.bytes;
+                    if (arr && arr.length) {
+                        sess.parts.push(Uint8Array.from(arr));
+                    } else {
+                        sess.error = 'empty-chunk:' + (arr ? arr.length : 'nil');
+                    }
+                } catch (e) {
+                    sess.error = 'decode:' + String((e && e.message) || e);
+                }
+                return;
+            }
+            if (m.type === 'done') {
+                sess.meta = { mimeType: m.mimeType || 'video/webm', ms: m.ms || 0 };
+                sess.done = true;
+                vrCapFlush(key);
+                return;
+            }
+            if (m.type === 'error') {
+                sess.error = m.message || 'record-error';
+            }
+        });
+
+        /* 端口断开 = 页面关了 / SW 被回收。已经收到的分片照样拼盘，不白录。 */
+        port.onDisconnect.addListener(function () { vrCapFlush(key); });
+    });
+} catch (e) { /* 注册失败不影响其他功能 */ }
+
 /** 清掉快速失败的下载记录和残留文件（微博 403 会落一个 .htm） */
 function vrDropDownload(id) {
     try {
