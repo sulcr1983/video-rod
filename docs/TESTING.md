@@ -1494,3 +1494,6 @@ YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进�
 「当作真实素材保留」是错误做法（2026-11-08 教训）。
 
 | qa-xhs-author-e2e | `python tools/qa-xhs-author-e2e.py --port 9490`（先 boot --keep-isolated） | ADR-072/073 双通道接线：popup 批量 state 作者注入、面板 vrImg.batch 权威 title/author、去重键迁移、非详情回退、面板全部/未知档。13/13（本地 fixture，零风控面） |
+
+| qa-pack-verify | `python tools/qa-pack-verify.py` | 发布包真实加载：解压 zip → 用解压物（不是仓库根）启动 Edge → SW 存活/popup 可开/能嗅探/体积<8MB。6/6 |
+| pack-dist.js | `node tools/pack-dist.js`（`--dry-run` 只报告） | 发布包打包（只打 dist/，禁带目录自检，体积红线 12MB 警告/20MB 失败）。产物 `..\work\vr-release\video-rod-<ver>.zip` |

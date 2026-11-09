@@ -156,11 +156,54 @@ def start_isolated(port):
         log("[隔离] 下载目录已重定向：%s" % dl_dir)
     except Exception as e:
         log("[隔离] 下载目录重定向失败（测试会写真实 Downloads，仍继续）：%s" % e)
+    # 加载 **dist/**（发布物），不是仓库根 —— 规范 docs/ARTIFACT-MANAGEMENT.md §2：
+    # 浏览器只加载 dist/。以前这里加载 ROOT，导致：
+    #   ① edge://extensions 显示的是仓库根体积（93MB 级）而非扩展本体；
+    #   ② 所有回归测试其实在测「仓库根布局」，发布包从未被验证过
+    #      （2026-11-09 事故：手工 zip 整个仓库 → 93MB 包）。
+    # dist/ 不存在或过期时自动重建，保证测的是最新代码。
+    dist_dir = os.path.join(ROOT, "dist")
+    try:
+        newest_src = 0
+        for sub in ("js", "css", "catch-script", "lib", "_locales"):
+            base = os.path.join(ROOT, sub)
+            for dp, dn, fn in os.walk(base):
+                for f in fn:
+                    try:
+                        newest_src = max(newest_src, os.path.getmtime(os.path.join(dp, f)))
+                    except OSError:
+                        pass
+        # dist 的新鲜度看**目录里最新的文件**，不是 manifest.json：
+        # copyFileSync 保留源 mtime，manifest 那份在仓库里可能很旧，
+        # 用它判断会每次都误判「dist 落后」→ 每次重建（实测踩过）。
+        newest_dist = 0
+        for dp, dn, fn in os.walk(dist_dir):
+            for f in fn:
+                try:
+                    newest_dist = max(newest_dist, os.path.getmtime(os.path.join(dp, f)))
+                except OSError:
+                    pass
+        if not newest_dist:
+            raise RuntimeError("dist/ 为空")
+        if newest_src > newest_dist:
+            log("[隔离] dist/ 落后于源码（源 %.0f vs 包 %.0f），先重建" % (newest_src, newest_dist))
+            subprocess.run(["node", os.path.join(TOOLS, "build-dist.js")],
+                           cwd=ROOT, capture_output=True, text=True, timeout=300)
+    except Exception as e:
+        log("[隔离] dist/ 检查失败（%s），尝试重建" % e)
+        try:
+            subprocess.run(["node", os.path.join(TOOLS, "build-dist.js")],
+                           cwd=ROOT, capture_output=True, text=True, timeout=300)
+        except Exception as e2:
+            raise RuntimeError("dist/ 不可用且重建失败：%s" % e2)
+    if not os.path.exists(os.path.join(dist_dir, "manifest.json")):
+        raise RuntimeError("dist/manifest.json 不存在，无法加载扩展")
+
     args = [
         exe,
         "--user-data-dir=%s" % ISOLATED_PROFILE,
-        "--disable-extensions-except=%s" % ROOT,
-        "--load-extension=%s" % ROOT,
+        "--disable-extensions-except=%s" % dist_dir,
+        "--load-extension=%s" % dist_dir,
         "--remote-debugging-port=%d" % port,
         "--remote-debugging-address=127.0.0.1",
         "--no-first-run",
@@ -181,17 +224,60 @@ def start_isolated(port):
     return proc
 
 
+def detect_ext_id(port, timeout=25):
+    """探测本次实例里 video-rod 的扩展 ID。
+
+    为什么必须探测：Chrome 的未打包扩展 ID = 由**加载路径**派生的哈希。
+    以前测试加载仓库根（ID 固定成一个值），2026-11-09 起改加载 dist/
+    （符合 docs/ARTIFACT-MANAGEMENT.md §2），路径一变 ID 就变 ——
+    29 个测试脚本里硬编码的旧 ID 全部指向不存在的扩展页（404，
+    document.title 就是 URL，断言全灭）。
+    修法是探测而不是给 manifest 加 "key"：加 key 会让苏哥现有的安装
+    变成「另一个扩展」，资源库数据全部孤立，绝不能这么做。
+    """
+    import re as _re
+    import urllib.request
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            raw = op.open("http://127.0.0.1:%d/json/list" % port, timeout=4).read().decode("utf-8", "replace")
+            ids = set()
+            for m in _re.finditer(r"chrome-extension://([a-p]{32})/", raw):
+                ids.add(m.group(1))
+            # 找带 video-rod 特征的页面（popup/library/options 任一）
+            for m in _re.finditer(r"chrome-extension://([a-p]{32})/([a-zA-Z0-9_.-]+\.html)", raw):
+                if m.group(2) in ("popup.html", "library.html", "options.html", "install.html"):
+                    return m.group(1)
+            if len(ids) == 1:
+                return list(ids)[0]
+        except Exception:
+            pass
+        time.sleep(1)
+    return None
+
+
 def run_suite(name, cmd, is_live, desc, port, ext, timeout):
     full = list(cmd)
     if not name == "dedup":
         full += ["--port", str(port)]
-        try:
-            g = subprocess.run([sys.executable, os.path.join(TOOLS, name + ".py"), "--help"],
-                               capture_output=True, text=True, timeout=30)
-            if "--ext" in g.stdout:
-                full += ["--ext", ext]
-        except Exception:
-            pass
+        # 用 cmd 里的**真实脚本路径**探测是否支持 --ext。
+        # 以前写死 name + ".py"：套件名 "skin" 对应的其实是 skin-test.py，
+        # 探测文件不存在 → 异常被吞 → --ext 没传 → 脚本用硬编码旧 ID
+        # 打开 404 页 → 断言全灭（2026-11-09 加载目标改 dist/ 后暴露）。
+        script = None
+        for part in cmd:
+            if str(part).endswith(".py"):
+                script = os.path.join(ROOT, str(part))
+                break
+        if script and os.path.exists(script):
+            try:
+                g = subprocess.run([sys.executable, script, "--help"],
+                                   capture_output=True, text=True, timeout=30)
+                if "--ext" in (g.stdout or "") + (g.stderr or ""):
+                    full += ["--ext", ext]
+            except Exception:
+                pass
 
     tag = "LIVE" if is_live else "LOCAL"
     log("\n" + "=" * 72)
@@ -277,6 +363,14 @@ def main():
         except Exception as e:
             log("\n[中止] 隔离实例启动失败：%s" % e)
             return 5
+        # 探测本次实例的真实扩展 ID（加载 dist/ 后 ID 随路径变化）
+        _det = detect_ext_id(a.port)
+        if _det:
+            if _det != a.ext:
+                log("[隔离] 扩展 ID 自动探测：%s → %s" % (a.ext, _det))
+            a.ext = _det
+        else:
+            log("[隔离] ⚠️ 扩展 ID 探测失败，沿用默认 %s（套件可能全灭）" % a.ext)
     else:
         rc = subprocess.call([sys.executable, os.path.join(TOOLS, "vr-session.py"),
                               "ensure", "--reason", a.reason])

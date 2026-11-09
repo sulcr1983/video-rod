@@ -26,7 +26,12 @@ const DIST = path.join(ROOT, 'dist');
 const DRY = process.argv.includes('--dry-run');
 
 /** 允许带进 dist 的目录（整目录递归拷贝；_locales 以 _ 开头，一并列出） */
-const ALLOW_DIRS = ['css', 'img', 'js', 'lib', '_locales', 'catch-script'];
+const ALLOW_DIRS = ['css', 'img', 'js', 'lib', 'catch-script'];
+
+/** _locales 只带中英双语（2026-11-09 苏哥定）。
+ *  11 种语言 = 308 KB（解压后），发布包多占 ~200 KB；
+ *  裁到 en + zh_CN 后仍满足 manifest.default_locale=en 的回退要求。 */
+const ALLOW_LOCALES = ['en', 'zh_CN'];
 
 /** 允许带进 dist 的根文件 */
 const ALLOW_ROOT_FILES = ['manifest.json'];
@@ -89,6 +94,21 @@ function main() {
       process.exit(1);
     }
     walk(abs, dir, files);
+  }
+
+  // _locales：只带中英双语（其余 9 种语言不进包）
+  const localesDir = path.join(ROOT, '_locales');
+  if (!fs.existsSync(localesDir)) {
+    console.error('✗ 缺少必需目录：_locales');
+    process.exit(1);
+  }
+  for (const loc of ALLOW_LOCALES) {
+    const abs = path.join(localesDir, loc);
+    if (!fs.existsSync(abs)) {
+      console.error(`✗ 缺少语言包：_locales/${loc}`);
+      process.exit(1);
+    }
+    walk(abs, path.join('_locales', loc), files);
   }
 
   const total = files.reduce((n, f) => n + f.size, 0);
