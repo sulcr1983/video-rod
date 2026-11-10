@@ -2148,3 +2148,22 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
 - **影响**：`js/library/{site-registry.js,app.js,site-name-fill.js}`、`library.html`、`tools/test-site-name.js` + 新增 3 个脚本 / 2 份报告。
 - **验收**：Edge 157 有头真机（隔离 profile 9480）——F4 首轮 `scanned=3 / learned=3 / failed=0`，自动得到「一点资讯 / 4k壁纸 / 百变桌面」；`vrSiteNames` 由 1 条变 4 条（解除诊断报告 REVIEW 项）；左栏「其他站点」展开后三个裸域名全部消失、原有 6 个站名不变；截图 `deliverables/assets/2026-11-10-site-name-fill.png`。离线全量 Node 套件 28/28、`test-site-name` 92/92、`test-site-name-fill` 27/27。详见 `deliverables/reviews/2026-11-10-站点名自动补齐实施.md`。
 - **事故留档**：收尾时发现并发会话把根目录 `library.html` 写成 45360 字节全 NUL 文件（100%），已从完好的 `dist/library.html` 恢复并补回脚本引用，坏文件备份在 `.tmp-probe/library.html.corrupt-nul.bak`。属多会话并发写共享壳文件风险，非本功能缺陷。
+
+---
+
+## ADR-078 媒体库入口必须主动告知：三层引导 + 收藏夹一键（2026-11-10）
+
+- **日期**：2026-11-10 ｜ **状态**：✅ 已实施并实机验收（v2.7.2.2；qa-install-gate 17/17 + qa-lib-intro 16/16，详见 DELIVERABLES「媒体库入口引导 · 已实施」行） ｜ **触发**：苏哥「发现一个问题，大家不知道媒体库在哪儿……要让大家先用起来，要解决媒体库的问题！首先在安装之后，让人复制媒体库的地址到浏览器收藏夹打开！然后在点击打开扩展时候 大字！弹出媒体库和添加媒体库地址到收藏夹！」
+- **诊断（真因不是「入口太深」）**：`install.html` 是 `onInstalled(reason==='install')` 自动打开的欢迎页，整页只有四条能力、隐私政策、免责声明、反馈入口，**零处提到媒体库存在**；`popup.html` 里媒体库只是顶栏第 3 个 16px 灰图标，与「设置」「侧边栏」视觉同级。用户装完形成的认知就是「这扩展=点一下下个文件」，媒体库（真正能搜能筛能预览的主界面）从未被介绍过。
+- **决策**：三层引导，缺一不可
+  1. **装完那一眼（install.html）**：四条能力下方插金色大卡，34px 大字「媒体库，在另一个页面里」+ 地址条（可复制）+「打开媒体库」/「加入收藏夹」两按钮。核心要说清「它不是那个小弹窗，弹窗一关就没了」。
+  2. **点开图标（popup）**：暗色蒙层 + 26px 金字卡（380 宽 popup 下的最大可读字号），标题「素材库在这」，同样两个动作。**只弹有限次**：完成任一动作即永久静默；都没做最多 3 次后自动静默。右下留「我知道了，别再提示」，不挡主流程。
+  3. **长期入口**：顶栏灰图标改金色胶囊「媒体库」（带图标+文字），跟随现有 `libraryEnabled` 开关，**不新增设置项**。
+- **技术前提（已实机验证，非推测）**：Edge 156 隔离实例跑两枚探针（`tools/probe-bookmark-ext.py` / `tools/probe-bookmark-popup.py`）——
+  - 扩展在 **popup 上下文**可调 `chrome.bookmarks.create` 写入 `chrome-extension://` 地址，且**不需要 userGesture**（Q4 无手势创建成功）；
+  - 写入后 `bookmarks.get` 能读回，URL 正确（真落盘，非假成功）；
+  - 收藏栏节点 id = `1`（Edge 实测；Chrome 同规范）。
+- **踩到的坑（必须自己拦）**：连续两次 `create` 会产生**两条一模一样的书签**，浏览器不查重。所以实现时必须先 `bookmarks.search({url})`，已存在则按钮显示「✓ 已在收藏夹」且不再写入。
+- **顺带查出的真 bug**：`popup.html` 中 `id="vrOpenLibrary"` 写了两次（顶栏图标第 63 行、工具抽屉「资源库」按钮第 371 行）。`getElementById` 只返回第一个，导致 `applyLibraryVisibility()` 只能隐藏顶栏那个，**设置里关掉「启用媒体库」后抽屉里的「资源库」按钮依然显示**。实施时需给抽屉那个改名（如 `vrOpenLibraryDrawer`）。
+- **不改的东西**：嗅探、下载、命名、库页本体一行不动；只加引导层 + 一个按钮样式。风险面极小。
+- **产物**：`deliverables/prototypes/library-entry-guide-v1.html`（三场景可点原型，4 张验收截图 0 报错）、两枚探针脚本。

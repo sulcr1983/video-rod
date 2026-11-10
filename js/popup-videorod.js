@@ -252,9 +252,15 @@
         });
     }
 
+    /* 媒体库入口跟随「启用媒体库」开关一起显示/隐藏。
+     * 注意要连抽屉里那个一起管——历史上两处共用 vrOpenLibrary 一个 id，
+     * getElementById 只认第一个，导致关掉开关后抽屉按钮照旧显示（ADR-078 已修）。 */
     function applyLibraryVisibility() {
-        var b = el('vrOpenLibrary');
-        if (b) { b.style.display = settings.libraryEnabled === false ? 'none' : ''; }
+        var hide = settings.libraryEnabled === false;
+        ['vrOpenLibrary', 'vrOpenLibraryDrawer', 'vrOpenLibrarySettings'].forEach(function (id) {
+            var b = el(id);
+            if (b) { b.style.display = hide ? 'none' : ''; }
+        });
     }
 
     function syncSettingsUI() {
@@ -2428,10 +2434,155 @@
             tip('打开媒体库失败：' + e);
         }
     }
-    ['vrOpenLibrary', 'vrOpenLibrarySettings'].forEach(function (id) {
+    ['vrOpenLibrary', 'vrOpenLibrarySettings', 'vrOpenLibraryDrawer'].forEach(function (id) {
         var b = document.getElementById(id);
         if (b) { b.addEventListener('click', openMediaLibrary); }
     });
+
+    /* ==========================================================
+     * 媒体库首次引导（ADR-078）
+     *
+     * 起因：用户不知道媒体库在哪。装完欢迎页会讲一次，但很多人直接关掉；
+     * 点开扩展图标时再用大字说一遍，才算真的"先让大家用起来"。
+     *
+     * 弹出策略（苏哥授权由我定）：
+     *   · 完成任一动作（打开 / 加收藏 / 我知道了）→ 永久静默；
+     *   · 什么都没做 → 最多弹 3 次，之后自动静默，不骚扰。
+     *   为什么不是"每次都弹"：天天挡一次会让人讨厌这个功能，反而更不用它。
+     *   为什么不是"只弹一次"：有人第一次手快关掉，再也没机会知道。
+     *
+     * 书签写入必须查重：实测连点两次会真的产生两条一样的书签
+     * （见 tools/probe-bookmark-popup.py 的 Q3），浏览器不查重。
+     * ========================================================== */
+    var LIB_INTRO_KEY = 'vrLibIntroSeen';   // 已看过次数
+    var LIB_INTRO_MAX = 3;
+    var LIB_BM_TITLE = '媒体库 · 苏哥的钓鱼竿';
+
+    function libUrl() {
+        try { return chrome.runtime.getURL('library.html'); } catch (e) { return ''; }
+    }
+
+    function bindLibraryIntro() {
+        var box = document.getElementById('vrLibIntro');
+        if (!box) { return; }
+
+        var url = libUrl();
+        var openBtn = document.getElementById('vrLiOpen');
+        var bmBtn = document.getElementById('vrLiBookmark');
+        var skipBtn = document.getElementById('vrLiSkip');
+
+        function hide() { box.hidden = true; }
+
+        /* 标记已引导过：完成任一动作都算，之后永不再弹 */
+        function markDone() {
+            try { chrome.storage.local.set({ vrLibIntroDone: true }); } catch (e) { /* 忽略 */ }
+        }
+
+        function setBmDone() {
+            if (!bmBtn) { return; }
+            bmBtn.textContent = '✓ 已在收藏夹';
+            bmBtn.classList.add('done');
+            bmBtn.dataset.done = '1';
+        }
+
+        /* 打开媒体库：独立窗口（1280×900），关掉也一直在 */
+        if (openBtn) {
+            openBtn.addEventListener('click', function () {
+                markDone();
+                hide();
+                openMediaLibrary();
+            });
+        }
+
+        /* 加收藏夹：先 search 查重 → 没有再 create → 落到书签栏(id=1) */
+        if (bmBtn) {
+            var api = (typeof chrome !== 'undefined') ? chrome.bookmarks : null;
+
+            if (!api || typeof api.create !== 'function') {
+                bmBtn.textContent = '浏览器未授权书签';
+                bmBtn.disabled = true;
+            } else {
+                /* 进 popup 先查一次：已收藏就直接显示终态 */
+                try {
+                    api.search({ url: url }, function (items) {
+                        if (chrome.runtime.lastError) { return; }
+                        if (items && items.length) { setBmDone(); }
+                    });
+                } catch (e) { /* 忽略 */ }
+
+                bmBtn.addEventListener('click', function () {
+                    if (bmBtn.dataset.done === '1') { return; }   // 已加过，不再写第二条
+
+                    function doCreate() {
+                        try {
+                            api.create({ parentId: '1', title: LIB_BM_TITLE, url: url }, function () {
+                                var err = chrome.runtime.lastError;
+                                if (err) {
+                                    bmBtn.textContent = '添加失败，可手动加';
+                                    tip('加书签失败：' + err.message);
+                                    return;
+                                }
+                                setBmDone();
+                                markDone();
+                                tip('已放进收藏夹栏，以后点一下就进来');
+                                setTimeout(hide, 900);
+                            });
+                        } catch (e) {
+                            bmBtn.textContent = '添加失败，可手动加';
+                            tip('加书签失败：' + e.message);
+                        }
+                    }
+
+                    try {
+                        api.search({ url: url }, function (items) {
+                            if (chrome.runtime.lastError) { doCreate(); return; }
+                            if (items && items.length) {
+                                setBmDone();
+                                markDone();
+                                tip('这个地址已经在收藏夹里了');
+                                setTimeout(hide, 700);
+                                return;
+                            }
+                            doCreate();
+                        });
+                    } catch (e) { doCreate(); }
+                });
+            }
+        }
+
+        /* 我知道了：永久静默 */
+        if (skipBtn) {
+            skipBtn.addEventListener('click', function () {
+                markDone();
+                hide();
+            });
+        }
+
+        /* 点蒙层空白处也关掉（不标记 done，计入次数，下次还可能提示） */
+        box.addEventListener('click', function (e) {
+            if (e.target === box) { hide(); }
+        });
+
+        /* 决定这次弹不弹 */
+        try {
+            chrome.storage.local.get(['vrLibIntroDone', LIB_INTRO_KEY], function (res) {
+                if (res && res.vrLibIntroDone) { return; }          // 已完成过，永不弹
+
+                var seen = (res && Number(res[LIB_INTRO_KEY])) || 0;
+                if (seen >= LIB_INTRO_MAX) { return; }              // 弹够次数了，静默
+
+                try {
+                    var o = {};
+                    o[LIB_INTRO_KEY] = seen + 1;
+                    chrome.storage.local.set(o);
+                } catch (e) { /* 忽略 */ }
+
+                box.hidden = false;
+            });
+        } catch (e) { /* storage 不可用时不弹，宁可少提示也不要报错 */ }
+    }
+
+    bindLibraryIntro();
 
     /* 顶栏「本页图片清单」：把侧边栏切到 image.html 再打开。
      * 与 vrSidePanel 的区别：那个只是把当前 popup 挪到侧边栏，

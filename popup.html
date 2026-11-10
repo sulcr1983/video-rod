@@ -60,13 +60,14 @@
           <path d="M3.5 17.5 L9 12.5 L13 16 L16.5 13 L20.5 17" />
         </svg>
       </button>
-      <button class="iconbtn" id="vrOpenLibrary" title="媒体库">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <button class="iconbtn libpill" id="vrOpenLibrary" title="媒体库（独立页面，可放收藏夹）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
           <rect x="3" y="3" width="7" height="7" rx="1" />
           <rect x="14" y="3" width="7" height="7" rx="1" />
           <rect x="3" y="14" width="7" height="7" rx="1" />
           <rect x="14" y="14" width="7" height="7" rx="1" />
         </svg>
+        <span class="libpill-t">媒体库</span>
       </button>
       <button class="iconbtn" id="vrSidePanel" title="在浏览器侧边栏打开">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -368,7 +369,7 @@
         <button id="enable" data-i18n="pause" title="暂停/恢复嗅探">暂停嗅探</button>
         <button id="popup" data-i18n="popup" title="在独立窗口打开">独立窗口</button>
         <button id="currentPage" data-i18n="currentPage" title="切到当前页" class="wide">切到当前页</button>
-        <button id="vrOpenLibrary" go="library.html" title="打开资源库" class="wide">资源库</button>
+        <button id="vrOpenLibraryDrawer" go="library.html" title="打开资源库" class="wide">资源库</button>
         <button id="Options" go="options.html" data-i18n="settings" title="完整设置页" class="wide">完整设置页</button>
         <button id="search" class="firefoxHideScript wide" type="script" data-i18n="deepSearch" title="深度搜索">深度搜索</button>
         <button id="catch" class="firefoxHideScript wide" type="script" data-i18n="cacheCapture" title="缓存捕捉">缓存捕捉</button>
@@ -380,6 +381,29 @@
     <div class="dirmenu" id="vrDirMenu"></div>
 
     <div id="TipsFixed">~</div>
+
+    <!-- ============ 媒体库首次引导（ADR-078） ============
+         用户不知道媒体库在哪 → 点开扩展先用大字告知一次。
+         只弹有限次：完成任一动作（打开/加收藏/知道了）即永久静默；
+         都没做最多弹 3 次后自动静默，避免骚扰。
+         逻辑在 popup-videorod.js 的 bindLibraryIntro()。 -->
+    <div class="libintro" id="vrLibIntro" hidden>
+      <div class="li-card">
+        <span class="li-kick">第一次用 · 先认个门</span>
+        <h3 class="li-h">素材库<em>在这</em></h3>
+        <p class="li-p">
+          你下载的东西全进这里：能搜、能筛、能预览、能溯源。<br>
+          它是<b>一个独立页面</b>，不是这个弹窗——弹窗一关就没了。
+        </p>
+        <div class="li-acts">
+          <button class="li-btn li-gold" id="vrLiOpen" type="button">打开媒体库</button>
+          <button class="li-btn li-line" id="vrLiBookmark" type="button">把媒体库放进收藏夹</button>
+        </div>
+        <div class="li-skip">
+          <button id="vrLiSkip" type="button">我知道了，别再提示</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="lib/base64.js"></script>

@@ -1856,3 +1856,199 @@ body.popupBody {
 #down { margin-top: auto; }
 
 /* type-scale-bumped */
+
+/* ==========================================================================
+   媒体库入口：顶栏金色胶囊 + 首次引导蒙层（ADR-078，2026-11-10）
+   起因：用户不知道媒体库在哪。原来只是第 3 个 16px 灰图标，
+   与「设置」「侧边栏」视觉同级，没人认得出。
+   ========================================================================== */
+
+/* ---------- 顶栏金色胶囊 ---------- */
+/* 覆盖 .iconbtn 的正方形尺寸，改成「图标 + 文字」的胶囊。
+   380px 宽下顶栏必须留得下：胶囊 ~74px，其余 4 个图标各 26px，标题仍有余量。 */
+#vrOpenLibrary.libpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  height: 24px;
+  padding: 0 8px 0 6px;
+  border-radius: 20px;
+  border: 1px solid var(--vr-accent);
+  background: var(--vr-accent-weak);
+  color: var(--vr-accent);
+  flex: none;
+}
+
+#vrOpenLibrary.libpill:hover {
+  background: var(--vr-accent);
+  color: #17130D;
+  border-color: var(--vr-accent);
+}
+
+#vrOpenLibrary.libpill svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.libpill-t {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: .02em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* ---------- 首次引导蒙层 ---------- */
+.libintro {
+  position: fixed;
+  inset: 0;
+  /* 必须压过猫抓原生提示 #TipsFixed（z-index: 9999）——
+     实测 9000 时「还没闻到味儿~」灰条会浮在蒙层上遮住大字标题 */
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(6, 5, 4, .84);
+  backdrop-filter: blur(2px);
+  animation: liFade .18s ease both;
+}
+
+.libintro[hidden] {
+  display: none;
+}
+
+@keyframes liFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.li-card {
+  width: 100%;
+  padding: 22px 20px 16px;
+  border-radius: 13px;
+  border: 1px solid #4A3B22;
+  background:
+    radial-gradient(320px 150px at 20% 0%, rgba(232, 176, 75, .16), transparent 70%),
+    linear-gradient(180deg, #1E1A16, #131110);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, .7);
+  animation: liRise .22s cubic-bezier(.2, .8, .3, 1) both;
+}
+
+@keyframes liRise {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.li-kick {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #4A3B22;
+  background: var(--vr-accent-weak);
+  color: var(--vr-accent);
+  font-size: 10.5px;
+  letter-spacing: .06em;
+}
+
+/* 大字：26px。380px popup 里再大就断行难看，这是能压住版面的最大档 */
+.li-h {
+  margin: 0 0 8px;
+  font-size: 26px;
+  font-weight: 720;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  color: var(--vr-text);
+}
+
+.li-h em {
+  font-style: normal;
+  color: var(--vr-accent);
+}
+
+.li-p {
+  margin: 0 0 15px;
+  font-size: 12.5px;
+  line-height: 1.68;
+  color: var(--vr-text-dim);
+}
+
+.li-p b {
+  color: var(--vr-text);
+  font-weight: 650;
+}
+
+.li-acts {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.li-btn {
+  width: 100%;
+  padding: 11px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: .15s;
+  border: 1px solid transparent;
+}
+
+.li-gold {
+  background: var(--vr-accent);
+  color: #17130D;
+  border-color: var(--vr-accent);
+}
+
+.li-gold:hover {
+  background: var(--vr-accent-strong);
+}
+
+.li-line {
+  background: transparent;
+  color: var(--vr-accent);
+  border-color: #4A3B22;
+}
+
+.li-line:hover {
+  background: var(--vr-accent-weak);
+  border-color: var(--vr-accent);
+}
+
+.li-btn.done {
+  background: #132A21;
+  border-color: #24513C;
+  color: var(--vr-ok);
+  cursor: default;
+}
+
+.li-btn.done:hover {
+  background: #132A21;
+}
+
+.li-skip {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vr-line);
+  text-align: center;
+}
+
+.li-skip button {
+  background: none;
+  border: 0;
+  color: var(--vr-text-mute);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.li-skip button:hover {
+  color: var(--vr-text-dim);
+}

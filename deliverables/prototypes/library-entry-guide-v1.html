@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>媒体库入口引导 · 方案 v1</title>
+  <style>
+    :root {
+      --bg: #0B0A09;
+      --bg2: #100F0E;
+      --card: #191715;
+      --card-hi: #241F19;
+      --line: #2B2620;
+      --line-gold: #4A3B22;
+      --text: #EFEAE0;
+      --dim: #B0A89A;
+      --mute: #8C8478;
+      --gold: #E8B04B;
+      --gold-hi: #F0C066;
+      --gold-weak: #2C2418;
+      --ink: #17130D;
+      --ok: #4FBF8B;
+      --danger: #E86466;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    /* ============ 顶栏 ============ */
+    .bar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+      padding: 13px 26px;
+      background: rgba(11, 10, 9, .93);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .bar-l {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 0;
+    }
+
+    .mark {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
+      border: 1px solid var(--line-gold);
+      border-radius: 5px;
+      color: var(--gold);
+      font-size: 11.5px;
+      letter-spacing: .1em;
+      background: var(--gold-weak);
+    }
+
+    .bar-l strong {
+      font-size: 14.5px;
+      font-weight: 650;
+      letter-spacing: .01em;
+    }
+
+    .tag {
+      color: var(--mute);
+      font-size: 12px;
+    }
+
+    .seg {
+      display: flex;
+      gap: 3px;
+      padding: 3px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+    }
+
+    .seg button {
+      padding: 7px 15px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--dim);
+      font: inherit;
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: .16s;
+      white-space: nowrap;
+    }
+
+    .seg button:hover {
+      color: var(--text);
+      background: var(--card-hi);
+    }
+
+    .seg button.on {
+      background: var(--gold);
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    /* ============ 布局 ============ */
+    .wrap {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 336px;
+      gap: 30px;
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 30px 26px 70px;
+      align-items: start;
+    }
+
+    @media (max-width:1120px) {
+      .wrap {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.on {
+      display: block;
+      animation: fade .22s ease both;
+    }
+
+    @keyframes fade {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    /* ============ 说明侧栏 ============ */
+    .side {
+      position: sticky;
+      top: 84px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .scard {
+      padding: 15px 17px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+    }
+
+    .scard h4 {
+      margin: 0 0 9px;
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .09em;
+      color: var(--gold);
+      text-transform: uppercase;
+    }
+
+    .scard p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--dim);
+      line-height: 1.68;
+    }
+
+    .scard p+p {
+      margin-top: 8px;
+    }
+
+    .scard b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .scard code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--bg2);
+      border: 1px solid var(--line);
+      color: var(--gold-hi);
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 11.5px;
+    }
+
+    .facts {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .facts li {
+      display: flex;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--dim);
+      line-height: 1.55;
+    }
+
+    .facts li::before {
+      content: "✓";
+      color: var(--ok);
+      font-weight: 700;
+      flex: none;
+    }
+
+    .warnbox {
+      border-color: #4A2A22;
+      background: #1A1210;
+    }
+
+    .warnbox h4 {
+      color: #E8A05B;
+    }
+
+    /* ============ 场景标题 ============ */
+    .scene-h {
+      margin: 0 0 6px;
+      font-size: 19px;
+      font-weight: 650;
+      letter-spacing: .01em;
+    }
+
+    .scene-s {
+      margin: 0 0 22px;
+      font-size: 13px;
+      color: var(--mute);
+    }
+
+    /* ==========================================================
+       场景一：install.html 新增区块
+       ========================================================== */
+    .browser {
+      max-width: 880px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      overflow: hidden;
+      background: var(--bg2);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+    }
+
+    .browser-top {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 14px;
+      background: var(--card);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #3A342C;
+    }
+
+    .browser-url {
+      flex: 1;
+      margin-left: 9px;
+      padding: 4px 11px;
+      border-radius: 6px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      color: var(--mute);
+      font-size: 11px;
+      font-family: ui-monospace, Consolas, monospace;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .page {
+      padding: 30px 40px 40px;
+      background: radial-gradient(900px 380px at 50% -10%, #1A1613 0%, var(--bg2) 62%);
+    }
+
+    .pg-eyebrow {
+      font-size: 11px;
+      letter-spacing: .16em;
+      color: var(--mute);
+      text-transform: uppercase;
+      margin-bottom: 9px;
+    }
+
+    .pg-h1 {
+      margin: 0 0 10px;
+      font-size: 27px;
+      font-weight: 680;
+      letter-spacing: -.01em;
+    }
+
+    .pg-lede {
+      margin: 0 0 22px;
+      font-size: 13.5px;
+      color: var(--dim);
+      max-width: 560px;
+    }
+
+    /* 上面 4 条能力，压缩成一行提示「上面是功能，下面是入口」 */
+    .pg-feats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 9px;
+      margin-bottom: 26px;
+      opacity: .62;
+    }
+
+    .pg-feat {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+    }
+
+    .pg-feat .n {
+      font-size: 10px;
+      color: var(--mute);
+      font-family: ui-monospace, monospace;
+    }
+
+    .pg-feat .t {
+      font-size: 12px;
+      color: var(--dim);
+      margin-top: 3px;
+    }
+
+    /* ---- 新增：媒体库入口大卡 ---- */
+    .gate {
+      position: relative;
+      padding: 26px 28px 24px;
+      border: 1px solid var(--line-gold);
+      border-radius: 14px;
+      background:
+        radial-gradient(520px 200px at 12% 0%, rgba(232, 176, 75, .13), transparent 68%),
+        linear-gradient(180deg, #1C1815, #141210);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, .42);
+    }
+
+    .gate::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: .5;
+    }
+
+    .gate-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--gold);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      margin-bottom: 13px;
+    }
+
+    .gate-badge::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--ink);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: .25;
+      }
+    }
+
+    /* 大字：用户明确要求 */
+    .gate-h {
+      margin: 0 0 9px;
+      font-size: 34px;
+      font-weight: 720;
+      line-height: 1.22;
+      letter-spacing: -.015em;
+    }
+
+    .gate-h em {
+      font-style: normal;
+      color: var(--gold);
+    }
+
+    .gate-sub {
+      margin: 0 0 18px;
+      font-size: 13.5px;
+      color: var(--dim);
+      max-width: 540px;
+      line-height: 1.72;
+    }
+
+    .gate-sub b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* 地址条 */
+    .urlrow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 5px 5px 5px 13px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+    }
+
+    .urlrow .u {
+      flex: 1;
+      min-width: 0;
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      font-size: 12px;
+      color: var(--gold-hi);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      user-select: all;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 7px;
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .15s;
+      white-space: nowrap;
+      padding: 9px 17px;
+    }
+
+    .btn-sm {
+      padding: 7px 13px;
+      font-size: 12px;
+    }
+
+    .btn-gold {
+      background: var(--gold);
+      color: var(--ink);
+    }
+
+    .btn-gold:hover {
+      background: var(--gold-hi);
+    }
+
+    .btn-line {
+      background: transparent;
+      color: var(--gold);
+      border: 1px solid var(--line-gold);
+    }
+
+    .btn-line:hover {
+      background: var(--gold-weak);
+      border-color: var(--gold);
+    }
+
+    .btn-plain {
+      background: var(--card-hi);
+      color: var(--dim);
+      border: 1px solid var(--line);
+    }
+
+    .btn-plain:hover {
+      color: var(--text);
+    }
+
+    .btn.done {
+      background: #132A21;
+      color: var(--ok);
+      border: 1px solid #24513C;
+      cursor: default;
+    }
+
+    .gate-acts {
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .gate-note {
+      margin: 15px 0 0;
+      padding-top: 13px;
+      border-top: 1px dashed var(--line);
+      font-size: 12px;
+      color: var(--mute);
+      line-height: 1.65;
+    }
+
+    .gate-note b {
+      color: var(--dim);
+      font-weight: 600;
+    }
+
+    /* ==========================================================
+       场景二：popup 大字引导
+       ========================================================== */
+    .phone-wrap {
+      display: flex;
+      gap: 34px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .popup {
+      width: 380px;
+      min-width: 380px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 26px 64px rgba(0, 0, 0, .62);
+      position: relative;
+      font-size: 13.5px;
+    }
+
+    .pop-head {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--bg2);
+    }
+
+    .pop-logo {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      background: var(--card-hi);
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      flex: none;
+      color: var(--gold);
+      font-size: 13px;
+    }
+
+    .pop-title {
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .ver {
+      font-size: 10.5px;
+      color: var(--mute);
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      flex: none;
+    }
+
+    .pop-icons {
+      margin-left: auto;
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
+
+    .ibtn {
+      width: 26px;
+      height: 26px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--dim);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .ibtn:hover {
+      background: var(--card-hi);
+      color: var(--text);
+    }
+
+    .sitebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11.5px;
+      color: var(--mute);
+    }
+
+    .sitebar .s {
+      color: var(--gold);
+    }
+
+    .sitebar .pt {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      color: var(--dim);
+    }
+
+    .overview {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11.5px;
+    }
+
+    .ovt {
+      padding: 3px 9px;
+      border-radius: 20px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      color: var(--dim);
+      font-size: 11px;
+    }
+
+    .ovt b {
+      color: var(--text);
+    }
+
+    .ov-dir {
+      margin-left: auto;
+      color: var(--mute);
+      font-size: 11px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+    }
+
+    .tab {
+      padding: 9px 0;
+      color: var(--mute);
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab.on {
+      color: var(--text);
+      border-bottom-color: var(--gold);
+      font-weight: 600;
+    }
+
+    .filters {
+      display: flex;
+      gap: 13px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 11.5px;
+      color: var(--mute);
+    }
+
+    .filters .on {
+      color: var(--text);
+      border-bottom: 1px solid var(--gold);
+      padding-bottom: 2px;
+    }
+
+    .list {
+      padding: 4px 0;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 12px;
+      border-bottom: 1px solid #17140F;
+    }
+
+    .chk {
+      width: 13px;
+      height: 13px;
+      border-radius: 3px;
+      border: 1.5px solid #3A342C;
+      flex: none;
+    }
+
+    .chk.on {
+      background: var(--gold);
+      border-color: var(--gold);
+    }
+
+    .thumb {
+      width: 40px;
+      height: 26px;
+      border-radius: 4px;
+      background: linear-gradient(135deg, #262019, #1A1714);
+      border: 1px solid var(--line);
+      flex: none;
+    }
+
+    .meta {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .meta .t {
+      display: block;
+      font-size: 12px;
+      color: var(--text);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .meta .d {
+      display: block;
+      font-size: 10.5px;
+      color: var(--mute);
+      margin-top: 1px;
+    }
+
+    .downbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--line);
+      background: var(--bg2);
+    }
+
+    .allsel {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      color: var(--dim);
+    }
+
+    .fbtn {
+      padding: 8px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--dim);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .fbtn.primary {
+      margin-left: auto;
+      background: var(--gold);
+      color: var(--ink);
+      border-color: var(--gold);
+      font-weight: 650;
+    }
+
+    /* ---- 引导蒙层 ---- */
+    .mask {
+      position: absolute;
+      inset: 0;
+      background: rgba(6, 5, 4, .82);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 9;
+      transition: opacity .2s;
+    }
+
+    .mask.hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .card {
+      width: 100%;
+      padding: 22px 20px 18px;
+      border: 1px solid var(--line-gold);
+      border-radius: 13px;
+      background:
+        radial-gradient(320px 150px at 20% 0%, rgba(232, 176, 75, .16), transparent 70%),
+        linear-gradient(180deg, #1E1A16, #131110);
+      box-shadow: 0 22px 50px rgba(0, 0, 0, .7);
+      text-align: left;
+    }
+
+    .card-kick {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--gold-weak);
+      border: 1px solid var(--line-gold);
+      color: var(--gold);
+      font-size: 10.5px;
+      letter-spacing: .06em;
+      margin-bottom: 10px;
+    }
+
+    /* 大字：26px，popup 380 宽下的最大可读标题 */
+    .card-h {
+      margin: 0 0 8px;
+      font-size: 26px;
+      font-weight: 720;
+      line-height: 1.2;
+      letter-spacing: -.02em;
+    }
+
+    .card-h em {
+      font-style: normal;
+      color: var(--gold);
+    }
+
+    .card-p {
+      margin: 0 0 15px;
+      font-size: 12.5px;
+      color: var(--dim);
+      line-height: 1.68;
+    }
+
+    .card-p b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .card-acts {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .card-acts .btn {
+      width: 100%;
+      padding: 11px;
+      font-size: 13px;
+    }
+
+    .card-skip {
+      margin-top: 11px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      text-align: center;
+    }
+
+    .card-skip button {
+      background: none;
+      border: 0;
+      color: var(--mute);
+      font: inherit;
+      font-size: 11.5px;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .card-skip button:hover {
+      color: var(--dim);
+    }
+
+    .anno {
+      flex: 1;
+      min-width: 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+
+    .anno-item {
+      display: flex;
+      gap: 10px;
+      padding: 11px 13px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      font-size: 12.5px;
+      color: var(--dim);
+      line-height: 1.62;
+    }
+
+    .anno-item .k {
+      flex: none;
+      width: 19px;
+      height: 19px;
+      border-radius: 50%;
+      background: var(--gold-weak);
+      border: 1px solid var(--line-gold);
+      color: var(--gold);
+      font-size: 10.5px;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+      margin-top: 1px;
+    }
+
+    .anno-item b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ==========================================================
+       场景三：长期入口
+       ========================================================== */
+    .libpill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--gold-weak);
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      font-size: 11.5px;
+      font-weight: 650;
+      cursor: pointer;
+      flex: none;
+    }
+
+    .libpill:hover {
+      background: var(--gold);
+      color: var(--ink);
+    }
+
+    .libpill svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .popup.narrow .pop-icons .ibtn:nth-child(1) {
+      display: none;
+    }
+
+    .dotmark {
+      position: relative;
+    }
+
+    .dotmark::after {
+      content: "";
+      position: absolute;
+      top: 1px;
+      right: 1px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 0 2px var(--bg2);
+    }
+
+    .split {
+      display: flex;
+      gap: 30px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    .cap {
+      margin: 12px 0 0;
+      font-size: 12px;
+      color: var(--mute);
+      text-align: center;
+      max-width: 380px;
+    }
+
+    .cap b {
+      color: var(--dim);
+    }
+
+    .foot {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 0 26px 60px;
+      color: var(--mute);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .foot b {
+      color: var(--dim);
+    }
+  </style>
+</head>
+
+<body>
+
+  <header class="bar">
+    <div class="bar-l">
+      <span class="mark">钓鱼竿</span>
+      <strong>媒体库入口引导</strong>
+      <span class="tag">方案 v1 · 2026-11-10</span>
+    </div>
+    <nav class="seg" id="seg">
+      <button class="on" data-view="v-install">① 装完第一眼</button>
+      <button data-view="v-popup">② 点开图标</button>
+      <button data-view="v-home">③ 长期入口</button>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div>
+
+      <!-- ================= 场景一 ================= -->
+      <section class="view on" id="v-install">
+        <h2 class="scene-h">安装完成后自动打开的欢迎页</h2>
+        <p class="scene-s">现在这页只讲功能、隐私、免责——<b style="color:#E8A05B">一个字没提媒体库在哪</b>。在「四条能力」下面插一块金色大卡，占满视觉重心。</p>
+
+        <div class="browser">
+          <div class="browser-top">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <div class="browser-url">chrome-extension://&lt;扩展ID&gt;/install.html</div>
+          </div>
+
+          <div class="page">
+            <div class="pg-eyebrow">安装完成 · VIDEO ROD</div>
+            <h1 class="pg-h1">苏哥的钓鱼竿 已就位</h1>
+            <p class="pg-lede">刷到的视频和图，一竿收进你的私人素材库</p>
+
+            <div class="pg-feats">
+              <div class="pg-feat">
+                <div class="n">01</div>
+                <div class="t">什么网页都能钓</div>
+              </div>
+              <div class="pg-feat">
+                <div class="n">02</div>
+                <div class="t">存下来就入库</div>
+              </div>
+              <div class="pg-feat">
+                <div class="n">03</div>
+                <div class="t">命名归档按你的规矩</div>
+              </div>
+              <div class="pg-feat">
+                <div class="n">04</div>
+                <div class="t">只在你电脑里跑</div>
+              </div>
+            </div>
+
+            <!-- 新增区块 -->
+            <div class="gate">
+              <div class="gate-badge">先做这一件事</div>
+              <h2 class="gate-h">媒体库，在<em>另一个页面</em>里</h2>
+              <p class="gate-sub">
+                你下载的每个视频、每张图，最后都进这里——能搜、能筛、能预览。
+                它<b>不是那个小弹窗</b>，弹窗一关就没了；媒体库是一个独立网页，
+                关掉也一直在，所以值得放进收藏夹。
+              </p>
+
+              <div class="urlrow">
+                <span class="u" id="u1">chrome-extension://&lt;扩展ID&gt;/library.html</span>
+                <button class="btn btn-sm btn-plain" id="copy1">复制地址</button>
+              </div>
+
+              <div class="gate-acts">
+                <button class="btn btn-gold" id="open1">打开媒体库 →</button>
+                <button class="btn btn-line" id="bm1">加入收藏夹</button>
+              </div>
+
+              <p class="gate-note">
+                <b>放进收藏夹之后</b>：浏览器收藏栏上多一个「媒体库」，以后点一下就进来，
+                不用每次去翻扩展图标。也可以手动复制上面的地址，在收藏夹里「添加网页」粘贴进去。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 场景二 ================= -->
+      <section class="view" id="v-popup">
+        <h2 class="scene-h">点开扩展图标时的大字引导</h2>
+        <p class="scene-s">盖一层暗色蒙层 + 一张金字大卡。标题 26px，是 380 宽 popup 里能放下的最大字号。下面两个按钮就是你要的两件事。</p>
+
+        <div class="phone-wrap">
+          <div>
+            <div class="popup" id="popup2">
+              <div class="pop-head">
+                <div class="pop-logo">🎣</div>
+                <span class="pop-title">苏哥的钓鱼竿</span>
+                <span class="ver">v2.7.2</span>
+                <div class="pop-icons">
+                  <button class="ibtn">⚙</button>
+                  <button class="ibtn">▤</button>
+                  <button class="ibtn">▦</button>
+                  <button class="ibtn">◫</button>
+                </div>
+              </div>
+              <div class="sitebar">
+                <span class="s">B站</span>
+                <span class="pt">某个纪录片 第 3 集</span>
+                <span>嗅探到 12 个</span>
+              </div>
+              <div class="overview">
+                <span class="ovt"><b>8</b> 视频</span>
+                <span class="ovt"><b>4</b> 图片</span>
+                <span class="ov-dir">→ video-rod/</span>
+              </div>
+              <div class="tabs">
+                <span class="tab on">当前页 12</span>
+                <span class="tab">其他页 3</span>
+              </div>
+              <div class="filters">
+                <span class="on">全部 12</span><span>视频 8</span><span>图片 4</span><span>流媒 0</span>
+              </div>
+              <div class="list">
+                <div class="row">
+                  <span class="chk on"></span>
+                  <span class="thumb"></span>
+                  <span class="meta"><span class="t">第3集 蓝鲸.mp4</span><span class="d">1080P · 214 MB</span></span>
+                </div>
+                <div class="row">
+                  <span class="chk"></span>
+                  <span class="thumb"></span>
+                  <span class="meta"><span class="t">第3集 花絮.mp4</span><span class="d">720P · 38 MB</span></span>
+                </div>
+                <div class="row">
+                  <span class="chk"></span>
+                  <span class="thumb"></span>
+                  <span class="meta"><span class="t">封面.jpg</span><span class="d">1920×1080 · 1.2 MB</span></span>
+                </div>
+              </div>
+              <div class="downbar">
+                <span class="allsel"><span class="chk on"></span>全选</span>
+                <button class="fbtn">批量命名</button>
+                <button class="fbtn primary">批量下载 1</button>
+              </div>
+
+              <!-- 引导蒙层 -->
+              <div class="mask" id="mask2">
+                <div class="card">
+                  <span class="card-kick">第一次用 · 先认个门</span>
+                  <h3 class="card-h">素材库<em>在这</em></h3>
+                  <p class="card-p">
+                    你下载的东西全进这里：能搜、能筛、能预览。
+                    它是<b>一个独立页面</b>，不是这个弹窗——弹窗一关就没了。
+                  </p>
+                  <div class="card-acts">
+                    <button class="btn btn-gold" id="open2">打开媒体库</button>
+                    <button class="btn btn-line" id="bm2">把媒体库放进收藏夹</button>
+                  </div>
+                  <div class="card-skip">
+                    <button id="skip2">我知道了，别再提示</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p class="cap">点「打开媒体库」→ 新窗口打开库页；点「放进收藏夹」→ 按钮变 <b>✓ 已在收藏夹</b></p>
+          </div>
+
+          <div class="anno">
+            <div class="anno-item">
+              <span class="k">1</span>
+              <div><b>为什么用蒙层而不是顶部小条</b>——你要的是「大字」。小条会被列表淹没，用户照样找不到；蒙层是唯一能让人停下来看一眼的形式。</div>
+            </div>
+            <div class="anno-item">
+              <span class="k">2</span>
+              <div><b>只弹有限次</b>——不是每次点开都弹。完成任一动作（打开 / 加收藏 / 我知道了）就永久不再弹；都没做的话最多弹 3 次，之后自动静默，不骚扰。</div>
+            </div>
+            <div class="anno-item">
+              <span class="k">3</span>
+              <div><b>不挡主流程</b>——蒙层右下角留一条「我知道了」，随时能关掉去下载。看完这眼就能正常用。</div>
+            </div>
+            <div class="anno-item">
+              <span class="k">4</span>
+              <div><b>收藏夹按钮是真一键</b>——已实测：扩展能在 popup 里直接写书签，连点两次会产生两条重复书签，所以会先查重，加过就显示「已在收藏夹」。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 场景三 ================= -->
+      <section class="view" id="v-home">
+        <h2 class="scene-h">长期入口：顶栏金色胶囊</h2>
+        <p class="scene-s">现在「媒体库」只是顶栏第 3 个 16px 灰色小图标，和「设置」「侧边栏」长得一样，没人认得出。改成带文字的金色胶囊，一眼可辨。</p>
+
+        <div class="split">
+          <div>
+            <div class="popup narrow">
+              <div class="pop-head">
+                <div class="pop-logo">🎣</div>
+                <span class="pop-title">钓鱼竿</span>
+                <div class="pop-icons">
+                  <button class="ibtn">▤</button>
+                  <span class="libpill">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                      stroke-linecap="round">
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                      <rect x="14" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                    媒体库
+                  </span>
+                  <button class="ibtn">⚙</button>
+                  <button class="ibtn">◫</button>
+                </div>
+              </div>
+              <div class="sitebar">
+                <span class="s">B站</span>
+                <span class="pt">某个纪录片 第 3 集</span>
+                <span>嗅探到 12 个</span>
+              </div>
+              <div class="overview">
+                <span class="ovt"><b>8</b> 视频</span>
+                <span class="ovt"><b>4</b> 图片</span>
+                <span class="ov-dir">→ video-rod/</span>
+              </div>
+              <div class="tabs">
+                <span class="tab on">当前页 12</span>
+                <span class="tab">其他页 3</span>
+              </div>
+              <div class="filters">
+                <span class="on">全部 12</span><span>视频 8</span><span>图片 4</span><span>流媒 0</span>
+              </div>
+              <div class="list">
+                <div class="row">
+                  <span class="chk on"></span>
+                  <span class="thumb"></span>
+                  <span class="meta"><span class="t">第3集 蓝鲸.mp4</span><span class="d">1080P · 214 MB</span></span>
+                </div>
+                <div class="row">
+                  <span class="chk"></span>
+                  <span class="thumb"></span>
+                  <span class="meta"><span class="t">第3集 花絮.mp4</span><span class="d">720P · 38 MB</span></span>
+                </div>
+              </div>
+              <div class="downbar">
+                <span class="allsel"><span class="chk on"></span>全选</span>
+                <button class="fbtn">批量命名</button>
+                <button class="fbtn primary">批量下载 1</button>
+              </div>
+            </div>
+            <p class="cap"><b>推荐</b>：顶栏放金色胶囊，其余图标压缩到 26px。<br>380 宽实测排得下，标题还剩约 148px。</p>
+          </div>
+
+          <div class="anno">
+            <div class="anno-item">
+              <span class="k">1</span>
+              <div><b>和引导层分工</b>——引导层负责「第一次知道」，胶囊负责「以后随时能找到」。两个都要，只做一个都不够。</div>
+            </div>
+            <div class="anno-item">
+              <span class="k">2</span>
+              <div><b>顺手修一个真 bug</b>——<code>popup.html</code> 里 <code>vrOpenLibrary</code> 这个 id 写了两遍（顶栏图标 + 工具抽屉里那个「资源库」按钮）。<code>getElementById</code> 只认第一个，导致「设置里关掉媒体库入口」的开关只关得掉顶栏那个，抽屉里那个照旧显示。</div>
+            </div>
+            <div class="anno-item">
+              <span class="k">3</span>
+              <div><b>不新增设置项</b>——这个胶囊跟随现有「启用媒体库」开关，关掉就一起隐藏，不再加新开关，避免设置页越堆越多。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ================= 侧栏 ================= -->
+    <aside class="side">
+      <div class="scard">
+        <h4>问题根因</h4>
+        <p>不是「入口藏得深」，是<b>从来没有告诉过用户有这么个东西</b>。</p>
+        <p>装完打开的欢迎页整页讲功能、隐私、免责，<b>零处提到媒体库</b>；popup 里它只是第 3 个灰色小图标。用户自然以为这扩展就是「点一下、下个文件」。</p>
+      </div>
+
+      <div class="scard">
+        <h4>技术前提（已实测）</h4>
+        <ul class="facts">
+          <li>扩展能在 popup 里直接写书签，<b>无需用户手势</b></li>
+          <li>能写入 <code>chrome-extension://</code> 地址，并读回验证</li>
+          <li>收藏栏节点 id 为 <code>1</code>（Edge 实测，Chrome 一致）</li>
+          <li>按 URL 查重可用，避免重复添加</li>
+        </ul>
+      </div>
+
+      <div class="scard warnbox">
+        <h4>踩到的坑</h4>
+        <p>连点两次「加入收藏夹」会真的产生<b>两条一模一样的书签</b>——浏览器不查重。所以必须自己先 <code>search</code> 再决定加不加，已加过就显示「已在收藏夹」。</p>
+      </div>
+
+      <div class="scard">
+        <h4>三层分工</h4>
+        <p><b>① 装完那一眼</b>：欢迎页大卡，讲清楚「在哪 + 怎么收藏」。</p>
+        <p><b>② 点开图标</b>：大字蒙层，完成首次认知。</p>
+        <p><b>③ 长期</b>：顶栏金色胶囊 + 收藏夹书签，两个常驻入口。</p>
+      </div>
+
+      <div class="scard">
+        <h4>不改的东西</h4>
+        <p>嗅探、下载、命名、库页本身一行不动。只加引导层和一个按钮样式，<b>风险面极小</b>。</p>
+      </div>
+    </aside>
+  </main>
+
+  <div class="foot">
+    <b>可点的部分</b>：三个 tab 切换场景；「复制地址」「加入收藏夹」「打开媒体库」「我知道了」都有真实反馈。
+    收藏夹按钮点一次会变成「✓ 已在收藏夹」，再点无效——这就是防重复的实际表现。
+  </div>
+
+  <script>
+    // ---- tab 切换 ----
+    document.getElementById('seg').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-view]');
+      if (!b) return;
+      this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      document.querySelectorAll('.view').forEach(function (v) {
+        v.classList.toggle('on', v.id === b.dataset.view);
+      });
+    });
+
+    // ---- 复制地址 ----
+    function wireCopy(btnId, srcId) {
+      var btn = document.getElementById(btnId);
+      var src = document.getElementById(srcId);
+      if (!btn || !src) return;
+      btn.addEventListener('click', function () {
+        var t = src.textContent.trim();
+        var done = function () {
+          btn.textContent = '已复制';
+          setTimeout(function () { btn.textContent = '复制地址'; }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t).then(done).catch(function () {
+            var ta = document.createElement('textarea');
+            ta.value = t; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); done(); } catch (e) { }
+            ta.remove();
+          });
+        } else {
+          done();
+        }
+      });
+    }
+    wireCopy('copy1', 'u1');
+
+    // ---- 加收藏夹：模拟「加过一次就不再重复」----
+    function wireBookmark(btnId) {
+      var btn = document.getElementById(btnId);
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        if (btn.dataset.done === '1') return;
+        btn.dataset.done = '1';
+        btn.textContent = '✓ 已在收藏夹';
+        btn.classList.remove('btn-line', 'btn-gold');
+        btn.classList.add('done');
+      });
+    }
+    wireBookmark('bm1');
+    wireBookmark('bm2');
+
+    // ---- 打开媒体库：原型里给个 toast 感 ----
+    function wireOpen(btnId) {
+      var btn = document.getElementById(btnId);
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        var old = btn.textContent;
+        btn.textContent = '正在打开…';
+        setTimeout(function () {
+          btn.textContent = old;
+          alert('（原型演示）实际会新开一个窗口，直接进媒体库页面。');
+        }, 420);
+      });
+    }
+    wireOpen('open1');
+    wireOpen('open2');
+
+    // ---- 我知道了 ----
+    var skip = document.getElementById('skip2');
+    if (skip) {
+      skip.addEventListener('click', function () {
+        document.getElementById('mask2').classList.add('hide');
+      });
+    }
+
+    // 蒙层关掉后，点顶栏那个「▦」可以再看一次
+    var icons = document.querySelectorAll('#popup2 .ibtn');
+    if (icons.length > 2) {
+      icons[2].addEventListener('click', function () {
+        document.getElementById('mask2').classList.remove('hide');
+      });
+    }
+  </script>
+</body>
+
+</html>
