@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>怎么把这个扩展装进浏览器 · 苏哥的钓鱼竿</title>
+    <style>
+        :root {
+            --stage-950: #0B0A09;
+            --stage-900: #100F0E;
+            --stage-800: #1A1815;
+            --stage-700: #26231E;
+            --gold: #E8B04B;
+            --gold-dim: #B98A32;
+            --paper: #F2EDE4;
+            --paper-70: rgba(242, 237, 228, .72);
+            --paper-45: rgba(242, 237, 228, .46);
+            --line: rgba(242, 237, 228, .11);
+            --ok: #57B87A;
+            --warn: #E07A5F;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            -webkit-text-size-adjust: 100%;
+        }
+
+        body {
+            margin: 0;
+            background:
+                radial-gradient(1100px 500px at 50% -12%, rgba(232, 176, 75, .07), transparent 62%),
+                var(--stage-950);
+            color: var(--paper);
+            font: 15px/1.75 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            padding: 0 20px 90px;
+        }
+
+        .wrap {
+            max-width: 780px;
+            margin: 0 auto;
+        }
+
+        /* ---------- 头部 ---------- */
+        header {
+            padding: 62px 0 40px;
+            text-align: center;
+            position: relative;
+        }
+
+        .logo {
+            width: 76px;
+            height: 76px;
+            margin: 0 auto 22px;
+            border-radius: 20px;
+            background: linear-gradient(160deg, #241F19, #14120F);
+            border: 1px solid rgba(232, 176, 75, .22);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
+        }
+
+        .logo img {
+            width: 46px;
+            height: 46px;
+        }
+
+        .kicker {
+            font-size: 11px;
+            letter-spacing: .22em;
+            text-transform: uppercase;
+            color: var(--gold-dim);
+            margin: 0 0 14px;
+        }
+
+        h1 {
+            font-size: 30px;
+            line-height: 1.35;
+            margin: 0 0 14px;
+            letter-spacing: -.4px;
+        }
+
+        .lede {
+            color: var(--paper-70);
+            font-size: 15px;
+            margin: 0 auto;
+            max-width: 560px;
+        }
+
+        .ver {
+            display: inline-block;
+            margin-top: 18px;
+            font-size: 12px;
+            color: var(--paper-45);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            padding: 3px 12px;
+        }
+
+        /* ---------- 卡片 ---------- */
+        .card {
+            background: var(--stage-900);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 26px 28px;
+            margin: 0 0 20px;
+        }
+
+        .card-hero {
+            border-color: rgba(232, 176, 75, .26);
+            background: linear-gradient(170deg, rgba(232, 176, 75, .07), var(--stage-900) 46%);
+        }
+
+        .card h2 {
+            font-size: 17px;
+            margin: 0 0 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .num {
+            flex: 0 0 auto;
+            width: 24px;
+            height: 24px;
+            border-radius: 7px;
+            background: rgba(232, 176, 75, .14);
+            color: var(--gold);
+            font-size: 12px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .card p {
+            margin: 8px 0 0;
+            color: var(--paper-70);
+        }
+
+        .card p:first-of-type {
+            margin-top: 12px;
+        }
+
+        /* ---------- 步骤 ---------- */
+        .steps {
+            counter-reset: st;
+            list-style: none;
+            padding: 0;
+            margin: 18px 0 0;
+        }
+
+        .steps > li {
+            counter-increment: st;
+            position: relative;
+            padding: 0 0 22px 46px;
+        }
+
+        .steps > li::before {
+            content: counter(st);
+            position: absolute;
+            left: 0;
+            top: 1px;
+            width: 28px;
+            height: 28px;
+            border-radius: 9px;
+            background: var(--stage-800);
+            border: 1px solid rgba(232, 176, 75, .3);
+            color: var(--gold);
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .steps > li::after {
+            content: "";
+            position: absolute;
+            left: 14px;
+            top: 34px;
+            bottom: 4px;
+            width: 1px;
+            background: linear-gradient(var(--line), transparent);
+        }
+
+        .steps > li:last-child {
+            padding-bottom: 0;
+        }
+
+        .steps > li:last-child::after {
+            display: none;
+        }
+
+        .st-title {
+            font-weight: 600;
+            margin: 0 0 5px;
+            font-size: 15px;
+        }
+
+        .st-body {
+            margin: 0;
+            color: var(--paper-70);
+            font-size: 14px;
+        }
+
+        /* ---------- 地址块 ---------- */
+        .path {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 11px;
+            background: var(--stage-800);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 11px 13px;
+        }
+
+        .path code {
+            flex: 1;
+            font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+            color: var(--gold);
+            word-break: break-all;
+        }
+
+        .copy {
+            flex: 0 0 auto;
+            border: 1px solid rgba(232, 176, 75, .34);
+            background: rgba(232, 176, 75, .1);
+            color: var(--gold);
+            font: inherit;
+            font-size: 12px;
+            padding: 5px 12px;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: .15s;
+        }
+
+        .copy:hover {
+            background: rgba(232, 176, 75, .18);
+        }
+
+        .copy.ok {
+            border-color: var(--ok);
+            background: rgba(87, 184, 122, .14);
+            color: var(--ok);
+        }
+
+        kbd {
+            font: 12px/1 ui-monospace, Consolas, monospace;
+            background: var(--stage-700);
+            border: 1px solid var(--line);
+            border-bottom-width: 2px;
+            border-radius: 5px;
+            padding: 3px 7px;
+            color: var(--paper);
+            white-space: nowrap;
+        }
+
+        .url {
+            color: var(--gold);
+            text-decoration: none;
+            border-bottom: 1px dashed rgba(232, 176, 75, .4);
+        }
+
+        .url:hover {
+            border-bottom-style: solid;
+        }
+
+        /* ---------- 提示条 ---------- */
+        .note {
+            display: flex;
+            gap: 11px;
+            margin-top: 16px;
+            padding: 13px 15px;
+            border-radius: 10px;
+            font-size: 13.5px;
+            line-height: 1.65;
+            background: rgba(232, 176, 75, .07);
+            border: 1px solid rgba(232, 176, 75, .2);
+            color: var(--paper-70);
+        }
+
+        .note.danger {
+            background: rgba(224, 122, 95, .08);
+            border-color: rgba(224, 122, 95, .26);
+        }
+
+        .note .ico {
+            flex: 0 0 auto;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .note b {
+            color: var(--paper);
+        }
+
+        /* ---------- 文件清单 ---------- */
+        .files {
+            margin: 14px 0 0;
+            border-top: 1px solid var(--line);
+        }
+
+        .files div {
+            display: flex;
+            gap: 14px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--line);
+            font-size: 13.5px;
+        }
+
+        .files .nm {
+            flex: 0 0 190px;
+            font-family: ui-monospace, Consolas, monospace;
+            color: var(--gold);
+            word-break: break-all;
+        }
+
+        .files .ds {
+            color: var(--paper-70);
+        }
+
+        /* ---------- 结尾 ---------- */
+        footer {
+            text-align: center;
+            margin-top: 46px;
+            padding-top: 26px;
+            border-top: 1px solid var(--line);
+            color: var(--paper-45);
+            font-size: 12.5px;
+            line-height: 1.9;
+        }
+
+        @media (max-width: 620px) {
+            body {
+                padding: 0 14px 60px;
+            }
+
+            header {
+                padding: 40px 0 28px;
+            }
+
+            h1 {
+                font-size: 23px;
+            }
+
+            .card {
+                padding: 20px 18px;
+            }
+
+            .files .nm {
+                flex-basis: 130px;
+            }
+
+            .steps > li {
+                padding-left: 40px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <header>
+            <div class="logo"><img src="extension/img/icon128.png" alt=""></div>
+            <p class="kicker">安装说明 · Video Rod</p>
+            <h1>把这个扩展装进浏览器</h1>
+            <p class="lede">
+                这个文件夹是<b>自带的</b>：扩展本体就在里面，不需要从任何商店下载。
+                跟着下面四步做，两分钟就能用。
+            </p>
+            <span class="ver" id="verTag">版本 __KIT_VERSION__ · Edge / Chrome 通用</span>        </header>
+
+        <div class="card card-hero">
+            <h2>先说清楚：这文件夹是什么</h2>
+            <p>
+                你现在拿到的这个文件夹，可以直接拷到<b>任何一台 Windows 或 Mac</b> 上使用。
+                里面的 <code style="color:#E8B04B">extension</code> 子文件夹就是扩展程序本体，
+                浏览器可以直接加载它。
+            </p>
+            <div class="files">
+                <div>
+                    <span class="nm">使用说明.html</span>
+                    <span class="ds">就是你现在看的这一页，随时可以再打开</span>
+                </div>
+                <div>
+                    <span class="nm">extension\</span>
+                    <span class="ds"><b>要导入的就是这个文件夹</b>（里面是 manifest.json 和所有代码，约 4.4 MB）</span>
+                </div>
+                <div>
+                    <span class="nm">下载的文件在哪里.txt</span>
+                    <span class="ds">装完想知道文件存哪儿了，看这个</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="num">01</span>打开扩展管理页</h2>
+            <p>在浏览器的地址栏里，把下面这一行粘进去，按回车：</p>
+            <div class="path">
+                <code id="extUrl">edge://extensions</code>
+                <button class="copy" type="button" data-copy="edge://extensions">复制</button>
+            </div>
+            <p style="margin-top:14px;font-size:13.5px;color:var(--paper-45)">
+                用 Chrome 的话，地址是 <span class="url" style="cursor:default">chrome://extensions</span>
+                —— 点右边的按钮可以换：
+            </p>
+            <div class="path">
+                <code>chrome://extensions</code>
+                <button class="copy" type="button" data-copy="chrome://extensions">复制</button>
+            </div>
+            <div class="note">
+                <span class="ico">💡</span>
+                <span>也可以点浏览器右上角的 <b>三个点</b> → <b>扩展</b> → <b>管理扩展</b>，一样能到。
+                    注意：这些地址<b>不能直接点链接打开</b>，复制后要<b>手动粘到地址栏</b>再按回车。</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="num">02</span>打开「开发者模式」</h2>
+            <p>
+                在扩展管理页的<b>左下角</b>（Chrome 在<b>右上角</b>），有一个
+                <b>开发者模式</b>的开关，把它打开。
+            </p>
+            <div class="note">
+                <span class="ico">🔓</span>
+                <span>打开后会多出几个按钮，其中 <b>「加载解压缩的扩展」</b>
+                    也在<b>左上角</b>（Chrome 在左上角）—— 我们下一步就要用它。</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="num">03</span>点「加载解压缩的扩展」，选 extension 文件夹</h2>
+            <ul class="steps">
+                <li>
+                    <p class="st-title">点左上角出现的「加载解压缩的扩展」</p>
+                    <p class="st-body">会弹出一个选择文件夹的窗口。</p>
+                </li>
+                <li>
+                    <p class="st-title">找到本文件夹里的 <code style="color:#E8B04B">extension</code> 子文件夹</p>
+                    <p class="st-body">
+                        重要：要选到 <b>extension 这一层</b>，不是选它的上一层，
+                        也不是选里面更深的 <code>js</code>、<code>css</code>。
+                        判断标准很简单：<b>这个文件夹里能直接看到 manifest.json 就是对的</b>。
+                    </p>
+                </li>
+                <li>
+                    <p class="st-title">选中后点「选择文件夹」</p>
+                    <p class="st-body">扩展会立刻出现在列表里，名字叫 <b>苏哥的钓鱼竿</b>。</p>
+                </li>
+            </ul>
+            <div class="note danger">
+                <span class="ico">⚠️</span>
+                <span>如果提示 <b>「清单文件缺失或不可读取」</b>，说明选错了层 ——
+                    多半是选了 <code>extension</code> 的上一层。退回去重新选，进到能看到 manifest.json 的那一层。</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="num">04</span>确认装好了</h2>
+            <p>列表里出现「苏哥的钓鱼竿」就成功了。接着做三件事确认能用：</p>
+            <ul class="steps">
+                <li>
+                    <p class="st-title">把扩展图标固定到工具栏</p>
+                    <p class="st-body">
+                        点浏览器右上角的拼图图标 🧩 → 找到「苏哥的钓鱼竿」→ 点旁边的小图钉。
+                        这样以后一键就能打开。
+                    </p>
+                </li>
+                <li>
+                    <p class="st-title">打开任意一个视频页面</p>
+                    <p class="st-body">
+                        鼠标移到视频上，右上角会出现一个<b>下载小按钮</b>；点它就能下最高清。
+                        有些站要先让视频<b>播几秒</b>，扩展才嗅探得到地址。
+                    </p>
+                </li>
+                <li>
+                    <p class="st-title">点工具栏图标打开主面板</p>
+                    <p class="st-body">
+                        能看到当前页面的视频/图片列表，还有「素材库」入口 ——
+                        下载过的东西都在那儿，按平台和作者分好类。
+                    </p>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2>以后换电脑 / 重装系统怎么办</h2>
+            <p>
+                把整个文件夹拷过去，<b>重复上面四步</b>就行。扩展本体在文件夹里，
+                不怕找不到来源。
+            </p>
+            <div class="note">
+                <span class="ico">📌</span>
+                <span><b>文件夹不要删、不要改名、不要移动。</b>
+                    浏览器是「就地从这个文件夹加载」的，不是复制一份存起来 ——
+                    文件夹一挪，扩展就会失效，需要在扩展页重新加载一次。</span>
+            </div>
+            <p style="margin-top:14px">
+                如果换电脑后想保留以前下载的记录和素材库，把原来电脑上
+                <b>下载目录里的 video-rod 文件夹</b>一起拷过去，放到同样的位置即可。
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>几个常见问题</h2>
+            <ul class="steps">
+                <li>
+                    <p class="st-title">每次打开浏览器都提示「请停用开发者模式扩展」</p>
+                    <p class="st-body">
+                        这是浏览器的正常提示，<b>点「关闭」或右上角的 ×</b> 就行，不用点「停用」。
+                        自己加载的扩展都会这样，不影响使用。
+                    </p>
+                </li>
+                <li>
+                    <p class="st-title">下完的文件去哪儿了？</p>
+                    <p class="st-body">
+                        默认在 <b>下载文件夹</b> 里的 <code>video-rod</code> 目录，
+                        再按「站点 / 作者 / 类型」分级。具体路径和改法看文件夹里的
+                        <b>「下载的文件在哪里.txt」</b>。
+                    </p>
+                </li>
+                <li>
+                    <p class="st-title">为什么有些网站下不了？</p>
+                    <p class="st-body">
+                        加密播放、只给分片的直播这类，地址是临时的。点视频上的下载按钮 →
+                        展开菜单 → 最后一项<b>「录下来」</b>，它会一边播一边录（录多久就要播多久）。
+                    </p>
+                </li>
+                <li>
+                    <p class="st-title">提示「扩展已更新，请刷新本页面」</p>
+                    <p class="st-body">在扩展页点一下「重新加载」，然后按 F5 刷新那个网页即可。</p>
+                </li>
+            </ul>
+        </div>
+
+        <footer>
+            苏哥的钓鱼竿 · 纯本地运行，不上传任何数据<br>
+            嗅探内核来自开源猫抓 cat-catch（GPL-3.0）；素材库、批量下载、命名归档与界面为本版重做。
+        </footer>
+    </div>
+
+    <script>
+        /* 复制按钮。三层兜底，因为「双击本地 html 打开」这个场景限制很多：
+         *   1) navigator.clipboard 在 file:// 下可用，但要求**文档有焦点**，
+         *      否则抛 NotAllowedError（实测过：自动化里 hasFocus=false 就会失败）
+         *   2) 失败就退回 textarea + execCommand，这条在 file:// 一般都能通
+         *   3) 还不行就直接选中文字，让用户按 Ctrl+C —— 总比什么都不发生强
+         * 三种结果都必须给用户**看得见的反馈**，否则他以为按钮是坏的。 */
+        document.querySelectorAll('.copy').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var text = btn.getAttribute('data-copy') || '';
+
+                function feedback(label, ok) {
+                    var old = btn.getAttribute('data-label') || btn.textContent;
+                    btn.setAttribute('data-label', old);
+                    btn.textContent = label;
+                    btn.classList.toggle('ok', ok !== false);
+                    setTimeout(function () {
+                        btn.textContent = old;
+                        btn.classList.remove('ok');
+                    }, 1500);
+                }
+
+                /* 第 2 层：textarea + execCommand（同步，最可靠） */
+                function legacy() {
+                    try {
+                        var ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.setAttribute('readonly', '');
+                        ta.style.position = 'fixed';
+                        ta.style.top = '-1000px';
+                        ta.style.opacity = '0';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        ta.setSelectionRange(0, text.length);
+                        var ok = document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        if (ok) { feedback('已复制', true); return true; }
+                    } catch (e) { /* 落到第 3 层 */ }
+                    return false;
+                }
+
+                /* 第 3 层：把地址选中，让用户自己按 Ctrl+C */
+                function selectIt() {
+                    try {
+                        var code = btn.parentElement.querySelector('code');
+                        var r = document.createRange();
+                        r.selectNodeContents(code);
+                        var sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(r);
+                        feedback('已选中，按 Ctrl+C', false);
+                    } catch (e) {
+                        feedback('请手动复制', false);
+                    }
+                }
+
+                /* 第 1 层：现代 API（异步，可能因无焦点被拒） */
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(function () {
+                        feedback('已复制', true);
+                    }, function () {
+                        if (!legacy()) { selectIt(); }
+                    });
+                } else if (!legacy()) {
+                    selectIt();
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
