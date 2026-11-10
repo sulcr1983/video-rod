@@ -2454,6 +2454,15 @@
         }
         toast('已授权素材目录');
         try { await refreshPermState(); } catch (e) { /* 忽略 */ }
+        /* 授权成功 → 顺便问一句要不要备份扩展程序（苏哥 2026-11-10） */
+        try {
+            if (root.VRExportKit && root.VRExportKit.offerBackup) {
+                var notify = function (m, k) {
+                    toast(m, k === 'ok' ? { ms: 3500 } : { ms: 3000 });
+                };
+                root.VRExportKit.offerBackup(h, notify);
+            }
+        } catch (e) { /* 备份功能失败绝不干扰授权本身 */ }
         return true;
     }
 

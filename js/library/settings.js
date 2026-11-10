@@ -406,9 +406,20 @@
         });
     }
 
+    /** 授权成功 → 顺便问要不要备份扩展程序（苏哥 2026-11-10）。
+     *  用设置页的 vrLibAuthMsg 作为反馈位；备份失败绝不干扰授权本身。 */
+    function offerKitBackup(handle) {
+        try {
+            var K = root.VRExportKit;
+            if (!K || typeof K.offerBackup !== 'function') { return; }
+            K.offerBackup(handle, function (m, kind) {
+                text('vrLibAuthMsg', m, kind === 'ok' ? '#2e7d32' : (kind === 'err' ? '#c0392b' : '#666'));
+            });
+        } catch (e) { /* 忽略 */ }
+    }
+
     /** 默认位置授权：已有句柄先尝试恢复权限；没有才弹目录选择 */
-    async function authDefault() {
-        var sub = cleanSeg($('vrLibSubdir') ? $('vrLibSubdir').value : state.subdir);
+    async function authDefault() {        var sub = cleanSeg($('vrLibSubdir') ? $('vrLibSubdir').value : state.subdir);
         var base = detectedRootCache
             ? (String(detectedRootCache).replace(/\/+$/, '') + '/' + sub)
             : '';
@@ -439,6 +450,7 @@
                         text('vrLibAuthMsg', '已恢复写入权限' +
                             (base ? ('：' + base.replace(/\//g, '\\')) : ''), '#2e7d32');
                         refreshAuthState();
+                        offerKitBackup(h);
                         return;
                     }
                 }
@@ -469,6 +481,7 @@
             text('vrLibAuthMsg', '已授权写入' +
                 (base ? ('：' + base.replace(/\//g, '\\')) : ('：' + picked.name)), '#2e7d32');
             refreshAuthState();
+            offerKitBackup(picked);
         } catch (e) {
             if (e && e.name === 'AbortError') { return; }
             text('vrLibAuthMsg', '授权失败：' + ((e && e.message) || e), '#c0392b');

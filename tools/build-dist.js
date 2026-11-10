@@ -62,6 +62,14 @@ const OPTIONAL_LIBS = ['lib/mqtt.min.js'];
 /** 允许带进 dist 的根文件 */
 const ALLOW_ROOT_FILES = ['manifest.json'];
 
+/**
+ * 运行时「备份扩展到用户文件夹」用的导出清单文件名。
+ * 由构建期生成（列出 dist 的全部文件相对路径），不在 HEAD 里 ——
+ * 所以 --check 比较 dist==HEAD 时必须豁免它，否则永远报「多出」。
+ * 命名以 _ 开头，避开 walk() 的「. 开头」过滤，也避开 FORBIDDEN_FILE。
+ */
+const EXPORT_MANIFEST = '_vr_export.json';
+
 /** 永不进 dist 的一级条目（自检用） */
 const FORBIDDEN_TOP = [
   'docs', 'deliverables', 'tools', 'test-site', 'archive',
@@ -261,6 +269,7 @@ function runCheck() {
       if (!a.equals(b)) problems.push(`内容不同 ${rel}（dist 不是 HEAD 版本）`);
     }
     for (const rel of gotMap.keys()) {
+      if (rel === EXPORT_MANIFEST) { continue; }   // 构建期派生的导出清单，不在 HEAD
       if (!wantMap.has(rel)) problems.push(`多出 ${rel}（不在 HEAD 里）`);
     }
   } finally {
@@ -339,6 +348,12 @@ function runBuild() {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.copyFileSync(f.abs, dest);
     }
+
+    /* 生成运行时导出清单：列出 dist 里「可加载扩展所需」的全部文件相对路径。
+     * 用户在授权文件夹时若选「备份扩展程序」，运行时按这份清单 fetch 自己并写出。
+     * 清单本身不列自己 —— 它只是元数据，导出的目标是一个可加载的扩展目录。 */
+    const exportList = files.map((f) => f.rel.replace(/\\/g, '/'));
+    fs.writeFileSync(path.join(DIST, EXPORT_MANIFEST), JSON.stringify(exportList, null, 1), 'utf8');
 
     // ---- 自检 ----
     const problems = [];
