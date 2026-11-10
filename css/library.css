@@ -1758,6 +1758,9 @@ kbd{
 .sm-note{margin:4px 0 0;font-size:11px;color:var(--faint);line-height:1.6}
 .sm-link{margin-left:auto;font-size:12px;color:var(--accent);text-decoration:none;padding:4px 2px}
 .sm-link:hover{text-decoration:underline}
+/* 底部左侧的"完整扩展设置"出口：低对比，不抢主按钮 */
+.sm-foot .sm-link-left{margin-left:0;font-size:11.5px;color:var(--muted);align-self:center}
+.sm-foot .sm-link-left:hover{color:var(--accent)}
 .sm-foot{flex:none;display:flex;justify-content:flex-end;gap:10px;padding:13px 20px;border-top:1px solid var(--line-2);background:var(--surface)}
 /* 开关（库页面自建，options 页的 switch 不在本页 CSS 里） */
 .switch{position:relative;display:inline-flex;width:38px;height:22px;flex:none;cursor:pointer}
@@ -2080,12 +2083,15 @@ h1 {
   content:"";position:absolute;right:0;top:0;bottom:0;width:64px;pointer-events:none;
   background:linear-gradient(90deg,rgba(16,15,14,0),var(--bg) 78%);
 }
-.shelf-line .card{flex:0 0 152px;width:152px}
-.shelf-line .card .thumb{aspect-ratio:16/10}
-.shelf-line .card .body{padding:6px 8px 7px}
+.shelf-line .card{flex:0 0 168px;width:168px}
+/* 缩略图 16/10 → 4/3：152 宽时图高只有 95px，看不清内容（苏哥 2026-11-10）。4/3 图高 126px。 */
+.shelf-line .card .thumb{aspect-ratio:4/3}
+/* 2026-11-10：body 基础 gap:5px 未覆盖 + card-sub margin-top:3px → 标题与副行空出 8px，
+ * 视觉上就是「行距怎么这么高」。这里把 gap 压到 2px、副行不再额外留 margin。 */
+.shelf-line .card .body{padding:7px 9px 8px;gap:2px}
 /* 单行标题：原 .title 固定 height:2.9em（两行），货架里必须一起覆盖，否则空出一条 */
 .shelf-line .card .title{
-  font-size:12.5px;line-height:1.35;font-weight:600;display:block;height:auto;
+  font-size:12.5px;line-height:1.3;font-weight:600;display:block;height:auto;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   -webkit-line-clamp:unset;-webkit-box-orient:unset;
 }
@@ -2165,7 +2171,7 @@ h1 {
 /* 卡片副行：所有视图默认隐藏，只在货架里显示 */
 .card-sub{display:none}
 .shelf-line .card .card-sub{
-  display:block;margin-top:3px;font-size:11px;color:var(--muted);
+  display:block;margin-top:0;font-size:10.5px;line-height:1.25;color:var(--muted);
   font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .shelf-line .card .card-sub i{font-style:normal;color:var(--line);margin:0 3px}
