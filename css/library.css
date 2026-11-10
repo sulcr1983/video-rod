@@ -1624,7 +1624,10 @@ kbd{
 /* 主题切换（原型专用） */
 /* 响应式 */
 @media(max-width:1380px){.grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}}
+/* 工具条单行制降级（2026-11-10）：1380 起允许换行兜底（基础宽已压缩到 1440 严格一行） */
 @media(max-width:1080px){
+  .toolbar{flex-wrap:wrap}
+  .toolbar .tools{margin-left:0;width:100%}
   .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pagehead{flex-direction:column;align-items:flex-start;gap:16px}
@@ -1679,11 +1682,24 @@ kbd{
 .crumb-acts{display:flex;gap:8px}
 .scan-note{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap}
 .scan-note .sdot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);flex:none}
-/* toolbar 单行制（B-23 选项 A，2026-11-06）：平台筛选只保留左侧资源树，
-   顶部 chips 已移除；这里改为单行 grid，右侧工具贴边。 */
-.toolbar{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px}
-.toolbar .seg{grid-column:1}
-.toolbar .tools{grid-column:2;margin-left:0}
+/* toolbar 单行制（B-23 选项 A，2026-11-06；2026-11-10 苏哥拍板：扫描按钮进工具条、
+   时间窗 chips 删除，整条工具条收成一行——fbar2 第二行退役） */
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:8px}
+/* 禁收缩：nowrap 下 flex 子项默认 shrink，会把「图片/视频」「快速扫描」压成竖排文字。
+   2026-11-10 实测：工具条自然宽 ~1272px，1440 视口塞不下 → 默认换行兜底（fbar-l 整体掉第二行），
+   ≥1600（苏哥实机 ~1914）严格单行，富余宽度由搜索框弹性吸收。 */
+.toolbar > *,.toolbar .tools > *{flex:none}
+.toolbar .fbar-l > *{flex:none}
+.toolbar .seg{margin-right:2px}
+.toolbar .seg button{padding:5px 8px;gap:4px;white-space:nowrap}
+.toolbar .fbar-l{display:flex;align-items:center;gap:6px;min-width:0}
+.toolbar .tools{margin-left:auto;gap:7px}
+.toolbar .fbar-l .fchip{padding:6px 8px;white-space:nowrap}
+.toolbar .fbar-l .fchip.scan{color:var(--ink-2)}
+.toolbar .fbar-l .fchip.scan:hover{color:var(--ink)}
+/* 搜索框是唯一弹性项：大屏吃掉富余宽度，小屏压到 156 */
+.toolbar .tools > .searchbox{flex:1 1 156px;min-width:156px;max-width:340px}
+@media(min-width:1600px){.toolbar{flex-wrap:nowrap}}
 .stats-inline{flex:none}
 .stats-inline .it{padding:6px 11px;gap:6px}
 .stats-inline .it b{font-size:15px}
@@ -2025,7 +2041,8 @@ h1 {
  * R4/R5（2026-11-09）筛选条第二行 + 已选条件栏
  * 复用原版 token；与类型 seg / 排序下拉同一条水平带内，不新增第三行工具条。
  * ========================================================== */
-.toolbar .fbar2{grid-column:1/-1;display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding-top:2px}
+.toolbar .fbar-l{flex:0 0 auto}
+.toolbar .fbar-l .fchip{padding:6px 10px}
 .fchip{
   display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r-sm);
   font-size:12px;color:var(--muted);border:1px solid var(--line);background:var(--surface);white-space:nowrap;
@@ -2114,8 +2131,8 @@ h1 {
  * ③ 扫描状态与扫描按钮并排放在页头右侧（同一件事的两个部分）。
  * ========================================================== */
 .toolbar .tools > .searchbox{
-  width:236px;flex:0 0 236px;height:30px;box-sizing:border-box;
-  padding:0 9px;gap:7px;border-radius:var(--r-sm);
+  height:30px;box-sizing:border-box;
+  padding:0 8px;gap:6px;border-radius:var(--r-sm);
   background:transparent;border:1px solid transparent;box-shadow:none;
 }
 .toolbar .tools > .searchbox:hover{border-color:var(--line);background:var(--surface-2)}

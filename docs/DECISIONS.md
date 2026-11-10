@@ -2135,3 +2135,16 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
   7. **原生 select 改自绘下拉**：其弹层由系统渲染，深色皮肤下不可控（排序 `#sort`、批量 `#batchByType`）。
 - **影响**：`library.html`、`css/library.css`（仅追加 `.shelf-*`，**不动 `.card`/`.grid`/`.grid.list` 全局规则**）、`js/library/app.js`。**数据层零新增字段**（batchId 未落地）。
 - **验收**：见 `deliverables/reviews/2026-11-09-平台货架改版变更规格.md` §8（8 条可测口径）+ 红线清单 §3。
+## ADR-077 站名靠自动探测，不靠人工命名；历史站点由库页自动补齐（2026-11-10）
+
+- **日期**：2026-11-10 ｜ **状态**：✅ 已实施并真机验收 ｜ **触发**：苏哥截图问「设计里有自动获取网站名字，为啥现在都是域名？」；拍板原话「不是我让他叫啥名字，应该是自动探测网站名字」「F4 准许，你有最高权限」
+- **诊断**：`deliverables/reviews/2026-11-10-站点名显示域名诊断.md` —— 三层原因：①资源库页从不调 `VRSiteNameStore.ready()`，自动学习层整体缺席，左栏只剩 381 条预置表；②`nameOf()` 不归一域名，`www.bizhi66.com` 查不到字典；③ADR-061 规定站名只在下载那一刻抓，历史条目无回补通道。下载链路本身正常。
+- **决策**：
+  1. **F1 接通缓存**：`app.js boot()` 在 `await load()` 前 `await VRSiteNameStore.ready()` + `VRSiteRegistry.refresh()`，并把两步写进 `__vrBoot` 供验收。
+  2. **F2 归一反查**：`site-registry.js` 新增 `lookupRow()`（精确 → hostOf → registrableDomain → 平台 key 别名），`nameOf()` / `dirOf()` 共用。
+  3. **F3 否决**：**不往预置表写死任何站名**。苏哥明确要「自动探测」，人工命名不是这个产品该走的路；预置表一个字未改。
+  4. **F4 库页自动补齐**：新增 `js/library/site-name-fill.js`，首屏后异步扫 `FILES`，对「左栏仍显示域名」的站点串行调后台 `vrSiteName.probe`（SW 抓公开首页 → `parseHtmlInfo`），学到的名字写回 store 镜像并 `refresh + 重绘`。串行 300ms 间隔、单轮 20 个、单条 12s 超时、失败登记空名 7 天内不重试、`credentials:'omit'` 不带登录态、**只改显示名不搬磁盘目录**。
+  5. **不动下载侧**：`vrResolveSiteName()` / `vrSiteNameProbe()` / `VRPath` 一行未改，避免把已工作链路改坏。
+- **影响**：`js/library/{site-registry.js,app.js,site-name-fill.js}`、`library.html`、`tools/test-site-name.js` + 新增 3 个脚本 / 2 份报告。
+- **验收**：Edge 157 有头真机（隔离 profile 9480）——F4 首轮 `scanned=3 / learned=3 / failed=0`，自动得到「一点资讯 / 4k壁纸 / 百变桌面」；`vrSiteNames` 由 1 条变 4 条（解除诊断报告 REVIEW 项）；左栏「其他站点」展开后三个裸域名全部消失、原有 6 个站名不变；截图 `deliverables/assets/2026-11-10-site-name-fill.png`。离线全量 Node 套件 28/28、`test-site-name` 92/92、`test-site-name-fill` 27/27。详见 `deliverables/reviews/2026-11-10-站点名自动补齐实施.md`。
+- **事故留档**：收尾时发现并发会话把根目录 `library.html` 写成 45360 字节全 NUL 文件（100%），已从完好的 `dist/library.html` 恢复并补回脚本引用，坏文件备份在 `.tmp-probe/library.html.corrupt-nul.bak`。属多会话并发写共享壳文件风险，非本功能缺陷。

@@ -3766,6 +3766,18 @@
         try { initCtxMenu(); window.__vrBoot.push('ctx'); } catch (e) { window.__vrBoot.push('ctx-ERR:' + e.message); }
         try { bindConfirm(); window.__vrBoot.push('confirm'); } catch (e) { window.__vrBoot.push('confirm-ERR:' + e.message); }
         try { await loadFavs(); window.__vrBoot.push('favs'); } catch (e) { window.__vrBoot.push('favs-ERR:' + e.message); }
+        /* 站点名缓存必须在首次渲染前读入（2026-11-10 F1）。
+         * VRSiteRegistry.buildRows() 读的是 VRSiteNameStore 的同步内存镜像；
+         * 库页过去从不调用 ready()，镜像恒为 null，自动学习层整体缺席，
+         * 左栏只剩预置表 —— 小网站就全部显示成域名。
+         * 这里 await 后再 refresh()，保证 load() 里的第一次 renderTree() 用上新索引。 */
+        try {
+            if (root.VRSiteNameStore && root.VRSiteRegistry) {
+                await root.VRSiteNameStore.ready();
+                root.VRSiteRegistry.refresh();
+                window.__vrBoot.push('siteNames');
+            }
+        } catch (e) { window.__vrBoot.push('siteNames-ERR:' + (e && e.message || '')); }
         try { readLastScan(); } catch (e) { window.__vrBoot.push('scan-ERR'); }
         try { await ensureRoot(); window.__vrBoot.push('root'); } catch (e) { window.__vrBoot.push('root-ERR:' + e.message); }
         try { await refreshPermState(); window.__vrBoot.push('perm'); } catch (e) { window.__vrBoot.push('perm-ERR:' + e.message); }
@@ -3790,6 +3802,17 @@
         /* 回收站/索引对账自愈：修历史脏数据（死回收站条目、前缀重复索引）。
          * 见 VRTrash.sweep()：只动索引，不动文件，失败静默。 */
         try { scheduleTrashSweep(); window.__vrBoot.push('trashSweep'); } catch (e) { /* 忽略 */ }
+
+        /* 历史站点名自动补齐（2026-11-10 F4，苏哥拍板）：
+         * 库里老条目的 platform 只有域名，下载那一刻没抓过站名。
+         * 首屏之后异步串行探测公开首页，学到的名字刷新左栏；
+         * 失败/超时都不影响浏览，也不搬动磁盘目录。 */
+        try {
+            if (root.VRSiteNameFill) {
+                root.VRSiteNameFill.start();
+                window.__vrBoot.push('siteNameFill');
+            }
+        } catch (e) { window.__vrBoot.push('siteNameFill-ERR:' + (e && e.message || '')); }
     }
 
     /**
@@ -3859,6 +3882,8 @@
         /* 定位钩子：自动化测试用，直接驱动 revealFile 的无路径分支。 */
         _revealFile: function (f) { revealFile(f); },
         render: function () { render(); },
+        /* 站名补齐后只重绘左栏树，不重读数据库（VRSiteNameFill 用） */
+        renderTree: function () { renderTree(); },
         /* 骨架屏钩子：只给自动化测试用，正常启动由 boot() 自己调用。 */
         _renderSkeleton: function (n) { renderSkeleton(n); },
         /* 压测入口（B-14）：把合成条目塞进渲染链路，验证大库窗口化。

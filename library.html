@@ -15,6 +15,7 @@
   <script src="js/library/site-names-preset.js" defer></script>
   <script src="js/library/path.js" defer></script>
   <script src="js/library/site-registry.js" defer></script>
+  <script src="js/library/site-name-fill.js" defer></script>
   <script src="js/library/db.js" defer></script>
   <script src="js/library/dedup.js" defer></script>
   <script src="js/library/localfile.js" defer></script>
@@ -168,15 +169,11 @@
       <div class="ph-left">
         <div class="crumb-row">
           <div class="crumb" id="crumb"><b>媒体库</b><span class="sep">/</span><span>全部平台</span></div>
-          <div class="crumb-acts">
-            <!-- 扫描状态与扫描动作是同一件事，必须挨着：原来状态在标题行、按钮在右上角，中间隔了半个屏幕 -->
-            <span class="scan-note"><i class="sdot"></i><span id="syncText">2 分钟前扫描完成</span></span>
-            <button class="btn small" id="rescanBtn" title="只补新下载的，秒级完成"><svg class="i i-sm"><use href="#i-refresh-cw"/></svg>快速扫描</button>
-            <button class="btn small" id="rescanFullBtn" title="遍历整个文件夹，别处拷进来/别的浏览器下的也能认出来"><svg class="i i-sm"><use href="#i-folder-open"/></svg>全量扫描</button>
-          </div>
         </div>
         <div class="ph-title-row">
           <h1 id="pageTitle">全部资源</h1>
+          <!-- 扫描状态贴着标题（2026-11-10 苏哥：扫描按钮挪进工具条后，右上角不再留孤儿状态） -->
+          <span class="scan-note"><i class="sdot"></i><span id="syncText">2 分钟前扫描完成</span></span>
         </div>
       </div>
     </section>
@@ -194,6 +191,17 @@
         <button data-type="anim"><svg class="i"><use href="#i-repeat-1"/></svg>动图 <b>3</b></button>
         <button data-type="video"><svg class="i"><use href="#i-film"/></svg>视频 <b>9</b></button>
         <button data-type="audio"><svg class="i"><use href="#i-volume-2"/></svg>音频 <b>0</b></button>
+      </div>
+      <!-- 2026-11-10 苏哥拍板：工具条一行制——扫描按钮进工具条（离筛选近），
+           时间窗 chips（今天/本周/本月）整组删除（苏哥：需求来路不明、根本没必要）。
+           顺序：筛选类（seg/星标/更多筛选/扫描）在左，查询类（搜索/选择/排序/视图）贴右。 -->
+      <div class="fbar-l">
+        <button type="button" class="fchip" id="starFilterBtn"><svg class="i"><use href="#i-star"/></svg>已星标</button>
+        <button type="button" class="fchip" id="moreFilterBtn"><svg class="i"><use href="#i-funnel"/></svg>更多筛选</button>
+        <span class="fb-div"></span>
+        <button type="button" class="fchip scan" id="rescanBtn" title="只补新下载的，秒级完成"><svg class="i"><use href="#i-refresh-cw"/></svg>快速扫描</button>
+        <button type="button" class="fchip scan" id="rescanFullBtn" title="遍历整个文件夹，别处拷进来/别的浏览器下的也能认出来"><svg class="i"><use href="#i-folder-open"/></svg>全量扫描</button>
+        <span class="fb-count">共 <b id="fbCount">0</b> 项</span>
       </div>
       <div class="tools">
         <!-- 2026-11-10：搜索是「查询」动作，必须和筛选同一视觉带。
@@ -234,18 +242,6 @@
           <button data-view="grid" class="active"><svg class="i i-sm"><use href="#i-layout-grid"/></svg></button>
           <button data-view="list"><svg class="i i-sm"><use href="#i-list"/></svg></button>
         </div>
-      </div>
-      <!-- R4（2026-11-09）：筛选条第二行——时间窗 / 仅已星标 / 更多筛选 + 实时计数 -->
-      <div class="fbar2" id="fbar2">
-        <button type="button" class="fchip on" data-time="all">全部时间</button>
-        <button type="button" class="fchip" data-time="today">今天</button>
-        <button type="button" class="fchip" data-time="week">本周</button>
-        <button type="button" class="fchip" data-time="month">本月</button>
-        <span class="fb-div"></span>
-        <button type="button" class="fchip" id="starFilterBtn"><svg class="i"><use href="#i-star"/></svg>已星标</button>
-        <span class="fb-div"></span>
-        <button type="button" class="fchip" id="moreFilterBtn"><svg class="i"><use href="#i-funnel"/></svg>更多筛选</button>
-        <span class="fb-count">共 <b id="fbCount">0</b> 项</span>
       </div>
     </div>
     <!-- R5：已选条件栏（有筛选时才占位） -->

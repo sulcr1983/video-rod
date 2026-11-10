@@ -175,6 +175,19 @@ R._reset();
 eq('同站多域名不拆开', R.detect('https://bilibili.com/x').dir, 'B站');
 eq('b23.tv 同目录', R.detect('https://b23.tv/x').dir, 'B站');
 
+/* nameOf/dirOf 域名归一（2026-11-10 BUG-2）：
+ * 库里老条目的 platform 可能是 www. 开头，而字典键是归一后的可注册域名。 */
+learned = { 'bizhi66.com': { name: '4k壁纸', src: 'title', at: 6 } };
+R._reset();
+eq('www 前缀命中预置表', R.nameOf('www.xiaohongshu.com'), '小红书');
+eq('www 前缀命中自动学习', R.nameOf('www.bizhi66.com'), '4k壁纸');
+eq('www 前缀 dirOf', R.dirOf('www.bizhi66.com'), '4k壁纸');
+eq('子域归并命中', R.nameOf('img.static.bizhi66.com'), '4k壁纸');
+eq('带协议与路径也能归一', R.nameOf('https://www.bizhi66.com/a/b'), '4k壁纸');
+eq('老平台 key 别名不回归', R.nameOf('weibo'), '微博');
+eq('v.qq.com 独立产品不被误并', R.nameOf('v.qq.com'), '腾讯视频');
+eq('确实未知的域名仍返回空', R.nameOf('never-seen.xyz'), '');
+
 /* ================= 7. 目录拼装 ================= */
 section('目录拼装');
 

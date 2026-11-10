@@ -263,22 +263,35 @@
         };
     }
 
+    /**
+     * 按 key 查索引行：精确 → host 归一（去 www / 兼容带协议的键）
+     * → 可注册域名（子域归并）→ 老平台 key 别名。
+     *
+     * 为什么必须归一（2026-11-10 诊断 BUG-2）：
+     *   老条目的 platform 可能是 `www.bizhi66.com`，而预置表与 vrSiteNames
+     *   的键都是归一后的 `bizhi66.com`。只做 `index[k]` 精确查，即使站名
+     *   已经学到也永远查不到，左栏只能退回域名；连
+     *   `www.xiaohongshu.com` 都查不到预置表里的「小红书」。
+     */
+    function lookupRow(k) {
+        var row = index[k];
+        if (row) { return row; }
+        var h = hostOf(k);
+        if (h && h !== k && index[h]) { return index[h]; }
+        var norm = registrable(h || k);
+        if (norm && norm !== k && norm !== h && index[norm]) { return index[norm]; }
+        /* 老条目存的是平台 key（weibo / bilibili / xiaohongshu），
+         * 索引按域名建键；不补这层会把「weibo」和「weibo.com」拆成两个节点。 */
+        var alias = PLATFORM_KEY_HOST[k];
+        if (alias) { return index[alias] || index[registrable(alias)] || null; }
+        return null;
+    }
+
     /** 按 key 取名 */
     function nameOf(key) {
         ensure();
-        var k = String(key || '').toLowerCase();
-        var row = index[k];
-        if (row) { return row.name; }
-        /* 老条目存的是平台 key（weibo / bilibili / xiaohongshu），
-         * 索引按域名建键，直接用 key 查会落空 —— 那时左栏就会把
-         * 「weibo」和「weibo.com」拆成两个节点（2026-11-07 真机实测）。
-         * 这里补一层：平台 key → 该平台首个域名的条目。 */
-        var alias = PLATFORM_KEY_HOST[k];
-        if (alias) {
-            var r2 = index[alias] || index[registrable(alias)];
-            if (r2) { return r2.name; }
-        }
-        return '';
+        var row = lookupRow(String(key || '').toLowerCase());
+        return row ? row.name : '';
     }
 
     /** 按显示名反查 key（目录反解用） */
@@ -298,15 +311,8 @@
     /** 目录段：重名时带域名后缀 */
     function dirOf(key) {
         ensure();
-        var k = String(key || '').toLowerCase();
-        var row = index[k];
-        if (row) { return row.dir; }
-        var alias = PLATFORM_KEY_HOST[k];
-        if (alias) {
-            var r2 = index[alias] || index[registrable(alias)];
-            if (r2) { return r2.dir; }
-        }
-        return '';
+        var row = lookupRow(String(key || '').toLowerCase());
+        return row ? row.dir : '';
     }
 
     /** 全部站点（界面左栏用） */
