@@ -1185,6 +1185,10 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 | `tools/cdp-trash-dup-index-test.py` | 同一物理文件两条索引（有/无 `video-rod` 前缀）：启动自愈归并、清空清「幽灵行」、搬运窗口内不误判复活 | **9/9** |
 | `tools/cdp-trash-stale-state-test.py` | 2026-11-10 新增：FSA `InvalidStateError`(code 11) 状态抖动 → 重解析句柄+重试后删除成功；持续抖动如实 failed+回滚+不留脏批次；`exists()` 严格化；**真实 UI** Delete→确认框→失败 toast 说「删除失败」并给「重试」→重试成功才报「已移入回收站」 | **17/17** |
 
+> **已知过期套件（2026-11-10 收尾实测）**：`tools/cdp-batch-test.py` 是 S5b 旧 UI（`#libGrid` / `.lib-card` / `#libBatch`）用例。页面换成 `#grid` / `.card` 后，A4 起 40+ 条断言全部失效（实测 A1-A3 PASS、A4/A5 FAIL、随后 `#libBatch` 为 null 抛 `TypeError`）——**不是产品回归**。现加「旧 UI 守卫」：检测到旧 DOM 不存在即打印 SKIP、退出码 3；同时从 `tools/cdp-run.py` 的 `full` / `library` 默认套件摘除，杜绝假绿/假失败。按当前 UI 重写需单独立项，本次不做无关重构。
+>
+> 同轮修正 `tools/cdp_client.py` 的 `find_ext_id`：Edge 内置扩展的 SW 也叫 `background.js`，冷启动先注册时宽松的 `"background.js" in url` 会返回别人的扩展 ID，令 `library.html` 报 `ERR_FILE_NOT_FOUND`、四个模块全 `undefined`；改为按 manifest 全路径 `/js/background.js` 严格匹配。
+
 跑法：`python tools/cdp-run.py tools/cdp-trash-empty-repro.py`（自动起隔离 Edge 实例）。
 一轮跑多套时按 §1「有头浏览器实例纪律」复用同一个实例串行执行，不要每套各起一个窗口。
 

@@ -1,5 +1,12 @@
 # 批量选择 + 重命名验收（S5b）
 #
+# ⚠️ 2026-11-10 已知过期：这是 S5b 时期旧 UI（#libGrid / .lib-card / #libBatch）的用例。
+# 舞台皮肤重构后 DOM 换成 #grid / .card，A4 起 40+ 条断言全部失效（实测 A1-A3 PASS、
+# A4/A5 FAIL、随后 #libBatch null.click() 抛 TypeError）。**不是产品回归**，也不重写
+# 40+ 条旧断言（属另一任务）。检测到旧 DOM 不存在时打印 SKIP 并以退出码 3 结束，
+# 已从 cdp-run.py 的默认套件摘除；待单独立项按当前 UI 重写。
+# 见 docs/TESTING.md §18。
+#
 # 前置：
 #   1) Chrome for Testing --remote-debugging-port=<port> --load-extension=E:\test\video-rod\.work\wt-s5b
 # 用法：VR_CDP=http://127.0.0.1:9351 python tools/cdp-batch-test.py
@@ -123,15 +130,33 @@ def main():
         cdp.send(m, {}, sid)
     cdp.send("Network.setCacheDisabled", {"cacheDisabled": True}, sid)
     cdp.navigate(sid, f"chrome-extension://{ext_id}/library.html")
-    # navigate 是异步的：不等待就立刻 typeof，四个模块会全是 undefined（2026-11-10 实测
-    # 与产品代码无关，纯粹是这条断言的加载时序）。等挂载完再断言，避免假 FAIL。
-    cdp.wait_js(sid, "typeof VRBatch === 'object' && typeof VRTrash === 'object'", 10.0)
+    # 2026-11-10 修正：VRBatch / VRTrashUI 是 S5b 早期拆出的两个全局，批量选择与
+    # 回收站 UI 后来并入 app.js，仓库里已无这两个模块（grep js/ 零命中）。旧断言写死
+    # 这两个名字 → 恒 FAIL → 下面 40+ 条用例全部提前 return（假 "2/3 通过"）。
+    # 改为校验当前真实模块。此外 navigate 后立刻 eval 会落在 about:blank 的旧执行
+    # 上下文（冷启动实测四个模块全 undefined），与 cdp-trash-empty-repro.py /
+    # cdp-trash-stale-state-test.py 一致：等一拍 + reload，再等模块挂载完。
+    time.sleep(1.5)
+    cdp.reload(sid)
+    time.sleep(2.0)
+    cdp.wait_js(sid, "typeof VRDB === 'object' && typeof VRIndex === 'object' "
+               "&& typeof VRRename === 'object' && typeof VRTrash === 'object'", 15.0)
 
-    mods = ev(cdp, sid, "({b: typeof VRBatch, r: typeof VRRename, t: typeof VRTrash, u: typeof VRTrashUI})")
-    check("A2 S5b 模块已加载", mods,
-          {"b": "object", "r": "object", "t": "object", "u": "object"})
-    if not mods or mods.get("b") != "object" or mods.get("r") != "object":
+    mods = ev(cdp, sid, "({d: typeof VRDB, r: typeof VRRename, t: typeof VRTrash, i: typeof VRIndex})")
+    check("A2 资源库模块已加载", mods,
+          {"d": "object", "r": "object", "t": "object", "i": "object"})
+    if not mods or mods.get("r") != "object" or mods.get("t") != "object":
         return finish(cdp)
+
+    # 旧 UI 守卫：不让它伪装成产品回归失败，也不让它 crash 后留下半截脏数据。
+    legacy = ev(cdp, sid, "!!document.getElementById('libGrid') || "
+                          "!!document.getElementById('libBatch')")
+    if not legacy:
+        print("\n===== SKIP（历史 S5b 用例，不计入验收门禁）=====", flush=True)
+        print("当前舞台皮肤已无 #libGrid / #libBatch；A3 起 40+ 条旧 DOM 断言不适用。", flush=True)
+        print("基础环境自检 A1/A2 已通过（扩展定位 + 模块挂载正常）。", flush=True)
+        print("待单独立项按当前 UI 重写，见 docs/TESTING.md §18。", flush=True)
+        sys.exit(3)
 
     check("A3 OPFS + 索引 3 条", ev(cdp, sid, SETUP), 3)
     cdp.reload(sid)

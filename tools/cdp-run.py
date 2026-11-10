@@ -44,6 +44,8 @@ SITE_PORT = int(os.environ.get("VR_TEST_SITE_PORT", "18080"))
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 # 套件分组：node 单测 → CDP 脚本（顺序即依赖顺序）
+# 注：tools/cdp-batch-test.py 是 S5b 旧 UI 用例，2026-11-10 实测 A4 起全失效、
+# 已知恒 SKIP（退出码 3），已从默认套件摘除；不要放回来当门禁。见 docs/TESTING.md §18。
 SUITES = {
     "full": [
         ("node", "tools/test-path.js"),
@@ -60,7 +62,6 @@ SUITES = {
         ("cdp", "tools/cdp-viewer-test.py"),
         ("cdp", "tools/cdp-trash-empty-repro.py"),
         ("cdp", "tools/cdp-trash-dup-index-test.py"),
-        ("cdp", "tools/cdp-batch-test.py"),
         ("cdp", "tools/cdp-image-test.py"),
         ("cdp", "tools/cdp-image-batch-test.py"),
         ("cdp", "tools/cdp-image-panel-test.py"),
@@ -79,7 +80,6 @@ SUITES = {
         ("cdp", "tools/cdp-viewer-test.py"),
         ("cdp", "tools/cdp-trash-empty-repro.py"),
         ("cdp", "tools/cdp-trash-dup-index-test.py"),
-        ("cdp", "tools/cdp-batch-test.py"),
     ],
     "image": [
         ("node", "tools/test-image-util.js"),

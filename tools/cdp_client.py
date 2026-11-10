@@ -139,9 +139,12 @@ class Cdp:
 def find_ext_id(cdp):
     """扩展 ID：优先 background.js 的 service worker，其次 profile Preferences"""
     targets = cdp.targets()
+    # 2026-11-10：Edge 内置扩展的 SW 也叫 background.js（chrome-extension://<id>/background.js），
+    # 冷启动时它先注册，宽松的 "background.js" in u 会把用例导向别人的 ID → library.html
+    # 报 ERR_FILE_NOT_FOUND、四个模块全 undefined。按 manifest 的 SW 全路径严格匹配。
     for t in targets:
         u = t.get("url", "")
-        if t["type"] == "service_worker" and u.startswith("chrome-extension://") and "background.js" in u:
+        if t["type"] == "service_worker" and u.endswith("/js/background.js"):
             return u.split("/")[2], t
     for t in targets:
         u = t.get("url", "")
