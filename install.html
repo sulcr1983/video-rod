@@ -41,9 +41,8 @@
                         <span class="lang-en">Every video and image you scroll past, one cast from your own library</span>
                     </p>
                     <p class="credit">
-                        <span class="lang-zh active">嗅探内核来自开源猫抓 cat-catch（GPL-3.0）；素材库、批量下载、命名归档与界面为本版重做。</span>
-                        <span class="lang-en">Sniffing core from open-source cat-catch (GPL-3.0); the library, batch
-                            download, naming and UI are rebuilt in this build.</span>
+                        <span class="lang-zh active">内核来自开源猫抓 cat-catch（GPL-3.0），功能为本版重做。</span>
+                        <span class="lang-en">Core from open-source cat-catch (GPL-3.0), rebuilt in this build.</span>
                     </p>
                 </div>
             </div>
@@ -53,146 +52,63 @@
             </button>
         </header>
 
-        <!-- ============ 痛点 → 解法（2026-11-10 苏哥口述五条，逐条对应） ============ -->
-        <section class="pains" aria-label="你是不是也这样">
+        <!-- ============ 能力（3 条，一句话说清） ============ -->
+        <section class="pains" aria-label="它能干什么">
             <div class="pains-head">
-                <span class="ph-kick">先对个号</span>
+                <span class="ph-kick">
+                    <span class="lang-zh active">它能干什么</span>
+                    <span class="lang-en">What it does</span>
+                </span>
                 <h2 class="ph-title">
-                    <span class="lang-zh active">下面五条，中三条以上，这插件就是给你做的</span>
-                    <span class="lang-en">Three or more of these? This is built for you</span>
+                    <span class="lang-zh active">三件事，装好就顺手</span>
+                    <span class="lang-en">Three things, ready to go</span>
                 </h2>
             </div>
 
             <div class="pain-grid">
-                <!-- 痛点 1 -->
+                <!-- 能力 1 -->
                 <article class="pain">
                     <div class="p-num">01</div>
                     <h3 class="p-title">
-                        <span class="lang-zh active">下载文件夹堆成垃圾场</span>
-                        <span class="lang-en">Your Downloads folder is a junkyard</span>
+                        <span class="lang-zh active">下载即归档</span>
+                        <span class="lang-en">Filed as it lands</span>
                     </h3>
-                    <p class="p-desc">
-                        <span class="lang-zh active">视频、图片、音频全在「下载」里平铺着，日子一长根本翻不动。</span>
-                        <span class="lang-en">Video, images, audio — all flat in one folder. After a month it's unreadable.</span>
-                    </p>
                     <div class="p-fix">
-                        <span class="fix-tag">钓鱼竿</span>
                         <span class="fix-txt">
-                            <span class="lang-zh active">下载那一刻就按<b>来源网站 → 博主 → 整套内容</b>自动分层，落进指定文件夹，进去就是整整齐齐的。</span>
-                            <span class="lang-en">Filed the moment it lands: <b>site → creator → collection</b>. No cleanup afterwards.</span>
+                            <span class="lang-zh active">按 <b>来源网站 → 博主 → 内容</b> 自动分层，落进指定文件夹，进去就是整整齐齐，同一博主自动归在一处。</span>
+                            <span class="lang-en">Filed by <b>site → creator → collection</b> the moment it lands — no cleanup afterwards.</span>
                         </span>
                     </div>
                 </article>
 
-                <!-- 痛点 2 -->
+                <!-- 能力 2 -->
                 <article class="pain">
                     <div class="p-num">02</div>
                     <h3 class="p-title">
-                        <span class="lang-zh active">文件名是乱码，看不出是啥</span>
-                        <span class="lang-en">Filenames tell you nothing</span>
+                        <span class="lang-zh active">自动命名，还能溯源</span>
+                        <span class="lang-en">Named &amp; traceable</span>
                     </h3>
-                    <p class="p-desc">
-                        <span class="lang-zh active"><code>video_20240115_233045_final(2).mp4</code> —— 三个月后你也不知道这是哪条。</span>
-                        <span class="lang-en"><code>video_20240115_233045_final(2).mp4</code> — no idea what it was three months later.</span>
-                    </p>
                     <div class="p-fix">
-                        <span class="fix-tag">钓鱼竿</span>
                         <span class="fix-txt">
-                            <span class="lang-zh active">自动取<b>标题、博主昵称、序号、日期</b>拼成文件名，模板你自己定，重名自动 <code>_01</code> 不覆盖。</span>
-                            <span class="lang-en">Auto-named from <b>title, creator, index, date</b>. Your template, duplicate-safe.</span>
+                            <span class="lang-zh active">用 <b>标题、博主昵称、序号、日期</b> 拼文件名，重名自动 <code>_01</code>；每条都记住<b>原帖地址</b>，随时找得回。</span>
+                            <span class="lang-en">Auto-named from <b>title, creator, index, date</b>; every item keeps its <b>source page</b>.</span>
                         </span>
                     </div>
                 </article>
 
-                <!-- 痛点 3 -->
+                <!-- 能力 3 -->
                 <article class="pain">
                     <div class="p-num">03</div>
                     <h3 class="p-title">
-                        <span class="lang-zh active">想把某个博主的全部找回来</span>
-                        <span class="lang-en">Want everything from one creator</span>
+                        <span class="lang-zh active">一个装完就够</span>
+                        <span class="lang-en">One is enough</span>
                     </h3>
-                    <p class="p-desc">
-                        <span class="lang-zh active">同一个网站、同一个博主的图和视频散落各处，手动归类又烦又容易漏，时间久了也忘了收过什么。</span>
-                        <span class="lang-en">One creator's work scattered everywhere. Manual sorting is tedious, and you forget what you already have.</span>
-                    </p>
                     <div class="p-fix">
-                        <span class="fix-tag">钓鱼竿</span>
                         <span class="fix-txt">
-                            <span class="lang-zh active">同一博主自动归到<b>同一个文件夹</b>，媒体库左栏按站点分组，点一下就只剩他的东西，还能<b>搜、筛、按类型看</b>。</span>
-                            <span class="lang-en">One creator, one folder. Library groups by site — click to filter, then search and sort.</span>
+                            <span class="lang-zh active"><b>通用嗅探</b>覆盖任意网页，微博、抖音、小红书、Instagram、X、YouTube、B站还有<b>深度适配</b>，不用为某个站单独装插件。</span>
+                            <span class="lang-en"><b>Universal sniffing</b> for any page, plus deep support for the sites you use most.</span>
                         </span>
                     </div>
-                </article>
-
-                <!-- 痛点 4 -->
-                <article class="pain">
-                    <div class="p-num">04</div>
-                    <h3 class="p-title">
-                        <span class="lang-zh active">忘了从哪儿下的，找不回去</span>
-                        <span class="lang-en">Lost the source, can't get back</span>
-                    </h3>
-                    <p class="p-desc">
-                        <span class="lang-zh active">文件在硬盘里，可原帖是哪个网页、哪个账号发的，全断了线索。</span>
-                        <span class="lang-en">The file is on disk, but which page or account it came from is gone.</span>
-                    </p>
-                    <div class="p-fix">
-                        <span class="fix-tag">钓鱼竿</span>
-                        <span class="fix-txt">
-                            <span class="lang-zh active">每条素材都记住<b>原帖地址、作者 ID、作品 ID、直链</b>，重启和重建索引都不丢，随时一键溯源。</span>
-                            <span class="lang-en">Every item keeps its <b>source page, author ID, post ID, direct link</b> — survives restarts.</span>
-                        </span>
-                    </div>
-                </article>
-
-                <!-- 痛点 5：奇数条，跨两列收尾，避免右边空一格 -->
-                <article class="pain pain-wide">
-                    <div class="p-num">05</div>
-                    <h3 class="p-title">
-                        <span class="lang-zh active">装了一堆插件，每次都要找</span>
-                        <span class="lang-en">Too many extensions to hunt through</span>
-                    </h3>
-                    <p class="p-desc">
-                        <span class="lang-zh active">这个站要 A 插件、那个站要 B 插件，浏览器装了七八个，下个东西还得先想用哪个。</span>
-                        <span class="lang-en">Site A needs extension A, site B needs B. Eight installed, and you still have to remember which.</span>
-                    </p>
-                    <div class="p-fix">
-                        <span class="fix-tag">钓鱼竿</span>
-                        <span class="fix-txt">
-                            <span class="lang-zh active">一个装完就够：<b>通用嗅探</b>覆盖任意网页，再对高频站点做深度适配，不用再为某个站单独装一个。</span>
-                            <span class="lang-en">One extension: <b>universal sniffing</b> for any page, plus deep support for the sites you use most.</span>
-                        </span>
-                    </div>
-                </article>
-
-                <!-- 结语卡：说清"凭什么一个够用" -->
-                <article class="pain pain-sum">
-                    <div class="p-num">✓</div>
-                    <h3 class="p-title">
-                        <span class="lang-zh active">凭什么一个就够</span>
-                        <span class="lang-en">Why one is enough</span>
-                    </h3>
-                    <ul class="sum-list">
-                        <li>
-                            <span class="lang-zh active"><b>收费插件的长处，能学的都学了</b> —— 嗅探、合并、命名、去重、批量、倍速，做成一体，不拼凑。</span>
-                            <span class="lang-en"><b>Learned from paid tools</b> — sniffing, merging, naming, dedup, batch, speed — in one piece.</span>
-                        </li>
-                        <li>
-                            <span class="lang-zh active"><b>专用站点深度适配</b>：微博、抖音、小红书、Instagram、X、YouTube、B站。</span>
-                            <span class="lang-en"><b>Deep support</b>: Weibo, Douyin, Xiaohongshu, Instagram, X, YouTube, Bilibili.</span>
-                        </li>
-                        <li>
-                            <span class="lang-zh active"><b>其余网页照下不误</b> —— 通用通道覆盖任意页面，不为某个站单独装插件。</span>
-                            <span class="lang-en"><b>Everything else still works</b> — the universal channel covers any page.</span>
-                        </li>
-                        <li>
-                            <span class="lang-zh active"><b>0.1×–3× 十档倍速播放</b>，素材库里边看边挑，慢放看清细节，快进扫完整套。</span>
-                            <span class="lang-en"><b>0.1×–3× playback</b> (10 steps) right in the library — slow down for detail, speed up to skim.</span>
-                        </li>
-                        <li>
-                            <span class="lang-zh active"><b>Chrome 内核的 PC 浏览器都能装</b>：Edge、Chrome、360、QQ 等（需 Chromium 93+）。</span>
-                            <span class="lang-en"><b>Any Chromium PC browser</b>: Edge, Chrome, 360, QQ (Chromium 93+).</span>
-                        </li>
-                    </ul>
                 </article>
             </div>
         </section>

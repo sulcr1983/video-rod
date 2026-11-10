@@ -661,10 +661,10 @@ body::before {
   color: var(--text);
 }
 
-/* 5 条痛点 + 1 张结语卡：两列，最后一张跨两列 */
+/* 3 条能力卡：单列竖排（精简后是奇数条，两列会右下空一格） */
 .pain-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -709,26 +709,6 @@ body::before {
   color: var(--text);
 }
 
-/* 痛点描述：暗红左线，读起来是「难受」 */
-.p-desc {
-  padding-left: 10px;
-  border-left: 2px solid rgba(232, 100, 102, 0.42);
-  font-size: 0.8rem;
-  line-height: 1.75;
-  color: var(--muted);
-}
-
-.p-desc code {
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.34);
-  border: 1px solid var(--line);
-  color: #C9BFAE;
-  font-family: ui-monospace, "SF Mono", Consolas, monospace;
-  font-size: 0.94em;
-  word-break: break-all;
-}
-
 /* 解法：金色左线 + 淡金底，与痛点形成强对比 */
 .p-fix {
   display: flex;
@@ -740,15 +720,6 @@ body::before {
   border: 1px solid rgba(232, 176, 75, 0.2);
   border-left: 2px solid var(--gold);
   background: linear-gradient(100deg, rgba(232, 176, 75, 0.09), rgba(232, 176, 75, 0.02));
-}
-
-.fix-tag {
-  justify-self: start;
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--gold);
-  opacity: 0.92;
 }
 
 .fix-txt {
@@ -771,65 +742,8 @@ body::before {
   font-size: 0.94em;
 }
 
-/* ---------- 结语卡 ---------- */
-.pain-sum {
-  grid-column: 1 / -1;
-  border-color: rgba(232, 176, 75, 0.26);
-  background:
-    radial-gradient(520px 180px at 8% 0%, rgba(232, 176, 75, 0.1), transparent 68%),
-    linear-gradient(180deg, #1D1915, #141210);
-}
-
-.pain-sum .p-num {
-  color: var(--gold);
-  font-size: 0.86rem;
-}
-
-.sum-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px 18px;
-  margin: 2px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.sum-list li {
-  position: relative;
-  padding-left: 15px;
-  font-size: 0.79rem;
-  line-height: 1.72;
-  color: var(--muted);
-}
-
-.sum-list li::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0.58em;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--gold);
-  opacity: 0.72;
-}
-
-.sum-list b {
-  color: var(--text);
-  font-weight: 650;
-}
-
-/* 最后一条（浏览器范围）独占一行，避免挤在半列里换行 */
-.sum-list li:last-child {
-  grid-column: 1 / -1;
-}
-
 @media (max-width: 760px) {
   .pain-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .sum-list {
     grid-template-columns: 1fr;
   }
 
@@ -986,45 +900,4 @@ body::before {
     padding: 4px 0;
   }
 }
-
-/* 第 5 条痛点跨两列：5 是奇数，否则右下空一格、版面失衡。
-   跨列后内部改为「标题+描述 左 / 解法 右」两栏，横向利用空间，不再拉成一长条。 */
-.pain-wide {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  gap: 9px 22px;
-  align-items: start;
-}
-
-.pain-wide .p-title {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.pain-wide .p-desc {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.pain-wide .p-fix {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: stretch;
-  justify-content: center;
-  margin-top: 0;
-}
-
-@media (max-width: 760px) {
-  .pain-wide {
-    grid-template-columns: 1fr;
-  }
-
-  .pain-wide .p-title,
-  .pain-wide .p-desc,
-  .pain-wide .p-fix {
-    grid-column: 1;
-    grid-row: auto;
-  }
-}
+/* 3 条能力卡精简后，原「第 5 条痛点跨两列」的 pain-wide 已随 HTML 一并移除。 */
