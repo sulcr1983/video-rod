@@ -634,60 +634,101 @@
   </div>
 
   <div class="setmask" id="setmask"></div>
-  <aside class="setdrawer" id="setdrawer" aria-label="资源库设置">
-    <header class="sd-head">
-      <div><h3>设置</h3><p>资源库常用项 · 即改即用，不用跳走</p></div>
-      <button class="sd-x" id="setClose">&#10005;</button>
+  <!-- 设置弹窗（2026-11-10 苏哥：右侧抽屉改居中弹窗，保存才生效并关闭）。
+       去重铁律：更换目录/扫描/回收站主页已有入口，这里不再重复列；
+       只留「完整版里重要、主页又没有」的：保存位置模式、索引维护、落盘校验、文件名规则、站点名称。 -->
+  <div class="setmodal" id="setModal" role="dialog" aria-modal="true" aria-label="设置">
+    <header class="sm-head">
+      <div class="sm-ht">
+        <h3>设置</h3>
+        <p class="sm-sub">资源库偏好 · 改完点保存生效</p>
+      </div>
+      <button class="sd-x" id="setClose" type="button" aria-label="关闭设置">&#10005;</button>
     </header>
-    <div class="sd-body">
-      <div class="sd-item">
-        <div class="sd-k">下载目录</div>
-        <div class="sd-v" id="sdDirVal">未探测</div>
-        <button class="btn small" id="sdDirBtn">更换目录</button>
-      </div>
-      <div class="sd-item">
-        <div class="sd-k">扫描</div>
-        <div class="sd-v" id="sdScanVal">—</div>
-        <button class="btn small" id="sdScanBtn">立即扫描</button>
-      </div>
-      <div class="sd-item">
-        <div class="sd-k">索引</div>
-        <div class="sd-v" id="sdIndexVal">—</div>
-        <button class="btn small" id="sdRebuildBtn">重建索引</button>
-      </div>
-      <div class="sd-item">
-        <div class="sd-k">内容去重</div>
-        <div class="sd-v" id="sdDupVal">—</div>
-        <button class="btn small" id="sdDupBtn">扫描重复</button>
-      </div>
-      <div class="sd-item">
-        <div class="sd-k">回收站</div>
-        <div class="sd-v" id="sdTrashVal">—</div>
-        <button class="btn small" id="sdTrashBtn">打开</button>
-      </div>
-      <div class="sd-item">
-        <div class="sd-k">文件名规则</div>
-        <div class="sd-v mono">{博主}/{类型}/{标题}</div>
-      </div>
+    <div class="sm-body">
+      <section class="sm-grp">
+        <h4>保存位置</h4>
+        <div class="sm-row">
+          <label>位置模式</label>
+          <div class="seg sm-seg" id="smModeSeg">
+            <button type="button" data-mode="system" class="active">系统下载目录</button>
+            <button type="button" data-mode="custom">自定义目录</button>
+          </div>
+        </div>
+        <div class="sm-row">
+          <label for="smSubdir">子目录名</label>
+          <input type="text" id="smSubdir" class="sm-input" value="video-rod" spellcheck="false">
+        </div>
+        <div class="sm-row hidden" id="smCustomRow">
+          <label for="smCustomRoot">自定义根路径</label>
+          <input type="text" id="smCustomRoot" class="sm-input mono" placeholder="例如 E:\素材\video-rod" spellcheck="false">
+        </div>
+      </section>
+
+      <section class="sm-grp">
+        <h4>索引与维护</h4>
+        <div class="sm-row">
+          <label>索引</label>
+          <span class="sm-val" id="sdIndexVal">—</span>
+          <button class="btn small" id="sdRebuildBtn">重建索引</button>
+        </div>
+        <div class="sm-row">
+          <label>内容去重</label>
+          <span class="sm-val" id="sdDupVal">—</span>
+          <button class="btn small" id="sdDupBtn">扫描重复</button>
+        </div>
+        <div class="sm-row">
+          <label>落盘校验</label>
+          <div class="sm-side">
+            <span class="sm-hint">迁移时做完整 SHA-256 比对，更稳但更慢</span>
+            <label class="switch"><input type="checkbox" id="smDeepVerify"><i></i></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="sm-grp">
+        <h4>文件名规则</h4>
+        <div class="sm-row">
+          <label>模板</label>
+          <code class="sm-code">{博主}/{类型}/{标题}</code>
+        </div>
+        <p class="sm-note">下载入库时按此模板命名。改模板请到完整扩展设置 →「文件名规则」。</p>
+      </section>
+
+      <section class="sm-grp">
+        <h4>其他</h4>
+        <div class="sm-row">
+          <label>站点名称</label>
+          <a href="#" id="sdOptionsLink" class="sm-link">管理站点名称 &#8599;</a>
+        </div>
+      </section>
     </div>
-    <footer class="sd-foot"><a href="#" id="sdOptionsLink">打开完整扩展设置 &#8599;</a></footer>
-  </aside>
+    <footer class="sm-foot">
+      <button class="btn small" id="setCancel" type="button">取消</button>
+      <button class="btn small primary" id="setSave" type="button">保存</button>
+    </footer>
+  </div>
 
   <!-- R6（2026-11-09）：更多筛选抽屉（复用设置抽屉 .setdrawer 骨架，不新建组件） -->
   <div class="setmask" id="filtMask"></div>
-  <aside class="setdrawer" id="filtDrawer" aria-label="更多筛选">
-    <header class="sd-head">
-      <div><h3>更多筛选</h3><p>低频条件收在这里 · 选完即时生效</p></div>
-      <button class="sd-x" type="button" id="filtClose">&#10005;</button>
+  <!-- 更多筛选弹窗（2026-11-10 苏哥：与设置弹窗统一页面语言；作者多时加搜索框）。
+       与原抽屉的差异：居中弹窗、分组标题带 SVG 图标、作者可过滤查找。 -->
+  <div class="setmodal filt" id="filtModal" role="dialog" aria-modal="true" aria-label="更多筛选">
+    <header class="sm-head">
+      <div class="sm-ht">
+        <h3>更多筛选</h3>
+        <p class="sm-sub">低频条件收在这里 · 选完即时生效</p>
+      </div>
+      <button class="sd-x" type="button" id="filtClose" aria-label="关闭筛选">&#10005;</button>
     </header>
-    <div class="sd-body" id="filtBody"></div>
-    <footer class="sd-foot">
+    <div class="sm-body" id="filtBody"></div>
+    <footer class="sm-foot">
       <button class="btn small" type="button" id="filtClear">清除</button>
-      <span style="flex:1"></span>
-      <span class="fb-count" style="margin:0 6px 0 0">命中 <b id="filtHit">0</b> 项</span>
+      <span class="sm-spacer"></span>
+      <span class="fb-count" style="margin:0 10px 0 0">命中 <b id="filtHit">0</b> 项</span>
       <button class="btn small primary" type="button" id="filtDone">完成</button>
     </footer>
-  </aside>
+  </div>
 
   <div class="toast" id="toast"><svg class="t-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 12.5l3 3 5-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="toastText"></span><button type="button" id="toastAct" hidden></button></div>
 </body>

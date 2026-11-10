@@ -1681,8 +1681,9 @@
             });
         }
 
-        /* R6（2026-11-09）：更多筛选抽屉——大小 / 分辨率 / 标签 / 作者。
-         * 复用设置抽屉骨架（.setdrawer/.sd-*），只填条件区块。 */
+        /* R6（2026-11-09）：更多筛选——大小 / 分辨率 / 标签 / 作者。
+         * 2026-11-10 苏哥：从右侧抽屉改为居中弹窗，与设置弹窗统一页面语言；作者支持搜索过滤。 */
+        var filtAuthorQ = '';
         function renderFilt() {
             var body = $('#filtBody');
             if (!body) { return; }
@@ -1696,6 +1697,12 @@
                 });
                 if (f.author && authors.indexOf(f.author) < 0) { authors.push(f.author); }
             });
+            /* 作者搜索：只过滤候选，不动已选 */
+            var filteredAuthors = authors;
+            if (filtAuthorQ) {
+                var q2 = String(filtAuthorQ).toLowerCase();
+                filteredAuthors = authors.filter(function (a) { return String(a).toLowerCase().indexOf(q2) >= 0; });
+            }
             var chips = function (list, cur, attr, labelFn) {
                 var isPair = function (x) { return Object.prototype.toString.call(x) === '[object Array]'; };
                 return list.map(function (x) {
@@ -1708,26 +1715,33 @@
                     return '<button type="button" class="fchip' + (on ? ' on' : '') + '" ' + attr + '="' + esc(v) + '">' + esc(text) + '</button>';
                 }).join('');
             };
+            var grin = function (ico, title, sub) {
+                return '<h4><svg class="i fg-ico"><use href="#' + ico + '"/></svg>' + title +
+                    (sub ? ' <span class="fg-sub">' + sub + '</span>' : '') + '</h4>';
+            };
             body.innerHTML =
-                '<div class="fg"><h4>大小</h4><div class="chips">' + chips(SZ, S.size, 'data-fsize') + '</div></div>' +
-                '<div class="fg"><h4>分辨率</h4><div class="chips">' + chips(RS, S.res, 'data-fres') + '</div></div>' +
-                '<div class="fg"><h4>标签 <span class="fg-sub">可多选 · 取交集</span></h4><div class="chips">' +
+                '<div class="fg">' + grin('i-hard-drive', '大小') + '<div class="chips">' + chips(SZ, S.size, 'data-fsize') + '</div></div>' +
+                '<div class="fg">' + grin('i-image', '分辨率') + '<div class="chips">' + chips(RS, S.res, 'data-fres') + '</div></div>' +
+                '<div class="fg">' + grin('i-tag', '标签', '可多选 · 取交集') + '<div class="chips">' +
                     (tags.length ? chips(tags, S.tags || [], 'data-ftag') : '<span class="fg-empty">还没有标签</span>') +
                 '</div></div>' +
-                '<div class="fg"><h4>作者 <span class="fg-sub">可多选</span></h4><div class="chips">' +
-                    (authors.length ? chips(authors, S.authors || [], 'data-fauthor', function (a) { return String(a).split(' @')[0].slice(0, 14); }) : '<span class="fg-empty">—</span>') +
+                '<div class="fg">' +
+                    '<div class="fg-head">' + grin('i-user', '作者', '可多选') +
+                        '<input type="text" id="filtAuthorQ" class="sm-input fg-search" placeholder="筛作者…" spellcheck="false" value="' + esc(filtAuthorQ) + '">' +
+                    '</div><div class="chips" id="filtAuthorChips">' +
+                    (filteredAuthors.length ? chips(filteredAuthors, S.authors || [], 'data-fauthor', function (a) { return String(a).split(' @')[0].slice(0, 14); }) : '<span class="fg-empty">没有匹配的作者</span>') +
                 '</div></div>';
             var hit = $('#filtHit');
             if (hit) { hit.textContent = filtered().length; }
         }
         function openFilt() {
             renderFilt();
-            var m = $('#filtMask'), d = $('#filtDrawer');
+            var m = $('#filtMask'), d = $('#filtModal');
             if (m) { m.classList.add('show'); }
             if (d) { d.classList.add('show'); }
         }
         function closeFilt() {
-            var m = $('#filtMask'), d = $('#filtDrawer');
+            var m = $('#filtMask'), d = $('#filtModal');
             if (m) { m.classList.remove('show'); }
             if (d) { d.classList.remove('show'); }
         }
@@ -1740,12 +1754,22 @@
         var fClear = $('#filtClear');
         if (fClear) {
             fClear.addEventListener('click', function () {
-                S.size = 'all'; S.res = 'all'; S.authors = [];
+                S.size = 'all'; S.res = 'all'; S.authors = []; filtAuthorQ = '';
                 renderFilt(); render(); syncFilterBar();
             });
         }
+        /* 作者搜索：只过滤候选列表，不动已选；输入时重渲染作者 chips */
         var fBody = $('#filtBody');
         if (fBody) {
+            fBody.addEventListener('input', function (e) {
+                if (e.target && e.target.id === 'filtAuthorQ') {
+                    filtAuthorQ = e.target.value;
+                    var pos = e.target.selectionStart;
+                    renderFilt();
+                    var el2 = $('#filtAuthorQ');
+                    if (el2) { el2.focus(); try { el2.setSelectionRange(pos, pos); } catch (e2) { /* 忽略 */ } }
+                }
+            });
             fBody.addEventListener('click', function (e) {
                 var b = e.target.closest('[data-fsize],[data-fres],[data-ftag],[data-fauthor]');
                 if (!b) { return; }
@@ -2041,10 +2065,80 @@
              * 认不出站点的归「未整理」（苏哥 2026-11-09 明确要的两个入口）。 */
             scanFull();
         });
-        on('settingsBtn', function () { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.add('show'); } if (m) { m.classList.add('show'); } refreshDrawer(); });
-        on('setClose', function () { closeSet(); });
-        on('setmask', function () { closeSet(); });
-        function closeSet() { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.remove('show'); } if (m) { m.classList.remove('show'); } }
+        /* ---- 设置弹窗（2026-11-10 苏哥：抽屉改居中弹窗，保存才生效并关闭） ---- */
+        var LIB_SETTINGS_KEY = 'vrLibSettings';
+        function showSet(on) {
+            var m = $('#setModal'), mk = $('#setmask');
+            if (m) { m.classList.toggle('show', on); }
+            if (mk) { mk.classList.toggle('show', on); }
+        }
+        function fillSetForm() {
+            try {
+                chrome.storage.local.get(LIB_SETTINGS_KEY, function (o) {
+                    var st = (o && o[LIB_SETTINGS_KEY]) || {};
+                    var mode = String(st.mode || 'system') === 'custom' ? 'custom' : 'system';
+                    var seg = $('#smModeSeg');
+                    if (seg) {
+                        Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) {
+                            b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+                        });
+                    }
+                    var cr = $('#smCustomRow');
+                    if (cr) { cr.classList.toggle('hidden', mode !== 'custom'); }
+                    var sd = $('#smSubdir');
+                    if (sd) { sd.value = st.subdir || 'video-rod'; }
+                    var sr = $('#smCustomRoot');
+                    if (sr) { sr.value = st.customRoot || ''; }
+                    var dv = $('#smDeepVerify');
+                    if (dv) { dv.checked = !!st.deepVerify; }
+                });
+            } catch (e) { /* 存储不可用时保持默认展示 */ }
+            refreshDrawer();
+        }
+        function saveSet() {
+            var seg = $('#smModeSeg');
+            var act = seg ? seg.querySelector('button.active') : null;
+            var patch = {};
+            patch.mode = act ? (act.getAttribute('data-mode') || 'system') : 'system';
+            patch.subdir = (($('#smSubdir') || {}).value || 'video-rod').trim() || 'video-rod';
+            patch.customRoot = (($('#smCustomRoot') || {}).value || '').trim();
+            var dv = $('#smDeepVerify');
+            patch.deepVerify = !!(dv && dv.checked);
+            if (patch.mode === 'custom' && !patch.customRoot) {
+                toast('自定义目录需要填一个根路径（例如 E:\\素材\\video-rod）');
+                return;
+            }
+            try {
+                /* 先读再合并：vrLibSettings 与选项页共用，整体覆盖会抹掉别的键 */
+                chrome.storage.local.get(LIB_SETTINGS_KEY, function (o) {
+                    var cur = Object.assign({}, (o && o[LIB_SETTINGS_KEY]) || {}, patch);
+                    var obj = {};
+                    obj[LIB_SETTINGS_KEY] = cur;
+                    chrome.storage.local.set(obj, function () {
+                        toast('设置已保存');
+                        showSet(false);
+                        try { if (root.VRSettings && root.VRSettings.refreshCache) { root.VRSettings.refreshCache(); } } catch (e) { /* 忽略 */ }
+                        try { load(); } catch (e) { /* 忽略 */ }
+                    });
+                });
+            } catch (e) { toast('保存失败：' + ((e && e.message) || e)); }
+        }
+        on('settingsBtn', function () { showSet(true); fillSetForm(); });
+        on('setClose', function () { showSet(false); });
+        on('setCancel', function () { showSet(false); });
+        on('setmask', function () { showSet(false); });
+        on('setSave', saveSet);
+        var smSeg = $('#smModeSeg');
+        if (smSeg) {
+            smSeg.addEventListener('click', function (e) {
+                var b = e.target.closest('button[data-mode]');
+                if (!b) { return; }
+                Array.prototype.forEach.call(smSeg.querySelectorAll('button'), function (x) { x.classList.remove('active'); });
+                b.classList.add('active');
+                var cr = $('#smCustomRow');
+                if (cr) { cr.classList.toggle('hidden', b.getAttribute('data-mode') !== 'custom'); }
+            });
+        }
 
         on('rootBtn', function () { openOptions(); });
         /* 2026-11-10 盘查：resetBtn 已随 B-64 移除（换目录收敛为路径卡单入口），死绑定删除 */
@@ -2791,19 +2885,15 @@
         return next;
     }
 
-    /* ---------- 设置抽屉（R7：真实动作） ---------- */
+    /* ---------- 设置弹窗（R7：真实动作；2026-11-10 抽屉改弹窗，重复项已去） ---------- */
     function setVal(id, v) { var e = document.getElementById(id); if (e) { e.textContent = v; } }
 
     async function refreshDrawer() {
-        var pathEl = $('#rootBtn .rb-path');
-        setVal('sdDirVal', pathEl ? pathEl.textContent : '未探测');
-        setVal('sdScanVal', FILES.length ? (FILES.length + ' 个文件 · 索引就绪') : '索引为空');
         setVal('sdIndexVal', FILES.length + ' 项 · ' + Math.round(FILES.reduce(function (a, b) { return a + (b.size || 0); }, 0)) + ' MB');
         var tc = 0;
         try {
             if (root.VRTrash) { var st = await root.VRTrash.status(); tc = st.count || 0; }
         } catch (e) { tc = 0; }
-        setVal('sdTrashVal', tc ? (tc + ' 项 · 可恢复') : '空');
         /* 计数徽标不再写死初值：为空时整块隐藏，避免首帧闪一个错误数字。 */
         var dcnt = document.getElementById('dwCnt');
         if (dcnt) {
@@ -3074,9 +3164,9 @@
             toast: toast,
             onNeedAuth: function () {
                 toast('移动素材要先授权素材目录（设置 → 保存位置）');
-                var d = $('#setdrawer'), m = $('#setmask');
-                if (d) { d.classList.add('show'); }
-                if (m) { m.classList.add('show'); }
+                /* 走 settingsBtn 的点击链路，弹窗自动填充当前设置（2026-11-10 抽屉改弹窗） */
+                var sb = $('#settingsBtn');
+                if (sb) { sb.click(); }
             },
             onDone: async function () {
                 S.sel.clear(); S.select = false;
@@ -3465,13 +3555,9 @@
         var bf = $('#batchFav');
         if (bf) { bf.addEventListener('click', function () { addToFav(Array.from(S.sel)); }); }
 
-        // 设置抽屉
-        var dirBtn = $('#sdDirBtn');
-        if (dirBtn) { dirBtn.addEventListener('click', function () { openOptions(); }); }
+        // 设置弹窗（2026-11-10：换目录/扫描/回收站已从弹窗移除——主页均有入口）
         var optLink = $('#sdOptionsLink');
         if (optLink) { optLink.addEventListener('click', function (e) { e.preventDefault(); openOptions(); }); }
-        var scanBtn = $('#sdScanBtn');
-        if (scanBtn) { scanBtn.addEventListener('click', doScan); }
         var rebuildBtn = $('#sdRebuildBtn');
         if (rebuildBtn) { rebuildBtn.addEventListener('click', async function () {
             toast('正在重建索引…');
@@ -3549,18 +3635,6 @@
                 }
             });
         }
-        var trashBtn = $('#sdTrashBtn');
-        if (trashBtn) {
-            // 抽屉里点「打开回收站」：先把设置抽屉收起再开回收站。
-            // 注意 closeSet() 是 bind() 内部的局部函数，这里调不到（曾报 closeSet is not defined）。
-            trashBtn.addEventListener('click', function () {
-                var sd = $('#setdrawer'), sm = $('#setmask');
-                if (sd) { sd.classList.remove('show'); }
-                if (sm) { sm.classList.remove('show'); }
-                openTrash();
-            });
-        }
-
         var dwClose = $('#dwClose');
         if (dwClose) { dwClose.addEventListener('click', function () { closeTrash(); }); }
         var dwMask = $('#dwMask');

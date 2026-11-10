@@ -1716,6 +1716,57 @@ kbd{
 .stats-inline .it b{font-size:15px}
 .stats-inline .it.scan{color:var(--muted);font-size:11.5px;letter-spacing:.01em;gap:7px;padding:6px 12px}
 .stats-inline .it.scan .sdot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok);flex:none}
+/* ==========================================================
+ * 设置弹窗（2026-11-10 苏哥：右侧抽屉改居中弹窗，改完点保存才生效并关闭）
+ * 去重铁律：更换目录/扫描/回收站主页已有入口，弹窗不再列出。
+ * 行样式统一：左标签固定列宽，中间值右对齐，右侧统一描边按钮（不再混用填充高亮）。
+ * ========================================================== */
+.setmodal{
+  position:fixed;left:50%;top:50%;z-index:62;
+  width:min(600px,calc(100vw - 48px));max-height:min(720px,calc(100vh - 72px));
+  display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;
+  box-shadow:0 24px 64px rgba(0,0,0,.55),inset 0 1px 0 rgba(232,176,75,.08);
+  opacity:0;pointer-events:none;transform:translate(-50%,-48%) scale(.98);
+  transition:opacity .2s var(--ease),transform .2s var(--ease);
+}
+.setmodal.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.sm-head{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px 13px;border-bottom:1px solid var(--line-2)}
+.sm-head h3{margin:0;font-family:var(--serif);font-size:18px;font-weight:600;letter-spacing:.06em;color:var(--ink)}
+.sm-sub{margin:3px 0 0;font-size:11.5px;color:var(--muted)}
+.sm-body{overflow:auto;padding:2px 20px 6px}
+.sm-grp{padding:13px 0 10px;border-bottom:1px solid var(--line-2)}
+.sm-grp:last-child{border-bottom:0}
+.sm-grp h4{margin:0 0 2px;font-size:10.5px;font-weight:650;letter-spacing:.08em;color:var(--faint)}
+.sm-row{display:flex;align-items:center;gap:12px;min-height:38px}
+.sm-row > label{flex:0 0 96px;font-size:12.5px;font-weight:550;color:var(--ink-2)}
+.sm-row > .btn{margin-left:auto}
+.sm-val{margin-left:auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sm-val + .btn{margin-left:10px}
+.sm-side{margin-left:auto;display:flex;align-items:center;gap:10px;min-width:0}
+.sm-hint{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sm-input{
+  flex:1;max-width:330px;height:30px;box-sizing:border-box;
+  padding:0 10px;border-radius:var(--r-sm);font-size:12px;font-family:inherit;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--ink);
+  transition:border-color .14s,box-shadow .14s;
+}
+.sm-input:focus{outline:none;border-color:color-mix(in srgb,var(--accent) 42%,transparent);box-shadow:0 0 0 3px var(--accent-soft)}
+.sm-input.mono{font-family:ui-monospace,Consolas,monospace}
+.sm-code{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--ink-2);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:4px 9px;white-space:nowrap}
+.sm-note{margin:4px 0 0;font-size:11px;color:var(--faint);line-height:1.6}
+.sm-link{margin-left:auto;font-size:12px;color:var(--accent);text-decoration:none;padding:4px 2px}
+.sm-link:hover{text-decoration:underline}
+.sm-foot{flex:none;display:flex;justify-content:flex-end;gap:10px;padding:13px 20px;border-top:1px solid var(--line-2);background:var(--surface)}
+/* 开关（库页面自建，options 页的 switch 不在本页 CSS 里） */
+.switch{position:relative;display:inline-flex;width:38px;height:22px;flex:none;cursor:pointer}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.switch i{position:absolute;inset:0;border-radius:99px;background:var(--surface-3);border:1px solid var(--line);transition:.16s}
+.switch i::after{content:'';position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:.16s}
+.switch input:checked + i{background:color-mix(in srgb,var(--accent) 26%,transparent);border-color:color-mix(in srgb,var(--accent) 46%,transparent)}
+.switch input:checked + i::after{left:18px;background:var(--accent)}
+@media(prefers-reduced-motion:reduce){.setmodal{transition:none}}
 /* 设置抽屉（就地弹出，不跳 options） */
 .setmask{position:fixed;inset:0;background:rgba(8,8,10,.5);opacity:0;pointer-events:none;transition:opacity .22s;z-index:60}
 .setmask.show{opacity:1;pointer-events:auto}
@@ -2089,6 +2140,16 @@ h1 {
 .fg:last-child{border-bottom:0}
 .fg h4{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin:0 0 9px;font-weight:650}
 .fg .fg-sub{font-weight:400;text-transform:none;letter-spacing:0;margin-left:4px}
+/* 更多筛选弹窗（2026-11-10 与设置弹窗统一）：分组标题配 SVG 图标 + 作者搜索 */
+.setmodal.filt{width:min(620px,calc(100vw - 48px))}
+.setmodal.filt .fg h4{display:flex;align-items:center;gap:7px;color:var(--ink-2);letter-spacing:.02em;text-transform:none;font-size:11.5px}
+.setmodal.filt .fg-ico{width:13px;height:13px;flex:none;color:var(--faint)}
+.setmodal.filt .fg-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.setmodal.filt .fg-head h4{margin-bottom:0}
+.setmodal.filt .fg-search{max-width:160px;height:26px;font-size:11.5px;padding:0 9px}
+.setmodal.filt .chips{margin-top:0}
+.setmodal.filt .fg-head + .chips{margin-top:8px}
+.sm-spacer{flex:1}
 .fg .chips{display:flex;flex-wrap:wrap;gap:6px}
 .fg .fchip{font-size:11.5px;padding:4px 9px}
 .fg-empty{font-size:11.5px;color:var(--faint)}
