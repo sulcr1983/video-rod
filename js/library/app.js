@@ -28,8 +28,8 @@
     var FILES = [];    // 卡片模型
     var S = {
         type: 'all', plat: 'all', q: '', view: 'grid',
-        /* R4（2026-11-09）：筛选条新增两个维度——时间（all/today/week/month）与「仅已星标」 */
-        time: 'all', starOnly: false,
+        /* R4：仅已星标（时间窗 chips 2026-11-10 苏哥拍板整组删除） */
+        starOnly: false,
         /* R6：更多筛选（低频条件，抽屉里）——大小档 / 分辨率档 / 作者多选 */
         size: 'all', res: 'all', authors: [],
         /* 选中的标签（多选=交集）。用数组而不是 Set：要按点击顺序稳定渲染，
@@ -254,13 +254,6 @@
                 if (!favHas(fav, f)) { return false; }
             }
             if (S.type !== 'all' && f.kind !== S.type) { return false; }
-            /* R4：时间窗（按 savedTs 真实时间戳；savedAt 是格式化字符串，不能比大小） */
-            if (S.time && S.time !== 'all') {
-                var age = Date.now() - Number(f.savedTs || 0);
-                if (S.time === 'today' && age > 86400000) { return false; }
-                if (S.time === 'week' && age > 7 * 86400000) { return false; }
-                if (S.time === 'month' && age > 30 * 86400000) { return false; }
-            }
             /* R4：仅已星标 */
             if (S.starOnly && !f.starred) { return false; }
             /* R6：大小档（f.size 单位是 MB） */
@@ -739,12 +732,9 @@
         if (title) { title.textContent = onPlat ? name : '全部资源'; }
     }
 
-    /* R4：筛选条 chips 的选中态同步（时间 / 仅已星标） */
+    /* R4：筛选条 chips 的选中态同步（仅已星标） */
     var KIND_LABEL = { image: '图片', anim: '动图', video: '视频', audio: '音频' };
     function syncFilterBar() {
-        $$('#fbar2 [data-time]').forEach(function (b) {
-            b.classList.toggle('on', (b.dataset.time || 'all') === (S.time || 'all'));
-        });
         var sb = $('#starFilterBtn');
         if (sb) { sb.classList.toggle('on', !!S.starOnly); }
         var mb = $('#moreFilterBtn');
@@ -760,9 +750,6 @@
         if (!bar) { return; }
         var items = [];
         if (S.type !== 'all') { items.push({ k: 'type', t: '类型：' + (KIND_LABEL[S.type] || S.type) }); }
-        if (S.time && S.time !== 'all') {
-            items.push({ k: 'time', t: '时间：' + ({ today: '今天', week: '本周', month: '本月' }[S.time] || S.time) });
-        }
         if (S.starOnly) { items.push({ k: 'star', t: '仅已星标' }); }
         /* 平台不再进条件栏：面包屑「媒体库 / 抖音」已经说明了当前在哪，
          * 条件栏是"我筛了什么"的清单，平台是"我在哪一层"，两者重复会显得啰嗦。 */
@@ -1658,13 +1645,7 @@
             sync();
         })();
 
-        /* R4/R5（2026-11-09）：筛选条 chips + 已选条件栏的增删 */
-        $$('#fbar2 [data-time]').forEach(function (b) {
-            b.addEventListener('click', function () {
-                S.time = b.dataset.time || 'all';
-                render();
-            });
-        });
+        /* R4/R5（2026-11-09）：筛选条 chips + 已选条件栏的增删（时间窗 chips 2026-11-10 删除） */
         var starBtn = $('#starFilterBtn');
         if (starBtn) {
             starBtn.addEventListener('click', function () { S.starOnly = !S.starOnly; render(); });
@@ -1676,7 +1657,6 @@
                 if (del) {
                     var k = del.getAttribute('data-fdel');
                     if (k === 'type') { S.type = 'all'; }
-                    else if (k === 'time') { S.time = 'all'; }
                     else if (k === 'star') { S.starOnly = false; }
                     else if (k === 'plat') { S.plat = 'all'; }
                     else if (k === 'q') { S.q = ''; if ($('#search')) { $('#search').value = ''; } }
@@ -1693,7 +1673,7 @@
                     render(); renderTree(); return;
                 }
                 if (e.target.closest('[data-fclear]')) {
-                    S.type = 'all'; S.time = 'all'; S.starOnly = false; S.plat = 'all'; S.q = ''; S.tags = [];
+                    S.type = 'all'; S.starOnly = false; S.plat = 'all'; S.q = ''; S.tags = [];
                     S.size = 'all'; S.res = 'all'; S.authors = [];
                     if ($('#search')) { $('#search').value = ''; }
                     render(); renderTree();
@@ -2111,6 +2091,24 @@
     function revealFile(f) {
         if (!f) { return; }
 
+        /* ① 有 downloadId：先确认记录还在再 show。
+         *    浏览器重启后旧 downloadId 会失效，而 downloads.show 对无效 id
+         *    不抛错也不弹窗（静默无操作）——直接 toast 成功会变成「点了没反应」。
+         *    苏哥 2026-11-10 实测正是这个表现。 */
+        if (f.downloadId != null && chrome.downloads && chrome.downloads.search) {
+            chrome.downloads.search({ id: f.downloadId }, function (items) {
+                if (items && items.length && chrome.downloads.show) {
+                    try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
+                }
+                revealWithoutDownload(f);
+            });
+            return;
+        }
+        revealWithoutDownload(f);
+    }
+
+    /** ②③ 无有效 downloadId 时的定位链：绝对路径 → 路径自恢复 → 复制路径 */
+    function revealWithoutDownload(f) {
         var tryOpen = function (absPath) {
             var folder = String(absPath || '').replace(/\\/g, '/');
             if (!folder) { return false; }
@@ -2136,11 +2134,6 @@
                 try { window.open(url, '_blank'); toast('已打开所在文件夹'); return true; } catch (e2) { return false; }
             }
         };
-
-        /* ① 有 downloadId：让浏览器自己定位，最准（会选中文件本身） */
-        if (f.downloadId != null && chrome.downloads && chrome.downloads.show) {
-            try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
-        }
 
         /* ② 有绝对路径：直接开 */
         var abs = String(f.absPath || '').trim();

@@ -477,7 +477,11 @@
 
         if (f.width && f.height) { setTxt('st1v', f.width + '×' + f.height); }
         setTxt('st2v', fmt(f.size));
-        setTxt('st3v', f.savedAt || '—');
+        /* 下载时间拆两行：主值只放日期（14px 等宽 10 字符稳稳放进格子），
+         * 具体时刻并进标签行——「2026-11-10 00:27」整串塞一格必然破格（苏哥 2026-11-10） */
+        var dparts = String(f.savedAt || '').split(' ');
+        setTxt('st3v', dparts[0] || '—');
+        setTxt('st3k', '下载时间' + (dparts[1] ? ' · ' + dparts[1] : ''));
         if (el.pvThirdRow) {
             var showThird = (f.kind === 'video' || f.kind === 'anim' || f.kind === 'audio');
             el.pvThirdRow.classList.toggle('hidden', !showThird);
