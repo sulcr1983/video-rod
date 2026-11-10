@@ -33,6 +33,21 @@
         return (e && e.code) || 'LIB_E_TRASH';
     }
 
+    /** FSA 的「句柄缓存和磁盘对不上」：Windows 上偶发，重试一次通常就好。 */
+    function isStaleState(e) {
+        return !!e && (e.name === 'InvalidStateError' || e.code === 11);
+    }
+
+    /** 失败详情带原生错误名，ops 日志才能看出是「状态抖动」还是别的。 */
+    function failInfo(rel, e) {
+        return {
+            relPath: rel,
+            code: errCode(e),
+            error: (e && e.name) || '',
+            message: (e && e.message) || ''
+        };
+    }
+
     function split(rel) {
         return String(rel || '').replace(/\\/g, '/').split('/').filter(Boolean);
     }
@@ -121,7 +136,11 @@
             await fileAt(rootHandle, rel);
             return true;
         } catch (e) {
-            return false;
+            /* 只有「确实找不到」才算不存在。权限抖动 / InvalidStateError
+             * 一律上抛：否则会被当成「文件已不在」，走 cleaned 分支把索引行
+             * 悄悄删掉，文件却还躺在磁盘上（静默假删，2026-11-10 复盘）。 */
+            if (isNotFoundErr(e)) { return false; }
+            throw e;
         }
     }
 
@@ -159,8 +178,43 @@
         } catch (e) { /* 已不存在 */ }
     }
 
-    /** 复制 → 校验大小 → 删源；不依赖 FSA move() */
+    /**
+     * 复制 → 校验大小 → 删源；不依赖 FSA move()。
+     *
+     * Chromium 的 FSA 句柄会缓存目录状态。Windows 上偶发
+     * InvalidStateError「An operation that depends on state cached in an
+     * interface object ...」—— 文件其实好好的，只是句柄和磁盘对不上
+     * （2026-11-10 真实库 12:26 抓到：113.7MB 微博视频删除失败，
+     * 文件在、权限 granted、句柄链也全 ok，纯状态抖动）。
+     * 对策：重新解析根目录句柄 + 退避重试，最多 3 次；不是这类错误立刻抛。
+     */
     async function moveFile(rootHandle, fromRel, toRel, opts) {
+        opts = opts || {};
+        var last = null;
+        for (var attempt = 0; attempt < 3; attempt++) {
+            var h = rootHandle;
+            if (attempt > 0) {
+                await new Promise(function (resolve) { setTimeout(resolve, 120 * attempt); });
+                if (typeof opts.resolveRoot === 'function') {
+                    try {
+                        var rr2 = await opts.resolveRoot();
+                        if (rr2 && rr2.handle) { h = rr2.handle; }
+                    } catch (e3) { /* 拿不到新句柄就用旧句柄再试 */ }
+                }
+            }
+            try {
+                return await moveFileOnce(h, fromRel, toRel, opts);
+            } catch (e) {
+                last = e;
+                if (!isStaleState(e)) { throw e; }
+                console.warn('[trash] 目录状态抖动，重试搬文件 ' +
+                    (attempt + 1) + '/3：' + fromRel, (e && e.message) || '');
+            }
+        }
+        throw last;
+    }
+
+    async function moveFileOnce(rootHandle, fromRel, toRel, opts) {
         opts = opts || {};
         /* 移动也是写盘操作：必须和删除一样先确认句柄/S 权限。
          * 原实现没有这一步，授权过期时会在 createWritable 才失败。 */
@@ -489,7 +543,8 @@
                 /* ③ 搬文件：refOnly 不搬（原件还被活跃条目用着） */
                 if (!refOnly) {
                     try {
-                        await moveFile(rr.handle, fsRel, batchRel + '/' + fsRel);
+                        await moveFile(rr.handle, fsRel, batchRel + '/' + fsRel,
+                            { resolveRoot: resolveRoot });
                     } catch (e) {
                         /* 回滚打标：文件没搬成，索引必须回到 ok，否则卡片凭空消失 */
                         if (dbReady() && entry) {
@@ -498,7 +553,7 @@
                                 trashNoFile: 0, trashPending: 0
                             });
                         }
-                        failed.push({ relPath: rel, code: errCode(e), message: e.message || '' });
+                        failed.push(failInfo(rel, e));
                         continue;
                     }
                 }
@@ -519,7 +574,7 @@
                 }));
                 items.push(it);
             } catch (e) {
-                failed.push({ relPath: rel, code: errCode(e), message: e.message || '' });
+                failed.push(failInfo(rel, e));
             }
         }
 
@@ -701,7 +756,8 @@
                     if (await exists(rr.handle, fsRel)) {
                         throw makeErr('LIB_E_EXISTS', '原位置已有同名文件');
                     }
-                    await moveFile(rr.handle, TRASH + '/' + t.batch + '/' + fsRel, fsRel);
+                    await moveFile(rr.handle, TRASH + '/' + t.batch + '/' + fsRel, fsRel,
+                        { resolveRoot: resolveRoot });
                 }
 
                 var item = row || t.item || { relPath: rel, fileName: baseName(rel) };
@@ -719,7 +775,7 @@
                 }
                 restored.push(next);
             } catch (e) {
-                failed.push({ relPath: rel, code: errCode(e), message: e.message || '' });
+                failed.push(failInfo(rel, e));
             }
         }
 

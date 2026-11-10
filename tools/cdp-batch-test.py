@@ -123,6 +123,9 @@ def main():
         cdp.send(m, {}, sid)
     cdp.send("Network.setCacheDisabled", {"cacheDisabled": True}, sid)
     cdp.navigate(sid, f"chrome-extension://{ext_id}/library.html")
+    # navigate 是异步的：不等待就立刻 typeof，四个模块会全是 undefined（2026-11-10 实测
+    # 与产品代码无关，纯粹是这条断言的加载时序）。等挂载完再断言，避免假 FAIL。
+    cdp.wait_js(sid, "typeof VRBatch === 'object' && typeof VRTrash === 'object'", 10.0)
 
     mods = ev(cdp, sid, "({b: typeof VRBatch, r: typeof VRRename, t: typeof VRTrash, u: typeof VRTrashUI})")
     check("A2 S5b 模块已加载", mods,

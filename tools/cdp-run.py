@@ -5,6 +5,13 @@
 #      手动记端口容易错 → 这里每次自动挑一个空闲端口 + 全新 profile 目录；
 #   2. 浏览器开完忘关 → 这里跑完（含失败/异常）一定关掉，除非显式 --keep。
 #
+# ⚠️ 有头实例纪律（2026-11-10 苏哥定，见 docs/TESTING.md §1 / ARTIFACT-MANAGEMENT.md §2.5）：
+#   · 一轮任务只起一个实例，多套套件复用它串行跑，禁止每套各弹一个窗口；
+#   · 启动与测试必须在同一条命令内（job object 会回收子进程），收工统一关闭；
+#   · 只按自己 --user-data-dir 精确回收（CDP Browser.close 优先），绝不
+#     taskkill /IM msedge.exe /F，绝不碰其它会话或苏哥自己的浏览器；
+#   · 收工按 profile 关键字复核 left=0 才算关干净。
+#
 # 用法：
 #   python tools/cdp-run.py tools/cdp-image-test.py            # 单套
 #   python tools/cdp-run.py --suite full                       # 全部 11 套

@@ -25,6 +25,15 @@
 
 **测试数据约定**：本地测试站 + 真实公开站点（B站公开视频、YouTube 公开播放列表、文章页、推特页）。不使用需要付费/登录的内容做常规回归，登录态单独验。
 
+> **⚠️ 有头浏览器实例纪律（2026-11-10 苏哥拍板，所有会话 / 所有 e2e 必须遵守）**
+>
+> 1. **一轮任务只起一个实例**。多套 CDP 套件复用同一个隔离 Edge（固定端口 + 固定 `--user-data-dir`）串行跑完，禁止「一套脚本起一个浏览器」。前端有头模式 e2e 同样适用。
+> 2. **两套库不混**：真实库实例用 `9480` + `D:/test/download/.edge-login-profile`；隔离套件必须另起 profile。凡是 `SETUP` 里 `VRDB.deleteFiles(all)` / `removeEntry(..., recursive)` 的脚本，**严禁**在真实 profile 上跑，否则清空真实索引。
+> 3. **启动与测试写在同一条命令里**（Windows job object 会回收子进程），脚本用 `trap ... EXIT` 统一收工，不要靠「跑完想起来再关」。
+> 4. **收工按实例精确回收**：优先发 CDP `Browser.close`（只关自己连的那个实例）；兜底也必须按自己 profile 的命令行关键字过滤后再 `Stop-Process`。**禁止 `taskkill /IM msedge.exe /F`**，也禁止用 Git Bash 的 `$!` 当 Windows PID（实测对不上，会留下 9 个孤儿进程），更不许误杀别的会话或苏哥自己的浏览器。
+> 5. **收工必复核**：按 profile 关键字查一次进程数，确认 `left=0` 才算关干净；隔离 profile 目录随后删除。
+> 6. 其它会话可能同时在跑有头 e2e，**只清理自己启动的那一个实例**，看到别的 Edge 进程一律不动。
+
 ## 2. 测试环境
 
 - Chrome 当前稳定版（MV3）
@@ -1174,8 +1183,10 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 |---|---|---|
 | `tools/cdp-trash-empty-repro.py` | 删除标 trashed（行保留）→ 主页 0 卡 → 恢复一条 → 二次删除 → 搬空目录收尾 → UI 清空 → file 表 0 / IDB 缩略图 0 / 回收站目录空 / 再清空幂等 → snapshot·reconcile·full 三种扫描不复活 → **清空核验 verified/leftover、注入死卡兜底、重复删除无孤儿批次** | **23/23** |
 | `tools/cdp-trash-dup-index-test.py` | 同一物理文件两条索引（有/无 `video-rod` 前缀）：启动自愈归并、清空清「幽灵行」、搬运窗口内不误判复活 | **9/9** |
+| `tools/cdp-trash-stale-state-test.py` | 2026-11-10 新增：FSA `InvalidStateError`(code 11) 状态抖动 → 重解析句柄+重试后删除成功；持续抖动如实 failed+回滚+不留脏批次；`exists()` 严格化；**真实 UI** Delete→确认框→失败 toast 说「删除失败」并给「重试」→重试成功才报「已移入回收站」 | **17/17** |
 
 跑法：`python tools/cdp-run.py tools/cdp-trash-empty-repro.py`（自动起隔离 Edge 实例）。
+一轮跑多套时按 §1「有头浏览器实例纪律」复用同一个实例串行执行，不要每套各起一个窗口。
 
 ### 18.3 截图
 

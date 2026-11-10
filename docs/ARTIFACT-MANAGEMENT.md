@@ -133,6 +133,18 @@ node tools/build-dist.js --check         # 门禁：dist 是否与 HEAD 逐文�
 > 为什么不用 `git archive` 管道给 `tar`：Windows 的 GNU tar 把 `C:\…` 当远程主机，直接 `tar: Cannot connect to C: resolve failed`；
 > worktree 是 git 原生能力，不依赖 tar、不动工作区。
 
+### 2.5 有头 e2e 实例纪律（构建 / 部署 / 验收通用，2026-11-10 苏哥定）
+
+| 规则 | 做法 |
+|---|---|
+| 一轮只起一个实例 | 多套 CDP 套件复用同一隔离 Edge 串行跑，**禁止一套脚本弹一个窗口**；前端有头 e2e 同样适用 |
+| 两套库不混 | 真实库 `9480` + `.edge-login-profile`；隔离套件另起 profile，会清空 IDB 的 `SETUP` 脚本严禁跑在真实库上 |
+| 启动与测试同一条命令 | Windows job object 会回收子进程；用 `trap ... EXIT` 统一收工 |
+| 精确回收 | 优先 CDP `Browser.close`；兜底按自己 profile 的命令行关键字过滤后 `Stop-Process`。**禁止 `taskkill /IM msedge.exe /F`**、禁止用 Git Bash `$!` 当 Windows PID（实测留下 9 个孤儿进程）、**不许动其它会话的浏览器** |
+| 收工复核 | 按 profile 关键字查进程数 `left=0`，再删隔离 profile；交付时要能贴出这条复核输出 |
+
+完整说明与踩坑见 `docs/TESTING.md` §1 顶部的「有头浏览器实例纪律」。
+
 ---
 
 ## 3. 工作区边界：测试产物一律在仓库外

@@ -1081,6 +1081,40 @@
     }
     window.toast = toast;
 
+    /* ---------- 删除回执（2026-11-10） ---------- */
+    /**
+     * VRTrash.remove() 不抛异常，失败放在 rr.failed 里。单条删除的三处入口
+     * 以前都不看这个字段，一律 toast「已移入回收站」，于是出现
+     * 「文件没搬走、卡片还在、回收站 0 项」却报成功 —— 苏哥说的「删除不了」
+     * 有一半就是这个假回执。这里统一如实播报，并给「重试」入口。
+     */
+    function toastTrashResult(rr, okMsg, retry) {
+        var failed = (rr && rr.failed) || [];
+        if (!failed.length) { toast(okMsg || '已移入回收站'); return true; }
+        var f0 = failed[0] || {};
+        var short = String(f0.relPath || '').split('/').pop() || '该文件';
+        var why = (f0.error === 'InvalidStateError' || f0.code === 11)
+            ? '素材目录状态临时对不上，点「重试」再来一次；还不行去设置里重新授权素材目录'
+            : (f0.message || f0.code || '未知原因');
+        toast('删除失败：' + short +
+            (failed.length > 1 ? ' 等 ' + failed.length + ' 项' : '') + '。' + why, {
+                ms: 12000,
+                label: typeof retry === 'function' ? '重试' : '',
+                onClick: retry || null
+            });
+        return false;
+    }
+
+    async function retryTrashOne(relPath) {
+        try {
+            var rr = await root.VRTrash.remove([relPath]);
+            await load(); await refreshDrawer();
+            toastTrashResult(rr, '已移入回收站', function () { retryTrashOne(relPath); });
+        } catch (e) {
+            toast('重试失败：' + ((e && e.message) || '未知'));
+        }
+    }
+
     /* ---------- 数据加载 ---------- */
     async function load(retry, recheck) {
         if (!root.VRDB) { return; }
@@ -3398,9 +3432,9 @@
                 }
                 ask('把「' + (df.title || df.fileName) + '」移入回收站？文件还能恢复。', async function () {
                     try {
-                        await root.VRTrash.remove([df.relPath]);
+                        var rrD = await root.VRTrash.remove([df.relPath]);
                         await load(); await refreshDrawer();
-                        toast('已移入回收站');
+                        toastTrashResult(rrD, '已移入回收站', function () { retryTrashOne(df.relPath); });
                     } catch (err) { toast('删除失败：' + ((err && err.message) || '未知')); }
                 });
                 return;
@@ -3426,7 +3460,9 @@
                     var rr0 = await root.VRTrash.remove([f.relPath]);
                     if (root.VRPreview) { root.VRPreview.close(); }
                     await load(); await refreshDrawer();
-                    if (rr0 && rr0.moved > 0 && rr0.batch) {
+                    if (rr0 && rr0.failed && rr0.failed.length) {
+                        toastTrashResult(rr0, '', function () { retryTrashOne(f.relPath); });
+                    } else if (rr0 && rr0.moved > 0 && rr0.batch) {
                         toast('已移入回收站', {
                             label: '撤销', ms: 8000,
                             onClick: async function () {
@@ -3462,10 +3498,10 @@
                     ask('把「' + (f._title || f.title || f.fileName) + '」移入回收站？文件还能恢复。', async function () {
                         if (!root.VRTrash) { toast('回收站模块没加载'); return; }
                         try {
-                            await root.VRTrash.remove([f.relPath]);
+                            var rrC = await root.VRTrash.remove([f.relPath]);
                             if (root.VRPreview) { root.VRPreview.close(); }
-                            toast('已移入回收站');
                             await load(); await refreshDrawer();
+                            toastTrashResult(rrC, '已移入回收站', function () { retryTrashOne(f.relPath); });
                         } catch (e) { toast('删除失败：' + ((e && e.message) || '未知')); }
                     });
                 }
