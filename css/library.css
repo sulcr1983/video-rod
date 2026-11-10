@@ -1738,8 +1738,8 @@ kbd{
 .sm-grp{padding:13px 0 10px;border-bottom:1px solid var(--line-2)}
 .sm-grp:last-child{border-bottom:0}
 .sm-grp h4{margin:0 0 2px;font-size:10.5px;font-weight:650;letter-spacing:.08em;color:var(--faint)}
-.sm-row{display:flex;align-items:center;gap:12px;min-height:38px}
-.sm-row > label{flex:0 0 96px;font-size:12.5px;font-weight:550;color:var(--ink-2)}
+.sm-row{display:flex;align-items:center;gap:12px;min-height:42px}
+.sm-row > label{flex:0 0 118px;font-size:12.5px;font-weight:550;color:var(--ink-2);white-space:nowrap}
 .sm-row > .btn{margin-left:auto}
 .sm-val{margin-left:auto;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sm-val + .btn{margin-left:10px}
@@ -2150,6 +2150,9 @@ h1 {
 .setmodal.filt .chips{margin-top:0}
 .setmodal.filt .fg-head + .chips{margin-top:8px}
 .sm-spacer{flex:1}
+/* 设置弹窗内 seg（图片最小尺寸档）：紧凑一档，与整体节奏一致 */
+#setModal .sm-seg{padding:2px}
+#setModal .sm-seg button{padding:5px 10px;font-size:11.5px}
 .fg .chips{display:flex;flex-wrap:wrap;gap:6px}
 .fg .fchip{font-size:11.5px;padding:4px 9px}
 .fg-empty{font-size:11.5px;color:var(--faint)}

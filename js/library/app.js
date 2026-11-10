@@ -2065,60 +2065,79 @@
              * 认不出站点的归「未整理」（苏哥 2026-11-09 明确要的两个入口）。 */
             scanFull();
         });
-        /* ---- 设置弹窗（2026-11-10 苏哥：抽屉改居中弹窗，保存才生效并关闭） ---- */
+        /* ---- 设置弹窗（2026-11-10 苏哥：抽屉改居中弹窗，保存才生效并关闭；
+           第二轮按使用频率重排——视频合并/图片行为置顶，低频保存位置整组删除） ---- */
         var LIB_SETTINGS_KEY = 'vrLibSettings';
+        /* 独立键开关（chrome.storage.sync，以 id 为键——与 options 页同一套） */
+        var SYNC_SWITCHES = ['M3u8Mp4', 'M3u8Ffmpeg'];
         function showSet(on) {
             var m = $('#setModal'), mk = $('#setmask');
             if (m) { m.classList.toggle('show', on); }
             if (mk) { mk.classList.toggle('show', on); }
         }
+        function setSegVal(segId, v) {
+            var seg = $('#' + segId);
+            if (!seg) { return; }
+            Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) {
+                b.classList.toggle('active', String(b.getAttribute('data-v') || b.getAttribute('data-mode')) === String(v));
+            });
+        }
         function fillSetForm() {
+            /* ① 库设置（vrLibSettings 合并键：图片行为 + 落盘校验） */
             try {
                 chrome.storage.local.get(LIB_SETTINGS_KEY, function (o) {
                     var st = (o && o[LIB_SETTINGS_KEY]) || {};
-                    var mode = String(st.mode || 'system') === 'custom' ? 'custom' : 'system';
-                    var seg = $('#smModeSeg');
-                    if (seg) {
-                        Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) {
-                            b.classList.toggle('active', b.getAttribute('data-mode') === mode);
-                        });
-                    }
-                    var cr = $('#smCustomRow');
-                    if (cr) { cr.classList.toggle('hidden', mode !== 'custom'); }
-                    var sd = $('#smSubdir');
-                    if (sd) { sd.value = st.subdir || 'video-rod'; }
-                    var sr = $('#smCustomRoot');
-                    if (sr) { sr.value = st.customRoot || ''; }
                     var dv = $('#smDeepVerify');
                     if (dv) { dv.checked = !!st.deepVerify; }
+                    var hv = $('#smImgHover');
+                    if (hv) { hv.checked = !!st.imgHover; }
+                    var bt = $('#smImgBatch');
+                    if (bt) { bt.checked = !!st.imgBatch; }
+                    setSegVal('smImgMinSeg', Number(st.imgMinSize) || 0);
                 });
             } catch (e) { /* 存储不可用时保持默认展示 */ }
+            /* ② 独立 sync 开关（M3u8Mp4 / M3u8Ffmpeg） */
+            try {
+                chrome.storage.sync.get(SYNC_SWITCHES, function (o) {
+                    var mp4 = $('#smM3u8Mp4');
+                    if (mp4) { mp4.checked = !!(o && o.M3u8Mp4); }
+                    var ff = $('#smM3u8Ffmpeg');
+                    /* ffmpeg 默认开：未写过该键时按 true 展示 */
+                    if (ff) { ff.checked = !(o && o.M3u8Ffmpeg === false); }
+                });
+            } catch (e) { /* 忽略 */ }
             refreshDrawer();
         }
         function saveSet() {
-            var seg = $('#smModeSeg');
+            var seg = $('#smImgMinSeg');
             var act = seg ? seg.querySelector('button.active') : null;
-            var patch = {};
-            patch.mode = act ? (act.getAttribute('data-mode') || 'system') : 'system';
-            patch.subdir = (($('#smSubdir') || {}).value || 'video-rod').trim() || 'video-rod';
-            patch.customRoot = (($('#smCustomRoot') || {}).value || '').trim();
-            var dv = $('#smDeepVerify');
-            patch.deepVerify = !!(dv && dv.checked);
-            if (patch.mode === 'custom' && !patch.customRoot) {
-                toast('自定义目录需要填一个根路径（例如 E:\\素材\\video-rod）');
-                return;
-            }
+            var patch = {
+                deepVerify: !!(($('#smDeepVerify') || {}).checked),
+                imgHover: !!(($('#smImgHover') || {}).checked),
+                imgBatch: !!(($('#smImgBatch') || {}).checked),
+                imgMinSize: act ? Number(act.getAttribute('data-v')) || 0 : 0
+            };
+            var syncPatch = {
+                M3u8Mp4: !!(($('#smM3u8Mp4') || {}).checked),
+                M3u8Ffmpeg: !!(($('#smM3u8Ffmpeg') || {}).checked)
+            };
             try {
-                /* 先读再合并：vrLibSettings 与选项页共用，整体覆盖会抹掉别的键 */
+                /* 库设置：先读再合并，防抹掉别的键 */
                 chrome.storage.local.get(LIB_SETTINGS_KEY, function (o) {
                     var cur = Object.assign({}, (o && o[LIB_SETTINGS_KEY]) || {}, patch);
                     var obj = {};
                     obj[LIB_SETTINGS_KEY] = cur;
                     chrome.storage.local.set(obj, function () {
-                        toast('设置已保存');
-                        showSet(false);
-                        try { if (root.VRSettings && root.VRSettings.refreshCache) { root.VRSettings.refreshCache(); } } catch (e) { /* 忽略 */ }
-                        try { load(); } catch (e) { /* 忽略 */ }
+                        try {
+                            chrome.storage.sync.set(syncPatch, function () {
+                                toast('设置已保存');
+                                showSet(false);
+                                try { load(); } catch (e) { /* 忽略 */ }
+                            });
+                        } catch (e) {
+                            toast('设置已保存（部分开关未能写入）');
+                            showSet(false);
+                        }
                     });
                 });
             } catch (e) { toast('保存失败：' + ((e && e.message) || e)); }
@@ -2128,17 +2147,15 @@
         on('setCancel', function () { showSet(false); });
         on('setmask', function () { showSet(false); });
         on('setSave', saveSet);
-        var smSeg = $('#smModeSeg');
-        if (smSeg) {
-            smSeg.addEventListener('click', function (e) {
-                var b = e.target.closest('button[data-mode]');
+        /* 弹窗内 seg 通用切换（图片最小尺寸档等） */
+        Array.prototype.forEach.call(document.querySelectorAll('#setModal .sm-seg'), function (seg) {
+            seg.addEventListener('click', function (e) {
+                var b = e.target.closest('button[data-v]');
                 if (!b) { return; }
-                Array.prototype.forEach.call(smSeg.querySelectorAll('button'), function (x) { x.classList.remove('active'); });
+                Array.prototype.forEach.call(seg.querySelectorAll('button'), function (x) { x.classList.remove('active'); });
                 b.classList.add('active');
-                var cr = $('#smCustomRow');
-                if (cr) { cr.classList.toggle('hidden', b.getAttribute('data-mode') !== 'custom'); }
             });
-        }
+        });
 
         on('rootBtn', function () { openOptions(); });
         /* 2026-11-10 盘查：resetBtn 已随 B-64 移除（换目录收敛为路径卡单入口），死绑定删除 */

@@ -646,22 +646,50 @@
       <button class="sd-x" id="setClose" type="button" aria-label="关闭设置">&#10005;</button>
     </header>
     <div class="sm-body">
+      <!-- 2026-11-10 苏哥第二轮：低频的「保存位置」整组删除（换目录走左栏路径卡，不重复）；
+           按真实使用频率重排——视频流合并、图片行为天天用，置顶。 -->
       <section class="sm-grp">
-        <h4>保存位置</h4>
+        <h4>视频与流媒体</h4>
         <div class="sm-row">
-          <label>位置模式</label>
-          <div class="seg sm-seg" id="smModeSeg">
-            <button type="button" data-mode="system" class="active">系统下载目录</button>
-            <button type="button" data-mode="custom">自定义目录</button>
+          <label>合并为 MP4</label>
+          <div class="sm-side">
+            <span class="sm-hint">抓流时把分段拼成单个文件</span>
+            <label class="switch"><input type="checkbox" id="smM3u8Mp4"><i></i></label>
           </div>
         </div>
         <div class="sm-row">
-          <label for="smSubdir">子目录名</label>
-          <input type="text" id="smSubdir" class="sm-input" value="video-rod" spellcheck="false">
+          <label>ffmpeg 合并</label>
+          <div class="sm-side">
+            <span class="sm-hint">关闭则用内置流拷贝（不依赖 ffmpeg，偶有兼容问题）</span>
+            <label class="switch"><input type="checkbox" id="smM3u8Ffmpeg" checked><i></i></label>
+          </div>
         </div>
-        <div class="sm-row hidden" id="smCustomRow">
-          <label for="smCustomRoot">自定义根路径</label>
-          <input type="text" id="smCustomRoot" class="sm-input mono" placeholder="例如 E:\素材\video-rod" spellcheck="false">
+      </section>
+
+      <section class="sm-grp">
+        <h4>图片</h4>
+        <div class="sm-row">
+          <label>最小尺寸过滤</label>
+          <div class="seg sm-seg" id="smImgMinSeg">
+            <button type="button" data-v="0" class="active">不限</button>
+            <button type="button" data-v="100">≥ 100px</button>
+            <button type="button" data-v="200">≥ 200px</button>
+            <button type="button" data-v="400">≥ 400px</button>
+          </div>
+        </div>
+        <div class="sm-row">
+          <label>悬停下载按钮</label>
+          <div class="sm-side">
+            <span class="sm-hint">鼠标移到图上浮出保存按钮</span>
+            <label class="switch"><input type="checkbox" id="smImgHover"><i></i></label>
+          </div>
+        </div>
+        <div class="sm-row">
+          <label>批量选择</label>
+          <div class="sm-side">
+            <span class="sm-hint">框选/多选后一次下载</span>
+            <label class="switch"><input type="checkbox" id="smImgBatch"><i></i></label>
+          </div>
         </div>
       </section>
 
@@ -684,15 +712,6 @@
             <label class="switch"><input type="checkbox" id="smDeepVerify"><i></i></label>
           </div>
         </div>
-      </section>
-
-      <section class="sm-grp">
-        <h4>文件名规则</h4>
-        <div class="sm-row">
-          <label>模板</label>
-          <code class="sm-code">{博主}/{类型}/{标题}</code>
-        </div>
-        <p class="sm-note">下载入库时按此模板命名。改模板请到完整扩展设置 →「文件名规则」。</p>
       </section>
 
       <section class="sm-grp">
