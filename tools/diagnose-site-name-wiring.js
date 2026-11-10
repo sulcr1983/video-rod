@@ -13,8 +13,6 @@
 'use strict';
 
 const R = (p) => require('../' + p);
-const fs = require('fs');
-const path = require('path');
 
 /* 内存版 storage：必须在 require 站点名模块前装好 */
 const disk = { vrSiteNames: {} };
@@ -31,7 +29,6 @@ global.VRSiteNameStore = R('js/site-name-store.js');
 global.VRSiteNamesPreset = R('js/library/site-names-preset.js');
 global.VRSiteRegistry = R('js/library/site-registry.js');
 
-const SN = global.VRSiteName;
 const ST = global.VRSiteNameStore;
 const RG = global.VRSiteRegistry;
 
@@ -62,12 +59,12 @@ function show(tag) {
     await ST.put('baibian365.com', '百变桌面', 'title');
     console.log('\n磁盘 vrSiteNames 已有: ' + Object.keys(disk.vrSiteNames).join(', '));
 
-    /* ① 资源库页面冷启动 = 现状：没有任何代码调用 ST.ready() */
+    /* ① 模拟修复前基线：库页没有任何代码调用 ST.ready() */
     ST._resetCache();
     RG._reset();
     show('① 修复前基线（模拟）：库页冷启动且从不 ready()');
 
-    /* ② 修复 A：boot 里 await ST.ready() + RG.refresh() */
+    /* ② 当前代码形态：boot 里 await ST.ready() + RG.refresh() */
     await ST.ready();
     RG.refresh();
     show('② 当前代码（F1 ready+refresh / F2 归一）：11 个键应全部为 [名字]');
@@ -78,22 +75,6 @@ function show(tag) {
         const d = RG.detect(u);
         console.log('  ' + u + ' → key=' + d.key + ' name=' + JSON.stringify(d.name) + ' src=' + d.src);
     });
-
-    /* ④ 可选：用项目自己的提取器跑三个站点首页快照 */
-    const pageDir = path.join(__dirname, '..', '.tmp-probe', 'pages');
-    if (fs.existsSync(pageDir)) {
-        console.log('\n--- 对照组：三个站点首页 parseHtmlInfo() ---');
-        [
-            ['yidianzixun', 'https://www.yidianzixun.com/'],
-            ['bizhi66', 'https://www.bizhi66.com/'],
-            ['baibian365', 'https://www.baibian365.com/']
-        ].forEach(function (pair) {
-            const f = path.join(pageDir, pair[0] + '.html');
-            if (!fs.existsSync(f)) { return; }
-            const info = SN.parseHtmlInfo(fs.readFileSync(f, 'utf8'), pair[1]);
-            console.log('  ' + pair[0] + ' → name=' + JSON.stringify(info.name) + ' src=' + (info.src || '-'));
-        });
-    }
 
     console.log('\n' + '='.repeat(64));
     console.log('诊断基线（2026-11-10，F1/F2 已实施）：');
