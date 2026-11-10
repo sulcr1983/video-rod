@@ -157,26 +157,12 @@
 
     /* ---------------- 根解析 ---------------- */
 
-    /** settings.js 的旧授权库（独立 IDB：vr-lib-handle → kv.root） */
+    /** 根句柄（2026-11-10 存储梳理）：统一走 VRHandleStore，
+     *  它内部会先读主库 vr-library/handle，并自动完成旧库 vr-lib-handle 的一次性搬迁。 */
     function legacyHandle() {
-        return new Promise(function (resolve) {
-            try {
-                var req = indexedDB.open('vr-lib-handle', 1);
-                req.onupgradeneeded = function () {
-                    var db = req.result;
-                    if (!db.objectStoreNames.contains('kv')) { db.createObjectStore('kv'); }
-                };
-                req.onsuccess = function () {
-                    var db = req.result;
-                    try {
-                        var g = db.transaction('kv', 'readonly').objectStore('kv').get('root');
-                        g.onsuccess = function () { resolve(g.result || null); };
-                        g.onerror = function () { resolve(null); };
-                    } catch (e) { resolve(null); }
-                };
-                req.onerror = function () { resolve(null); };
-            } catch (e) { resolve(null); }
-        });
+        var HS = root.VRHandleStore;
+        if (!HS) { return Promise.resolve(null); }
+        return HS.get('root').catch(function () { return null; });
     }
 
     /**

@@ -93,39 +93,18 @@
 
     /* ---------------- FSA 句柄（IndexedDB） ---------------- */
 
-    function openIdb() {
-        return new Promise(function (resolve, reject) {
-            var req = indexedDB.open('vr-lib-handle', 1);
-            req.onupgradeneeded = function () {
-                if (!req.result.objectStoreNames.contains('kv')) {
-                    req.result.createObjectStore('kv');
-                }
-            };
-            req.onsuccess = function () { resolve(req.result); };
-            req.onerror = function () { reject(req.error); };
-        });
-    }
-
+    /* 2026-11-10 存储梳理：句柄统一存主库 vr-library/handle，
+       旧独立库 vr-lib-handle 的读写实现已迁到 handle-store.js（一次性搬迁 + 兼容读取）。 */
     function idbPut(key, val) {
-        return openIdb().then(function (db) {
-            return new Promise(function (resolve, reject) {
-                var tx = db.transaction('kv', 'readwrite');
-                tx.objectStore('kv').put(val, key);
-                tx.oncomplete = function () { resolve(true); };
-                tx.onerror = function () { reject(tx.error); };
-            });
-        });
+        var HS = root.VRHandleStore;
+        if (!HS) { return Promise.resolve(null); }
+        return HS.put(key, val).then(function () { return true; }, function () { return null; });
     }
 
     function idbGet(key) {
-        return openIdb().then(function (db) {
-            return new Promise(function (resolve, reject) {
-                var tx = db.transaction('kv', 'readonly');
-                var req = tx.objectStore('kv').get(key);
-                req.onsuccess = function () { resolve(req.result || null); };
-                req.onerror = function () { reject(req.error); };
-            });
-        });
+        var HS = root.VRHandleStore;
+        if (!HS) { return Promise.resolve(null); }
+        return HS.get(key).catch(function () { return null; });
     }
 
     /* ---------------- 索引状态（验证自动入库） ---------------- */

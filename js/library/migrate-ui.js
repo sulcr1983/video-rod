@@ -4,7 +4,7 @@
  * 只在 options.html 里跑（FSA 目录选择器与句柄读写都需要页面上下文）。
  * 引擎在 js/library/migrate.js，本文件只管交互：
  *   选目录 → 预演 → 执行（进度）→ 回滚
- * 句柄存 IDB `vr-lib-handle` 的 kv（键 migrate:parent / migrate:src / migrate:dst）。
+ * 句柄统一存主库 vr-library/handle（经 VRHandleStore；键 migrate:parent/src/dst）。
  * ========================================================== */
 (function (root) {
     'use strict';
@@ -33,41 +33,17 @@
         });
     }
 
-    /* ---------------- IDB（与 settings.js 同一个库） ---------------- */
-
-    function openIdb() {
-        return new Promise(function (resolve, reject) {
-            var req = indexedDB.open('vr-lib-handle', 1);
-            req.onupgradeneeded = function () {
-                if (!req.result.objectStoreNames.contains('kv')) {
-                    req.result.createObjectStore('kv');
-                }
-            };
-            req.onsuccess = function () { resolve(req.result); };
-            req.onerror = function () { reject(req.error); };
-        });
-    }
-
+    /* 2026-11-10 存储梳理：统一走 VRHandleStore（主库 vr-library/handle） */
     function idbPut(key, val) {
-        return openIdb().then(function (db) {
-            return new Promise(function (resolve, reject) {
-                var tx = db.transaction('kv', 'readwrite');
-                tx.objectStore('kv').put(val, key);
-                tx.oncomplete = function () { resolve(true); };
-                tx.onerror = function () { reject(tx.error); };
-            });
-        });
+        var HS = root.VRHandleStore;
+        if (!HS) { return Promise.resolve(null); }
+        return HS.put(key, val).then(function () { return true; }, function () { return null; });
     }
 
     function idbGet(key) {
-        return openIdb().then(function (db) {
-            return new Promise(function (resolve, reject) {
-                var tx = db.transaction('kv', 'readonly');
-                var req = tx.objectStore('kv').get(key);
-                req.onsuccess = function () { resolve(req.result || null); };
-                req.onerror = function () { reject(req.error); };
-            });
-        });
+        var HS = root.VRHandleStore;
+        if (!HS) { return Promise.resolve(null); }
+        return HS.get(key).catch(function () { return null; });
     }
 
     function restoreHandles() {
