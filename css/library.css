@@ -523,11 +523,21 @@ h1 .pill{
   padding:64px 24px;border:1px dashed var(--line);border-radius:var(--r-lg);
   background:var(--surface);color:var(--muted);text-align:center;
 }
-.empty .e-ico{
-  width:48px;height:48px;border-radius:14px;display:grid;place-items:center;
-  background:var(--surface-2);color:var(--faint);margin-bottom:2px;
+.empty .e-art{
+  position:relative;width:150px;height:112px;margin-bottom:2px;
 }
-.empty .e-ico .i{width:22px;height:22px}
+.empty .e-art svg{width:100%;height:100%;display:block}
+/* 聚光灯圆环：40s 一圈极缓旋转，给空态一点"剧场还在运转"的生命感 */
+.empty .e-art .e-ring{transform-origin:80px 46px;animation:ering 40s linear infinite}
+@keyframes ering{to{transform:rotate(360deg)}}
+.empty .e-ico{
+  position:absolute;left:50%;top:46px;transform:translate(-50%,-50%);
+  width:44px;height:44px;border-radius:12px;display:grid;place-items:center;
+  background:var(--surface-2);color:var(--faint);
+  box-shadow:0 6px 18px rgba(0,0,0,.45);
+}
+.empty .e-ico .i{width:20px;height:20px}
+@media(prefers-reduced-motion:reduce){.empty .e-art .e-ring{animation:none}}
 .empty b{color:var(--ink-2);font-size:14px;font-weight:650}
 .empty p{margin:0;font-size:12px;max-width:320px;line-height:1.7}
 
@@ -1614,6 +1624,7 @@ kbd{
 .toast.on{opacity:1;transform:translate(-50%,0)}
 /* 撤销等内联动作：toast 从 pointer-events:none 放开按钮本身 */
 .toast{display:flex;align-items:center;gap:10px}
+.toast .t-ico{width:15px;height:15px;flex:none;opacity:.75}
 .toast.on{pointer-events:auto}
 .toast #toastAct{
   border:0;border-left:1px solid rgba(0,0,0,.18);background:transparent;

@@ -2047,7 +2047,7 @@
         function closeSet() { var d = $('#setdrawer'), m = $('#setmask'); if (d) { d.classList.remove('show'); } if (m) { m.classList.remove('show'); } }
 
         on('rootBtn', function () { openOptions(); });
-        on('resetBtn', function () { openOptions(); });
+        /* 2026-11-10 盘查：resetBtn 已随 B-64 移除（换目录收敛为路径卡单入口），死绑定删除 */
 
         var emptyAct = $('#emptyAction');
         if (emptyAct) {
