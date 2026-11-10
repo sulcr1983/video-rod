@@ -1694,9 +1694,9 @@ kbd{
 .toolbar .seg button{padding:5px 8px;gap:4px;white-space:nowrap}
 .toolbar .fbar-l{display:flex;align-items:center;gap:6px;min-width:0}
 .toolbar .tools{margin-left:auto;gap:7px}
-.toolbar .fbar-l .fchip{padding:6px 8px;white-space:nowrap}
-.toolbar .fbar-l .fchip.scan{color:var(--ink-2)}
-.toolbar .fbar-l .fchip.scan:hover{color:var(--ink)}
+.toolbar .fbar-l .fchip{padding:6px 8px;white-space:nowrap;width:max-content}
+.toolbar .fbar-l .fchip.scanbtn{color:var(--ink-2)}
+.toolbar .fbar-l .fchip.scanbtn:hover{color:var(--ink)}
 /* 搜索框是唯一弹性项：大屏吃掉富余宽度，小屏压到 156 */
 .toolbar .tools > .searchbox{flex:1 1 156px;min-width:156px;max-width:340px}
 @media(min-width:1600px){.toolbar{flex-wrap:nowrap}}
