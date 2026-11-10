@@ -207,6 +207,14 @@
         var pageUrl = o.pageUrl || o.mediaUrl || '';
         var hint = String(o.siteName || o.site || '').trim();
 
+        /* 2026-11-10 单目录铁律：**显式平台 key 优先于一切推断**。
+         * 调用方传 site:'xhs' 就是明确的意图，不能被 pageUrl 推断抢走
+         * （跨站转发/内嵌播放时 URL 与真实平台可能不一致）。
+         * 这一层还负责把 key 翻成中文目录名，杜绝 `weibo/` 与 `微博/` 并存。 */
+        var hintKey = hint.toLowerCase();
+        var mapped = PLATFORM_DIR[hintKey] || PLATFORM_DIR[hint];
+        if (mapped) { return { key: hintKey, dir: mapped, name: mapped }; }
+
         var R = root.VRSiteRegistry;
         if (R && typeof R.detect === 'function') {
             try {
@@ -217,12 +225,8 @@
 
         var host = hostOf(pageUrl);
         if (hint) {
-            /* 2026-11-10 单目录铁律：hint 可能是一个**平台 key**（weibo/xhs/bilibili…），
-             * 直接拿它当目录名会造出 `weibo/` 与既有的 `微博/` 并存 —— 同一平台劈成
-             * 两个目录，用户看到的就是「重复」。凡能映射到收录平台，一律用中文目录名。 */
-            var mapped = PLATFORM_DIR[hint] || PLATFORM_DIR[String(hint).toLowerCase()];
-            if (mapped) { return { key: hint, dir: mapped, name: mapped }; }
-            /* 收录平台也可能是中文名（微博）或域名（weibo.com）：交给 detectPlatform 兜一层 */
+            /* 非平台 key 的 hint（站点名/域名）：先看能不能按 URL 认出收录平台，
+             * 认不出才用 hint 本身当目录名。 */
             var p2 = detectPlatform(pageUrl || hint);
             if (p2 && p2 !== 'web' && PLATFORM_DIR[p2]) {
                 return { key: p2, dir: PLATFORM_DIR[p2], name: PLATFORM_DIR[p2] };

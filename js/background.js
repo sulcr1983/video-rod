@@ -4503,11 +4503,20 @@ function vrMediaPath(item, name) {
             if (rel) { return rel; }
         } catch (e) { /* 退回下面的简单路径 */ }
     }
+    /* 2026-11-10 单目录铁律（兜底分支）：VRPath 不可用时也不能落英文平台目录，
+     * 否则同一平台又会劈成 `weibo/` 与 `微博/` 两个目录。内联同一张映射表，
+     * 与 path.js 的 PLATFORM_DIR 保持一致（只在 VRPath 加载失败时走到）。 */
+    const PLAT_DIR = {
+        bilibili: 'B站', xiaohongshu: '小红书', x: 'X', youtube: 'YouTube',
+        douyin: '抖音', weibo: '微博', instagram: 'Instagram', tiktok: 'TikTok'
+    };
+    const TYPE_DIR = { video: '视频', image: '图片', audio: '音频' };
+    const dirName = PLAT_DIR[site] || site;
+    const kindDir = TYPE_DIR[i.kind] || TYPE_DIR.image;
     const author = String(i.author || '').replace(/[<>:"/\|?* -]/g, '_').trim().slice(0, 60);
     const id = String(i.authorId || '').replace(/[<>:"/\|?* -]/g, '_').trim().slice(0, 40);
-    const folder = author ? (id ? author + '(@' + id + ')' : author) : site;
-    const kind = i.kind === 'video' ? 'videos' : 'images';
-    return 'video-rod/' + site + '/' + folder + '/' + kind + '/' + name;
+    const folder = author ? (id ? author + '(@' + id + ')' : author) : '待整理';
+    return 'video-rod/' + dirName + '/' + folder + '/' + kindDir + '/' + name;
 }
 
 /** 批量条目的资源库元数据。必须显式写全：FSA 直写不会产生下载事件，
