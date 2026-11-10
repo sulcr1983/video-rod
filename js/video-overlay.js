@@ -44,7 +44,8 @@
         '.vr-vob button{border:none;background:transparent;color:#fff;cursor:pointer;',
         'display:flex;align-items:center;justify-content:center;padding:0;margin:0}',
         '.vr-vob svg{width:21px;height:21px;pointer-events:none}',
-        '.vr-vob-main{width:44px;height:40px;border-radius:10px;position:relative}',
+        '.vr-vob-main{width:44px;height:40px;border-radius:10px;position:relative;',
+        'display:flex;align-items:center;justify-content:center}',
         '.vr-vob-main:hover{background:rgba(255,255,255,.16)}',
         '.vr-vob-more{width:26px;height:40px;border-radius:10px;opacity:.75}',
         '.vr-vob-more:hover{background:rgba(255,255,255,.16);opacity:1}',
@@ -52,8 +53,24 @@
         '.vr-vob.vr-busy .vr-vob-main,.vr-vob.vr-busy .vr-vob-more{opacity:.5;pointer-events:none}',
         '.vr-vob.vr-done .vr-vob-main{color:#34d399}',
         '.vr-vob.vr-warn .vr-vob-main{color:#f87171}',
-        '.vr-vob-pct{position:absolute;left:0;top:0;width:100%;height:100%;display:flex;',
-        'align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff}',
+        /* 进度文字：不要用 absolute 铺满 —— 父按钮在忙碌时会加宽，
+         * absolute+100% 跟着变宽没错，但会把「加宽」的基准锁死成 44px。
+         * 用流式排列，宽度由内容决定。 */
+        '.vr-vob-pct{display:none;align-items:center;justify-content:center;',
+        'font-size:12px;font-weight:700;color:#fff;white-space:nowrap;line-height:1}',
+        /* 有阶段文字时（下载画面/合成中）字号让位，别把 44px 挤爆 */
+        '.vr-vob-pct.vr-has-phase{font-size:10px;font-weight:600;letter-spacing:0}',
+        /* 主按钮在忙碌时按文字加宽 —— 44px 装不下「下载中」三个字，
+         * 不加宽就会被压成竖排（实测截图很难看）。 */
+        '.vr-vob.vr-busy .vr-vob-main{width:auto;min-width:52px;padding:0 8px}',
+        /* 忙碌时隐藏图标，只留文字 + 底部细进度条 */
+        '.vr-vob.vr-busy .vr-vob-main > svg{display:none}',
+        /* 进度条：只有真百分比才显示，indeterminate 时是一条来回滑的细线 */
+        '.vr-vob-bar{position:absolute;left:5px;right:5px;bottom:3px;height:2px;',
+        'border-radius:2px;background:rgba(255,255,255,.22);overflow:hidden}',
+        '.vr-vob-bar i{display:block;height:100%;width:0;background:#e8b04b;transition:width .3s}',
+        '.vr-vob.vr-busy.vr-indet .vr-vob-bar i{width:40%;animation:vr-indet 1.1s ease-in-out infinite}',
+        '@keyframes vr-indet{0%{margin-left:-40%}100%{margin-left:100%}}',
         '.vr-vob-menu{position:absolute;right:0;top:100%;margin-top:6px;min-width:196px;',
         'background:rgba(18,20,24,.96);border-radius:10px;padding:5px;',
         'box-shadow:0 6px 20px rgba(0,0,0,.45);display:none;flex-direction:column}',
@@ -91,7 +108,8 @@
     panel.className = 'vr-vob';
     panel.innerHTML =
         '<button class="vr-vob-main" type="button" title="钓鱼竿：下载这个视频（最高清）">' +
-        ICON_DOWN + '<span class="vr-vob-pct" style="display:none"></span></button>' +
+        ICON_DOWN + '<span class="vr-vob-pct" style="display:none"></span>' +
+        '<span class="vr-vob-bar" style="display:none"><i></i></span></button>' +
         '<button class="vr-vob-more" type="button" title="选择清晰度">' + ICON_MORE + '</button>' +
         '<div class="vr-vob-menu"></div>';
     document.documentElement.appendChild(panel);
@@ -169,25 +187,42 @@
     }
 
     /* ---------- 状态 ---------- */
-    function setState(state, pct, indeterminate) {
-        panel.classList.remove('vr-busy', 'vr-done', 'vr-warn');
+    /** phase：B站那种「下载画面 / 合成中」的阶段文字；有它就把数字挤小一点 */
+    function setState(state, pct, indeterminate, phase) {
+        panel.classList.remove('vr-busy', 'vr-done', 'vr-warn', 'vr-indet');
         if (state) { panel.classList.add('vr-' + state); }
+        if (state === 'busy' && indeterminate) { panel.classList.add('vr-indet'); }
         // 每次重新查：非 busy 分支会重建 innerHTML，旧引用会变成游离节点
         const p = panel.querySelector('.vr-vob-pct');
+        const bar = panel.querySelector('.vr-vob-bar');
+        const fill = bar && bar.querySelector('i');
         if (state === 'busy') {
             if (p) {
                 p.style.display = 'flex';
-                /* indeterminate：拿不到总字节（FSA 直写 / 服务器没给 Content-Length）
-                 * 时显示「…」而不是假的 0%。苏哥 2026-11-09 报的就是「一直 0%」。 */
-                p.textContent = indeterminate ? '…' : ((pct != null ? pct : 0) + '%');
+                /* indeterminate：拿不到总字节（FSA 直写 / 服务器没给 Content-Length /
+                 * B站 durl 只给 loaded,total 还没算成百分比）→ 显示「…」而不是假的 0%。
+                 * 苏哥 2026-11-09 与 11-10 两次报的「一直 0%」都是这一类。 */
+                const ph = String(phase || '');
+                if (indeterminate) {
+                    p.classList.add('vr-has-phase');
+                    p.textContent = ph ? ph : '…';
+                } else {
+                    p.classList.toggle('vr-has-phase', !!ph);
+                    /* 有阶段文字时显示「画面 37%」这种；纯数字时字大一点 */
+                    p.textContent = ph ? (ph + ' ' + (pct != null ? pct : 0) + '%')
+                                       : ((pct != null ? pct : 0) + '%');
+                }
             }
-            const svg = btnMain.querySelector('svg');
-            if (svg) { svg.style.opacity = '.25'; }
+            if (bar) {
+                bar.style.display = 'block';
+                if (fill && !indeterminate) { fill.style.width = (pct != null ? pct : 0) + '%'; }
+            }
         } else {
             const icon = state === 'done' ? ICON_OK
                 : state === 'warn' ? ICON_BAD : ICON_DOWN;
             btnMain.innerHTML = icon +
-                '<span class="vr-vob-pct" style="display:none"></span>';
+                '<span class="vr-vob-pct" style="display:none"></span>' +
+                '<span class="vr-vob-bar" style="display:none"><i></i></span>';
         }
     }
 
@@ -322,7 +357,12 @@
     function start(optionId, wantBest) {
         if (busy) { return; }
         busy = true;
-        setState('busy', 0);
+        /* 点下去到第一条真实进度之间有个空窗（要探测候选/探可达性/建连接，
+         * B站还要先要 playurl）。这期间**不能显示 0%** —— 苏哥两次报的
+         * 「只有 0% 没有进度信息」有一半就是这半秒到几秒的观感。
+         * 先给「准备中 + 不确定」，等后台第一条真进度再换成数字。 */
+        setState('busy', null, true, '准备中');
+        armWatchdog();
         // 扩展被更新/重新加载后，旧页面的 content script 会变成「孤儿」，
         // 此时 sendMessage 会同步抛 "Extension context invalidated."（Edge 错误面板可查）。
         // 以前这里没包 try，用户点一下按钮就是一条红色错误且永久 busy。
@@ -371,13 +411,13 @@
             return;
         }
         if (msg.indeterminate) {
-            /* 没有真实百分比（等 Content-Length / 直写磁盘）→ 显示 … 保持 busy，
-             * 不要用 0% 糊弄用户。 */
-            setState('busy', null, true);
+            /* 没有真实百分比（等 Content-Length / 直写磁盘 / 页面通道还没算出来）
+             * → 显示「…」或阶段文字，保持 busy，不要用 0% 糊弄用户。 */
+            setState('busy', null, true, msg.phase);
             armWatchdog();
             return;
         }
-        setState('busy', msg.pct || 0);
+        setState('busy', msg.pct || 0, false, msg.phase);
         armWatchdog();
     });
 

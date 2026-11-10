@@ -109,18 +109,45 @@
 
     /**
      * 主世界：整段 MP4 直链下载（快）。进度写进 window.__vrBiliDL 供外部轮询。
+     *
+     * ⚠️ 进度字段契约（外部两个消费者都依赖它，别只写一半）：
+     *   pct  0–99 的百分比（**必须有**：页内悬浮键只认这个，缺了就永远显示 0%）
+     *   phase 阶段文字
+     *   loaded/total 原始字节（popup 面板用它兜底算百分比）
+     * 2026-11-10 苏哥报「B站下载只有 0%」的根因就是这里只写了 loaded/total。
      */
     function durlFunc(filename, cidArg, bvidArg) {
-        window.__vrBiliDL = { loaded: 0, total: 0, done: false, error: null, bytes: 0 };
+        var S = {
+            pct: null, phase: '准备', indeterminate: true,
+            loaded: 0, total: 0, done: false, error: null, bytes: 0
+        };
+        window.__vrBiliDL = S;
+        function tick(p, ph) {
+            if (p != null && isFinite(p)) {
+                S.pct = Math.max(0, Math.min(99, p));
+                S.indeterminate = false;
+            } else {
+                /* 明确标不确定：消费者据此显示「…」而不是 0% */
+                S.pct = null;
+                S.indeterminate = true;
+            }
+            if (ph) { S.phase = ph; }
+        }
         function save(url) {
             return new Promise(function (resolve, reject) {
                 var x = new XMLHttpRequest();
                 x.open('GET', url, true);
                 x.responseType = 'blob';
                 x.onprogress = function (ev) {
-                    if (ev.lengthComputable) {
-                        window.__vrBiliDL.loaded = ev.loaded;
-                        window.__vrBiliDL.total = ev.total;
+                    if (ev.lengthComputable && ev.total > 0) {
+                        S.loaded = ev.loaded;
+                        S.total = ev.total;
+                        /* 这里算出百分比，别指望消费者自己算 ——
+                         * 页内悬浮键拿到的只有这个对象，它不看 loaded/total。 */
+                        tick(Math.round(ev.loaded / ev.total * 99), '下载中');
+                    } else {
+                        /* 服务器没给 Content-Length：老实标不确定，不要假装 0% */
+                        tick(null, '下载中');
                     }
                 };
                 x.onload = function () {
@@ -129,6 +156,10 @@
                         return;
                     }
                     try {
+                        /* 字节已经全在内存里了，剩下的是浏览器落盘。
+                         * 这一步在几十 MB 的文件上也要几秒，必须给个阶段，
+                         * 否则进度条停在 99% 又像卡死。 */
+                        tick(99, '保存中');
                         var bu = URL.createObjectURL(x.response);
                         var a = document.createElement('a');
                         a.href = bu;
@@ -158,6 +189,7 @@
                         throw new Error((j && j.message) ||
                             'B站只给了 DASH（音视频分离），本入口暂不支持');
                     }
+                    tick(0, '连接中');
                     return save(du.url);
                 })
                 .catch(function (e) {
@@ -185,7 +217,11 @@
     function dashFunc(filename, cidArg, bvidArg) {
         var S = { pct: 0, phase: '准备', done: false, error: null, bytes: 0, loaded: 0, total: 0 };
         window.__vrBiliDL = S;
-        function tick(p, ph) { S.pct = p; if (ph) { S.phase = ph; } }
+        function tick(p, ph) {
+            /* NaN 会一路传成「NaN%」；pct 非法就保持上一个值，别污染状态 */
+            if (p != null && isFinite(p)) { S.pct = Math.max(0, Math.min(99, p)); }
+            if (ph) { S.phase = ph; }
+        }
 
         function getBuf(url, base, span) {
             return new Promise(function (resolve, reject) {
@@ -193,7 +229,7 @@
                 x.open('GET', url, true);
                 x.responseType = 'arraybuffer';
                 x.onprogress = function (ev) {
-                    if (ev.lengthComputable) {
+                    if (ev.lengthComputable && ev.total > 0) {
                         S.loaded = ev.loaded;
                         S.total = ev.total;
                         tick(base + span * (ev.loaded / ev.total), S.phase);

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>进度上报验证页</title>
+<style>
+  body { font: 14px/1.7 -apple-system, "Segoe UI", sans-serif; padding: 28px; max-width: 760px; }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  p.hint { color: #666; margin: 0 0 20px; }
+  button { font: inherit; padding: 7px 14px; margin: 0 8px 8px 0; cursor: pointer; }
+  pre { background: #f5f6f7; padding: 12px; border-radius: 6px; font-size: 12px; overflow: auto; }
+  .box { border: 1px solid #e3e5e8; border-radius: 8px; padding: 16px; margin: 16px 0; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+  .bar { flex: 1; height: 8px; background: #e8eaed; border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: #1a73e8; transition: width .2s; }
+  .pct { width: 74px; text-align: right; font-variant-numeric: tabular-nums; }
+  .phase { width: 90px; color: #555; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>进度上报验证页</h1>
+<p class="hint">
+  这个页面没有 video 元素，专门用来验证「进度对象 → 后台 → 按钮」这条链。
+  点按钮会在页面里模拟 B 站 durl 通道写 <code>window.__vrBiliDL</code>。
+</p>
+
+<div class="box">
+  <div class="row">
+    <span class="phase" id="ph">—</span>
+    <div class="bar"><i id="fill"></i></div>
+    <span class="pct" id="pct">0%</span>
+  </div>
+  <button id="b-normal">模拟：正常进度（有 Content-Length）</button>
+  <button id="b-nolen">模拟：服务器不给长度（应显示 …）</button>
+  <button id="b-done">模拟：完成</button>
+  <button id="b-reset">清空状态</button>
+</div>
+
+<pre id="log">等待操作…</pre>
+
+<script>
+/* 这个页面刻意**不写 pct**（复现修复前的 B 站 durl 通道），
+ * 用来验证：即便页面侧只给 loaded/total，界面也不该显示假的 0%。 */
+var S = null;
+var logEl = document.getElementById('log');
+var phEl = document.getElementById('ph');
+var pctEl = document.getElementById('pct');
+var fillEl = document.getElementById('fill');
+
+function log(s) { logEl.textContent = s; }
+function paint() {
+  if (!S) { phEl.textContent = '—'; pctEl.textContent = '0%'; fillEl.style.width = '0'; return; }
+  phEl.textContent = S.phase || '—';
+  var p = (S.pct == null) ? null : Math.round(S.pct);
+  pctEl.textContent = (p == null) ? '…' : (p + '%');
+  fillEl.style.width = (p == null ? 0 : p) + '%';
+}
+
+document.getElementById('b-normal').addEventListener('click', function () {
+  S = { pct: null, phase: '连接中', indeterminate: true,
+        loaded: 0, total: 8000000, done: false, error: null, bytes: 0 };
+  window.__vrBiliDL = S;
+  paint();
+  var n = 0;
+  var t = setInterval(function () {
+    n++;
+    S.loaded = Math.round(8000000 * n / 20);
+    S.pct = Math.round(S.loaded / S.total * 99);
+    S.indeterminate = false;
+    S.phase = '下载中';
+    paint();
+    log('loaded=' + S.loaded + ' total=' + S.total + ' pct=' + S.pct);
+    if (n >= 20) { clearInterval(t); }
+  }, 200);
+});
+
+document.getElementById('b-nolen').addEventListener('click', function () {
+  /* 复现「服务器不给 Content-Length」：total 恒 0，pct 必须保持 null */
+  S = { pct: null, phase: '下载中', indeterminate: true,
+        loaded: 0, total: 0, done: false, error: null, bytes: 0 };
+  window.__vrBiliDL = S;
+  paint();
+  var n = 0;
+  var t = setInterval(function () {
+    n++;
+    S.loaded = n * 300000;
+    paint();
+    log('total=0（无长度）loaded=' + S.loaded + ' pct=' + S.pct);
+    if (n >= 8) { clearInterval(t); }
+  }, 250);
+});
+
+document.getElementById('b-done').addEventListener('click', function () {
+  if (!S) { log('先点上面任一模拟'); return; }
+  S.pct = 99; S.phase = '保存中'; S.indeterminate = false;
+  paint();
+  setTimeout(function () {
+    S.done = true; S.bytes = S.loaded || 8000000; S.phase = '完成';
+    paint();
+    log('done=true bytes=' + S.bytes);
+  }, 600);
+});
+
+document.getElementById('b-reset').addEventListener('click', function () {
+  S = null;
+  try { delete window.__vrBiliDL; } catch (e) { window.__vrBiliDL = null; }
+  paint(); log('已清空');
+});
+
+paint();
+</script>
+</body>
+</html>

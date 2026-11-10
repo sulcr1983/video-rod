@@ -6051,10 +6051,15 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
         // 路线 2（回退）：页面主世界 fetch → blob → <a download>。
         // 页面请求天然带 Referer/Cookie，微博这类 Referer ACL 站点只有这条能过；
         // 与 B站 durl 的成熟路线一致，CocoCut 也是在页面/内容脚本里 fetch。
+        /* 这条路上整段 blob 在页面里一次拉完，中途没有可观测的字节数。
+         * 以前什么都不报，按钮就一直停在 0% —— 用户以为死了，其实在跑。
+         * 至少给个「不确定 + 阶段」，让界面有东西在动。 */
+        P.note('页面取流中', null);
         pageDl = await vrTryPageDownload(tabId, pick.url, filename.split('/').pop());
         if (pageDl && pageDl.ok) {
             const saved = filename.split('/').pop();   // <a download> 只认文件名，不支持子目录
             vrMarkDownloaded(saved);
+            P.done(true, '', pageDl.bytes || 0);
             return finish({ ok: true, kind: 'page-blob', filename: saved, bytes: pageDl.bytes || 0 });
         }
 
@@ -6063,14 +6068,17 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
         // 只有扩展上下文的 fetch 能同时满足「带 Referer + 不被 CORS 拦」。
         // 取到字节后**必须**回到 vrDownloadWithName 落盘：那里有文件名记账、
         // 归档子目录、资源库入库。离屏里直接 <a download> 会丢目录也不进库，已否决。
+        P.note('离屏直连中', null);
         const off = await vrOffscreenDownload(pick.url, filename.split('/').pop());
         if (off && off.ok && off.blobUrl) {
             const id2 = await vrDownloadWithName(off.blobUrl, filename, { meta: trace });
             if (id2 !== null) {
                 vrMarkDownloaded(filename);
+                P.done(true, '', off.bytes || 0);
                 return finish({ ok: true, kind: 'offscreen-blob', filename: filename, bytes: off.bytes || 0 });
             }
         }
+        P.done(false, '下载失败', 0);
         return { ok: false, reason: 'download-failed', page: pageDl || null, offscreen: off || null };
     }
 
@@ -6160,9 +6168,14 @@ function vrProgressReporter(tabId, name) {
     var closed = false;
     var lastPct = -1;
     var sentIndet = false;
+    var lastIndetPhase = '';
 
-    function send(payload) {
-        if (closed) { return; }
+    /** force=true 时忽略 closed —— done() 就是靠它把终态送出去的。
+     *  2026-11-10 单测抓到的真 bug：done() 先把 closed 置 true 再调 send()，
+     *  而 send() 开头 `if (closed) return` 直接吞掉 → **终态永远发不出去**。
+     *  大文件下完按钮就一直 busy，只能等 30 分钟看门狗变叹号（用户以为失败）。 */
+    function send(payload, force) {
+        if (closed && !force) { return; }
         try {
             chrome.tabs.sendMessage(tabId, Object.assign(
                 { Message: 'vrVideoProgress', name: name }, payload));
@@ -6184,35 +6197,59 @@ function vrProgressReporter(tabId, name) {
             lastPct = pct;
             send({ pct: pct, phase: '下载中' });
         },
-        /** 带阶段文字的进度（B站 合成/转码这类没有字节的阶段用）。 */
+        /** 带阶段文字的进度（B站 合成/转码这类没有字节的阶段用）。
+         *
+         * ⚠️ pct 为 null 时**必须发 indeterminate，不能发 0**。
+         * 2026-11-10 苏哥报「B站下载只有 0%，没有进度信息」就是这里：
+         * 页面侧 durl 通道只写 loaded/total 不写 pct → 这里收到 null →
+         * 老代码发 {pct: 0} → 前端老老实实显示 0%，而且每秒刷新一次，
+         * 看着就像「卡死在 0%」。不知道就别装作知道。
+         */
         note: function (phase, pct) {
             if (closed) { return; }
-            var p = (pct == null) ? null : Math.max(0, Math.min(99, Math.round(Number(pct) || 0)));
-            if (p != null && p === lastPct) { return; }
-            if (p != null) { lastPct = p; }
-            send({ pct: (p == null ? 0 : p), phase: phase || '' });
+            if (pct == null || pct === '' || !isFinite(Number(pct))) {
+                /* 同一阶段只发一次 indeterminate，别每秒刷一遍消息 */
+                if (sentIndet && phase === lastIndetPhase) { return; }
+                sentIndet = true;
+                lastIndetPhase = phase || '';
+                send({ indeterminate: true, phase: phase || '' });
+                return;
+            }
+            var p = Math.max(0, Math.min(99, Math.round(Number(pct) || 0)));
+            if (p === lastPct) { return; }
+            lastPct = p;
+            send({ pct: p, phase: phase || '' });
         },
         /** 交给 downloads 任务的字节轮询。 */
         watch: function (id) {
             if (closed || typeof id !== 'number' || !isFinite(id)) { return; }
+            var sentWatchIndet = false;
             vrWatchDownloadId(id, function (payload) {
                 if (payload.done) {
                     closed = true;
-                    send(payload);
+                    send(payload, true);      // 终态必须强发，见 send() 的注释
                     return;
                 }
                 if (payload.pct != null) {
+                    sentWatchIndet = false;
                     if (payload.pct === lastPct) { return; }
                     lastPct = payload.pct;
+                    send(payload);
+                    return;
                 }
-                send(payload);
+                /* 拿不到总字节（服务器没给 Content-Length）：只报一次不确定，
+                 * 别每 500ms 刷一条 —— 白耗电，前端也会被反复重绘。 */
+                if (!sentWatchIndet) {
+                    sentWatchIndet = true;
+                    send(payload);
+                }
             });
         },
         /** 终态。只生效一次；之后所有上报丢弃。 */
         done: function (ok, err, bytes) {
             if (closed) { return; }
             closed = true;
-            send({ done: true, ok: !!ok, error: err || '', bytes: Number(bytes) || 0 });
+            send({ done: true, ok: !!ok, error: err || '', bytes: Number(bytes) || 0 }, true);
         },
         isClosed: function () { return closed; }
     };
@@ -6305,11 +6342,14 @@ function vrWatchBiliDownload(tabId, name, P) {
 
         const timeout = ticks > 600;   // 约 10 分钟（合成大文件可能久）
         if (!st || !st.done) {
-            if (st && !timeout) {
-                rep.note(st.phase || '', st.pct);
+            if (!timeout) {
+                /* st 为 null 说明页面侧还没把 __vrBiliDL 建起来（刚发起的那一两秒）。
+                 * 以前这里直接 return，一个字都不报 —— 按钮就一直停在点击那一刻的 0%，
+                 * 用户完全看不出「到底在跑还是死了」。现在统一报「不确定 + 阶段」。 */
+                rep.note((st && st.phase) || '准备中',
+                         (st && st.indeterminate) ? null : (st ? st.pct : null));
                 return;
             }
-            if (!timeout) { return; }
         }
         clearInterval(timer);
         const err = (st && st.error) || (timeout ? '超时' : '');

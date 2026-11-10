@@ -2014,12 +2014,22 @@
             }).then(function (res) {
                 var st = res && res[0] && res[0].result;
                 if (!st) { return; }
-                var p;
-                if (st.pct) { p = Math.min(100, Math.round(st.pct)); }
-                else if (st.total) { p = Math.min(100, Math.round(st.loaded / st.total * 100)); }
+                /* ⚠️ 不能用 `if (st.pct)` 判 —— 0 是合法值，且 falsy。
+                 * 早期版本这么写，刚起手的 0% 会被跳过、落到 loaded/total 分支；
+                 * 两个都取不到就一个字都不更新，看着像卡死。 */
+                var p = null;
+                if (st.pct != null && isFinite(Number(st.pct))) {
+                    p = Math.max(0, Math.min(100, Math.round(Number(st.pct))));
+                } else if (st.total > 0) {
+                    p = Math.max(0, Math.min(100, Math.round(st.loaded / st.total * 100)));
+                }
                 if (p != null && pctEl && bar) {
-                    pctEl.textContent = (st.phase && !st.done) ? (st.phase + ' ' + p + '%') : (p + '%');
+                    pctEl.textContent = (st.phase && !st.done)
+                        ? (st.phase + ' ' + p + '%') : (p + '%');
                     bar.style.width = p + '%';
+                } else if (st.phase && pctEl && !st.done) {
+                    /* 没有百分比但有阶段：至少让人知道在动（准备/连接中/保存中） */
+                    pctEl.textContent = st.phase;
                 }
                 if (st.done) {
                     if (st.error) { done(false, '下载失败：' + st.error); }
