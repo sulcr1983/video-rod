@@ -313,7 +313,7 @@
         var tie = function (a, b) { return String(a.relPath || '').localeCompare(String(b.relPath || '')); };
         out.sort(function (a, b) {
             var d = 0;
-            if (s === 'old') { d = (a.savedAt || '').localeCompare(b.savedAt || ''); }
+            if (s === 'old') { d = (a.savedTs || 0) - (b.savedTs || 0); }
             else if (s === 'size') { d = (b.size || 0) - (a.size || 0); }
             else if (s === 'recent') { d = (b.savedTs || 0) - (a.savedTs || 0); }
             else if (s === 'name') {
@@ -321,7 +321,7 @@
                  * 否则改了名但 A-Z 仍按旧物理文件名排。 */
                 d = String(a._title || a.title || '').localeCompare(String(b._title || b.title || ''), 'zh');
             }
-            else { d = (b.savedAt || '').localeCompare(a.savedAt || ''); }
+            else { d = (b.savedTs || 0) - (a.savedTs || 0); }
             return d || tie(a, b);
         });
         return out;
@@ -676,9 +676,10 @@
             if (!groups[k]) { groups[k] = []; order.push(k); }
             groups[k].push(f);
         });
-        /* 行序 = 该平台最新一条的时间（最近下载的平台排最上）。
-         * 不依赖 rows 的既有顺序（sorted() 的排序键与这里不同），直接取每组最大 savedTs。
-         * 注意：模型里 savedAt 是格式化字符串（fmtDate），真正的排序键是 savedTs。 */
+        /* 行序必须跟随排序键（2026-11-10 苏哥报「排序点了没反应」）。
+         * 原实现写死「最近下载的平台排最上」，于是切「文件最大 / 标题 A-Z」时
+         * 行与行的顺序纹丝不动，只有行内 12 张在换——用户看到的就是「没反应」。
+         * 现在：new/old 按组内最新/最旧时间，size 按组内最大文件，name 按平台名。 */
         var maxTs = function (arr) {
             var m = 0;
             for (var i = 0; i < arr.length; i++) {
@@ -687,7 +688,31 @@
             }
             return m;
         };
-        order.sort(function (a, b) { return maxTs(groups[b]) - maxTs(groups[a]); });
+        var minTs = function (arr) {
+            var m = 0;
+            for (var i = 0; i < arr.length; i++) {
+                var t = arr[i].savedTs || 0;
+                if (!m || (t && t < m)) { m = t; }
+            }
+            return m;
+        };
+        var maxSize = function (arr) {
+            var m = 0;
+            for (var i = 0; i < arr.length; i++) {
+                var s = arr[i].size || 0;
+                if (s > m) { m = s; }
+            }
+            return m;
+        };
+        var sortKey = S.sort || 'new';
+        order.sort(function (a, b) {
+            if (sortKey === 'old') { return minTs(groups[a]) - minTs(groups[b]); }
+            if (sortKey === 'size') { return maxSize(groups[b]) - maxSize(groups[a]); }
+            if (sortKey === 'name') {
+                return String(platLabel(a) || a).localeCompare(String(platLabel(b) || b), 'zh');
+            }
+            return maxTs(groups[b]) - maxTs(groups[a]);
+        });
         return order.map(function (k) {
             var arr = groups[k], first = arr[0];
             var p = PLAT[k] || PLAT.web;

@@ -220,19 +220,19 @@
           <!-- B-63：原生 select 的弹层由系统渲染（白底/蓝高亮），深色皮肤下无法覆盖。
                保留原生控件（隐藏）+ 自绘下拉同步 value 并派发 change，原逻辑零改动。 -->
           <select id="sort" class="hidden">
-            <option value="new">最新保存</option>
-            <option value="old">最早保存</option>
+            <option value="new">最新下载</option>
+            <option value="old">最早下载</option>
             <option value="size">文件最大</option>
             <option value="name">标题 A-Z</option>
           </select>
           <div class="dd" id="sortDD">
             <button class="ddbtn" type="button" id="sortBtn" aria-haspopup="listbox" aria-expanded="false">
-              <span id="sortLabel">最新保存</span>
+              <span id="sortLabel">最新下载</span>
               <svg class="i i-sm chev"><use href="#i-chevron-down"/></svg>
             </button>
             <div class="ddmenu hidden" id="sortMenu" role="listbox" aria-label="排序方式">
-              <button type="button" class="on" data-sort="new" role="option">最新保存<svg class="i"><use href="#i-check"/></svg></button>
-              <button type="button" data-sort="old" role="option">最早保存<svg class="i"><use href="#i-check"/></svg></button>
+              <button type="button" class="on" data-sort="new" role="option">最新下载<svg class="i"><use href="#i-check"/></svg></button>
+              <button type="button" data-sort="old" role="option">最早下载<svg class="i"><use href="#i-check"/></svg></button>
               <button type="button" data-sort="size" role="option">文件最大<svg class="i"><use href="#i-check"/></svg></button>
               <button type="button" data-sort="name" role="option">标题 A-Z<svg class="i"><use href="#i-check"/></svg></button>
             </div>
