@@ -2133,9 +2133,10 @@ h1 {
 .toolbar .tools > .searchbox{
   height:30px;box-sizing:border-box;
   padding:0 8px;gap:6px;border-radius:var(--r-sm);
-  background:transparent;border:1px solid transparent;box-shadow:none;
+  /* 2026-11-10 苏哥：隐身搜索框找不到，把 hover 态固化成常态——静止就有底色和边框 */
+  background:var(--surface-2);border:1px solid var(--line);box-shadow:none;
 }
-.toolbar .tools > .searchbox:hover{border-color:var(--line);background:var(--surface-2)}
+.toolbar .tools > .searchbox:hover{border-color:color-mix(in srgb,var(--accent) 26%,var(--line))}
 .toolbar .tools > .searchbox:focus-within{
   border-color:color-mix(in srgb,var(--accent) 42%,transparent);
   background:var(--surface);box-shadow:0 0 0 3px var(--accent-soft);
