@@ -4816,6 +4816,32 @@ async function vrImgContentDedupe(relPath) {
     }
 }
 
+/**
+ * 「这份文档」的归属键：用来判断一条嗅探记录是不是属于当前页面。
+ *
+ * 2026-11-11（苏哥报「小红书下到的不是我点那个视频」，且怀疑是通用问题 —— 确实是）：
+ * 嗅探缓存是**按 tabId 累积**的，而小红书/微博/YouTube 这类 SPA 切换内容不换 tab。
+ * 逛过 A、B 两篇笔记后，池子里同时躺着 A 和 B 的视频；再按「分辨率最高」排序，
+ * 拿到的往往是被逛过的那条更高清的 B —— 点的 A、下的是 B。
+ *
+ * 规则：origin(去 www) + pathname + 「内容 id 类」查询参数。
+ * 签名/token/utm 一律丢掉（小红书每次进笔记的 xsec_token 都不同，整串比较会误杀）。
+ */
+function vrDocKey(u) {
+    /* 实现在 VRVideoQuality.docKey（纯函数，tools/test-video-quality.js 有单测）。
+     * 模块没加载时退回「去掉 query/hash 的整串」，宁可宽松也不误杀。 */
+    try {
+        if (self.VRVideoQuality && typeof self.VRVideoQuality.docKey === 'function') {
+            return self.VRVideoQuality.docKey(u);
+        }
+    } catch (e) { /* 落到兜底 */ }
+    try {
+        return String(u || '').split('#')[0].split('?')[0].toLowerCase();
+    } catch (e2) {
+        return '';
+    }
+}
+
 /** 去重标识：不依赖 URL 的签名/token 参数。同作品同媒体视为重复。
  *  statusId/noteId/awemeId/mediaId 优先，URL 只保留 origin+pathname。 */
 function vrMediaIdentity(it) {
@@ -5576,6 +5602,78 @@ async function vrDouyinImages(sender) {
     }
 }
 
+/**
+ * 小红书：从页面 SSR state 里取「当前这篇笔记自己的」视频流（2026-11-11）。
+ *
+ * 为什么必须单独一条路：
+ *   ① 嗅探缓存是**按 tabId 累积**的，小红书切笔记是 SPA（不换 tab、不触发 loading），
+ *      逛过 A、B 两篇后池子里混着两条，按「分辨率最高」排第一的往往不是你在看的这条；
+ *   ② 笔记页的 <video> 是 `blob:`（MSE），通用分支的「正在播放」探测拿不到真实地址，
+ *      于是两段式排序也退化成全局排序 —— 这正是苏哥报的「点的 A、下的 B」。
+ *
+ * 数据来源：`window.__INITIAL_STATE__.note.noteDetailMap[noteId].note.video.media.stream`，
+ * 结构是 { EF4: [...], EF5: [...] }：EF4 是完整 mp4，EF5 是 fmp4 **分片**（.m4s）。
+ * 分片单独下一个只有几秒，必须优先完整文件（同 MSN 那个坑）。
+ */
+async function vrXhsVideoProbe(tabId) {
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            func: function () {
+                const m = String(location.pathname || '').match(
+                    /\/(?:explore|discovery\/item)\/([0-9a-f]{20,})/i);
+                const noteId = m ? m[1] : '';
+                const s = window.__INITIAL_STATE__;
+                const map = s && s.note && s.note.noteDetailMap;
+                if (!map) { return null; }
+                let note = (noteId && map[noteId] && map[noteId].note) || null;
+                if (!note || !Object.keys(note).length) {
+                    /* 详情还没写进对应 key 时，退到「map 里唯一那条带 video 的」 */
+                    const k = Object.keys(map).find(function (x) {
+                        return map[x] && map[x].note && map[x].note.video;
+                    });
+                    note = k ? map[k].note : null;
+                }
+                if (!note) { return null; }
+                const v = note.video || null;
+                const user = note.user || {};
+                const rows = [];
+                if (v && v.media && v.media.stream) {
+                    Object.keys(v.media.stream).forEach(function (k) {
+                        (v.media.stream[k] || []).forEach(function (it) {
+                            if (!it || !it.masterUrl) { return; }
+                            const url = String(it.masterUrl).replace(/^http:/i, 'https:');
+                            rows.push({
+                                url: url,
+                                backup: (it.backupUrls || []).map(function (u) {
+                                    return String(u).replace(/^http:/i, 'https:');
+                                }),
+                                w: Number(it.width) || 0,
+                                h: Number(it.height) || 0,
+                                br: Number(it.videoBitrate || it.avgBitrate) || 0,
+                                fmt: String(it.format || ''),
+                                full: /\.mp4(\?|$)/i.test(url) && !/\.m4s(\?|$)/i.test(url)
+                            });
+                        });
+                    });
+                }
+                return {
+                    noteId: noteId || '',
+                    title: String(note.title || '').slice(0, 140),
+                    user: String(user.nickname || user.nickName || ''),
+                    userId: String(user.userId || ''),
+                    rows: rows
+                };
+            }
+        }), 6000, 'xhs-video-probe');
+        const info = r && r[0] && r[0].result;
+        if (!info || !Array.isArray(info.rows) || !info.rows.length) { return null; }
+        return info;
+    } catch (e) {
+        return null;
+    }
+}
+
 async function vrVideoOptions(tabId, frameId) {
     const out = { site: 'generic', options: [] };
 
@@ -5675,6 +5773,64 @@ async function vrVideoOptions(tabId, frameId) {
         }
     } catch (e) { /* 不是 B站 或探测失败 → 走通用 */ }
 
+    /* 小红书优先：用 SSR state 精确取「这篇笔记」的视频流（见 vrXhsVideoProbe 注释）。
+     * 嗅探缓存混着别的笔记、页面 <video> 又是 blob:，靠通用排序必然出错。 */
+    try {
+        const xv = await vrXhsVideoProbe(tabId);
+        if (xv && xv.rows && xv.rows.length) {
+            const rows = xv.rows.slice().sort(function (a, b) {
+                if (a.full !== b.full) { return a.full ? -1 : 1; }   /* 完整 mp4 优先，别拿 m4s 分片 */
+                const pa = a.w * a.h, pb = b.w * b.h;
+                if (pa !== pb) { return pb - pa; }
+                return (b.br || 0) - (a.br || 0);
+            });
+            /* 只给「完整文件」当选项：EF5 那些 4K 档是 fmp4 分片（.m4s），
+             * 单下一个分片只有几秒，用户会当成「下错了/播不了」（MSN 同款坑）。
+             * 整篇一个完整 mp4 都没有时，才退回分片并明确标注。 */
+            const fullRows = rows.filter(function (x) { return x.full; });
+            const useRows = fullRows.length ? fullRows : rows;
+
+            const seen = {};
+            const options = [];
+            for (let i = 0; i < useRows.length && options.length < 4; i++) {
+                const x = useRows[i];
+                if (!x.url || seen[x.url]) { continue; }
+                seen[x.url] = 1;
+                /* 竖屏视频 height=1920/width=1080，按短边叫「1080p」才符合直觉 */
+                const shortSide = Math.min(x.w || 0, x.h || 0) || x.h || 0;
+                const px = shortSide ? (shortSide + 'p') : 'MP4';
+                const kbps = x.br ? (' · ' + Math.round(x.br / 1000) + 'kbps') : '';
+                options.push({
+                    id: 'xhs' + options.length,
+                    kind: 'url',
+                    url: x.url,
+                    candidates: [x.url].concat(x.backup || []),
+                    label: px + kbps,
+                    note: options.length === 0
+                        ? (x.full ? '最高清' : '最高清 · 分片，需合并')
+                        : (x.full ? '' : '分片')
+                });
+            }
+            if (options.length) {
+                out.site = 'xiaohongshu';
+                /* meta 跟 pick 同一时刻取自同一个 note 对象 —— 下载侧用它命名/溯源，
+                 * 不再二次抠页面（抖音那边就踩过「隔几秒抠到另一条」的坑）。 */
+                out.meta = {
+                    site: 'xiaohongshu',
+                    author: xv.user || '',
+                    authorId: xv.userId || '',
+                    title: xv.title || '',
+                    workId: xv.noteId || '',
+                    pageUrl: xv.noteId
+                        ? ('https://www.xiaohongshu.com/explore/' + xv.noteId)
+                        : ''
+                };
+                out.options = options;
+                return out;
+            }
+        }
+    } catch (e) { /* 不是小红书 / state 未就绪 → 走通用分支 */ }
+
     // 通用站点：先问页面「现在正在播的是哪个」，再回落到嗅探缓存。
     // 多视频页面（信息流/推荐位）里「体积最大」不等于「你正在看的」。
     let playing = '';
@@ -5696,8 +5852,22 @@ async function vrVideoOptions(tabId, frameId) {
         playing = (pr && pr[0] && pr[0].result) || '';
     } catch (e) { /* 受限页面，退回体积排序 */ }
 
+    /* 只保留「当前这份文档」的记录（见 vrDocKey 注释）。
+     * 没有 webUrl 的老记录 / 归一失败时保留，宁可多一条也不误杀。 */
+    let docKey = '';
+    try {
+        const tabNow = await chrome.tabs.get(tabId);
+        docKey = vrDocKey((tabNow && tabNow.url) || '');
+    } catch (e) { docKey = ''; }
+
     let list = (cacheData[tabId] || []).filter(function (m) {
-        return m && m.url && VR_VIDEO_EXT.test(m.ext || '') && !VR_STATIC_ASSET.test(m.url || '');
+        if (!m || !m.url) { return false; }
+        if (!VR_VIDEO_EXT.test(m.ext || '') || VR_STATIC_ASSET.test(m.url || '')) { return false; }
+        if (docKey && m.webUrl) {
+            const k = vrDocKey(m.webUrl);
+            if (k && k !== docKey) { return false; }
+        }
+        return true;
     });
     /* 归一化：字节分片还原 + 同一媒体归并（苏哥 2026-11-09「MSN 这个视频下不了」）。
      *
@@ -5717,10 +5887,10 @@ async function vrVideoOptions(tabId, frameId) {
      * 若留下的那条本身是 403，点了照样失败。 */
     list = await vrProbeCandidates(tabId, list);
 
-    /* 高清优先：先按 URL 里的分辨率档位，再按体积，最后才偏好「正在播放」。
-     * 旧规则把正在播放的无条件置顶 —— 微博信息流默认播 720p，
-     * 于是一键下载永远只拿到 720p，用户以为站点最高就这档（2026-11-07 实测）。 */
-    list = self.VRVideoQuality.sortCandidates(list, playing);
+    /* 两段式排序（2026-11-11 改，见 VRVideoQuality.prioritizePlaying）：
+     * ① 先用「正在播放」锁定是哪个作品；② 再在这个作品的所有码率里取最高。
+     * 老实现是「全页按分辨率排第一」，多视频页面里必然下错（苏哥报的现象）。 */
+    list = self.VRVideoQuality.prioritizePlaying(list, playing);
 
     /* Instagram 优先取 hydration JSON 的完整 progressive MP4。
      * 嗅探缓存里的 MSE 分片带 bytestart/byteend，单下只有 moof、没有 ftyp/moov，
@@ -5745,9 +5915,8 @@ async function vrVideoOptions(tabId, frameId) {
         const pExt = (playing.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
         if (VR_VIDEO_EXT.test(pExt)) {
             list.push({ url: playing, ext: pExt, size: 0 });
-            /* 补进来的这条也要参与同一套排序：不能 unshift 置顶，
-             * 否则「正在播放」又压过更高清的档位（见 video-quality 注释）。 */
-            list = self.VRVideoQuality.sortCandidates(list, playing);
+            /* 补进来的这条也要走同一套两段式：先锁作品，再族内取最高。 */
+            list = self.VRVideoQuality.prioritizePlaying(list, playing);
         }
     }
 
@@ -5927,7 +6096,9 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
     // 「downloads → 2.5s 内被拒则撤账清残件 → 页面主世界 fetch」两段式，
     // 页面 fetch 天然带 Referer/Cookie 才能过。
     let metaOverride = null;
-    if (opt.site === 'douyin') {
+    if (opt.site === 'douyin' || opt.site === 'xiaohongshu') {
+        /* 小红书同抖音：options 与 meta 取自同一个 note 对象，下载侧直接用，
+         * 不要再从 DOM 抠一次（SPA 会自动切下一条，抠到的是别人）。 */
         metaOverride = opt.meta || null;
         /* 标签页可能在探测/选源期间被用户关掉：这里必须兜住。
          * 另外 5 处 tabs.get（3970/4051/4116/4127/4164）都判了 try，
@@ -5956,7 +6127,11 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
         // F2 溯源：把「原帖地址/作者/作品ID/直链」一起预登记进库，
         // 否则库里来源永远是「未记录」。埋点失败绝不影响下载。
         const trace = {
-            pageUrl: pageUrl || (meta && meta.pageUrl) || '',
+            /* meta.pageUrl 优先（2026-11-11）：小红书/抖音这类 SPA，tab.url 里塞着
+             * xsec_token / modal_id 这类一次性参数，写进库里既不能当稳定来源、
+             * 也让「同一篇笔记」的溯源键每次都不同。options 那边的 meta 是与
+             * pick.url 同一时刻取的确定性地址（explore/<noteId> 或 video/<awemeId>）。 */
+            pageUrl: (meta && meta.pageUrl) || pageUrl || '',
             mediaUrl: pick.url || '',
             /* sourceUrl 也要写：查重（vrFindExistingMedia）同时比对 sourceUrl 与 mediaUrl，
              * 只写一边会让老条目/另一条路径的下载查不到重复。 */

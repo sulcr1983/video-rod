@@ -262,9 +262,90 @@ eq('D3 都没有', Q.labelOf({ url: 'https://x/a.mp4' }), 'MP4');
     eq('I7 非 http', Q.variantUrls('blob:https://x.com/a.mp4'), []);
 }
 
-console.log('');
-console.log(pass + ' passed, ' + fail + ' failed');
-if (fail) {
-    console.log('失败用例：' + fails.join(', '));
-    process.exit(1);
-}
+// J 段：两段式选源（2026-11-11 苏哥报「小红书下到的不是我点那个视频」）
+(async function () {
+    console.log('');
+    // J1 同族（同 pathname，换 CDN 节点/码率）→ 仍归到「正在播放」这一条，且族内取最高
+    {
+        const playing = 'https://sns-video-ak.xhscdn.com/stream/1/110/268/abc_268.mp4?sign=x';
+        const list = [
+            { url: 'https://sns-video-bd.xhscdn.com/stream/1/110/268/other_4k.mp4', height: 2160, size: 900 },
+            { url: playing, height: 720, size: 100 },
+            { url: 'https://sns-video-bd.xhscdn.com/stream/1/110/268/abc_268.mp4', height: 1080, size: 300 }
+        ];
+        const out = Q.prioritizePlaying(list, playing);
+        eq('J1 同族排前且族内取最高（换节点也算同一条）',
+            [out[0].height, out[1].height, out[2].height], [1080, 720, 2160]);
+    }
+    // J2 跨素材：正在播放的是 A（低清），B 是 4K —— A 必须排第一（这是「下错」的核心）
+    {
+        const playing = 'https://sns-video-ak.xhscdn.com/stream/1/110/268/aaa_268.mp4';
+        const list = [
+            { url: 'https://sns-video-bd.xhscdn.com/stream/1/110/999/bbb_4k.mp4', height: 2160, size: 9000 },
+            { url: playing, height: 720, size: 100 }
+        ];
+        const out = Q.prioritizePlaying(list, playing);
+        eq('J2 正在播放的 A 压过更高清的 B', out[0].url, playing);
+    }
+    // J3 没有 playing → 保持全局按分辨率（老行为，别退化）
+    {
+        const list = [
+            { url: 'https://a.com/1.mp4', height: 720, size: 10 },
+            { url: 'https://a.com/2.mp4', height: 1080, size: 20 }
+        ];
+        const out = Q.prioritizePlaying(list, '');
+        eq('J3 无 playing 时按分辨率降序', out[0].height, 1080);
+    }
+    // J4 playing 是 MSE blob → 不该崩，也不该把列表清空
+    {
+        const list = [{ url: 'https://a.com/1.mp4', height: 720, size: 10 }];
+        const out = Q.prioritizePlaying(list, 'blob:https://www.xiaohongshu.com/abc');
+        eq('J4 blob playing 不崩且列表不丢', out.length, 1);
+    }
+    // J5 familyKey 归一各种 CDN 节点
+    {
+        const a = Q.familyKey('https://sns-video-ak.xhscdn.com/stream/1/abc.mp4');
+        const b = Q.familyKey('https://sns-video-bd.xhscdn.com/stream/1/abc.mp4?sign=2');
+        const c = Q.familyKey('https://sns-video-bd.xhscdn.com/stream/1/zzz.mp4');
+        ok('J5a 同 pathname 不同节点 → 同族', a === b, a + ' vs ' + b);
+        ok('J5b 不同 pathname → 不同族', b !== c);
+        const p1 = Q.familyKey('https://p3-pc-sign.douyinpic.com/tos-cn-i/x/video.mp4');
+        const p2 = Q.familyKey('https://p9-pc-sign.douyinpic.com/tos-cn-i/x/video.mp4');
+        ok('J5c 抖音图床节点归一', p1 === p2, p1 + ' vs ' + p2);
+        const w1 = Q.familyKey('https://wx1.sinaimg.cn/large/a.mp4');
+        const w2 = Q.familyKey('https://wx4.sinaimg.cn/large/a.mp4');
+        ok('J5d 微博图床节点归一', w1 === w2, w1 + ' vs ' + w2);
+    }
+    // K 段：文档归属键（嗅探缓存按 tab 累积，SPA 切内容不清 → 必须按文档过滤）
+    {
+        const A = 'https://www.xiaohongshu.com/explore/6af2f64d000000002b01a0b6?xsec_token=AAA&xsec_source=pc_feed';
+        const A2 = 'https://www.xiaohongshu.com/explore/6af2f64d000000002b01a0b6?xsec_token=BBB';
+        const B = 'https://www.xiaohongshu.com/explore/6ae5e4fd0000000025013c39?xsec_token=AAA';
+        ok('K1 同一篇笔记换 token → 同键', Q.docKey(A) === Q.docKey(A2), Q.docKey(A));
+        ok('K2 不同笔记 → 不同键', Q.docKey(A) !== Q.docKey(B));
+        eq('K3 小红书笔记键忽略 token', Q.docKey(A),
+            'xiaohongshu.com/explore/6af2f64d000000002b01a0b6');
+        const Y1 = 'https://www.youtube.com/watch?v=abc123&t=30';
+        const Y2 = 'https://www.youtube.com/watch?v=abc123&list=xyz';
+        const Y3 = 'https://www.youtube.com/watch?v=zzz999';
+        ok('K4 YouTube 同视频不同参数 → 同键', Q.docKey(Y1) === Q.docKey(Y2), Q.docKey(Y1));
+        ok('K5 YouTube 不同视频 → 不同键', Q.docKey(Y1) !== Q.docKey(Y3));
+        ok('K6 微博同页不同滚动位置 → 同键',
+            Q.docKey('https://weibo.com/u/123?page=2') === Q.docKey('https://weibo.com/u/123'),
+            Q.docKey('https://weibo.com/u/123?page=2'));
+        ok('K7 www 前缀归一', Q.docKey('https://www.douyin.com/video/123') === Q.docKey('https://douyin.com/video/123'));
+        eq('K8 非 http 返回空', Q.docKey('blob:https://x.com/a'), '');
+        eq('K9 垃圾输入不崩', Q.docKey(''), '');
+    }
+
+    // J6 空输入
+    eq('J6a 空列表', Q.prioritizePlaying([], 'https://a.com/1.mp4'), []);
+    eq('J6b 空 playing 空列表', Q.prioritizePlaying(null, ''), []);
+
+    console.log('');
+    console.log(pass + ' passed, ' + fail + ' failed');
+    if (fail) {
+        console.log('失败用例：' + fails.join(', '));
+        process.exit(1);
+    }
+})();

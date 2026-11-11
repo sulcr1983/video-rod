@@ -293,6 +293,28 @@ node tools/test-tiers-css.js          # 7  档位行换行 / 不裁切契约
 > 2. 具体尺寸档（小/中/大/超大）**只显示该档**，未知不混入；
 > 3. 「未知」只显示没量出尺寸的图，且 `imgTierMin=-1` 要能存能读。
 
+### 4.9 视频取址：文档归属 + 两段式排序（2026-11-11 新增，100 条断言，B-70）
+
+改 `js/video-quality.js`（docKey / familyKey / prioritizePlaying）、
+`js/background.js`（vrVideoOptions 候选过滤 / vrXhsVideoProbe）后必须跑：
+
+```bash
+node tools/test-video-quality.js      # 100  J 段选源 + K 段文档归属键
+```
+
+真机（小红书，需登录态，两条不同笔记）：
+
+```bash
+# 打开笔记 A → vrVideoOptions(tabId) → options 必须是 A 的标题/作者/hash
+# 打开笔记 B → 再取一次 → 必须是 B 的，不得串
+```
+
+> 四条口径：
+> 1. 候选池只保留 `webUrl` 与当前文档同键的记录（SPA 切内容不清缓存也不受影响）；
+> 2. 有「正在播放」时先锁作品、再族内取最高 —— 不能被别的高清视频顶掉；
+> 3. 小红书只给完整 mp4，**不得**把 `.m4s` 分片当选项；
+> 4. 入库 `pageUrl` 是 `explore/<noteId>` / `video/<awemeId>`，不带 xsec_token / modal_id。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

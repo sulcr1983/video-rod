@@ -196,6 +196,108 @@
     }
 
     /**
+     * 「这份文档」的归属键：判断一条嗅探记录是不是属于当前页面。
+     *
+     * 2026-11-11（苏哥报「小红书下到的不是我点那个视频」，且怀疑是通用问题 —— 确实是）：
+     * 嗅探缓存按 **tabId** 累积，而小红书/微博/YouTube 这类 SPA 切内容不换 tab。
+     * 逛过 A、B 两篇笔记后，池子里同时躺着 A 和 B 的视频；再按「分辨率最高」排序，
+     * 拿到的往往是被逛过的那条更高清的 B —— 点的 A、下的是 B。
+     *
+     * 规则：origin(去 www) + pathname + 「内容 id 类」查询参数。
+     * 签名/token/utm 一律丢掉（小红书每次进笔记的 xsec_token 都不同，整串比较会误杀）。
+     */
+    var DOC_ID_PARAMS = ['v', 'bvid', 'aid', 'noteid', 'note_id', 'mid', 'id', 'aweme_id', 'item_id'];
+
+    function docKey(u) {
+        try {
+            var x = new URL(String(u || ''));
+            if (!/^https?:$/i.test(x.protocol)) { return ''; }
+            var host = x.hostname.replace(/^www\./i, '').toLowerCase();
+            var path = x.pathname.replace(/\/+$/, '');
+            var keep = [];
+            for (var i = 0; i < DOC_ID_PARAMS.length; i++) {
+                var v = x.searchParams.get(DOC_ID_PARAMS[i]);
+                if (v) { keep.push(DOC_ID_PARAMS[i] + '=' + v); }
+            }
+            return host + path + (keep.length ? '?' + keep.join('&') : '');
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /**
+     * 素材「族」键：把 CDN 节点差异抹平，只留「这个文件是谁」。
+     *
+     * 为什么需要（2026-11-11 苏哥报「小红书下到的不是我点那个视频」）：
+     * 同一素材的多档码率/多个节点，pathname 通常一样、host 会变
+     * （sns-video-ak / sns-video-bd、p3-pc-sign / p9-pc、wx1~wx4…）。
+     * 要判断「这条是不是我正在播的那条」，必须先把节点归一，否则同一条视频
+     * 会被当成两个不同素材 —— 要么选错，要么高清档被排除在目标之外。
+     *
+     * @param {string} url
+     * @returns {string} 归一后的族键（取不到就退回去掉 query 的字符串）
+     */
+    var CDN_FAMILY = [
+        [/^(.*\.)?sns-video[-a-z0-9]*\.xhscdn\.com$/i, 'xhscdn.com/sns-video'],
+        [/^(.*\.)?sns-img[-a-z0-9]*\.xhscdn\.com$/i, 'xhscdn.com/sns-img'],
+        [/^(.*\.)?[a-z0-9-]+\.xhscdn\.com$/i, 'xhscdn.com/other'],
+        [/^(.*\.)?p\d+-?[a-z-]*\.douyinpic\.com$/i, 'douyinpic.com'],
+        [/^(.*\.)?(wx\d*|ws\d*)\.sinaimg\.cn$/i, 'sinaimg.cn'],
+        [/^(.*\.)?f\.video\.weibocdn\.com$/i, 'weibocdn.com/video']
+    ];
+
+    function familyKey(url) {
+        var s = String(url || '');
+        try {
+            var u = new URL(s);
+            var host = u.hostname.toLowerCase();
+            var mapped = '';
+            for (var i = 0; i < CDN_FAMILY.length; i++) {
+                if (CDN_FAMILY[i][0].test(host)) { mapped = CDN_FAMILY[i][1]; break; }
+            }
+            return (mapped || host) + u.pathname;
+        } catch (e) {
+            return s.split('#')[0].split('?')[0];
+        }
+    }
+
+    /**
+     * 「正在播放」优先：先锁定这条素材，再在它自己的族里挑最高码率。
+     *
+     * 与 sortCandidates 的区别（关键）：
+     *   sortCandidates 把 playing 放在**最后**当 tie-breaker —— 那是为了治
+     *   「微博默认播 720p、一键下载只拿 720p」。可它带来了更糟的副作用：
+     *   信息流/多视频页面（小红书笔记页、微博首页、SPA 切内容）里，
+     *   整个 tab 的候选混在一起，按分辨率排第一的往往是**别的视频**，
+     *   于是「点的 A，下的是 B」。
+     *
+     * 正确语义是两段式（专业下载器都这么做）：
+     *   ① 用 playing 决定「下哪个作品」；
+     *   ② 在该作品的所有码率/节点里取最高。
+     * 没有 playing（MSE/blob、探测失败）时才退回全局排序。
+     *
+     * @param {Array} list
+     * @param {string} playing
+     * @returns {Array}
+     */
+    function prioritizePlaying(list, playing) {
+        var arr = Array.isArray(list) ? list.slice() : [];
+        if (!playing || !arr.length) { return sortCandidates(arr, playing); }
+        var pk = familyKey(playing);
+        var same = [];
+        var rest = [];
+        for (var i = 0; i < arr.length; i++) {
+            var m = arr[i];
+            if (!m || !m.url) { continue; }
+            if (familyKey(m.url) === pk) { same.push(m); } else { rest.push(m); }
+        }
+        if (!same.length) { return sortCandidates(arr, playing); }
+        /* 同族（就是你正在看的这条）排前面并按码率降序；
+         * 其它素材保留在后面当兜底（同族全是 403 时还能下点东西）。 */
+        return sortCandidates(same, playing).concat(sortCandidates(rest, playing));
+    }
+
+    /**
      * 候选排序（返回新数组，不修改入参）。
      *
      * 排序键依次为：
@@ -445,6 +547,9 @@
         MAX_H: MAX_H,
         heightFromUrl: heightFromUrl,
         sortCandidates: sortCandidates,
+        prioritizePlaying: prioritizePlaying,
+        familyKey: familyKey,
+        docKey: docKey,
         collapseByAsset: collapseByAsset,
         assetKey: assetKey,
         labelOf: labelOf,
