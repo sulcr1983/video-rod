@@ -315,6 +315,29 @@ node tools/test-video-quality.js      # 100  J 段选源 + K 段文档归属键
 > 3. 小红书只给完整 mp4，**不得**把 `.m4s` 分片当选项；
 > 4. 入库 `pageUrl` 是 `explore/<noteId>` / `video/<awemeId>`，不带 xsec_token / modal_id。
 
+### 4.10 小红书实况图（live photo）（2026-11-11 新增，B-71）
+
+改 `js/background.js`（vrXhsLiveProbe / vrXhsLive 消息 / vrImgExt）、
+`js/image-page.js`（attachXhsLive / runBatch 追加实况）、`css/image-page.css`（.ip-live）后必须跑：
+
+```bash
+node tools/test-image-util.js      # 117
+node tools/test-image-batch.js     # 27
+```
+
+真机（找一条全实况的笔记）：
+
+```bash
+# 侧边栏扫描 → 带实况的卡片左上角必须有「实况」角标
+# 只勾实况那几张下载 → 每张产出「xxx_01.jpg + xxx_01_live.mp4」两件套
+# live.mp4 必须真以 .mp4 结尾（文件头 ftypisom），不能被 vrImgExt 改成 jpg
+```
+
+> 三条口径：
+> 1. DOM 图与 SSR `imageList[i].urlDefault` 用「素材 id」（pathname 尾段剥 `!xx`）配对，不按 index；
+> 2. `vrXhsLive` 消息必须用**消息里的 tabId**（`sender.tab` 是侧边栏自己）；
+> 3. 实况 mp4 走图片队列，但扩展名必须是 mp4 —— `VR_IMG_EXT_OK` 里没有 mp4，需放行。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

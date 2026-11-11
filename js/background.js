@@ -930,6 +930,10 @@ function vrImgExt(url, contentType) {
         const m = String(url || '').split(/[?#]/)[0].match(/\.([a-z0-9]{2,5})$/i);
         ext = m ? m[1].toLowerCase() : '';
     }
+    /* 实况图附带的 mp4（小红书 live，2026-11-11）：走图片下载队列，但扩展名必须是
+     * mp4。VR_IMG_EXT_OK 只有图片扩展，不特判会把 mp4 强改成 jpg —— 文件头是 ftypisom
+     * （真的是 mp4）、后缀却是 .jpg，播放器/库全认错。 */
+    if (ext === 'mp4' && /\.mp4(?:[?#]|$)/i.test(String(url || ''))) { return 'mp4'; }
     if (!VR_IMG_EXT_OK.test(ext)) { ext = 'jpg'; }
     return ext;
 }
@@ -2338,6 +2342,18 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
      * 图文作品的照片是轮播 slide 的 CSS 背景图，页面上没有大 <img>，
      * 通用 DOM 扫描只能拿到容器尺寸、拿不到真身；真身在 React Fiber 里。
      * 这里主世界注入一次，把 images[]（无水印 urlList）取回来给页面浮层。 */
+    if (Message && Message.Message == "vrXhsLive") {
+        /* 调用方是扩展页（image.html 侧边栏），sender.tab 是**侧边栏自己**的 tab，
+         * 不是目标网页 —— 必须用消息里显式传的 tabId。用错会让 probe 注入到
+         * 扩展页上、拿不到任何 SSR state（2026-11-11 实测：rows 恒为空）。 */
+        const liveTabId = (Number(Message.tabId) > 0)
+            ? Number(Message.tabId)
+            : (sender && sender.tab && sender.tab.id) || -1;
+        vrXhsLiveProbe(liveTabId)
+            .then(function (r) { sendResponse(r || { noteId: '', rows: [] }); })
+            .catch(function (e) { sendResponse({ noteId: '', rows: [], error: String((e && e.message) || e) }); });
+        return true;
+    }
     if (Message && Message.Message == "vrDouyinImages") {
         vrDouyinImages(sender).then(function (r) { sendResponse(r); })
             .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
@@ -5666,6 +5682,67 @@ async function vrXhsVideoProbe(tabId) {
                 };
             }
         }), 6000, 'xhs-video-probe');
+        const info = r && r[0] && r[0].result;
+        if (!info || !Array.isArray(info.rows) || !info.rows.length) { return null; }
+        return info;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * 小红书 live 图（实况照片）探测（2026-11-11）。
+ *
+ * 每张实况图 = 静态 JPEG（urlDefault）+ 一段 2~3 秒的实况 mp4（stream.EF4）。
+ * 侧边栏/面板扫 DOM 只能拿到静态首帧 —— 实况视频必须从 SSR state 里取：
+ *   note.noteDetailMap[noteId].note.imageList[i].stream.EF4[0].masterUrl
+ *
+ * 返回的 rows 每条带 `key`：图片素材 id（URL pathname 尾段、剥掉 `!xx` 变体后缀）。
+ * 侧边栏扫描出的 <img> 与 state 的 urlDefault 尾段完全一致（实测），按它匹配
+ * 就能把「这张静态图对应的实况 mp4」挂到扫描条目上，不依赖顺序。
+ */
+async function vrXhsLiveProbe(tabId) {
+    try {
+        const r = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            func: function () {
+                const m = String(location.pathname || '').match(
+                    /\/(?:explore|discovery\/item)\/([0-9a-f]{20,})/i);
+                const noteId = m ? m[1] : '';
+                const s = window.__INITIAL_STATE__;
+                const map = s && s.note && s.note.noteDetailMap;
+                if (!map) { return null; }
+                let note = (noteId && map[noteId] && map[noteId].note) || null;
+                if (!note || !Object.keys(note).length) {
+                    const k = Object.keys(map).find(function (x) {
+                        return map[x] && map[x].note && Array.isArray(map[x].note.imageList) &&
+                            map[x].note.imageList.some(function (im) { return im && im.livePhoto; });
+                    });
+                    note = k ? map[k].note : null;
+                }
+                if (!note || !Array.isArray(note.imageList)) { return null; }
+                const keyOf = function (u) {
+                    try {
+                        const seg = new URL(u).pathname.split('/').pop() || '';
+                        return seg.replace(/![a-z0-9_]+$/i, '').toLowerCase();
+                    } catch (e) { return ''; }
+                };
+                const rows = [];
+                note.imageList.forEach(function (x) {
+                    if (!x || !x.livePhoto) { return; }
+                    const st = (x.stream && x.stream.EF4) || [];
+                    const it = st.find(function (e) { return e && e.masterUrl; });
+                    if (!it) { return; }
+                    const fix = function (u) { return String(u || '').replace(/^http:/i, 'https:'); };
+                    rows.push({
+                        key: keyOf(x.urlDefault || (x.infoList && x.infoList[0] && x.infoList[0].url)),
+                        url: fix(it.masterUrl),
+                        backup: (it.backupUrls || []).map(fix)
+                    });
+                });
+                return { noteId: noteId || '', rows: rows };
+            }
+        }), 6000, 'xhs-live-probe');
         const info = r && r[0] && r[0].result;
         if (!info || !Array.isArray(info.rows) || !info.rows.length) { return null; }
         return info;

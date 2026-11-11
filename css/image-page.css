@@ -282,6 +282,19 @@ input { font: inherit; }
     border: 1px solid rgba(232, 176, 75, .45);
     background: rgba(44, 36, 24, .85);
 }
+/* 小红书实况图角标：左上角，金色描边，和右下角的「已下载/可换原图」错开 */
+.ip-live {
+    position: absolute;
+    left: 5px;
+    top: 5px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid rgba(232, 176, 75, .5);
+    background: rgba(44, 36, 24, .85);
+    pointer-events: none;
+}
 
 .ip-dim {
     position: absolute;

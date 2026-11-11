@@ -287,6 +287,12 @@
             }
             downloaded = (await storageGet('vrImgDownloaded')) || {};
             buildItems(raw);
+            /* 小红书 live 图（实况照片）补链（2026-11-11）：侧栏扫到的只是静态首帧，
+             * 实况的那段 2~3 秒 mp4 在 SSR state 里。拿到后按「素材 id」把
+             * `it.live = mp4地址` 挂到对应条目上 —— 批量下载时静态+实况一起落。 */
+            try {
+                await attachXhsLive();
+            } catch (eL) { /* live 拿不到不影响普通下载 */ }
             /* 档位自愈：上次存的档位把本页真图全筛掉了（列表只剩「尺寸未知」的
              * 源码地址），自动退回「全部」并记住 —— 否则用户看到的就是
              * 「一张真图都没有、全是尺寸未知」，误判成没嗅探到（2026-11-09 抖音图文页）。
@@ -364,6 +370,49 @@
      */
     function bestCandidate(it) {
         return U.bestCandidate(it.candidates, it.url);
+    }
+
+    /* ---------------- 小红书实况（live 图） ---------------- */
+
+    /** 素材 id：URL pathname 尾段，剥掉 `!xx` 变体后缀（与 background 同规则） */
+    function stillKey(u) {
+        try {
+            const seg = new URL(u).pathname.split('/').pop() || '';
+            return seg.replace(/![a-z0-9_]+$/i, '').toLowerCase();
+        } catch (e) { return ''; }
+    }
+
+    /**
+     * 小红书实况图补链（2026-11-11）：把 SSR state 里的实况 mp4 挂到扫描条目上。
+     * 侧边栏扫 DOM 只能拿到静态首帧，实况视频从 background 的 vrXhsLiveProbe 来；
+     * 两者按「素材 id」匹配（实测 DOM 图与 state.urlDefault 尾段完全一致）。
+     */
+    async function attachXhsLive() {
+        if (!/^https?:/i.test(pageUrl)) { return; }
+        try {
+            if (!/(^|\.)xiaohongshu\.com$/i.test(new URL(pageUrl).hostname)) { return; }
+        } catch (e) { return; }
+        if (!/\/(explore|discovery\/item)\/[0-9a-f]{20,}/i.test(pageUrl)) { return; }
+
+        let res = null;
+        try {
+            res = await send({ Message: 'vrXhsLive', action: 'vrXhsLive', tabId: tabId });
+        } catch (e) { return; }
+        if (!res || !Array.isArray(res.rows) || !res.rows.length) { return; }
+
+        const map = Object.create(null);
+        for (const r of res.rows) { if (r && r.key && r.url) { map[r.key] = r; } }
+
+        let hit = 0;
+        for (const it of items) {
+            const k = stillKey(it.orig || it.url);
+            const row = map[k];
+            if (row) {
+                it.live = row.url;
+                it.liveBackup = Array.isArray(row.backup) ? row.backup : [];
+                hit++;
+            }
+        }
     }
 
     /* ---------------- 默认全选口径 ---------------- */
@@ -499,6 +548,16 @@
         badge.className = 'ip-badge' + (it.better ? ' orig' : '');
         badge.textContent = it.done ? '已下载' : (it.better ? '可换原图' : (it.bg ? '背景图' : ''));
 
+        /* 小红书实况（live 图）角标：这张静态图带 2~3 秒实况 mp4，
+         * 勾选下载时静态+实况会一起落（见 runBatch）。 */
+        let liveTag = null;
+        if (it.live) {
+            liveTag = document.createElement('span');
+            liveTag.className = 'ip-live';
+            liveTag.textContent = '实况';
+            liveTag.title = '这张是实况图：下载时静态图 + 实况视频一起保存';
+        }
+
         const dim = document.createElement('span');
         dim.className = 'ip-dim';
         /* 尺寸未知分两种来源，不能一律叫「背景图」：
@@ -514,6 +573,7 @@
 
         div.appendChild(img);
         div.appendChild(ck);
+        if (liveTag) { div.appendChild(liveTag); }
         if (badge.textContent) { div.appendChild(badge); }
         div.appendChild(dim);
         return div;
@@ -757,6 +817,21 @@
             tabId: tabId
         });
 
+        /* 实况图：静态图下完后，把那段 2~3 秒的实况 mp4 一起下
+         *（title 加 _live 后缀，文件名就成了 `日期_标题_01_live.mp4`）。 */
+        if (res && res.ok && it.live) {
+            const vRes = await send({
+                Message: 'vrImg.download',
+                action: 'vrImg.download',
+                url: it.live,
+                candidates: it.liveBackup && it.liveBackup.length ? [it.live].concat(it.liveBackup) : [it.live],
+                title: title + '_live',
+                pageUrl: pageUrl,
+                tabId: tabId
+            });
+            void vRes;   /* 实况失败不回滚静态图，也不额外报错（批量同样口径） */
+        }
+
         btn.disabled = false;
         if (res && res.ok) {
             it.done = true;
@@ -801,18 +876,31 @@
         el.progT.textContent = '0 / ' + list.length;
         renderFoot();
 
-        const payload = list.map((it, i) => ({
-            /* 用 it.orig（候选链里最像原图的那条），不是 it.url。
-             * 2026-11-08 苏哥报「嗅探不准确」：单张下载走的是 it.orig，
-             * 批量却用 it.url（页面显示的预览版），同一张图两条路径落盘尺寸不同。
-             * 小红书实测 26 张全是 640 宽的预览档，就是这条造成的。 */
-            url: it.orig || it.url,
-            candidates: it.candidates,
-            /* 必须带序号：同页多张图共用 pageTitle 时，背景会按 title 命名，
-             * 两张同名只剩扩展名能区分（实测 cover.jpg / sprite.png 落成同名 .jpg/.png）。
-             * 序号补零到两位，超过 99 张自然变成三位，不截断。 */
-            title: (pageTitle || '图片') + '_' + String(i + 1).padStart(2, '0')
-        }));
+        const payload = [];
+        list.forEach((it, i) => {
+            payload.push({
+                /* 用 it.orig（候选链里最像原图的那条），不是 it.url。
+                 * 2026-11-08 苏哥报「嗅探不准确」：单张下载走的是 it.orig，
+                 * 批量却用 it.url（页面显示的预览版），同一张图两条路径落盘尺寸不同。
+                 * 小红书实测 26 张全是 640 宽的预览档，就是这条造成的。 */
+                url: it.orig || it.url,
+                candidates: it.candidates,
+                /* 必须带序号：同页多张图共用 pageTitle 时，背景会按 title 命名，
+                 * 两张同名只剩扩展名能区分（实测 cover.jpg / sprite.png 落成同名 .jpg/.png）。
+                 * 序号补零到两位，超过 99 张自然变成三位，不截断。 */
+                title: (pageTitle || '图片') + '_' + String(i + 1).padStart(2, '0')
+            });
+            /* 实况图：静态图后面跟一条实况 mp4（2026-11-11）。
+             * 同一队列里，去重/进度/失败统计天然覆盖；实况失败只算它自己一条。 */
+            if (it.live) {
+                payload.push({
+                    url: it.live,
+                    candidates: (it.liveBackup && it.liveBackup.length)
+                        ? [it.live].concat(it.liveBackup) : [it.live],
+                    title: (pageTitle || '图片') + '_' + String(i + 1).padStart(2, '0') + '_live'
+                });
+            }
+        });
 
         const res = await send({
             Message: 'vrImg.batch',
