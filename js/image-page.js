@@ -813,24 +813,14 @@
             candidates: it.candidates,
             title: title,
             pageUrl: pageUrl,
+            /* 实况图：把这段 2~3 秒的 mp4 一起交给后台（title 自动加 _live）。
+             * 后台统一处理，这里不重复发第二条消息 —— 两条消息在批量场景下会互相
+             * 抢并发槽，还会让「已选 N 张 / 已保存 N 张」的账对不上。 */
+            liveUrl: it.live || '',
+            liveCandidates: it.liveBackup || [],
             /* 扩展页面无网页 DOM：带 tabId 让后台注入取站名。 */
             tabId: tabId
         });
-
-        /* 实况图：静态图下完后，把那段 2~3 秒的实况 mp4 一起下
-         *（title 加 _live 后缀，文件名就成了 `日期_标题_01_live.mp4`）。 */
-        if (res && res.ok && it.live) {
-            const vRes = await send({
-                Message: 'vrImg.download',
-                action: 'vrImg.download',
-                url: it.live,
-                candidates: it.liveBackup && it.liveBackup.length ? [it.live].concat(it.liveBackup) : [it.live],
-                title: title + '_live',
-                pageUrl: pageUrl,
-                tabId: tabId
-            });
-            void vRes;   /* 实况失败不回滚静态图，也不额外报错（批量同样口径） */
-        }
 
         btn.disabled = false;
         if (res && res.ok) {

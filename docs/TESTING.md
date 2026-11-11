@@ -323,6 +323,7 @@ node tools/test-video-quality.js      # 100  J 段选源 + K 段文档归属键
 ```bash
 node tools/test-image-util.js      # 117
 node tools/test-image-batch.js     # 27
+node tools/test-live-pair.js       # 17  实况配对 / 动图归类（纯逻辑）
 ```
 
 真机（找一条全实况的笔记）：

@@ -31,7 +31,7 @@
         web: '#8B93A1', untracked: '#C9A227'
     };
     function dotOf(key) { return PLAT_DOT[key] || PLAT_DOT.web; }
-    var KIND_LABEL = { video: '视频', image: '图片', anim: '动图', audio: '音频', other: '其他' };
+    var KIND_LABEL = { video: '视频', image: '图片', anim: '动图', live: '实况', audio: '音频', other: '其他' };
 
     var S = { list: [], idx: 0, info: true, auto: true, rate: 1 };
     var el = {};
@@ -225,6 +225,20 @@
         try { return root.VRPath.toFileUrl(f.absPath); } catch (e) { return ''; }
     }
 
+    /**
+     * 按「库内相对路径」取本地 URL（实况视频用，2026-11-11 B-71）。
+     * 走 RAW 表拿那条真实记录的 absPath，再转 file://；拿不到返回空串
+     * —— 调用方据此跳过实况、只显示照片，绝不猜路径。
+     */
+    function fileUrlOf(rel) {
+        try {
+            var raw = (root.VRApp && typeof root.VRApp.getRaw === 'function') ? root.VRApp.getRaw() : null;
+            var e = raw && raw[rel];
+            if (!e || !e.absPath || !root.VRPath) { return ''; }
+            return root.VRPath.toFileUrl(e.absPath);
+        } catch (err) { return ''; }
+    }
+
     /* 自选文件夹没有绝对路径时，用目录句柄读出 Blob URL。切换条目/关闭时回收。 */
     var lastShown = null;
 
@@ -267,13 +281,15 @@
         if (stageOuter) {
             stageOuter.classList.toggle('is-video', kind === 'video');
             stageOuter.classList.toggle('is-gif', kind === 'anim');
-            stageOuter.classList.toggle('is-image', kind === 'image');
+            /* 实况按图片布局：照片占位定比例，视频浮在上面（不铺满、不抢图注区） */
+            stageOuter.classList.toggle('is-image', kind === 'image' || kind === 'live');
+            stageOuter.classList.toggle('is-live', kind === 'live');
             stageOuter.classList.toggle('is-audio', kind === 'audio');
         }
 
         /* 有成熟播放器时让自绘控件条让位；Plyr 没加载成功则保留原控件条降级 */
         show('vCtl', kind === 'video' && !root.Plyr);
-        show('imgBar', kind === 'image');
+        show('imgBar', kind === 'image' || kind === 'live');
         show('gifBar', kind === 'anim');
 
         if (!url) {
@@ -374,7 +390,7 @@
                 var pb = document.querySelector('#gPause use');
                 if (pb) { pb.setAttribute('href', '#i-pause'); }
             });
-        } else if (kind === 'image' || kind === 'anim') {
+        } else if (kind === 'image' || kind === 'anim' || kind === 'live') {
             var img = document.createElement('img');
             img.alt = f._title || f.title; img.draggable = false;
             imgEl = img; imgScale = 1; imgRot = 0; imgBaseW = 0; imgX = 0; imgY = 0;
@@ -388,6 +404,29 @@
             stage.appendChild(img);
             stage.style.cursor = 'grab';
             setTxt('st1v', '—');
+
+            /* 实况：照片下面浮一段静音循环的实况视频（2026-11-11，B-71）。
+             * 为什么用 <video> 而不是接到 anim 播放器：实况 mp4 是 H.264，
+             * ImageDecoder 走的是 GIF/WebP 那套；<video muted loop autoplay>
+             * 一行就能循环播放，还带声音轨（默认静音，点一下才开）。
+             * 视频加载失败就只显示照片 —— 实况是加分项，不能把预览搞挂。 */
+            if (kind === 'live' && f.livePair) {
+                var lv = document.createElement('video');
+                lv.className = 'pv-live';
+                lv.src = fileUrlOf(f.livePair);
+                lv.muted = true; lv.loop = true; lv.autoplay = true;
+                lv.playsInline = true; lv.controls = false;
+                lv.addEventListener('error', function () { try { lv.remove(); } catch (e0) { } });
+                lv.addEventListener('loadedmetadata', function () {
+                    setTxt('pvThirdV', fmtDur(lv.duration));
+                });
+                /* 点视频 = 开/关声音（手机系统相机那套交互习惯） */
+                lv.addEventListener('click', function () {
+                    lv.muted = !lv.muted;
+                    if (!lv.muted) { lv.play().catch(function () { }); }
+                });
+                stage.appendChild(lv);
+            }
         } else if (kind === 'audio') {
             /* 音频不是视频的缩小版：给独立的大尺寸播放器面板，
              * 原生 audio 控件负责播放/进度/音量，外层负责标题与来源信息。 */

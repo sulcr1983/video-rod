@@ -78,6 +78,37 @@
     /* WebP 只是容器，不等于动图：小红书/Instagram 大量静态 WebP 必须归图片。
      * 只有 GIF/APNG 这类明确动图扩展才进入 anim（用户 2026-11-06 纠正）。 */
     var EXT_ANIM = /^(gif|apng)$/i;
+    /* 小红书实况图（live photo，2026-11-11 B-71）：下载时静态图叫 `xxx.jpg`，
+     * 实况视频叫 `xxx_live.mp4` —— 同一目录、同一前缀。库里把它们认成一对：
+     * 照片卡显示「实况」角标、计数里单独一类，预览时照片下面直接播那段视频。
+     * 不合并条目：用户可能只想要那张照片，删一条不该牵连另一条。 */
+    var EXT_LIVE = /_live\.mp4$/i;
+
+    /** 实况照片 → 对应视频的相对路径（同目录同前缀）；不是实况返回 '' */
+    function livePathOf(rel) {
+        var s = String(rel || '');
+        if (!s || EXT_LIVE.test(s)) { return ''; }
+        /* 无扩展名的地址（图床 hash 结尾、网页路径）不算实况候选 —— 猜不出
+         * 它的「_live.mp4」该叫什么，宁可不标，也不能标错。 */
+        if (!/\.[a-z0-9]{2,5}$/i.test(s)) { return ''; }
+        return s.replace(/\.[a-z0-9]{2,5}$/i, '_live.mp4');
+    }
+
+    /**
+     * 标记实况对（2026-11-11，B-71）：照片 + 同前缀 `_live.mp4` 都在库里，才把这张
+     * 照片归成 `kind='live'`。为什么要整表判定：toCardModel 是单条转换，看不到
+     * 「那个 mp4 到底在不在」—— 不在还标「实况」，预览就会破图。
+     */
+    function markLivePairs(list) {
+        var have = Object.create(null);
+        list.forEach(function (f) { have[String(f.relPath).toLowerCase()] = 1; });
+        list.forEach(function (f) {
+            if (f.kind !== 'image' || !f.livePair) { return; }
+            if (!have[String(f.livePair).toLowerCase()]) { f.livePair = ''; return; }
+            /* 照片卡自成一类：它和纯照片、动图、视频都不同 —— 筛选要能单独选出来 */
+            f.kind = 'live';
+        });
+    }
 
     function toCardModel(e) {
         var P = root.VRPath || {};
@@ -90,6 +121,10 @@
 
         var kind = type;
         if (type === 'image' && EXT_ANIM.test(ext)) { kind = 'anim'; }
+        /* 实况标记：静态图旁边有同名 `_live.mp4` 才算（磁盘/索引里真有那条才亮）。
+         * 这里只算出「它该配哪一条」，真正判定在 buildFiles() 里做 —— 
+         * toCardModel 是单条转换，看不到全表。 */
+        var livePair = (kind === 'image' && !EXT_LIVE.test(rel)) ? livePathOf(rel) : '';
 
         var creatorFull = String(e.creatorFull || parsed.creatorFull || '').trim();
         var m = creatorFull.match(/^(.+?)\s*\(@([^)]+)\)\s*$/);
@@ -113,6 +148,9 @@
             title: title,
             _title: (e.displayName || '').trim() || title,
             kind: kind,
+            /* 若同目录真有 xxx_live.mp4，会被 buildFiles 改成 'live'
+             * （照片 + 实况，筛选/角标/预览都按它走） */
+            livePair: livePair,
             ext: String(ext).toUpperCase(),
             size: sizeMb,
             width: Number(e.width) || 0,
@@ -148,7 +186,7 @@
      * 左栏就会出现两个「微博」。用户看到的是名字，分组也该按名字。
      */
     function counts() {
-        var c = { all: FILES.length, image: 0, anim: 0, video: 0, audio: 0, other: 0, starred: 0, platforms: {}, creators: {}, byPlat: {}, tags: {} };
+        var c = { all: FILES.length, image: 0, anim: 0, live: 0, video: 0, audio: 0, other: 0, starred: 0, platforms: {}, creators: {}, byPlat: {}, tags: {} };
         FILES.forEach(function (f) {
             c[f.kind] = (c[f.kind] || 0) + 1;
             var label = platLabel(f.plat);
@@ -185,7 +223,7 @@
      * 否则点「视频」后「图片」会变 0，tab 就没法在类型之间来回切了。
      */
     function countsInScope() {
-        var c = { all: 0, image: 0, anim: 0, video: 0, audio: 0, other: 0, starred: 0, tags: {} };
+        var c = { all: 0, image: 0, anim: 0, live: 0, video: 0, audio: 0, other: 0, starred: 0, tags: {} };
         FILES.forEach(function (f) {
             if (S.fav) {
                 var fav = findFav(S.fav);
@@ -503,6 +541,7 @@
     /* ---------- 卡片 ---------- */
     function card(f) {
         var isV = f.kind === 'video', isA = f.kind === 'anim', isAu = f.kind === 'audio';
+        var isL = f.kind === 'live';
         var p = PLAT[f.plat] || PLAT.web;
         /* 角标显示站点名：走站点字典拿人话名字（花瓣 / Pixso / 知乎），
          * 未收录站点才显示域名本身。这样不同站点在卡片上一眼能分开。 */
@@ -513,10 +552,11 @@
         var icon = isV ? 'i-film' : (isA ? 'i-repeat-1' : (isAu ? 'i-volume-2' : 'i-image'));
         var tags = (f.tags || []).map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
         return '<article class="card' + (S.sel.has(f.id) ? ' selected' : '') + '" data-id="' + esc(f.id) + '" tabindex="0">' +
-            '<div class="thumb' + (isV ? ' is-video' : '') + (isA ? ' is-anim' : '') + (isAu ? ' is-audio' : '') + '">' +
+            '<div class="thumb' + (isV ? ' is-video' : '') + (isA ? ' is-anim' : '') + (isAu ? ' is-audio' : '') + (isL ? ' is-live' : '') + '">' +
             '<div class="cover" style="--h:' + f.h + '"><span class="fig"><svg class="i"><use href="#' + icon + '"/></svg></span></div>' +
             '<img alt="" loading="lazy" data-thumb="' + esc(f.relPath) + '">' +
             '<span class="badge" data-site="' + esc(f.plat || '') + '" title="只看「' + esc(badgeLabel) + '」"><span class="dot" style="--pc:' + p.dot + '"></span>' + esc(badgeLabel) + '</span>' +
+            (isL ? '<span class="live-tag">实况</span>' : '') +
             (corner ? '<span class="duration' + (isA ? ' anim' : '') + '">' + esc(corner) + '</span>' : '') +
             (f.state === 'missing' ? '<span class="missing-tag">文件缺失</span>' : '') +
             (f.isRef ? '<button type="button" class="ref-tag" data-refs="1" title="查看同内容的其它来源">引用</button>' : '') +
@@ -721,7 +761,7 @@
             var kinds = {};
             arr.forEach(function (f) { kinds[f.kind] = 1; });
             var kico = Object.keys(kinds).slice(0, 3).map(function (kk) {
-                var ic = kk === 'video' ? 'i-film' : kk === 'anim' ? 'i-repeat-1' : kk === 'audio' ? 'i-volume-2' : 'i-image';
+                var ic = kk === 'video' ? 'i-film' : kk === 'anim' ? 'i-repeat-1' : kk === 'live' ? 'i-camera' : kk === 'audio' ? 'i-volume-2' : 'i-image';
                 /* 必须带 .i：图标是 stroke 绘制（.i 里 fill:none;stroke:currentColor），
                  * 只写 .i-sm 会退回默认 fill:black，在深底上就是两个黑方块。 */
                 return '<svg class="i i-sm kico" aria-hidden="true"><use href="#' + ic + '"/></svg>';
@@ -758,7 +798,7 @@
     }
 
     /* R4：筛选条 chips 的选中态同步（仅已星标） */
-    var KIND_LABEL = { image: '图片', anim: '动图', video: '视频', audio: '音频' };
+    var KIND_LABEL = { image: '图片', anim: '动图', live: '实况', video: '视频', audio: '音频' };
     function syncFilterBar() {
         var sb = $('#starFilterBtn');
         if (sb) { sb.classList.toggle('on', !!S.starOnly); }
@@ -859,6 +899,7 @@
         setTxt('#sCount', rows.length);
         setTxt('#sImg', c.image);
         setTxt('#sAnim', c.anim);
+        setTxt('#sLive', c.live);
         setTxt('#sVid', c.video);
         setTxt('#fCount', rows.length);
         setTxt('#fSize', Math.round(rows.reduce(function (a, b) { return a + (b.size || 0); }, 0)) + ' MB');
@@ -1157,6 +1198,7 @@
          * 用户会以为删除没生效。真源统一由 VRTrash.list() 读。 */
         FILES = list.filter(function (e) { return !root.VRTrash || e.state !== 'trashed'; })
             .map(toCardModel);
+        markLivePairs(FILES);
         /* 收藏条目只保留仍在库里的 id；测试夹具/已删除文件不再占收藏夹。 */
         try {
             var changed = false;
@@ -4031,6 +4073,9 @@
         reload: load,
         toast: toast,
         getFiles: function () { return FILES; },
+        /* 原始条目表（relPath → DB 行）：预览器取实况视频的 absPath 用。
+         * 只读引用，不要改里面的对象（2026-11-11 B-71）。 */
+        getRaw: function () { return RAW; },
         /* 空态钩子：自动化测试用，直接按给定条件重绘空态，不改真实数据。 */
         _renderEmpty: function (n, over) { renderEmpty(n, over); },
         /* 定位钩子：自动化测试用，直接驱动 revealFile 的无路径分支。 */

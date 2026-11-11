@@ -2714,11 +2714,40 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         return true;
     }
     if (Message && (Message.Message === 'vrImg.download' || Message.action === 'vrImg.download')) {
-        vrImgDownload(Message).then(function (res) {
-            sendResponse(res);
-        }).catch(function (e) {
-            sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
-        });
+        (async function () {
+            try {
+                const res = await vrImgDownload(Message);
+                /* 实况图：静态图存好后，把那段 2~3 秒的实况一起下（2026-11-11，B-71）。
+                 *
+                 * 只放在后台这一个入口，不在每个调用方各写一遍 —— 侧边栏、大图预览、
+                 * 面板、拖拽入库四条路都发同一条消息，后台做一次就全覆盖。 */
+                if (res && res.ok && Message.liveUrl) {
+                    try {
+                        const v = await vrImgDownload({
+                            url: String(Message.liveUrl),
+                            candidates: Array.isArray(Message.liveCandidates) && Message.liveCandidates.length
+                                ? Message.liveCandidates : [String(Message.liveUrl)],
+                            title: String(Message.title || '') + '_live',
+                            pageUrl: Message.pageUrl,
+                            siteName: Message.siteName,
+                            tabId: Message.tabId,
+                            authorFull: Message.authorFull,
+                            creatorId: Message.creatorId,
+                            contentType: Message.liveContentType || ''
+                        });
+                        /* 实况失败不回滚静态图，但要把原因带回给调用方，别静默 */
+                        res.video = v && v.ok
+                            ? { ok: true, skipped: !!v.skipped, path: v.path || '' }
+                            : { ok: false, message: (v && v.message) || '实况视频没下来' };
+                    } catch (e2) {
+                        res.video = { ok: false, message: String((e2 && e2.message) || e2) };
+                    }
+                }
+                sendResponse(res);
+            } catch (e) {
+                sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
+            }
+        })();
         return true;
     }
     // 图片批量下载（I3）：并发池 + 进度广播 + 可取消

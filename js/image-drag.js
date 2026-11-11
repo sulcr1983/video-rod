@@ -231,8 +231,49 @@
         } catch (e) { return ''; }
     }
 
+    /**
+     * 这张图是不是实况（小红书 live photo），是就返回实况 mp4 地址。
+     *
+     * 为什么在页面侧算：拖拽/入库都发生在网页上下文，实况数据在页面 SSR state 里
+     * （`imageList[i]`），后台要拿得再注入一次。这里顺手查一次，按「素材 id」
+     * 对上就带上 —— 对不上就返回空，绝不影响普通保存（2026-11-11，B-71）。
+     */
+    function liveOf(u) {
+        try {
+            if (!/(^|\.)xiaohongshu\.com$/i.test(location.hostname)) { return null; }
+            /* 页面侧的 window.__INITIAL_STATE__ 只有 MAIN world 能读；内容脚本跑在
+             * 隔离世界，读不到也没关系 —— 这时返回 null，后台的 vrXhsLiveProbe
+             * 会再注入一次补上（侧边栏就是走那条路）。两边都拿不到才降级成纯照片。 */
+            var s = window.__INITIAL_STATE__;
+            var map = s && s.note && s.note.noteDetailMap;
+            if (!map) { return null; }
+            var m = String(location.pathname).match(/\/(?:explore|discovery\/item)\/([0-9a-f]{20,})/i);
+            var note = (m && map[m[1]] && map[m[1]].note) || null;
+            if (!note || !Array.isArray(note.imageList)) { return null; }
+            var keyOf = function (x) {
+                try {
+                    return (new URL(x).pathname.split('/').pop() || '').replace(/![a-z0-9_]+$/i, '').toLowerCase();
+                } catch (e) { return ''; }
+            };
+            var k = keyOf(u);
+            if (!k) { return null; }
+            for (var i = 0; i < note.imageList.length; i++) {
+                var x = note.imageList[i];
+                if (!x || !x.livePhoto) { continue; }
+                if (keyOf(x.urlDefault || (x.infoList && x.infoList[0] && x.infoList[0].url)) !== k) { continue; }
+                var st = (x.stream && x.stream.EF4) || [];
+                var it = st.find(function (e) { return e && e.masterUrl; });
+                if (!it) { return null; }
+                var fix = function (v) { return String(v || '').replace(/^http:/i, 'https:'); };
+                return { url: fix(it.masterUrl), backup: (it.backupUrls || []).map(fix) };
+            }
+            return null;
+        } catch (e) { return null; }
+    }
+
     async function saveOne(url) {
         const pageTitle = String(document.title || '').replace(/\s+/g, ' ').trim().slice(0, 60) || '图片';
+        const live = liveOf(url);
         try {
             chrome.runtime.sendMessage({
                 Message: 'vrImg.download',
@@ -241,7 +282,9 @@
                 candidates: [url],
                 title: pageTitle,
                 pageUrl: location.href,
-                siteName: pageSiteNameNow()
+                siteName: pageSiteNameNow(),
+                liveUrl: live ? live.url : '',
+                liveCandidates: live ? live.backup : []
             }, res => {
                 void chrome.runtime.lastError;
                 toast((res && res.ok) ? '已保存：' + pageTitle : '保存失败，换个方式试试');

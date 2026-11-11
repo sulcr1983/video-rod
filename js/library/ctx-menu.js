@@ -28,7 +28,7 @@
 
     /** 菜单项定义：type 决定图标，filter 决定是否出现 */
     function buildItems(f) {
-        var isImage = f.kind === 'image' || f.kind === 'anim';
+        var isImage = f.kind === 'image' || f.kind === 'anim' || f.kind === 'live';
         var items = [
             { act: 'preview', label: '打开预览', icon: 'i-maximize' },
             { act: 'rename', label: '重命名', icon: 'i-pencil' },
@@ -124,7 +124,7 @@
      * 不能只给 URL——本地素材在 file:// 下 Google 抓不到，必须把字节传上去。
      */
     async function googleImage(f) {
-        if (f.kind !== 'image' && f.kind !== 'anim') {
+        if (f.kind !== 'image' && f.kind !== 'anim' && f.kind !== 'live') {
             toast('只有图片可以识图');
             return;
         }
