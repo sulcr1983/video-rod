@@ -62,3 +62,9 @@ print(json.dumps({"copied": [p, os.path.getsize(p)]}, ensure_ascii=False))
 cdp.eval("document.getElementById('langToggle').click()", sid)
 time.sleep(0.8)
 print(json.dumps({"en": shot(cdp, sid, "install-rewrite-en.png", 1280, 760)}, ensure_ascii=False))
+
+# 自收工：只关自己连的这个浏览器实例（不用 taskkill，免得误伤用户自己的浏览器）
+try:
+    cdp.send("Browser.close")
+except Exception:
+    pass
