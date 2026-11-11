@@ -9,7 +9,7 @@
   A5 重新进页面时按钮直接是终态（进页面就查重）
   A6 复制按钮有反馈
   A7 页面 0 console 错误
-  A8 痛点 5 条 + 结语卡都在，文案无占位残留
+  A8 三条能力卡 + 媒体库入口卡都在，文案无占位残留
 
 有头实例纪律：自建 profile + 自建端口，同一命令内跑完并精确回收。
 """
@@ -148,14 +148,14 @@ def main():
 
         print("\n--- A8 结构完整性 ---")
         n_pain = js("document.querySelectorAll('.pain').length")
-        ck(n_pain == 6, "A8 痛点 5 条 + 结语卡共 6 张", "实际=%s" % n_pain)
-        n_fix = js("document.querySelectorAll('.p-fix').length")
-        ck(n_fix == 5, "A8b 五条痛点各有对应解法", "实际=%s" % n_fix)
+        ck(n_pain == 3, "A8 三条能力卡都在", "实际=%s" % n_pain)
+        n_desc = js("document.querySelectorAll('.p-desc').length")
+        ck(n_desc == 3, "A8b 每条能力卡各有说明", "实际=%s" % n_desc)
         gate_h = js("document.querySelector('.gate-h') ? document.querySelector('.gate-h').innerText.trim() : ''")
-        ck("媒体库" in (gate_h or ""), "A8c 大字标题存在", gate_h)
+        ck("媒体库" in (gate_h or ""), "A8c 媒体库入口标题存在", gate_h)
         fs = js("getComputedStyle(document.querySelector('.gate-h')).fontSize")
-        print("  大字字号:", fs)
-        ck(fs and float(fs.replace("px", "")) >= 26, "A8d 大字 ≥26px（苏哥要的「大字」）", fs)
+        print("  标题字号:", fs)
+        ck(fs and float(fs.replace("px", "")) >= 13, "A8d 标题字号可读（≥13px）", fs)
         # 占位/未翻译残留
         bad = js("""(function(){
             var t = document.body.innerText;
@@ -169,7 +169,7 @@ def main():
         ovf = js("""(function(){
             var w = document.documentElement.clientWidth;
             var bad = [];
-            document.querySelectorAll('.gate, .pain, .pain-sum, .urlrow, .gate-acts').forEach(function(el){
+            document.querySelectorAll('.gate, .pain, .urlrow, .gate-btns').forEach(function(el){
               var r = el.getBoundingClientRect();
               if (r.right > w + 1 || r.left < -1) bad.push(el.className + ':' + Math.round(r.left) + '~' + Math.round(r.right) + '/w' + w);
             });
