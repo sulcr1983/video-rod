@@ -395,10 +395,18 @@
     /** 候选的显示文案：能解析出分辨率就显示 "1080p · 45.6MB" */
     function labelOf(item) {
         var m = item || {};
-        var h = m.height || heightFromUrl(m.url);
+        var u = String(m.url || '');
+        /* 清单地址要单独标注（2026-11-13）：m3u8/mpd 本身不是视频文件，
+         * 拿不到分辨率时旧实现会回退成「MP4」，用户看不出这是需要合并的清单。
+         * 而它的 size 是清单文本大小（几百字节），显示成「0.0MB」更是误导。 */
+        var isHls = /\.m3u8(?:[?#]|$)/i.test(u);
+        var isDash = /\.mpd(?:[?#]|$)/i.test(u);
+        var h = m.height || heightFromUrl(u);
         var size = Number(m.size) || 0;
-        var sizeTxt = size ? ' · ' + (size / 1048576).toFixed(1) + 'MB' : '';
-        return (h ? h + 'p' : 'MP4') + sizeTxt;
+        var sizeTxt = (size && !isHls && !isDash)
+            ? ' · ' + (size / 1048576).toFixed(1) + 'MB' : '';
+        var base = h ? h + 'p' : (isHls ? 'HLS' : (isDash ? 'DASH' : 'MP4'));
+        return base + sizeTxt;
     }
 
     /**

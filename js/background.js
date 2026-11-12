@@ -3629,7 +3629,27 @@ async function vrNameInTab(tabId, ext, override) {
     return (sub + '/' + name).replace(/\\/g, '/').replace(/\/{2,}/g, '/');
 }
 
-const VR_VIDEO_EXT = /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s)$/i;
+/* 可下载的视频后缀。
+ *
+ * 2026-11-13 修正（苏哥报「xx.knit.bid 的视频下不了」）：
+ * 原名单里**有 ts、没有 m3u8**，而绝大多数用 video.js/hls.js 的站点，
+ * 媒体正是 `xxx.m3u8` + 一堆 `.ts` 分片。后果是：
+ *   ① m3u8 清单被这条规则滤掉（实测该页 2 条 m3u8 全部 passesExtFilter=false）；
+ *   ② 只剩 12 条 ts 碎片被当成视频列出，还都标成「MP4」；
+ *   ③ 下单个 ts 只能得到几百 KB 碎片，播放器打不开 = 用户说的「下不了」。
+ *
+ * 所以 m3u8 / mpd 必须在这里。它们不能按普通直链下载（那样只得到一份文本），
+ * 下载端会分流到 HLS/DASH 合并通道（见 vrVideoDownload 里的 hls 分支）。
+ * 来源参考：星愿内置的 VideoInfoFromData 把
+ * `application/x-mpegURL` / `application/vnd.apple.mpegurl` / `.m3u8` 后缀
+ * 都当作视频识别，而不是只认 mp4。 */
+const VR_VIDEO_EXT = /^(mp4|webm|mkv|mov|flv|ts|avi|m4v|m4s|m3u8|mpd)$/i;
+
+/** HLS/DASH 清单后缀：这类地址是「播放清单」，不是可播放文件本身 */
+const VR_PLAYLIST_EXT = /^(m3u8|mpd)$/i;
+
+/** HLS 分片后缀：只有清单缺失时才值得单独列出（否则是误导） */
+const VR_SEGMENT_EXT = /^(ts|m4s)$/i;
 
 /**
  * 静态资源排除：有些站点把登录页背景图、占位动画也用 .mp4 命名（实测 TikTok 的
@@ -6104,6 +6124,25 @@ async function vrVideoOptions(tabId, frameId) {
      *      主干足够长（≥16 位 hash/UUID）的生效，避免把 video.mp4 这种通用名误合。 */
     list = vrNormalizeCandidates(list);
 
+    /* 清单优先（2026-11-13 新增，修 xx.knit.bid「下不了」）。
+     *
+     * 背景：HLS 站点会同时出现 `xxx.m3u8`（清单）和几十条 `*.ts`（分片）。
+     * 只下单个 .ts 得到的是几百 KB 碎片，播放器打不开 —— 用户看到的就是「下不了」。
+     * 而且列表里塞满同名「MP4」，真正该选的清单反而被挤到后面。
+     *
+     * 规则：**只要这一页有可用的 m3u8/mpd 清单，就把纯分片（ts/m4s）全部剔除**。
+     * 若一条清单都没有（有些站只暴露分片），则保留原样，避免把列表清空。 */
+    try {
+        const hasPlaylist = list.some(function (m) {
+            return m && VR_PLAYLIST_EXT.test(m.ext || '');
+        });
+        if (hasPlaylist) {
+            list = list.filter(function (m) {
+                return !(m && VR_SEGMENT_EXT.test(m.ext || ''));
+            });
+        }
+    } catch (e) { /* 过滤失败不影响原有候选 */ }
+
     /* 可达性预检：把 403 死链从列表里清掉，顺便回填真实体积。
      * 这一步是「下载不了」的另一半原因 —— 归并只解决碎片，
      * 若留下的那条本身是 403，点了照样失败。 */
@@ -6387,6 +6426,45 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId, metaFromCalle
             pageUrl = (tab && tab.url) || '';
         } catch (e) { /* ignore */ }
         const ext = (pick.url.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
+
+        /* HLS/DASH 清单必须走合并通道（2026-11-13 新增）。
+         *
+         * 为什么不能走下面的普通直链下载：m3u8 本身只是一份文本清单，
+         * 按直链下回来得到的是几百字节的 #EXTM3U，播放器打不开 ——
+         * 用户看到的就是「下不了」。真正的视频是清单里那一串 ts/m4s 分片。
+         *
+         * 复用猫抓原生的 m3u8 处理页（js/m3u8.js + m3u8-merge.js）：
+         * 它本来就能解析清单、并发拉分片、按顺序拼接、处理加密 key。
+         * 参数约定见 js/m3u8.js 开头（url/title/filename/tabid/initiator/autoDown）。 */
+        if (VR_PLAYLIST_EXT.test(ext)) {
+            let pageUrl = '';
+            try {
+                const tab = await chrome.tabs.get(tabId);
+                pageUrl = (tab && tab.url) || '';
+            } catch (e) { /* ignore */ }
+            const meta = metaOverride || await vrPageMetaInTab(tabId);
+            /* 文件名去掉清单后缀：合并产物是 mp4，别让用户看到 .m3u8 */
+            const baseName = await vrNameInTab(tabId, 'mp4', meta || null);
+            const q = new URLSearchParams({
+                url: pick.url,
+                title: (meta && meta.title) || '',
+                filename: baseName,
+                tabid: String(tabId),
+                initiator: pageUrl,
+                autoDown: '1',
+                autoClose: '1'
+            });
+            try {
+                await chrome.tabs.create({
+                    url: 'm3u8.html?' + q.toString(),
+                    active: false
+                });
+            } catch (e) {
+                return { ok: false, reason: 'download-failed' };
+            }
+            return finish({ ok: true, kind: 'hls', filename: baseName });
+        }
+
         // 微博等站点：页面 $render_data 里有作者/正文，优先用它命名
         const meta = metaOverride || await vrPageMetaInTab(tabId);
         const filename = await vrNameInTab(tabId, VR_VIDEO_EXT.test(ext) ? ext : 'mp4', meta || null);

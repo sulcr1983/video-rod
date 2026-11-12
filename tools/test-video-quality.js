@@ -110,6 +110,14 @@ eq('C4 无 url 的条目被跳过', Q.collapseByAsset([{ size: 1 }]).length, 0);
 eq('D1 有分辨率与体积', Q.labelOf({ url: 'https://x/a.mp4?label=mp4_1080p', size: 45.6 * 1048576 }), '1080p · 45.6MB');
 eq('D2 无分辨率只有体积', Q.labelOf({ url: 'https://x/a.mp4', size: 4 * 1048576 }), 'MP4 · 4.0MB');
 eq('D3 都没有', Q.labelOf({ url: 'https://x/a.mp4' }), 'MP4');
+/* 2026-11-13：m3u8/mpd 是清单不是视频文件，必须单独标注。
+ * 旧实现会回退成「MP4」，且把清单文本大小（几百字节）显示成「0.0MB」，两处都误导。 */
+eq('D4 HLS 清单标注', Q.labelOf({ url: 'https://media.knit.bid/play/abc.m3u8', size: 491 }), 'HLS');
+eq('D5 DASH 清单标注', Q.labelOf({ url: 'https://x/v.mpd', size: 800 }), 'DASH');
+eq('D6 清单不显示体积', Q.labelOf({ url: 'https://x/v.m3u8', size: 1156 }), 'HLS');
+eq('D7 带查询串的 m3u8', Q.labelOf({ url: 'https://x/v.m3u8?token=1', size: 0 }), 'HLS');
+eq('D8 清单有分辨率时优先分辨率', Q.labelOf({ url: 'https://x/v.m3u8?label=mp4_1080p' }), '1080p');
+eq('D9 普通 mp4 行为不变', Q.labelOf({ url: 'https://x/a.mp4', size: 4 * 1048576 }), 'MP4 · 4.0MB');
 
 /* ---------- E. 微博 mid 提取与高清直链挑选 ---------- */
 {
