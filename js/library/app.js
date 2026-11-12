@@ -1157,6 +1157,52 @@
     }
 
     /* ---------- 数据加载 ---------- */
+    /* ---------------- 历史作者 ID 污染自愈（2026-11-12） ----------------
+     * 早期 B 站命名在探针之前算，拿不到 UP 主 mid，结果所有历史文件都挂上了
+     * 同一个假 ID `(@360421127)`。B-72 已让新下载用真 ID；本轮把磁盘上的旧
+     * 目录/文件名去掉这个假 ID，但库里 IndexedDB 的 relPath 还是旧值 ——
+     * 不迁就会变成一批「文件缺失」死卡。
+     * 做法：打开库页读到条目后，把含该标记的条目整条迁到新路径（星标、标签、
+     * 指纹、来源全保留），再删旧主键。只认这一个已知污染标记，别的一律不碰。
+     */
+    var LEGACY_BAD_CREATOR = '(@360421127)';
+    var LEGACY_BAD_MID = '360421127';
+    var LEGACY_FIELDS = ['relPath', 'absPath', 'displayName', 'creatorFull', 'title',
+                         'pageUrl', 'sourceUrl', 'mediaUrl', 'thumbKey'];
+
+    function cleanLegacyCreatorText(v) {
+        return typeof v === 'string' ? v.split(LEGACY_BAD_CREATOR).join('') : v;
+    }
+
+    /** 把一条历史记录映射成「去掉假 ID」的新记录（纯函数，单测覆盖） */
+    function legacyCreatorRow(e) {
+        var n = Object.assign({}, e || {});
+        LEGACY_FIELDS.forEach(function (k) { n[k] = cleanLegacyCreatorText(n[k]); });
+        if (String(n.creatorId || '') === LEGACY_BAD_MID) { n.creatorId = ''; }
+        return n;
+    }
+
+    async function migrateLegacyCreatorPaths(list) {
+        if (!root.VRDB || !list || !list.length) { return 0; }
+        var bad = list.filter(function (e) {
+            return e && e.relPath && String(e.relPath).indexOf(LEGACY_BAD_CREATOR) >= 0;
+        });
+        if (!bad.length) { return 0; }
+        var adds = [], dels = [];
+        bad.forEach(function (e) {
+            adds.push(legacyCreatorRow(e));
+            dels.push(e.relPath);
+            // 本次渲染也用新值，别等下一次刷新才对得上
+            LEGACY_FIELDS.forEach(function (k) { e[k] = cleanLegacyCreatorText(e[k]); });
+            if (String(e.creatorId || '') === LEGACY_BAD_MID) { e.creatorId = ''; }
+        });
+        try {
+            if (adds.length) { await root.VRDB.putFiles(adds); }
+            if (dels.length) { await root.VRDB.deleteFiles(dels); }
+            return dels.length;
+        } catch (eM) { return 0; }   // 迁移失败绝不阻断渲染
+    }
+
     async function load(retry, recheck) {
         if (!root.VRDB) { return; }
         var list = [];
@@ -1191,6 +1237,8 @@
             if (n < 3) { setTimeout(function () { load(n + 1); }, 400 * (n + 1)); return; }
             list = [];
         }
+        /* 磁盘已去掉历史假 ID，库里的旧 relPath 在这里一次性迁到新路径 */
+        try { await migrateLegacyCreatorPaths(list); } catch (eMig) { /* 忽略 */ }
         RAW = {};
         list.forEach(function (e) { RAW[e.relPath] = e; });
         /* 2026-11-09：回收站条目在索引里保留行（state='trashed'），

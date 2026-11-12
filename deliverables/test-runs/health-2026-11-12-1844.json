@@ -1,0 +1,374 @@
+{
+ "at": "2026-11-12-1844",
+ "full": true,
+ "live": false,
+ "ok": true,
+ "results": [
+  {
+   "name": "1/7 源码语法（node --check）",
+   "ok": true,
+   "detail": "131 个 js 语法正常",
+   "dur": 24.239343404769897,
+   "extra": {
+    "files": 131,
+    "bad": []
+   }
+  },
+  {
+   "name": "2/7 manifest 合法性",
+   "ok": true,
+   "detail": "v2.7.2.2（MV3）",
+   "dur": 0.0008771419525146484,
+   "extra": {
+    "missing": []
+   }
+  },
+  {
+   "name": "3/7 测试断言契约（防测试腐烂）",
+   "ok": true,
+   "detail": "34 个脚本的 DOM 引用全部有效",
+   "dur": 1.225949764251709,
+   "extra": {
+    "out": "源码里可用的 DOM id：825 个\n34 passed, 0 failed\n"
+   }
+  },
+  {
+   "name": "4/7 单元测试（纯逻辑）",
+   "ok": true,
+   "detail": "32/32 单测脚本通过，785 条断言",
+   "dur": 15.590823411941528,
+   "extra": {
+    "units": [
+     {
+      "name": "test-album-export.js",
+      "ok": true,
+      "rc": 0,
+      "got": 50,
+      "total": 50,
+      "dur": 7.358709096908569,
+      "tail": "\nPASSED  50 / 50"
+     },
+     {
+      "name": "test-album-sites.js",
+      "ok": true,
+      "rc": 0,
+      "got": 52,
+      "total": 52,
+      "dur": 0.231292724609375,
+      "tail": "PASSED  52 / 52"
+     },
+     {
+      "name": "test-backup-restore.js",
+      "ok": true,
+      "rc": 0,
+      "got": null,
+      "total": null,
+      "dur": 0.17960023880004883,
+      "tail": "PASS 33 条断言全部通过\n============================================================"
+     },
+     {
+      "name": "test-dedupe-key.js",
+      "ok": true,
+      "rc": 0,
+      "got": 19,
+      "total": 0,
+      "dur": 0.3143501281738281,
+      "tail": "\n19 passed, 0 failed"
+     },
+     {
+      "name": "test-download-scan.js",
+      "ok": true,
+      "rc": 0,
+      "got": 69,
+      "total": 0,
+      "dur": 0.26064443588256836,
+      "tail": "69 passed, 0 failed"
+     },
+     {
+      "name": "test-export-kit.js",
+      "ok": true,
+      "rc": 0,
+      "got": 14,
+      "total": 14,
+      "dur": 0.6202528476715088,
+      "tail": "\n✅ 通过 14 / 14"
+     },
+     {
+      "name": "test-image-batch.js",
+      "ok": true,
+      "rc": 0,
+      "got": 27,
+      "total": 27,
+      "dur": 0.39220595359802246,
+      "tail": "\n27 通过 / 0 失败"
+     },
+     {
+      "name": "test-image-settings.js",
+      "ok": true,
+      "rc": 0,
+      "got": 50,
+      "total": 50,
+      "dur": 0.28026294708251953,
+      "tail": "\n50 通过 / 0 失败"
+     },
+     {
+      "name": "test-image-tier.js",
+      "ok": true,
+      "rc": 0,
+      "got": 60,
+      "total": 60,
+      "dur": 0.3285346031188965,
+      "tail": "\n60 通过 / 0 失败"
+     },
+     {
+      "name": "test-image-util.js",
+      "ok": true,
+      "rc": 0,
+      "got": 117,
+      "total": 117,
+      "dur": 0.1757640838623047,
+      "tail": "117 通过 / 0 失败"
+     },
+     {
+      "name": "test-img-filter.js",
+      "ok": true,
+      "rc": 0,
+      "got": 47,
+      "total": 47,
+      "dur": 0.1640608310699463,
+      "tail": "PASSED  47 / 47"
+     },
+     {
+      "name": "test-legacy-path.js",
+      "ok": true,
+      "rc": 0,
+      "got": 26,
+      "total": 0,
+      "dur": 0.17047405242919922,
+      "tail": "\n26 passed, 0 failed"
+     },
+     {
+      "name": "test-live-pair.js",
+      "ok": true,
+      "rc": 0,
+      "got": 17,
+      "total": 0,
+      "dur": 0.14265060424804688,
+      "tail": "\n17 passed, 0 failed"
+     },
+     {
+      "name": "test-naming.js",
+      "ok": true,
+      "rc": 0,
+      "got": 56,
+      "total": 56,
+      "dur": 0.16231060028076172,
+      "tail": "结果：56 通过 / 0 失败\nM0 起名引擎全部用例通过 ✅"
+     },
+     {
+      "name": "test-panel-css.js",
+      "ok": true,
+      "rc": 0,
+      "got": 11,
+      "total": 0,
+      "dur": 0.15523862838745117,
+      "tail": "11 passed, 0 failed"
+     },
+     {
+      "name": "test-path.js",
+      "ok": true,
+      "rc": 0,
+      "got": 100,
+      "total": 100,
+      "dur": 0.18747806549072266,
+      "tail": "100 通过 / 0 失败"
+     },
+     {
+      "name": "test-persistence.js",
+      "ok": true,
+      "rc": 0,
+      "got": null,
+      "total": null,
+      "dur": 0.17740559577941895,
+      "tail": "PASS 81 条断言全部通过\n============================================================"
+     },
+     {
+      "name": "test-progress-report.js",
+      "ok": true,
+      "rc": 0,
+      "got": 21,
+      "total": 21,
+      "dur": 0.18779611587524414,
+      "tail": "\n✅ 通过 21 / 21"
+     },
+     {
+      "name": "test-range-split.js",
+      "ok": true,
+      "rc": 0,
+      "got": 18,
+      "total": 0,
+      "dur": 0.16780948638916016,
+      "tail": "\n18 passed, 0 failed"
+     },
+     {
+      "name": "test-save.js",
+      "ok": true,
+      "rc": 0,
+      "got": 51,
+      "total": 51,
+      "dur": 0.26568603515625,
+      "tail": "51 通过 / 0 失败"
+     },
+     {
+      "name": "test-site-name-fill.js",
+      "ok": true,
+      "rc": 0,
+      "got": 27,
+      "total": 27,
+      "dur": 0.2218027114868164,
+      "tail": "27 通过 / 0 失败\nALL_PASS"
+     },
+     {
+      "name": "test-site-name.js",
+      "ok": true,
+      "rc": 0,
+      "got": 92,
+      "total": 92,
+      "dur": 0.34143590927124023,
+      "tail": "92 通过 / 0 失败\nALL_PASS"
+     },
+     {
+      "name": "test-thumbs-queue.js",
+      "ok": true,
+      "rc": 0,
+      "got": 17,
+      "total": 0,
+      "dur": 0.7637717723846436,
+      "tail": "\n17 passed, 0 failed"
+     },
+     {
+      "name": "test-tiers-css.js",
+      "ok": true,
+      "rc": 0,
+      "got": 7,
+      "total": 0,
+      "dur": 0.1759631633758545,
+      "tail": "7 passed, 0 failed"
+     },
+     {
+      "name": "test-video-quality.js",
+      "ok": true,
+      "rc": 0,
+      "got": 100,
+      "total": 0,
+      "dur": 0.18474769592285156,
+      "tail": "\n100 passed, 0 failed"
+     },
+     {
+      "name": "test-weibo-album.js",
+      "ok": true,
+      "rc": 0,
+      "got": 133,
+      "total": 0,
+      "dur": 0.27509140968322754,
+      "tail": "\n133 passed, 0 failed"
+     },
+     {
+      "name": "test-xhs-media.js",
+      "ok": true,
+      "rc": 0,
+      "got": 25,
+      "total": 0,
+      "dur": 0.7118916511535645,
+      "tail": "\n25 passed, 0 failed"
+     },
+     {
+      "name": "test-xhs-ssr.js",
+      "ok": true,
+      "rc": 0,
+      "got": 26,
+      "total": 0,
+      "dur": 0.19547533988952637,
+      "tail": "\n26 passed, 0 failed"
+     },
+     {
+      "name": "test-yt-options.js",
+      "ok": true,
+      "rc": 0,
+      "got": 50,
+      "total": 0,
+      "dur": 0.1696455478668213,
+      "tail": "\n50 passed, 0 failed"
+     },
+     {
+      "name": "test-yt-queue.js",
+      "ok": true,
+      "rc": 0,
+      "got": 26,
+      "total": 0,
+      "dur": 0.2375028133392334,
+      "tail": "\n26 passed, 0 failed"
+     },
+     {
+      "name": "test-zip.js",
+      "ok": true,
+      "rc": 0,
+      "got": null,
+      "total": null,
+      "dur": 0.18965649604797363,
+      "tail": "PASS 40 条断言全部通过\n============================================================"
+     },
+     {
+      "name": "dedup-test.mjs",
+      "ok": true,
+      "rc": 0,
+      "got": 21,
+      "total": 21,
+      "dur": 0.18770885467529297,
+      "tail": "\n21/21 PASS"
+     }
+    ]
+   }
+  },
+  {
+   "name": "5/7 界面套件（隔离实例）",
+   "ok": true,
+   "detail": "9/9 套件通过",
+   "dur": 170.81825423240662,
+   "extra": {
+    "tail": "片键 = True\n\n---- O3 接口嗅探 ----\nPASS  接口页已加载 = 'O3 接口页'\nPASS  页面接口已返回 = True\n嗅探自检: {\"scans\":1,\"hits\":1,\"posts\":1}\nPASS  O3 扫过接口响应 = True\nPASS  O3 从 JSON 里挖到播放地址 = True\nPASS  O3 已向上转发 = True\n\n16/16 PASS\n------------------------------------------------------------------------\n[PASS] e2e-overlay   用时 19.9s   16/16\n\n========================================================================\n[LOCAL] qa-preview-page preview 独立窗口页（script 加载/按需库，2026-11-09 补盲区）\n$ C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe tools/qa-preview-page.py --port 9490 --ext pmohaojeocdjiideohghomdkchbofchg\n------------------------------------------------------------------------\next = pmohaoje\nPASS V1 preview 页无致命异常（页面能执行脚本） | got= True | want= True\npreview DOM: {\"title\":\"筛选\",\"hasMedia\":false,\"pag\":true,\"bodyLen\":4827,\"scriptTags\":[\"js/polyfill.js\",\"js/init.js\",\"js/function.js\",\"js/templates.js\",\"lib/base64.js\",\"lib/hls.min.js\",\"js/popup-utils.js\",\"js/preview.js\",\"js/i18n.js\"]}\nPASS V2a preview 页面有内容 | got= True | want= True\nPASS V2b 分页控件存在 | got= True | want= True\nPASS V3a popup-utils 已加载 | got= True | want= True\nPASS V3b preview.js 已加载 | got= True | want= True\nPASS V3c base64 已加载 | got= True | want= True\nPASS V4 mqtt.min.js 默认不静态加载（体积整改验收） | got= False | want= False\nMQTT 状态: {\"has\":true,\"mqttEnable\":false,\"rejected\":\"REJECTED:MQTT is not enabled\",\"mqttLibLoaded\":false}\nPASS V5a sendToMQTT 函数仍在（上游代码没删） | got= True | want= True\nPASS V5b mqttEnable 默认 false | got= False | want= False\nPASS V5c 关闭时按预期 reject | got= True | want= True\nPASS V5d mqtt 库未进内存（0 开销） | got= False | want= False\nV6 按需注入结果: REJECTED:MQTT 库加载失败\nPASS V6 库缺失时按需注入明确失败（不静默挂起） | got= True | want= True\n\n==== 12/12 PASS ====\n------------------------------------------------------------------------\n[PASS] qa-preview-page   用时 6.0s   12/12\n\n========================================================================\n批次汇总：9/9 套件通过，用时 169.4s\n  PASS   e2e-sw         4/4         4.6s  \n  PASS   dedup          21/21       0.2s  \n  PASS   stage-rewrite  21/21      14.3s  \n  PASS   skin           22/22      11.2s  \n  PASS   download-path  10/10       5.2s  \n  PASS   e2e-buttons    32/32      56.9s  \n  PASS   e2e-popup      8/8        31.8s  \n  PASS   e2e-overlay    16/16      19.9s  \n  PASS   qa-preview-page 12/12       6.0s  \n========================================================================\n报告：D:\\test\\download\\video-rod\\deliverables\\test-runs\\2026-11-12-1843-e2e-all.md\n[隔离] 保留测试实例 port=9490（--keep-isolated）\n",
+    "fails": [],
+    "fresh": [],
+    "known": []
+   }
+  },
+  {
+   "name": "6/7 视觉回归（3 屏像素比对）",
+   "ok": true,
+   "detail": "3 屏一致",
+   "dur": 14.088317394256592,
+   "extra": {
+    "tail": "PASS popup     差异 0.000%（阈值 0.15%）\nPASS options   差异 0.000%（阈值 0.15%）\nPASS install   差异 0.000%（阈值 0.15%）\n\n3 passed, 0 failed\n"
+   }
+  },
+  {
+   "name": "7/7 真实站点清单（本地夹具）",
+   "ok": true,
+   "detail": "2 个通过",
+   "dur": 23.065850973129272,
+   "extra": {
+    "tail": "\n---- local-hls（sniff，必须过）----\n    本地 HLS 夹具：页面主动请求两个 master playlist，扩展必须嗅到 ≥2 条\nPASS local-hls：嗅到 2 条 .m3u8\n\n---- local-image（image，必须过）----\n    本地图片页：侧栏扫描必须能列出 ≥5 张\nPASS local-image：侧栏列出 5 张\n\n2 passed, 0 failed\n"
+   }
+  },
+  {
+   "name": "附 发布物就绪",
+   "ok": true,
+   "detail": "dist 就绪，最新包 video-rod-2.7.2.2.zip",
+   "dur": 0.0020656585693359375,
+   "extra": {
+    "dist": true,
+    "zip": "video-rod-2.7.2.2.zip"
+   }
+  }
+ ]
+}

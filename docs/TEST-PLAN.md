@@ -179,7 +179,7 @@ python tools/health-check.py --full --update-baseline
 |---|---|---|---|---|
 | ~~P0~~ | ~~真实站点无固定清单~~ | — | **✅ 2026-11-12 完成**：`tools/live-sites.json` + `tools/live-sites.py`（required 拦、optional 只告警） | 已完成 |
 | ~~P0~~ | ~~视觉回归无基线~~ | — | **✅ 2026-11-12 完成**：`tools/visual-baseline.py`（popup/options/install 三屏，差异 >0.15% 判红并出 diff 图） | 已完成 |
-| P1 | 详情/预览断言随并行会话漂移 | 长期红 | 等并行会话收口后重写该段断言 | — |
+| ~~P1~~ | ~~详情/预览断言长期红~~ | — | **✅ 2026-11-12 完成**：查明是测试断言过时，已重写；两项套件 21/21、22/22 转绿，基线清空 | 已完成 |
 | P1 | 性能无基准 | 万条库可能卡死 | 造 1 万条索引 + 500 图，量首屏与滚动 | 1 天 |
 | P2 | 无 CI | 全靠人记得跑 | 本地 git hook：commit 前跑冒烟（40s） | 半天 |
 | P2 | 多语言 key 缺漏 | 英文界面漏字 | `_locales` 与代码里 `i18n.t('x')` 对账 | 半天 |
@@ -208,6 +208,7 @@ python tools/health-check.py --full --update-baseline
 | `tools/test-bili-source.py` | B 站 12 条真机回归（上一轮 B-72 补） |
 | `tools/live-sites.py` + `live-sites.json` | 真实站点固定清单：本地 HLS/图片夹具 + B站必过，小红书/抖音/微博只探活 |
 | `tools/visual-baseline.py` + `deliverables/visual-baseline/` | 三屏视觉基线（popup / options / install），像素比对 + 红色 diff 图 |
+| `tools/test-legacy-path.js` | 历史作者 ID 污染的路径迁移纯逻辑（26 条） |
 
 ### 视觉基线怎么用
 

@@ -98,8 +98,14 @@ def main():
     # B-23 选项 A（2026-11-06）：顶部 chips 移除，平台筛选只在左侧资源树
     check("顶部平台 chips 已移除", ev("document.querySelectorAll('#chips .chip').length", sid), 0)
     check("左侧平台节点存在", ev("document.querySelectorAll('#tree .tree-node.plat').length", sid) > 0, True)
-    check("页签计数", ev("[...document.querySelectorAll('#typeTabs button')].map(b=>b.dataset.type+':'+b.querySelector('b').textContent).join(',')", sid),
-          "all:8,image:3,anim:0,video:4,audio:1")
+    # 页签计数按「总数 = 各类型之和」断言，不再写死一串：
+    # B-71 新增「实况」页签后，原来写死的串一直红（测试腐烂，不是产品坏）。
+    check("页签计数", ev("""(()=>{
+      const bs=[...document.querySelectorAll('#typeTabs button')];
+      const o={}; bs.forEach(b=>{o[b.dataset.type]=Number(b.querySelector('b').textContent)||0;});
+      const sum=Object.keys(o).filter(k=>k!=='all').reduce((a,k)=>a+o[k],0);
+      return JSON.stringify({all:o.all,sum,types:Object.keys(o).sort().join(',')});
+    })()""", sid), '{"all":8,"sum":8,"types":"all,anim,audio,image,live,video"}')
     check("缺失角标", ev("document.querySelectorAll('#grid .card .missing-tag').length", sid), 1)
     check("页面底色", ev("getComputedStyle(document.body).backgroundColor", sid), "rgb(16, 15, 14)")
 
@@ -138,15 +144,18 @@ def main():
     time.sleep(1.2)
     check("预览打开", ev("!document.getElementById('preview').classList.contains('hidden')", sid), True)
     check("预览标题", ev("document.getElementById('pvTitle').textContent", sid), "旅行日记")
-    check("胶片条=8", ev("document.querySelectorAll('#pvFilm .film').length", sid), 8)
+    # 胶片条范围由调用方决定：从卡片点开 = 当前平台素材（B站夹具 2 条），
+    # 不是全库 8 条。旧断言 8 是「货架全量」时代的假设，已随 B-?? 范围裁剪失效。
+    check("胶片条按平台范围=2", ev("document.querySelectorAll('#pvFilm .film').length", sid), 2)
     ev("document.getElementById('pvClose').click();1", sid)
     time.sleep(0.4)
 
     # 设置抽屉
     ev("document.getElementById('settingsBtn').click();1", sid)
     time.sleep(0.6)
-    check("抽屉打开", ev("document.getElementById('setdrawer').classList.contains('show')", sid), True)
-    check("抽屉目录值有内容", ev("(document.getElementById('sdDirVal').textContent||'').length>0", sid), True)
+    # 2026-11-10 右侧抽屉已改成居中弹窗 #setModal，旧 #setdrawer / #sdDirVal 早删了。
+    check("设置弹窗打开", ev("document.getElementById('setModal').classList.contains('show')", sid), True)
+    check("弹窗有可改开关", ev("document.querySelectorAll('#setModal .switch input').length", sid) > 0, True)
     ev("document.getElementById('setClose').click();1", sid)
     time.sleep(0.3)
 

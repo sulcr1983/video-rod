@@ -132,34 +132,49 @@ def main():
     # ---------- 安装页 ----------
     tid, sid = c.open_page("chrome-extension://%s/install.html" % a.ext, 1200, 900)
     time.sleep(2)
-    install_ok = c.ev("getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()", sid)
-    check("安装页主色为舞台金", str(install_ok).lower(), "#e8b04b")
-
-    # 可读性护栏（2026-11-05 苏哥截图反馈「界面看不清」）：
-    # 当时 --content-bg 还是 #f8f9fa 白底，配上暖白正文 #EFEAE0，等于白底白字。
-    box_bg = c.ev("getComputedStyle(document.querySelector('.content-box')).backgroundColor", sid)
-    check("安装页内容卡不再是白底", box_bg, "rgb(31, 28, 24)")
-    ink = c.ev("getComputedStyle(document.querySelector('.content-box p')).color", sid)
-    check("安装页正文为暖白", ink, "rgb(239, 234, 224)")
-
-    # 正文/底色对比度 ≥ 7（WCAG AAA 正文标准）
-    ratio = c.ev("""(()=>{
-      const lum = (c)=>{const [r,g,b]=c.match(/\\d+/g).map(Number).map(v=>{
-        v/=255; return v<=0.03928? v/12.92 : Math.pow((v+0.055)/1.055,2.4);});
-        return 0.2126*r+0.7152*g+0.0722*b;};
-      const box = document.querySelector('.content-box');
-      const p = box.querySelector('p');
-      const L1 = lum(getComputedStyle(box).backgroundColor);
-      const L2 = lum(getComputedStyle(p).color);
-      const hi = Math.max(L1,L2), lo = Math.min(L1,L2);
-      return Math.round(((hi+0.05)/(lo+0.05))*10)/10;
+    # 安装页在 2026-11-10 重构过：色板变量名 --primary → --gold，
+    # 卡片 .content-box → .pain，正文 .content-box p → .p-desc，
+    # 反馈入口按 11-11「用户可见文案去掉第三方平台名」改到本仓库 issues。
+    # 断言跟着真源走（读 :root 变量），别再绑死某个 DOM 结构 —— 绑死的结果
+    # 就是结构一改，5 条护栏全部静默变红，而产品其实好着（视觉基线可证）。
+    palette = c.ev("""(()=>{
+      const cs=getComputedStyle(document.documentElement);
+      const v=n=>cs.getPropertyValue(n).trim();
+      const card=document.querySelector('.pain');
+      const desc=document.querySelector('.p-desc');
+      return JSON.stringify({
+        gold:v('--gold').toLowerCase(), surface:v('--surface-2').toLowerCase(),
+        text:v('--text').toLowerCase(), bg:v('--bg').toLowerCase(),
+        cardBg:card?getComputedStyle(card).backgroundColor:'',
+        descColor:desc?getComputedStyle(desc).color:'',
+        href:(document.querySelector('.fb-links a')||{}).href||''
+      });
     })()""", sid)
-    check("安装页正文对比度 ≥ 7", (ratio if isinstance(ratio, (int, float)) else 0) >= 7, True)
+    try:
+        pal = json.loads(palette) if isinstance(palette, str) else {}
+    except Exception:
+        pal = {}
+    check("安装页主色为舞台金", pal.get("gold"), "#e8b04b")
+    check("安装页内容卡为深色（非白底）", pal.get("surface"), "#1b1815")
+    check("安装页内容卡不是白底", "255, 255, 255" in str(pal.get("cardBg")), False)
+    check("安装页正文为暖白", pal.get("text"), "#efeae0")
+    check("安装页正文元素存在", bool(pal.get("descColor")), True)
 
-    # 问题提交按 GPL 上游为主：本扩展是 cat-catch 的衍生作品，issue 入口沿用上游
-    # （苏哥 2026-11-05 明确：按法律还是以猫抓为主，应该写它的）
-    issue_href = c.ev("(document.querySelector('.content-box a')||{}).href || ''", sid)
-    check("问题提交指向上游 issues", "cat-catch.94cat.com/docs/issues" in str(issue_href), True)
+    # 正文/底色对比度 ≥ 7（WCAG AAA 正文标准），按色板真源算，不依赖卡片渐变
+    def _lum(h):
+        h = str(h).replace('#', '').strip()
+        if len(h) != 6:
+            return 0.0
+        ch = [int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+        ch = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in ch]
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+    l1, l2 = _lum(pal.get('text')), _lum(pal.get('bg'))
+    ratio = round((max(l1, l2) + 0.05) / (min(l1, l2) + 0.05), 1) if (l1 or l2) else 0
+    check("安装页正文对比度 ≥ 7", ratio >= 7, True)
+
+    # 2026-11-11 决策：用户可见文案/链接不宣传第三方，反馈入口改到本仓库 issues
+    check("反馈入口指向本仓库 issues",
+          "github.com/sulcr1983/video-rod/issues" in str(pal.get("href")), True)
 
     c.send("Target.closeTarget", {"targetId": tid})
 

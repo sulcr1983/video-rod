@@ -388,6 +388,26 @@ python tools/e2e-all.py --isolated --only e2e-buttons   # 32  库页按钮
 > 4. 库页路径卡主体 = 换素材文件夹（弹选择器），右侧箭头 = 完整设置。
 >    换到空目录前必须二次确认，别让用户以为「库被清空了」。
 
+### 4.12 历史作者 ID 污染修复 + 两项长期红套件（2026-11-12，B-75）
+
+改 `js/library/app.js`（legacyCreatorRow / migrateLegacyCreatorPaths）、
+`tools/stage-rewrite-test.py`、`tools/skin-test.py` 后必须跑：
+
+```bash
+node tools/test-legacy-path.js                       # 26  历史路径迁移纯逻辑
+python tools/e2e-all.py --isolated --only stage-rewrite,skin   # 21/21 + 22/22
+python tools/health-check.py --full                 # 9/9 套件、8 项全绿
+```
+
+> 三条口径：
+> 1. 历史污染标记只认 `(@360421127)`；真 ID（如 `(@946974)`）一个都不能动；
+>    迁移必须保留星标、标签、sha256、来源，且删掉旧主键（否则出现重复卡）。
+> 2. 磁盘改名后，库页打开时自动迁移 IndexedDB 的 relPath —— **不需要用户手动重建索引**；
+>    验证方式：隔离实例里种一条带假 ID 的假条目 → reload 库页 → 断言新路径且旧主键为 0。
+> 3. `stage-rewrite` / `skin` 两项长期红是断言过时（新增实况页签、设置抽屉改弹窗、
+>    安装页色板变量 --gold、反馈链接按 11-11 决策改本仓库），不是产品回归。
+>    断言已跟真源，`health-baseline.json` 已清空，此后任何套件红都算新失败。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

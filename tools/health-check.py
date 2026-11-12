@@ -75,8 +75,10 @@ def grab_counts(text):
         m = re.findall(p, text)
         if m:
             got, total = m[-1]
-            # 「X 通过 / Y 失败」是两个独立数，其余是 got/total
-            if '失败' in p:
+            # 「X passed, Y failed」与「X 通过 / Y 失败」都是「通过数 + 失败数」，
+            # 不是 got/total。早先只认中文那支，新脚本的 26 passed, 0 failed
+            # 被算成 total=0，报告里断言总数就少了一截。
+            if '失败' in p or 'failed' in p:
                 return int(got), int(got) + int(total)
             return int(got), int(total)
     return None, None
