@@ -16,8 +16,8 @@
    "required": true,
    "url": "{local}/images.html",
    "wait": 3,
-   "expect": { "minCells": 5 },
-   "why": "本地图片页：侧栏扫描必须能列出 ≥5 张"
+   "expect": { "minCells": 2 },
+   "why": "本地图片页：侧栏必须列出 2 张有效大图（cover.jpg / sprite.png）。夹具共 7 个 <img>，另 5 个是过滤用例：16×16 小图、重复 URL、坏图 .mp4、宽够高不够、高够宽不够。原写 5 属假绿——源码通道把 media/*.jpg 相对路径又抓一遍（DOM 是绝对地址，去重没命中）凑出重复条目；2026-11-13 源码通道改为「DOM 有货就不跑」后露出真相，断言归位"
   },
   {
    "name": "bilibili",
