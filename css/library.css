@@ -8,8 +8,15 @@
 
 :root{
 --bg:#100F0E; --surface:#191715; --surface-2:#1F1C18; --surface-3:#2E2822;
-  --ink:#EFEAE0; --ink-2:#C8C0B2; --muted:#8C8478; --faint:#685F52;
-  --line:#2B2620; --line-2:#211E1A;
+  /* 2026-11-12 对比度修正（苏哥：深色底上灰字看不清）
+ * 实测（对 surface #191715）：faint #685F52 = 2.85:1、muted #8C8478 = 4.84:1。
+ * 正文要 4.5:1，小字 11~12px 时 4.84 只是刚过线、看着仍吃力。
+ * 提亮后：faint #988F81 = 4.56:1（最暗的 surface-3 也达标），muted #A8A093 = 6.91:1。
+ * 层级仍清晰：ink 14.9 > ink-2 9.9 > muted 6.9 > faint 4.6。 */
+  --ink:#EFEAE0; --ink-2:#C8C0B2; --muted:#A8A093; --faint:#988F81;
+  /* 分隔线原为 1.19:1 / 1.08:1，弹窗边界和表格线在深底上几乎看不见。
+ * 按 WCAG 非文本对比度 3:1 会亮到抢眼、破坏舞台氛围，取温和提升到 1.65 / 1.21。 */
+  --line:#443C32; --line-2:#2C2723;
   --primary:#E8B04B; --primary-hover:#F2C46E;
   --accent:#E8B04B; --accent-soft:#2C2418; --accent-ink:#F0C878;
   --danger:#E86466; --danger-soft:#2A1618;
@@ -2201,7 +2208,9 @@ h1 {
   display:block;margin-top:0;font-size:10.5px;line-height:1.25;color:var(--muted);
   font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.shelf-line .card .card-sub i{font-style:normal;color:var(--line);margin:0 3px}
+/* 分隔符「·」是文字不是线：原来跟着 --line（1.65:1）走，等于看不见。
+ * 改用 --faint（4.56:1），既点得开又不抢主文字（2026-11-12）。 */
+.shelf-line .card .card-sub i{font-style:normal;color:var(--faint);margin:0 3px}
 
 
 /* ==========================================================

@@ -16,11 +16,11 @@
     --vr-bg-deep: #0B0A09;
     --vr-card: #191715;
     --vr-card-hi: #241F19;
-    --vr-line: #2B2620;
-    --vr-line-2: #211E1A;
+    --vr-line: #443C32;
+    --vr-line-2: #2C2723;
     --vr-text: #EFEAE0;
     --vr-text-dim: #B0A89A;
-    --vr-text-mute: #8C8478;
+    --vr-text-mute: #A8A093;   /* 原 #8C8478 对卡片仅 4.84:1，小字吃力（2026-11-12） */
     --vr-accent: #E8B04B;
     --vr-accent-strong: #F0C066;
     --vr-accent-weak: #2C2418;

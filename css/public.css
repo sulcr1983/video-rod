@@ -86,8 +86,15 @@ button:disabled,
 .button:disabled,
 .button2:disabled,
 .disabled {
-  background-color: #ccc;
-  color: #666;
+  /* 2026-11-12：原为浅色时代的 #ccc 底 + #666 字。全站改深色（ADR-045）后
+   * 这条没跟着改，于是**所有禁用按钮在深色页面上变成一块浅灰**：
+   * 既刺眼（浅底在深色界面里像故障块），字又看不清（#666 on #ccc = 3.58:1）。
+   * 光回收站里就有「恢复所选 / 彻底删除所选」两个按钮常驻禁用态。
+   * 改成深色禁用态：底比正常按钮暗一档，字用 muted，靠 opacity 表达不可用。
+   * 用 var(..., 兜底值) 写法：public.css 被多个页面共用，各自的 token 名不同。 */
+  background-color: var(--surface-2, #1F1C18);
+  color: var(--muted, #A8A093);
+  border-color: var(--line, #443C32);
   cursor: not-allowed;
   opacity: 0.6;
 }

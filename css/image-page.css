@@ -10,12 +10,13 @@
     --surface: #191715;
     --surface-2: #1F1C18;
     --surface-3: #2B2620;
-    --line: #2B2620;
-    --line-2: #211E1A;
+    --line: #443C32;
+    --line-2: #2C2723;
     --ink: #EFEAE0;
     --ink-2: #B0A89A;
-    --muted: #8C8478;
-    --faint: #5F5950;
+    /* 2026-11-12 对比度修正：faint 原 #5F5950 = 2.58:1（不达标），muted 4.84（小字吃力） */
+    --muted: #A8A093;
+    --faint: #988F81;
     --accent: #E8B04B;
     --accent-2: #F0C878;
     --accent-deep: #C98A2E;
