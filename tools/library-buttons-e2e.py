@@ -89,7 +89,7 @@ SKIP_IDS = {
     'pvReveal': '调用系统文件管理器（阻塞自动化）',
     'pvFullBtn': '全屏切换（阻塞自动化）',
     'pvMove': '打开移动弹层并可能改路径（破坏性）',
-    'rootBtn': '打开设置新标签（页面跳转）',
+    'rootBtn': '弹系统目录选择器换素材文件夹（会阻塞自动化；行为已在 test-root-switch 里单测）',
     'resetBtn': '打开设置新标签（页面跳转）',
     'sdDirBtn': '打开设置新标签（页面跳转）',
     'sdOptionsLink': '打开设置新标签（页面跳转）',

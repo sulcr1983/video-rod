@@ -4741,7 +4741,8 @@ async function vrFindExistingMedia(item) {
         const key = vrCanonMediaUrl(it.url);
         const plat = vrSiteKey(it.site);
         const kind = String(it.kind || '');
-        if (!key && !(kind === 'video' && it.pageUrl)) { return null; }
+        const workId = String(it.workId || '');
+        if (!key && !(kind === 'video' && (it.pageUrl || workId))) { return null; }
         const all = await self.VRDB.getAllFiles();
         for (let i = 0; i < all.length; i++) {
             const e = all[i] || {};
@@ -4749,12 +4750,15 @@ async function vrFindExistingMedia(item) {
             if (plat && e.platform && e.platform !== plat) { continue; }
             const vals = [vrCanonMediaUrl(e.sourceUrl), vrCanonMediaUrl(e.mediaUrl)].filter(Boolean);
             if (key && vals.indexOf(key) >= 0) { return e; }
+            /* 作品键优先（B站 bvid_cid_档位）：一条页面多集时，pageUrl 相同
+             * 绝不能当重复 —— 那会把第 2P、第 3P 全拦掉（2026-11-12 报障根因）。 */
+            if (workId && e.workId && String(e.workId) === workId && e.type === 'video') { return e; }
             /* 视频以原帖作为来源键 —— 但必须确认那条记录**也是视频**。
              * 2026-11-06 实测：同一条小红书笔记的图片和视频共享 pageUrl，
              * 图片先入库后，视频被这条兜底误判成「重复」直接跳过，
              * 用户看到的就是「下载失败 / 没有视频」。
              * 只有图片端（kind=video）与记录端（e.type=video）都成立才算重复。 */
-            if (kind === 'video' && it.pageUrl && e.pageUrl &&
+            if (!workId && kind === 'video' && it.pageUrl && e.pageUrl &&
                 e.pageUrl === it.pageUrl && e.type === 'video') { return e; }
         }
         return null;
@@ -5859,6 +5863,23 @@ async function vrVideoOptions(tabId, frameId) {
         const info = r && r[0] && r[0].result;
         if (info && (info.hasDurl || info.hasDash)) {
             out.site = 'bili';
+            /* 作品键 = bvid + cid（分P 各算一集）。
+             * ⚠️ 2026-11-12 苏哥报「B站又下载不了」的真根因就在这里：
+             * 以前没有 meta，下载侧去重只能拿**整条页面 URL** 当作品键，
+             * 于是同一页下过一次之后，再点任何一集/任何清晰度都会被判
+             * 「已存在」直接跳过 —— 按钮一闪就回原样，看着就是「下不了」。
+             * 一条 B 站页面可能有很多集（分P/合集），页面 URL 根本不是作品。 */
+            out.meta = {
+                site: 'bilibili',
+                workId: String(info.bvid || '') + '_' + String(info.cid || ''),
+                title: String(info.partTitle || info.title || ''),
+                author: String(info.owner || '')
+                    + (info.ownerMid ? '(@' + String(info.ownerMid) + ')' : ''),
+                authorId: info.ownerMid ? String(info.ownerMid) : '',
+                pageUrl: 'https://www.bilibili.com/video/'
+                    + String(info.bvid || '')
+                    + (info.part ? ('?p=' + info.part) : '')
+            };
             if (info.hasDurl) {
                 out.options.push({
                     id: 'durl', kind: 'durl',
@@ -6163,11 +6184,19 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
     }
     if (!pick) { return { ok: false, reason: 'no-option' }; }
 
+    /* 作品键（B站：bvid_cid_档位）。只有 B 站给，其它站为空 → 行为不变。
+     * 带档位是为了「先点快的 720P，再点高清 1080P」不被拦。
+     * ⚠️ 必须声明在 try 外面：下面算 dedupKey 的那段也要用，放在 try 里的
+     * const 是块级作用域，外面拿不到会抛 ReferenceError，被 catch 静默吞掉
+     * → dedupKey 恒为空 → 去重彻底失效（自测当天就踩到）。 */
+    const workKey = (opt.meta && opt.meta.workId)
+        ? (String(opt.meta.workId) + '_' + String(pick.kind || pick.id || ''))
+        : '';
     try {
         const tab = await chrome.tabs.get(tabId);
         const dupe = await vrFindExistingMedia({
             site: opt.site || '', kind: 'video', url: pick.url,
-            pageUrl: (tab && tab.url) || ''
+            pageUrl: (tab && tab.url) || '', workId: workKey
         });
         if (dupe) { return { ok: true, skipped: true, reason: 'duplicate-source', path: dupe.relPath }; }
     } catch (e) { /* 查重失败不阻止下载 */ }
@@ -6180,7 +6209,10 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
         dedupKey = vrMediaIdentity({
             site: opt.site || 'generic',
             url: pick.url || pageUrl,
-            mediaId: pick.kind || pick.id || '',
+            /* B 站把作品键塞进 mediaId：vrMediaIdentity 里 work 取的是
+             * statusId||noteId||awemeId||mediaId||key，mediaId 非空就不再落到 key，
+             * 所以传 workKey 才能真正按「这一集 + 这一档」记账。 */
+            mediaId: workKey || pick.kind || pick.id || '',
             kind: 'video',
             key: pageUrl
         });
@@ -6364,10 +6396,6 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
     }
 
     // ---- B站：走页面主世界 ----
-    // <a download> 不支持子目录（ADR-029 已知限制），只取文件名
-    const full = await vrNameInTab(tabId, 'mp4');
-    const name = full.split('/').pop() || full;
-
     const probe = await chrome.scripting.executeScript({
         target: { tabId: tabId }, world: 'MAIN', func: self.VR_BILI.probeFunc
     });
@@ -6375,6 +6403,26 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
     if (!info || !(info.hasDurl || info.hasDash)) {
         return { ok: false, reason: 'no-bili-info' };
     }
+
+    /* 命名必须带探针给的作者/标题（2026-11-12 修）：
+     * 以前先 vrNameInTab 再 probe，命名拿不到 UP 主信息，只能从页面/DOM 猜 ——
+     * 实测库里所有 B 站文件名都挂着同一个 `(@360421127)`（串了别人的 mid），
+     * 分P 视频还会全部同名。 */
+    const nameMeta = {
+        /* 不传 site：归档目录名由 VRPath 从 pageUrl 推断（B站 → 「B站」），
+         * 这里塞 'bilibili' 会让目录变成英文键名。
+         * author 只给**名字**：naming.js 的 buildAuthorFull 会自己拼 (@ID)，
+         * 这里再拼一遍会得到「索尼音乐中国(@123)(@123)」（自测踩到）。 */
+        author: String(info.owner || ''),
+        authorId: info.ownerMid ? String(info.ownerMid) : '',
+        title: String(info.partTitle || info.title || ''),
+        workId: String(info.bvid || '') + '_' + String(info.cid || ''),
+        pageUrl: 'https://www.bilibili.com/video/' + String(info.bvid || '')
+            + (info.part ? ('?p=' + info.part) : '')
+    };
+    // <a download> 不支持子目录（ADR-029 已知限制），只取文件名
+    const full = await vrNameInTab(tabId, 'mp4', nameMeta);
+    const name = full.split('/').pop() || full;
 
     /* 记完整归档路径（含 video-rod/B站/<作者>/视频/），页面里的 <a download> 只认文件名。
      * 同时带 meta：B站走页面内 blob 下载，没有预登记的话入库条目
@@ -6389,12 +6437,24 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
         });
         biliTitle = String((pg && pg[0] && pg[0].result) || '').replace(/\s*-\s*哔哩哔哩.*$/, '').trim();
     } catch (e) { /* ignore */ }
+    /* workId 必须和下载侧去重用的 workKey 同口径（bvid_cid_档位），
+     * 否则「库里查重」永远对不上，重复下载拦不住。 */
+    const biliWork = String(info.bvid || '') + '_' + String(info.cid || '');
+    const biliWorkKey = biliWork + '_' + String(pick.kind || pick.id || '');
     const biliMeta = {
         platform: 'bilibili',
         platformName: 'B站',
         type: 'video',
-        title: biliTitle,
-        pageUrl: biliTabUrl,
+        /* 分P 用该集标题（多P 视频每集不同），没有才用总标题 */
+        title: String(info.partTitle || biliTitle || info.title || ''),
+        author: String(info.owner || '')
+            + (info.ownerMid ? '(@' + String(info.ownerMid) + ')' : ''),
+        authorId: info.ownerMid ? String(info.ownerMid) : '',
+        workId: biliWorkKey,
+        /* 来源固定成 bvid（带 p）：tab.url 里可能挂着 spm_id_from/vd_source
+         * 这类参数，每进一次都不一样，当溯源键不稳定。 */
+        pageUrl: 'https://www.bilibili.com/video/' + String(info.bvid || '')
+            + (info.part ? ('?p=' + info.part) : ''),
         relPath: full
     };
     vrPendingBiliName = { full: full, at: Date.now(), meta: biliMeta };

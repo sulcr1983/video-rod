@@ -1226,8 +1226,11 @@
                  * 不要退回系统下载目录，也别写「未探测」吓用户。 */
                 if (s.mode === 'custom') {
                     var cbase = s.customRoot ? String(s.customRoot).replace(/\//g, '\\') : '';
-                    pathEl.textContent = cbase || '自选文件夹（已授权）';
-                    pathEl.title = cbase || '浏览器不提供绝对路径，预览走目录授权';
+                    /* 浏览器只给句柄不给绝对路径：这时至少把**文件夹名**显示出来，
+                     * 否则用户点了换目录、界面上什么都没变（还是一句「自选文件夹」），
+                     * 会以为没生效。 */
+                    pathEl.textContent = cbase || (s.customName ? s.customName : '自选文件夹（已授权）');
+                    pathEl.title = cbase || ((s.customName ? s.customName + '\n' : '') + '浏览器不提供绝对路径，预览走目录授权');
                     return;
                 }
                 var base = s.detectedRoot ? s.detectedRoot + '\\' + (s.subdir || 'video-rod') : '';
@@ -2258,7 +2261,17 @@
             });
         });
 
-        on('rootBtn', function () { openOptions(); });
+        /* 点路径卡 = 换素材文件夹（2026-11-12 苏哥报「点了不是换文件夹，跳到别处」）。
+         *
+         * 历史：2026-11-10 为避免「路径卡与设置页重复」，这里改成了 openOptions()，
+         * 而设置弹窗里的「保存位置」整组也在同日删掉 —— 结果两边都没有换目录入口，
+         * 用户点路径卡只会跳到一个满是开关的扩展设置页，体感就是「换了个位置」。
+         * 现在：路径卡自己换目录；右侧小箭头仍去完整设置。 */
+        on('rootBtn', function (ev) {
+            var chev = ev && ev.target && ev.target.closest ? ev.target.closest('.chev') : null;
+            if (chev) { openOptions(); return; }
+            switchRootInteractive();
+        });
         /* 2026-11-10 盘查：resetBtn 已随 B-64 移除（换目录收敛为路径卡单入口），死绑定删除 */
 
         var emptyAct = $('#emptyAction');
@@ -2287,6 +2300,108 @@
 
     function openOptions() {
         try { chrome.runtime.openOptionsPage(); } catch (e) { location.href = 'options.html'; }
+    }
+
+    /** 当前库设置（异步读，失败给空对象） */
+    function readLibSettings() {
+        return new Promise(function (resolve) {
+            try {
+                chrome.storage.local.get('vrLibSettings', function (o) {
+                    resolve((o && o.vrLibSettings) || {});
+                });
+            } catch (e) { resolve({}); }
+        });
+    }
+
+    /** 数一下某个句柄下有多少媒体文件（限量，别在几万文件的目录上卡死） */
+    async function countMediaQuick(handle, limit) {
+        var n = 0;
+        async function walk(dir, depth) {
+            if (n >= limit || depth > 3) { return; }
+            try {
+                for await (var entry of dir.entries()) {
+                    var name = entry[0];
+                    if (/^(_library|_回收站|_migration|_selftest|node_modules|\.)/i.test(name)) { continue; }
+                    if (entry[1].kind === 'file') {
+                        if (/\.(mp4|m4v|webm|mkv|flv|mov|mp3|m4a|aac|wav|flac|jpe?g|png|webp|gif|apng|avif|bmp)$/i.test(name)) {
+                            n++;
+                            if (n >= limit) { return; }
+                        }
+                    } else if (depth < 3) {
+                        await walk(entry[1], depth + 1);
+                    }
+                }
+            } catch (e) { /* 读不了就按 0 算 */ }
+        }
+        await walk(handle, 0);
+        return n;
+    }
+
+    /**
+     * 换素材文件夹（点左上角路径卡触发）。
+     *
+     * 为什么不能「选完立刻切」：索引与设置都指向新根之后，旧库里的条目会全部
+     * 变成 missing（文件还在原处，只是不在新根下）。用户误点一下就会觉得「库空了」。
+     * 所以先数一眼新目录里有多少媒体文件，明显不对就要求二次确认。
+     */
+    async function switchRootInteractive() {
+        if (typeof root.showDirectoryPicker !== 'function') {
+            toast('这个浏览器不支持选文件夹，请到「完整扩展设置」里换目录');
+            return;
+        }
+        var h = null;
+        try {
+            h = await root.showDirectoryPicker({ mode: 'readwrite' });
+        } catch (e) {
+            if (e && e.name === 'AbortError') { return; }   // 用户自己取消，不打扰
+            toast('选文件夹失败：' + ((e && e.message) || e));
+            return;
+        }
+        var st = await readLibSettings();
+        var sub = st.subdir || 'video-rod';
+        var picked = h;
+        /* 用户在「下载」这类上级目录上点选时，自动进去 subdir（多半是想选那个） */
+        if (sub && h.name !== sub) {
+            var child = null;
+            try { child = await h.getDirectoryHandle(sub); } catch (e2) { child = null; }
+            if (child) { picked = child; }
+        }
+        var n = 0;
+        try { n = await countMediaQuick(picked, 200); } catch (e3) { n = 0; }
+        if (n === 0) {
+            var cur = FILES.length;
+            var okEmpty = root.confirm(
+                '「' + picked.name + '」里没找到媒体文件。\n\n' +
+                (cur ? ('换过去之后，现在库里的 ' + cur + ' 条会显示不出来（文件还在原来那个文件夹，没被删）。\n\n') : '') +
+                '确定要换到这个文件夹吗？'
+            );
+            if (!okEmpty) { return; }
+        }
+        try {
+            await root.VRIndex.setRoot(picked, '', sub);
+        } catch (e4) {
+            toast('切换失败：' + ((e4 && e4.message) || e4));
+            return;
+        }
+        /* 记住这是「自选文件夹」：否则 renderRoot 会退回系统下载目录那一套显示 */
+        var next = Object.assign({}, st, {
+            mode: 'custom',
+            customRoot: '',
+            customName: picked.name || '',
+            subdir: sub
+        });
+        try {
+            await new Promise(function (res) {
+                chrome.storage.local.set({ vrLibSettings: next }, function () { res(1); });
+            });
+        } catch (e5) { /* 设置写失败也继续扫，至少这次能用 */ }
+
+        toast('已切换到「' + (picked.name || '自选文件夹') + '」，正在重新扫描…');
+        try { await root.VRIndex.build({ mode: 'full' }); } catch (e6) { /* 扫描失败也让人看到界面 */ }
+        try { load(); } catch (e7) { location.reload(); }
+        setTimeout(function () {
+            toast('已切换。原来那些文件还在旧文件夹里，需要的话拷过来再点「全量扫描」');
+        }, 1200);
     }
 
     /** 「定位」统一入口。

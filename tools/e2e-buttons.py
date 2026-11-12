@@ -239,14 +239,15 @@ def main():
     time.sleep(0.6)
     ck("退出收藏筛选后恢复全库", c.ev("document.querySelectorAll('#grid .card').length", sid), 10)
 
-    # 7 设置抽屉
+    # 7 设置弹窗（2026-11-10 由右侧抽屉改成居中弹窗；旧断言指向 #setdrawer / #sdDirVal
+    #   已经不存在 → 一直静默失败。这里跟着落地的 DOM 改，别再拿已删元素当契约。
     c.ev("document.getElementById('settingsBtn').click(); 1", sid)
     time.sleep(0.9)
-    ck("设置抽屉打开", c.ev("document.getElementById('setdrawer').classList.contains('show')", sid), True)
-    ck("抽屉目录值非空", bool(c.ev("(document.getElementById('sdDirVal')||{}).textContent", sid)), True)
+    ck("设置弹窗打开", c.ev("document.getElementById('setModal').classList.contains('show')", sid), True)
+    ck("弹窗有可改的开关", bool(c.ev("document.querySelectorAll('#setModal .switch input').length", sid)), True)
     c.ev("document.getElementById('setClose').click(); 1", sid)
     time.sleep(0.6)
-    ck("设置抽屉已关闭", c.ev("document.getElementById('setdrawer').classList.contains('show')", sid), False)
+    ck("设置弹窗已关闭", c.ev("document.getElementById('setModal').classList.contains('show')", sid), False)
 
     # 8 回收站
     c.ev("document.getElementById('trashBtn').click(); 1", sid)

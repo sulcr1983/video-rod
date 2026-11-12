@@ -45,13 +45,26 @@
             var s = window.__INITIAL_STATE__;
             if (!s || !s.videoData) { return null; }
             var vd = s.videoData;
-            var cid = vd.cid || (vd.pages && vd.pages[0] && vd.pages[0].cid);
+            /* 分P/合集：__INITIAL_STATE__.videoData.cid 永远是**进页面那一集**的 cid，
+             * SPA 切 P 只改 URL 的 ?p=N，不会重写这份 SSR 数据（2026-11-12 实测）。
+             * 直接用它会让「切到第 3P 点下载」下到第 1P —— 表现就是「下载的不是我看的」。
+             * 所以有 p 参数时按 pages[p-1].cid 取；p 越界再退回 vd.cid。 */
+            var pno = parseInt((location.search.match(/[?&]p=(\d+)/) || [])[1], 10);
+            var pages = Array.isArray(vd.pages) ? vd.pages : [];
+            var pPage = (pno > 0 && pages[pno - 1]) ? pages[pno - 1] : null;
+            var cid = (pPage && pPage.cid) || vd.cid || (pages[0] && pages[0].cid);
             if (!cid) { return null; }
             var bvid = vd.bvid ||
                 (location.href.match(/\/video\/(BV[0-9A-Za-z]+)/) || [])[1] || '';
             var owner = (vd.owner && vd.owner.name) || '';
+            var ownerMid = (vd.owner && vd.owner.mid) || '';
             var base = {
                 bvid: bvid, cid: cid, title: vd.title || '', owner: owner,
+                ownerMid: ownerMid,
+                /* 分P 标题优先：多P 视频每一集标题不同，用总标题会让 10 集同名 */
+                partTitle: (pPage && pPage.part) || '',
+                part: pPage ? pno : 0,
+                pageCount: pages.length,
                 hasDurl: false, hasDash: false
             };
             function qText(sf, q) {

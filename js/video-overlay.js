@@ -84,7 +84,16 @@
         /* 录制兜底：和普通清晰度项在视觉上分开，别让人误以为这是另一档画质 */
         '.vr-vob-cap{border-top:1px solid rgba(255,255,255,.12);margin-top:4px;padding-top:9px;border-radius:0 0 7px 7px}',
         '.vr-vob-cap b{color:#f0b24b}',
-        '.vr-vob-cap[disabled]{opacity:.45;pointer-events:none}'
+        '.vr-vob-cap[disabled]{opacity:.45;pointer-events:none}',
+        /* 页内提示条：浮标只有一个图标位，装不下「为什么没下」。
+         * 2026-11-12 苏哥报「B站下载不了」，实际是去重把整页当作品跳过了，
+         * 而跳过时浮标只闪一个绿勾 —— 和「下载成功」完全分不出来。 */
+        '.vr-votoast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);',
+        'z-index:2147483001;max-width:78vw;padding:9px 14px;border-radius:9px;',
+        'background:rgba(18,20,24,.94);color:#f0dfc0;font-size:13px;line-height:1.5;',
+        'box-shadow:0 6px 22px rgba(0,0,0,.45);opacity:0;pointer-events:none;',
+        'transition:opacity .18s ease;font-family:inherit;text-align:center}',
+        '.vr-votoast.vr-on{opacity:1}'
     ].join('');
     (document.head || document.documentElement).appendChild(STYLE);
 
@@ -118,6 +127,19 @@
     const btnMore = panel.querySelector('.vr-vob-more');
     const menu = panel.querySelector('.vr-vob-menu');
     const pctEl = panel.querySelector('.vr-vob-pct');
+
+    /* 页内提示条（与浮标同一套内联样式，不进 shadow） */
+    const toastEl = document.createElement('div');
+    toastEl.className = 'vr-votoast';
+    document.documentElement.appendChild(toastEl);
+    let toastTimer = 0;
+    function vtoast(text, ms) {
+        if (!text) { return; }
+        toastEl.textContent = text;
+        toastEl.classList.add('vr-on');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toastEl.classList.remove('vr-on'); }, ms || 3200);
+    }
 
     let activeVideo = null;      // 当前鼠标所在的 video
     let overPanel = false;       // 鼠标是否在浮层上
@@ -373,6 +395,14 @@
                     if (chrome.runtime.lastError || !res || !res.ok) {
                         busy = false;
                         flash('warn', 2600);
+                        /* 说清为什么，别只闪个红叹号。
+                         * no-option：一集都问不到（还没播/登录态/会员专享）。
+                         * download-failed：真的失败了。 */
+                        if (res && res.reason === 'no-option') {
+                            vtoast('没问到可下载的视频：先让它播几秒再点，或换清晰度菜单里的其它档');
+                        } else if (res && res.reason === 'download-failed') {
+                            vtoast('下载失败：换个清晰度再试，或刷新页面');
+                        }
                         return;
                     }
                     if (res.started) {
@@ -382,6 +412,13 @@
                     }
                     busy = false;
                     flash('done', 2000);
+                    /* 跳过必须给文字：以前只闪绿勾，用户以为下载成功了，
+                     * 实际是去重按「整条页面」判重把每一集都跳过了。 */
+                    if (res.skipped) {
+                        vtoast(res.reason === 'duplicate-source'
+                            ? '这个视频已经在库里了，没有重复下载'
+                            : '这一集（同清晰度）刚下过，没有重复下载');
+                    }
                 });
         } catch (e) {
             busy = false;

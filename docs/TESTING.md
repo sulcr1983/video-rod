@@ -339,6 +339,29 @@ node tools/test-live-pair.js       # 17  实况配对 / 动图归类（纯逻辑
 > 2. `vrXhsLive` 消息必须用**消息里的 tabId**（`sender.tab` 是侧边栏自己）；
 > 3. 实况 mp4 走图片队列，但扩展名必须是 mp4 —— `VR_IMG_EXT_OK` 里没有 mp4，需放行。
 
+### 4.11 B 站取址/去重 + 库页换目录（2026-11-12 新增，B-72）
+
+改 `js/bili-whole.js`（probeFunc 分P cid / ownerMid）、`js/background.js`
+（vrVideoOptions 的 B 站 meta、vrMediaIdentity 作品键、vrFindExistingMedia 的 workId、
+biliMeta.workId、命名顺序）、`js/video-overlay.js`（vr-votoast）、
+`js/library/app.js`（rootBtn → switchRootInteractive）后必须跑：
+
+```bash
+python tools/test-bili-source.py       # 12  workId / 同档跳过 / 换档放行 / 分P cid
+node tools/test-path.js                # 90  命名与归档目录
+node tools/test-save.js                # 51
+python tools/e2e-all.py --isolated --only e2e-buttons   # 32  库页按钮
+```
+
+> 四条口径：
+> 1. B 站去重键必须是 `<bvid>_<cid>_<durl|dash>`，**绝不能**用页面 URL
+>    （一条页面多集，用 URL 会把第 2P 起全判成「已存在」）；
+> 2. 命中跳过时浮标必须给文字（`.vr-votoast`），不能只闪绿勾；
+> 3. `?p=N` 必须取 `pages[N-1].cid`（SSR 的 `videoData.cid` 是进页面那一集的，
+>    SPA 切 P 不会更新）；
+> 4. 库页路径卡主体 = 换素材文件夹（弹选择器），右侧箭头 = 完整设置。
+>    换到空目录前必须二次确认，别让用户以为「库被清空了」。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

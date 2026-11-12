@@ -1,5 +1,5 @@
 {
- "time": "2026-11-09 21:03:30",
+ "time": "2026-11-10 01:19:33",
  "rounds": [
   {
    "label": "首屏-顶栏与筛选",
@@ -46,7 +46,7 @@
      "newErrs": []
     },
     {
-     "name": "#rescanBtn btn small 快速扫描",
+     "name": "#settingsBtn btn small 设置",
      "err": "",
      "changed": true,
      "before": {
@@ -73,46 +73,6 @@
       ],
       "chips": [],
       "search": "",
-      "drawer": false,
-      "preview": false,
-      "batchbar": false,
-      "selectOn": false,
-      "keysheet": false,
-      "view": [
-       "grid"
-      ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
-     },
-     "newErrs": []
-    },
-    {
-     "name": "#settingsBtn btn small 设置",
-     "err": "",
-     "changed": true,
-     "before": {
-      "cards": 0,
-      "seg": [
-       "all"
-      ],
-      "chips": [],
-      "search": "",
-      "drawer": false,
-      "preview": false,
-      "batchbar": false,
-      "selectOn": false,
-      "keysheet": false,
-      "view": [
-       "grid"
-      ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
-     },
-     "after": {
-      "cards": 0,
-      "seg": [
-       "all"
-      ],
-      "chips": [],
-      "search": "",
       "drawer": true,
       "preview": false,
       "batchbar": false,
@@ -121,7 +81,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -144,7 +104,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -161,7 +121,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -184,7 +144,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -201,7 +161,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -224,7 +184,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -241,7 +201,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -264,7 +224,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -281,7 +241,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -304,7 +264,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -321,7 +281,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -344,7 +304,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -361,7 +321,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -384,7 +344,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -401,7 +361,7 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
      },
      "newErrs": []
     },
@@ -424,7 +384,47 @@
       "view": [
        "grid"
       ],
-      "toast": "快速扫描失败：没有文件夹读取权限"
+      "toast": ""
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": ""
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#rescanBtn fchip scan 快速扫描",
+     "err": "",
+     "changed": true,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "audio"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": true,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": ""
      },
      "after": {
       "cards": 0,
@@ -489,98 +489,14 @@
   },
   {
    "label": "侧栏与输入",
-   "total": 5,
+   "total": 2,
    "items": [
     {
      "name": "#rootBtn root-btn 系统下载目录\\video-rod 点击更换目录",
      "skipped": "打开设置新标签（页面跳转）"
     },
     {
-     "name": "#treeSearch  ",
-     "err": "",
-     "changed": false,
-     "before": {
-      "cards": 0,
-      "seg": [
-       "audio"
-      ],
-      "chips": [],
-      "search": "",
-      "drawer": true,
-      "preview": false,
-      "batchbar": true,
-      "selectOn": true,
-      "keysheet": false,
-      "view": [
-       "list"
-      ],
-      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
-     },
-     "after": {
-      "cards": 0,
-      "seg": [
-       "audio"
-      ],
-      "chips": [],
-      "search": "",
-      "drawer": true,
-      "preview": false,
-      "batchbar": true,
-      "selectOn": true,
-      "keysheet": false,
-      "view": [
-       "list"
-      ],
-      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
-     },
-     "newErrs": []
-    },
-    {
-     "name": "#resetBtn btn small 换目录",
-     "skipped": "打开设置新标签（页面跳转）"
-    },
-    {
      "name": "#search  ",
-     "err": "",
-     "changed": false,
-     "before": {
-      "cards": 0,
-      "seg": [
-       "audio"
-      ],
-      "chips": [],
-      "search": "",
-      "drawer": true,
-      "preview": false,
-      "batchbar": true,
-      "selectOn": true,
-      "keysheet": false,
-      "view": [
-       "list"
-      ],
-      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
-     },
-     "after": {
-      "cards": 0,
-      "seg": [
-       "audio"
-      ],
-      "chips": [],
-      "search": "",
-      "drawer": true,
-      "preview": false,
-      "batchbar": true,
-      "selectOn": true,
-      "keysheet": false,
-      "view": [
-       "list"
-      ],
-      "toast": "需要先授权素材目录：点顶部横幅「恢复写入」，或右侧「授权素材目录」"
-     },
-     "newErrs": []
-    },
-    {
-     "name": "#sort  最新保存 最早保存 文件最大 标题 A-Z",
      "err": "",
      "changed": false,
      "before": {
@@ -623,7 +539,7 @@
   },
   {
    "label": "设置抽屉",
-   "total": 5,
+   "total": 6,
    "items": [
     {
      "name": "#setClose sd-x ✕",
@@ -750,9 +666,9 @@
      "newErrs": []
     },
     {
-     "name": "#sdTrashBtn btn small 打开",
+     "name": "#sdDupBtn btn small 扫描重复",
      "err": "",
-     "changed": false,
+     "changed": true,
      "before": {
       "cards": 0,
       "seg": [
@@ -785,7 +701,47 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#sdTrashBtn btn small 打开",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "没有发现内容重复的素材去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": false,
+      "selectOn": false,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "没有发现内容重复的素材去授权"
      },
      "newErrs": []
     }
@@ -803,7 +759,7 @@
   },
   {
    "label": "批量条",
-   "total": 7,
+   "total": 8,
    "items": [
     {
      "name": "#batchAll btn small 全选",
@@ -824,7 +780,7 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
      },
      "after": {
       "cards": 0,
@@ -841,7 +797,7 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
      },
      "newErrs": []
     },
@@ -864,7 +820,7 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
      },
      "after": {
       "cards": 0,
@@ -881,7 +837,47 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
+     },
+     "newErrs": []
+    },
+    {
+     "name": "#batchBtn ddbtn 按类型…",
+     "err": "",
+     "changed": false,
+     "before": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "没有发现内容重复的素材去授权"
+     },
+     "after": {
+      "cards": 0,
+      "seg": [
+       "all"
+      ],
+      "chips": [],
+      "search": "",
+      "drawer": false,
+      "preview": false,
+      "batchbar": true,
+      "selectOn": true,
+      "keysheet": false,
+      "view": [
+       "list"
+      ],
+      "toast": "没有发现内容重复的素材去授权"
      },
      "newErrs": []
     },
@@ -904,7 +900,7 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
      },
      "after": {
       "cards": 0,
@@ -921,7 +917,7 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
      },
      "newErrs": []
     },
@@ -944,7 +940,7 @@
       "view": [
        "list"
       ],
-      "toast": "重建失败：需要一次目录授权才能全量扫描去授权"
+      "toast": "没有发现内容重复的素材去授权"
      },
      "after": {
       "cards": 0,
@@ -1061,9 +1057,9 @@
  },
  "pageErrors": [],
  "summary": {
-  "totalButtons": 29,
+  "totalButtons": 28,
   "clicked": 25,
-  "skippedDestructive": 4,
+  "skippedDestructive": 3,
   "jsErrors": 0,
   "pageErrors": 0,
   "passed": true
