@@ -45,6 +45,7 @@ SUITES = [
     ("download-path",[sys.executable, "tools/download-path-test.py"],       False, "归档路径三级目录 + 中文/空格"),
     ("e2e-buttons",  [sys.executable, "tools/e2e-buttons.py"],              False, "资源库 60 按钮 + 设置页白名单"),
     ("e2e-popup",    [sys.executable, "tools/e2e-popup.py"],                False, "popup 列表/下载（内置本地站）"),
+    ("e2e-grab",     [sys.executable, "tools/e2e-grab.py"],                 False, "抓图弹窗（显示小原图大/懒加载/背景/坏图）"),
     ("e2e-overlay",  [sys.executable, "tools/e2e-overlay.py"],              False, "页面悬浮按钮与视频页抑制"),
     ("qa-preview-page", [sys.executable, "tools/qa-preview-page.py"],       False, "preview 独立窗口页（script 加载/按需库，2026-11-09 补盲区）"),
 ]

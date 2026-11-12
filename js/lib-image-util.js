@@ -248,6 +248,31 @@
     }
 
     /**
+     * 微博图床（*.sinaimg.cn）的清晰度写在**路径段**里，不是 query 参数，
+     * `stripResizeParams` 那套完全够不到：
+     *   /thumb150/（150px 缩略） /thumb180/ /bmiddle/（440px） /mw690/（690px）
+     *   /large/（原图，常见 1024~2000px） /orj1080/ /mw2000/
+     * 信息流里 <img> 用的基本都是 /mw690/ 或 /thumb*，直接存就是压缩图 ——
+     * 而用户要的是「存原图」。
+     *
+     * 换成 /large/ 不是稳的（老图、长图、动图只有 mw690），所以这里只**产出候选**，
+     * 由后台 vrImgResolve 逐个 fetch 校验 content-type，404 自动退下一个。
+     * @returns {string} 升级后的地址；不需要/无法升级时返回空串
+     */
+    function upgradeSinaimg(url) {
+        var s = String(url || '').split('#')[0];
+        if (!/^https?:\/\/[^/]*sinaimg\.cn\//i.test(s)) { return ''; }
+        var m = s.match(/^(https?:\/\/[^/]+\/)([^/?#]+)\/([^?#]+)(\?[^#]*)?$/i);
+        if (!m) { return ''; }
+        var seg = m[2].toLowerCase();
+        if (!/^(thumb\d+|bmiddle|small|mw\d+|orj\d+|crop[^/]*|wap\d+)$/.test(seg)) { return ''; }
+        var rest = m[3];
+        // 微博的「原图」后缀 `!woriginal` 也能拼，但和 /large/ 组合语义不明，保守起见不带
+        var out = m[1] + 'large/' + rest;
+        return out === s ? '' : out;
+    }
+
+    /**
      * 从 <picture> 的兄弟 <source> 里挑最大的一张。
      * 响应式站点的典型结构：
      *   <picture>
@@ -483,6 +508,18 @@
                 var big = stripResizeParams(derived[k]);
                 if (big) { add(big); }
             }
+            /* ⑦ 站点评级图床的「原图」地址（微博 /large/）必须排**最前**。
+             * add() 是 push 到末尾，而后台 vrImgResolve 按数组顺序试、第一个能拿到
+             * image/* 的就定案 —— 排在末尾等于永远用不上，用户存到的还是 690px 压缩图。 */
+            var upgraded = [];
+            for (var u2 = 0; u2 < out.length; u2++) {
+                var up = upgradeSinaimg(out[u2]);
+                if (up && !seen[up]) { upgraded.push(up); }
+            }
+            if (upgraded.length) {
+                for (var u3 = 0; u3 < upgraded.length; u3++) { seen[upgraded[u3]] = 1; }
+                out = upgraded.concat(out);
+            }
         } catch (e) { /* 单级异常不影响其它级 */ }
 
         return out;
@@ -624,7 +661,13 @@
                         }
                         one();
                     };
-                    im.onerror = one;
+                    /* 加载失败显式记一笔：调用方（popup「本页图片」清单）据此把
+                     * 打不开的地址剔掉 —— 苏哥截图里那种灰裂图就是这么进列表的。
+                     * 超时未返回的**不记**，不能因为慢就判死。 */
+                    im.onerror = function () {
+                        out[u] = { w: 0, h: 0, fail: true };
+                        one();
+                    };
                     im.src = u;
                 } catch (e) { one(); }
             });
@@ -681,6 +724,25 @@
         return out;
     }
 
+    /**
+     * 取这张图「应该下载哪个地址」。
+     *
+     * 真占位型懒加载（2026-11-12 补）：不少站点的 <img src> 是 1x1 透明 GIF 或
+     * blank.gif，真地址只在 data-src 里。旧逻辑只看 currentSrc/src，占位图被判成
+     * 占位后**整张丢掉** —— data-src 明明有原图，用户却一张也拿不到。
+     * 现在：src 是空/占位/svg 时，依次退到 DATA_ATTRS 里的第一个可用地址。
+     * @returns {string} 绝对地址；都没有时返回原始判定结果（交由调用方丢弃）
+     */
+    function pickUrl(el, base) {
+        var url = absolutize(el.currentSrc || el.src || attr(el, 'src'), base);
+        if (url && !isDataUri(url) && !isSvgUrl(url) && !isPlaceholderUrl(url)) { return url; }
+        for (var i = 0; i < DATA_ATTRS.length; i++) {
+            var u = absolutize(attr(el, DATA_ATTRS[i]), base);
+            if (u && !isDataUri(u) && !isSvgUrl(u) && !isPlaceholderUrl(u)) { return u; }
+        }
+        return url;
+    }
+
     function scanImages(doc, opts) {
         if (!doc || !doc.querySelectorAll) { return []; }
         var o = opts || {};
@@ -716,9 +778,14 @@
                     if (aw > 0 && ah > 0) { nw = aw; nh = ah; }
                     else { pending++; }
                 }
-                var url = absolutize(el.currentSrc || el.src || attr(el, 'src'), base);
+                var rawUrl = absolutize(el.currentSrc || el.src || attr(el, 'src'), base);
+                var url = pickUrl(el, base);
                 if (!url) { continue; }
                 if (isDataUri(url) || isSvgUrl(url) || isPlaceholderUrl(url)) { continue; }
+                /* 地址是从 data-src 回退来的 → 这张 <img> 现在的 naturalWidth 属于**占位图**
+                 * （1×1），不能拿来判尺寸门槛，否则真图会被当成「1px 图标」丢掉。
+                 * 记成「尺寸未知」，由调用方的 fillSizes 去预载真图回填。 */
+                if (url !== rawUrl) { nw = 0; nh = 0; }
                 /* 尺寸已知才做门槛过滤；尺寸未知（懒加载且无属性）先放进来，
                  * 否则长页面上大半张图会被无声吞掉。 */
                 var sized = (nw > 0 && nh > 0);
@@ -1022,6 +1089,7 @@
         pickLargestSrcset: pickLargestSrcset,
         sizeOf: sizeOf,
         collectCandidates: collectCandidates,
+        upgradeSinaimg: upgradeSinaimg,
         scanImages: scanImages,
         fillSizes: fillSizes
     };

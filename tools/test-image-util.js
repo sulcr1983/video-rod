@@ -190,6 +190,32 @@ const onlyCurrent = makeImg({ src: '/x.jpg', currentSrc: '/y.jpg' });
 arr('候选 ⑤currentSrc 先于 src', U.collectCandidates(onlyCurrent, makeDoc([])),
     ['https://example.com/y.jpg', 'https://example.com/x.jpg']);
 
+/* ---------------- 微博图床原图升级（2026-11-12 B-79） ---------------- */
+/* 背景：微博 /mw690/ /thumb150/ 是压缩图，直接存下来只有 690px。
+ * 用户要「存原图」，而清晰度写在**路径段**里，stripResizeParams 那套够不到。
+ * 注意：升级地址必须是 candidates 的**首位** —— 后台按顺序 fetch，第一个
+ * 拿到 image/* 的就定案，排末尾等于永远用不上。 */
+eq('微博 mw690 → large',
+   U.upgradeSinaimg('https://wx1.sinaimg.cn/mw690/abc123.jpg'),
+   'https://wx1.sinaimg.cn/large/abc123.jpg');
+eq('微博 thumb150 → large',
+   U.upgradeSinaimg('https://wx4.sinaimg.cn/thumb150/abc.jpg'),
+   'https://wx4.sinaimg.cn/large/abc.jpg');
+eq('微博 bmiddle → large',
+   U.upgradeSinaimg('https://wx2.sinaimg.cn/bmiddle/abc.gif'),
+   'https://wx2.sinaimg.cn/large/abc.gif');
+eq('微博 已是 large 不重复升级',
+   U.upgradeSinaimg('https://wx1.sinaimg.cn/large/abc.jpg'), '');
+eq('微博 未知路径段不动',
+   U.upgradeSinaimg('https://wx1.sinaimg.cn/something/abc.jpg'), '');
+eq('非微博图床不动',
+   U.upgradeSinaimg('https://cdn.example.com/mw690/abc.jpg'), '');
+eq('空值安全', U.upgradeSinaimg(''), '');
+
+const weiboImg = makeImg({ src: 'https://wx1.sinaimg.cn/mw690/abc.jpg', nw: 690, nh: 460 });
+arr('微博 原图候选排最前', U.collectCandidates(weiboImg, makeDoc([])),
+    ['https://wx1.sinaimg.cn/large/abc.jpg', 'https://wx1.sinaimg.cn/mw690/abc.jpg']);
+
 /* ---------------- bestCandidate（2026-11-08 统一择优） ---------------- */
 /* 背景：这段逻辑原先只在 image-page.js 里有一份，三处批量下载直接用 it.url，
  * 导致「单张下是原图、批量下是缩略图」。抽成公共函数后必须锁住语义。 */
@@ -252,6 +278,16 @@ arr('扫描 limit 生效', U.scanImages(doc, { limit: 1 }).map(x => x.url),
     ['https://example.com/media/a.jpg']);
 arr('扫描 无 doc', U.scanImages(null, {}), []);
 arr('扫描 空文档', U.scanImages(makeDoc([]), {}), []);
+
+/* ---------------- 占位 src + data-src 真图（2026-11-12 B-79） ---------------- */
+/* 真占位型懒加载：src 是 1x1 透明图，真地址只在 data-src。
+ * 旧逻辑把整张图判成「占位」丢掉 → 页面 80 张图扫出 0 张。 */
+const phSrcImg = makeImg({ src: '/img/1x1.png', 'data-src': '/real/photo.jpg', nw: 800, nh: 600 });
+arr('占位 src 回退 data-src', U.scanImages(makeDoc([phSrcImg]), {}).map(x => x.url),
+    ['https://example.com/real/photo.jpg']);
+const blankSrcImg = makeImg({ src: '/img/blank.gif', 'data-original-src': '/real/b.png', nw: 800, nh: 600 });
+arr('blank.gif 回退 data-original-src', U.scanImages(makeDoc([blankSrcImg]), {}).map(x => x.url),
+    ['https://example.com/real/b.png']);
 
 /* ---------------- 500 长边门槛 + 200 短边底线 ---------------- */
 // 判「显示尺寸」：长边 ≥500 且短边 ≥200 才出下载按钮（2026-11-05 用户反馈横图被 600 门槛全挡后调整）

@@ -2126,68 +2126,164 @@
 
     var scannedImages = [];
 
+    /* ---------------- 「本页图片」扫描 ---------------- */
+
+    /* 默认值与 js/lib-image-util.js 的 DEFAULT_SETTINGS 对齐：
+     * imgMinSize 判**原始像素**，imgBgScan 决定要不要扫 CSS 背景图。
+     * 用户改过设置就跟着设置走 —— 否则侧栏清单 80 张、这里 60 张，又是两套口径。 */
+    var IMG_SCAN_FALLBACK = { minSize: 100, bgScan: true };
+    var scanOptsLast = { minSize: IMG_SCAN_FALLBACK.minSize, bgScan: IMG_SCAN_FALLBACK.bgScan };
+
+    function readImgScanOpts() {
+        return new Promise(function (resolve) {
+            var out = { minSize: IMG_SCAN_FALLBACK.minSize, bgScan: IMG_SCAN_FALLBACK.bgScan };
+            try {
+                chrome.storage.local.get('vrLibSettings', function (x) {
+                    void chrome.runtime.lastError;
+                    var s = (x && x.vrLibSettings) || {};
+                    var n = parseInt(s.imgMinSize, 10);
+                    if (isFinite(n) && n >= 16 && n <= 4000) { out.minSize = n; }
+                    if (s.imgBgScan !== undefined) { out.bgScan = !!s.imgBgScan; }
+                    scanOptsLast = out;
+                    resolve(out);
+                });
+            } catch (e) { resolve(out); }
+        });
+    }
+
+    /**
+     * 扫本页可保存的图片。
+     *
+     * 2026-11-12 重写（苏哥报「这个功能基本上不可用」，微博页 53 张图只出 2 张裂图）：
+     *   ① 老实现自己抄了一份扫描逻辑，门槛写成「显示尺寸**短边** ≥ 600」。
+     *      微博信息流图片显示宽度就 300~500，于是全被 `continue` 掉，只剩两张
+     *      1024 的背景广告位 —— 而且那两张还打不开，就是用户截图里的样子。
+     *   ② 现在复用页面里已注入的 VRImageUtil（= 侧栏清单/悬停同一个模块）：
+     *      三条通道（img / 背景图 / 源码 JSON）+ 同一套尺寸口径。
+     *      侧栏看到几张，这里就是几张，不会再各说各话。
+     *   ③ 把 candidates（原图候选）一起带回。微博 /mw690/ → /large/ 的升级在
+     *      collectCandidates 里做，后台逐个 fetch 校验，所以存下来的是原图。
+     *   ④ 预载阶段明确 404/加载失败的地址标 fail 并剔掉，列表里不再有裂图；
+     *      超时未探到尺寸的保留（不能因为慢就判死）。
+     *
+     * @returns {Promise<{list: Array, noUtil: boolean}>}
+     */
     function collectImagesInPage() {
         var tabId = (window.G && G.tabId) || -1;
-        if (!chrome.scripting || tabId < 0) { return Promise.resolve([]); }
+        if (!chrome.scripting || tabId < 0) {
+            return Promise.resolve({ list: [], noUtil: false });
+        }
+        var target = { tabId: tabId };
 
-        return chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: function () {
-                var out = [];
-                var seen = {};
-                // 与 js/lib-image-util.js 的 MIN_SHOW / MAX_ASPECT 保持一致。
-                // 这里是 executeScript 注入到页面的函数，拿不到外部模块变量，
-                // 只能就地写一份；改门槛时**两处都要改**（当前 600 / 6）。
-                var MIN_SHOW = 600;
-                var MAX_ASPECT = 6;
-                function push(src, w, h, alt) {
-                    if (!src || src.indexOf('data:') === 0 || seen[src]) { return; }
-                    seen[src] = 1;
-                    out.push({ src: src, w: w || 0, h: h || 0, alt: alt || '' });
+        return readImgScanOpts().then(function (opts) {
+            /* 工具模块是普通内容脚本（document_idle 注入）。刚打开的页面、或扩展
+             * 重新加载后的老标签页里可能还没有 —— 先探一次，缺了就地补注入，
+             * 否则会静默返回 0 张，用户只会以为「这功能彻底坏了」。 */
+            return chrome.scripting.executeScript({
+                target: target,
+                func: function () {
+                    return { has: typeof self.VRImageUtil !== 'undefined' };
                 }
-                // <img>
-                var imgs = document.querySelectorAll('img');
-                for (var i = 0; i < imgs.length && out.length < 300; i++) {
-                    var im = imgs[i];
-                    var src = im.currentSrc || im.src;
-                    var w = im.naturalWidth || im.width || 0;
-                    var h = im.naturalHeight || im.height || 0;
-                    // 明确加载失败的图（complete 且无固有尺寸）直接跳过，
-                    // 还没加载完的保留——可能是懒加载，扫描后正好触发加载
-                    if (im.complete && !im.naturalWidth) { continue; }
-                    // 跳过图标/小图：判**显示尺寸**而不是原始像素。
-                    // 早先只看 naturalWidth<120，一张 640x480 的图标被 CSS 缩成 16px 显示
-                    // 仍然会通过 —— 和页面悬停踩的是同一个坑（见 docs/RESEARCH-COMPETITOR-IMAGE.md）。
-                    var box = null;
-                    try { box = im.getBoundingClientRect(); } catch (e) { box = null; }
-                    var dw = box ? Math.round(box.width) : (im.clientWidth || 0);
-                    var dh = box ? Math.round(box.height) : (im.clientHeight || 0);
-                    // 门槛与页面悬停共用同一份常量（MIN_SHOW / MAX_ASPECT），
-                    // 不在这里写死数字 —— 早先写死 48，用户把门槛调到 600 后两边就不一致了。
-                    if (dw > 0 && dh > 0) {
-                        if (Math.min(dw, dh) < MIN_SHOW) { continue; }
-                        var ratio = Math.max(dw, dh) / Math.min(dw, dh);
-                        if (ratio > MAX_ASPECT) { continue; }
-                    } else if (w && h && (w < MIN_SHOW || h < MIN_SHOW)) {
-                        continue;   // 量不到显示尺寸时退回原始像素兜底
-                    }
-                    push(src, w, h, im.alt);
-                }
-                // background-image（只扫前 3000 个节点，避免卡）
-                var all = document.querySelectorAll('*');
-                var limit = Math.min(all.length, 3000);
-                for (var j = 0; j < limit && out.length < 300; j++) {
-                    var bg = getComputedStyle(all[j]).backgroundImage;
-                    if (!bg || bg === 'none') { continue; }
-                    var m = /url\(["']?(.*?)["']?\)/.exec(bg);
-                    if (m) { push(m[1], 0, 0, ''); }
-                }
-                // srcset 里的大图已由 currentSrc 覆盖
-                return out;
-            }
-        }).then(function (res) {
-            return (res && res[0] && res[0].result) || [];
-        }).catch(function () { return []; });
+            }).then(function (res) {
+                var r = (res && res[0] && res[0].result) || {};
+                if (r.has) { return null; }
+                return chrome.scripting.executeScript({
+                    target: target,
+                    files: ['js/lib-image-util.js', 'js/lib-download-scan.js']
+                }).catch(function () { return null; });
+            }).then(function () {
+                return chrome.scripting.executeScript({
+                    target: target,
+                    /* async：末尾要等「尺寸回填 + 可达性探测」，executeScript 会等 Promise */
+                    func: async function (o) {
+                        var U = self.VRImageUtil;
+                        if (!U) { return { __noUtil: true, items: [] }; }
+                        var MIN = Math.max(16, Number(o.minSize) || U.MIN_SIZE);
+                        var out = [];
+                        var have = Object.create(null);
+
+                        function push(url, w, h, cands, bg) {
+                            if (!url || have[url]) { return; }
+                            have[url] = 1;
+                            out.push({
+                                url: url,
+                                w: Number(w) || 0,
+                                h: Number(h) || 0,
+                                bg: !!bg,
+                                candidates: (cands && cands.length) ? cands.slice() : [url]
+                            });
+                        }
+                        function take(list, isBg) {
+                            for (var i = 0; i < list.length; i++) {
+                                var it = list[i];
+                                if (!it || !it.url) { continue; }
+                                push(it.url, it.w, it.h, it.candidates, it.bg || isBg);
+                            }
+                        }
+
+                        // 通道 ①：<img>（尺寸/占位/格式/重复过滤都在 scanImages 里）
+                        try {
+                            take(U.scanImages(document, {
+                                minWidth: MIN, minHeight: MIN,
+                                minShow: U.PANEL_MIN_SHOW, dedupe: true
+                            }), false);
+                        } catch (e) { /* 单通道失败不影响其它 */ }
+
+                        // 通道 ②：CSS 背景图（信息流封面常做成 div 背景）
+                        if (o.bgScan) {
+                            try {
+                                take(U.scanBackgrounds(document, {
+                                    minShow: U.PANEL_MIN_SHOW, dedupe: true
+                                }), true);
+                            } catch (e) { /* 同上 */ }
+                        }
+
+                        // 通道 ③：源码/JSON 里的地址（懒加载站点的图只在脚本里）
+                        try {
+                            var S = self.VRDownloadScan;
+                            if (S && S.extractUrlsFromHtml && document.body) {
+                                var src = S.extractUrlsFromHtml(
+                                    document.body.innerHTML || '', location.href, 400
+                                );
+                                for (var k = 0; k < src.length; k++) { push(src[k], 0, 0, [src[k]], false); }
+                            }
+                        } catch (e) { /* 同上 */ }
+
+                        /* 尺寸回填 + 可达性探测（页面上下文预载，带正确 Referer/Cookie）。
+                         * 懒加载站点扫描瞬间大量 naturalWidth=0，不补就全是「尺寸未知」。 */
+                        try {
+                            var miss = [];
+                            for (var m = 0; m < out.length; m++) {
+                                if (!(out[m].w > 0 && out[m].h > 0)) { miss.push(out[m].url); }
+                            }
+                            if (miss.length && typeof U.fillSizes === 'function') {
+                                var got = await U.fillSizes(miss.slice(0, 60), 2500);
+                                for (var n = 0; n < out.length; n++) {
+                                    if (out[n].w > 0 && out[n].h > 0) { continue; }
+                                    var sz = got[out[n].url];
+                                    if (!sz) { continue; }
+                                    if (sz.fail) { out[n].dead = true; continue; }
+                                    if (sz.w > 0 && sz.h > 0) { out[n].w = sz.w; out[n].h = sz.h; }
+                                }
+                            }
+                        } catch (e) { /* 回填失败保持「尺寸未知」 */ }
+
+                        /* 明确打不开的剔掉（超时未探的不在此列）。
+                         * 全页只剩坏图时宁可返回空 —— 空列表带提示，比一堆裂图诚实。 */
+                        var alive = [];
+                        for (var q = 0; q < out.length; q++) {
+                            if (!out[q].dead) { alive.push(out[q]); }
+                        }
+                        return { items: alive, dropped: out.length - alive.length };
+                    },
+                    args: [opts]
+                });
+            }).then(function (res) {
+                var r = (res && res[0] && res[0].result) || {};
+                if (r && r.__noUtil) { return { list: [], noUtil: true }; }
+                return { list: (r && r.items) || [], noUtil: false, dropped: r.dropped || 0 };
+            }).catch(function () { return { list: [], noUtil: false }; });
+        });
     }
 
     function ensureImageModal() {
@@ -2227,20 +2323,39 @@
         if (el('vrImgModal')) { el('vrImgModal').classList.remove('on'); }
     }
 
-    function openImageModal(images) {
+    function openImageModal(scan) {
         ensureImageModal();
+        var images = (scan && scan.list) || [];
+        var noUtil = !!(scan && scan.noUtil);
         scannedImages = images;
         var list = el('vrImgList');
         el('vrImgCount').textContent = images.length;
 
         if (!images.length) {
-            list.innerHTML = '<div style="font-size:10.5px;color:#77808f;padding:8px 0">本页没扫到可保存的图片（大于 120×120）</div>';
+            /* 空列表要分清「真没有图」和「扫描器没跑起来」——
+             * 老实现两种情况都写「没扫到」，用户以为是页面没图。 */
+            var why = noUtil
+                ? '扫描模块没注入到这个页面（浏览器内部页/PDF 不支持）。请刷新页面后重试。'
+                : '本页没扫到可保存的图片（尺寸门槛 ' + (scanOptsLast.minSize || 100)
+                    + 'px，可在设置里调小）。';
+            list.innerHTML = '<div style="font-size:11px;color:#98a2b3;padding:10px 0;line-height:1.7">'
+                + why + '</div>';
         } else {
             list.innerHTML = images.map(function (im, i) {
+                /* 元信息：有尺寸显示尺寸，「背景」标一下来源，都没有才是「尺寸未知」。
+                 * 老实现把没有尺寸的一律写「背景图」—— 源码通道抓到的图也被标成背景，误导。 */
+                var meta;
+                if (im.w > 0 && im.h > 0) {
+                    meta = im.w + '×' + im.h + (im.bg ? ' · 背景' : '');
+                } else {
+                    meta = (im.bg ? '背景图 · ' : '') + '尺寸未知';
+                }
                 return '<label class="vrimg-row">' +
                     '<input type="checkbox" class="chk vrimg-chk" data-i="' + i + '" checked>' +
-                    '<img src="' + esc(im.src) + '" loading="lazy" onerror="this.style.opacity=.2">' +
-                    '<span class="vrimg-meta">' + (im.w ? im.w + '×' + im.h : '背景图') + '</span>' +
+                    '<img src="' + esc(im.url) + '" loading="lazy"' +
+                    // 预载已剔除明确坏的；这里是兜底：万一弹窗内加载失败，标灰并说明
+                    ' onerror="this.style.opacity=.25;this.alt=\'打不开\'">' +
+                    '<span class="vrimg-meta">' + esc(meta) + '</span>' +
                     '</label>';
             }).join('');
         }
@@ -2260,11 +2375,14 @@
         var N = naming();
 
         var names = picked.map(function (im, i) {
-            var ext = (im.src.split('#')[0].split('?')[0].split('.').pop() || 'jpg').toLowerCase();
+            /* 扩展名按**实际会下载的地址**推：candidates[0] 是原图候选
+             * （微博 /large/ 升级后的地址），拿显示地址推可能推错。 */
+            var pick = (im.candidates && im.candidates.length) ? im.candidates[0] : im.url;
+            var ext = (String(pick).split('#')[0].split('?')[0].split('.').pop() || 'jpg').toLowerCase();
             if (!/^(jpg|jpeg|png|gif|webp|avif|bmp)$/.test(ext)) { ext = 'jpg'; }
             var nm;
             if (N && N.buildNameFromInfo) {
-                nm = N.buildNameFromInfo({ title: base, site: '' }, im.src, {
+                nm = N.buildNameFromInfo({ title: base, site: '' }, im.url, {
                     tpl: '${title}_${index}', ext: ext, index: i
                 });
             } else {
@@ -2284,7 +2402,10 @@
             // FSA 直写保住文件名，拿不到句柄才回退下载器。
             chrome.runtime.sendMessage({
                 Message: 'vrImg.download',
-                url: im.src,
+                url: im.url,
+                /* 候选一起给后台：vrImgResolve 会按顺序 fetch 校验，
+                 * 微博 /large/ 拿不到就退 /mw690/，不会因为原图 404 就整张失败。 */
+                candidates: (im.candidates && im.candidates.length) ? im.candidates : [im.url],
                 title: names[i],
                 index: i,
                 pageUrl: (G && G.pageUrl) || '',
@@ -2308,10 +2429,14 @@
         btn.addEventListener('click', function () {
             btn.disabled = true;
             btn.textContent = '扫描中…';
-            collectImagesInPage().then(function (images) {
+            collectImagesInPage().then(function (scan) {
                 btn.disabled = false;
                 btn.textContent = '抓图';
-                openImageModal(images);
+                openImageModal(scan);
+                /* 剔掉坏图要说一声，不能让用户以为「页面上本来就这么点图」 */
+                if (scan && scan.dropped > 0) {
+                    tip('已剔除 ' + scan.dropped + ' 张打不开的图');
+                }
             });
         });
     }

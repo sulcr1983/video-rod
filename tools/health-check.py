@@ -31,6 +31,7 @@ OUT_DIR = os.path.join(ROOT, 'deliverables', 'test-runs')
 SMOKE_UNITS = [
     'test-naming.js', 'test-path.js', 'test-save.js', 'test-video-quality.js',
     'test-dedupe-key.js', 'test-image-util.js', 'test-image-batch.js', 'test-live-pair.js',
+    'test-grab-scan.js',
 ]
 # 冒烟档的界面套件：只挑「坏了就一定不能发」的两条（最快）
 SMOKE_SUITES = 'e2e-sw,dedup'
