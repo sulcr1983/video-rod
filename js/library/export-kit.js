@@ -27,7 +27,12 @@
 (function (root) {
     'use strict';
 
-    var EXPORT_MANIFEST = 'vr-export.json';
+    // 文件名来自 manifest.json 的 x_export_manifest（单一来源，别写死）
+    var EXPORT_MANIFEST = (function () {
+        var name = chrome.runtime.getManifest().x_export_manifest;
+        if (!name) throw new Error('manifest.json 缺少 x_export_manifest');
+        return name;
+    })();
     var BACKUP_DIR = '钓鱼竿扩展程序备份';
     var EXT_DIR = 'extension';
     var MANUAL_NAME = '使用说明.html';

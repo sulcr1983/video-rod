@@ -18,6 +18,11 @@
 const fs = require('fs');
 const path = require('path');
 
+// 清单文件名只有一处定义（manifest.json），测试也读它，别再写死
+const EXPORT_MANIFEST = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'),
+).x_export_manifest;
+
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
     if (cond) { pass++; console.log('  ✓ ' + name); }
@@ -30,7 +35,7 @@ const src = fs.readFileSync(path.join(ROOT, 'js/library/export-kit.js'), 'utf8')
 /* 把 export-kit.js 的 IIFE 摘出来，注入假 chrome / fetch / confirm 后取 VRExportKit */
 function loadKit(overrides) {
     const fake = {
-        chrome: { runtime: { getURL: (p) => 'chrome-extension://id/' + p, getManifest: () => ({ version: '2.7.2.2' }) } },
+        chrome: { runtime: { getURL: (p) => 'chrome-extension://id/' + p, getManifest: () => ({ version: '2.7.2.2', x_export_manifest: EXPORT_MANIFEST }) } },
         fetch: async (u) => { throw new Error('unexpected fetch: ' + u); },
         confirm: () => true,
         window: { confirm: () => true },
@@ -89,7 +94,7 @@ console.log('\n【backup 行为（假句柄）】');
 (async () => {
     const K = loadKit({
         fetch: async (u) => {
-            if (u.indexOf('_vr_export.json') >= 0) {
+            if (u.indexOf(EXPORT_MANIFEST) >= 0) {
                 return { ok: true, json: async () => ['manifest.json', 'js/a.js', 'css/b.css'] };
             }
             return { ok: true, arrayBuffer: async () => new TextEncoder().encode('CONTENT-' + u).buffer };
@@ -109,7 +114,7 @@ console.log('\n【backup 失败分支】');
 (async () => {
     const K = loadKit({
         fetch: async (u) => {
-            if (u.indexOf('_vr_export.json') >= 0) {
+            if (u.indexOf(EXPORT_MANIFEST) >= 0) {
                 return { ok: true, json: async () => ['a.js', 'b.js'] };
             }
             if (u.indexOf('b.js') >= 0) {

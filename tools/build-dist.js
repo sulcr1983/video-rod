@@ -71,7 +71,18 @@ const ALLOW_ROOT_FILES = ['manifest.json'];
  * with file or directory name ...）。本文件曾经叫 _vr_export.json，结果整个扩展
  * 加载不了 —— 别为了绕 walk() 的过滤再改回下划线。
  */
-const EXPORT_MANIFEST = 'vr-export.json';
+const EXPORT_MANIFEST = (() => {
+  // 单一来源：manifest.json 的 x_export_manifest。别在代码里写死文件名 ——
+  // 以前三处各写一遍，改名必漏，漏一处整个扩展就加载不了。
+  const name = JSON.parse(
+    fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'),
+  ).x_export_manifest;
+  if (!name) throw new Error('manifest.json 缺少 x_export_manifest（导出清单文件名）');
+  if (name.startsWith('_')) {
+    throw new Error('x_export_manifest 不能以 _ 开头（Chromium 保留给系统）：' + name);
+  }
+  return name;
+})();
 
 /** 永不进 dist 的一级条目（自检用） */
 const FORBIDDEN_TOP = [
