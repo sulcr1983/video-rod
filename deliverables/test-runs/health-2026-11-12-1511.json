@@ -1,0 +1,140 @@
+{
+ "at": "2026-11-12-1511",
+ "full": false,
+ "live": false,
+ "ok": true,
+ "results": [
+  {
+   "name": "1/7 源码语法（node --check）",
+   "ok": true,
+   "detail": "130 个 js 语法正常",
+   "dur": 20.199053525924683,
+   "extra": {
+    "files": 130,
+    "bad": []
+   }
+  },
+  {
+   "name": "2/7 manifest 合法性",
+   "ok": true,
+   "detail": "v2.7.2.2（MV3）",
+   "dur": 0.0005462169647216797,
+   "extra": {
+    "missing": []
+   }
+  },
+  {
+   "name": "3/7 测试断言契约（防测试腐烂）",
+   "ok": true,
+   "detail": "34 个脚本的 DOM 引用全部有效",
+   "dur": 1.6972496509552002,
+   "extra": {
+    "out": "源码里可用的 DOM id：825 个\n34 passed, 0 failed\n"
+   }
+  },
+  {
+   "name": "4/7 单元测试（纯逻辑）",
+   "ok": true,
+   "detail": "8/8 单测脚本通过，351 条断言",
+   "dur": 2.121708869934082,
+   "extra": {
+    "units": [
+     {
+      "name": "test-naming.js",
+      "ok": true,
+      "rc": 0,
+      "got": 56,
+      "total": 56,
+      "dur": 0.3375813961029053,
+      "tail": "结果：56 通过 / 0 失败\nM0 起名引擎全部用例通过 ✅"
+     },
+     {
+      "name": "test-path.js",
+      "ok": true,
+      "rc": 0,
+      "got": 100,
+      "total": 100,
+      "dur": 0.272951602935791,
+      "tail": "100 通过 / 0 失败"
+     },
+     {
+      "name": "test-save.js",
+      "ok": true,
+      "rc": 0,
+      "got": 51,
+      "total": 51,
+      "dur": 0.2415754795074463,
+      "tail": "51 通过 / 0 失败"
+     },
+     {
+      "name": "test-video-quality.js",
+      "ok": true,
+      "rc": 0,
+      "got": 100,
+      "total": 0,
+      "dur": 0.22199797630310059,
+      "tail": "\n100 passed, 0 failed"
+     },
+     {
+      "name": "test-dedupe-key.js",
+      "ok": true,
+      "rc": 0,
+      "got": 19,
+      "total": 0,
+      "dur": 0.20956730842590332,
+      "tail": "\n19 passed, 0 failed"
+     },
+     {
+      "name": "test-image-util.js",
+      "ok": true,
+      "rc": 0,
+      "got": 117,
+      "total": 117,
+      "dur": 0.25963521003723145,
+      "tail": "117 通过 / 0 失败"
+     },
+     {
+      "name": "test-image-batch.js",
+      "ok": true,
+      "rc": 0,
+      "got": 27,
+      "total": 27,
+      "dur": 0.3931734561920166,
+      "tail": "\n27 通过 / 0 失败"
+     },
+     {
+      "name": "test-live-pair.js",
+      "ok": true,
+      "rc": 0,
+      "got": 17,
+      "total": 0,
+      "dur": 0.18158316612243652,
+      "tail": "\n17 passed, 0 failed"
+     }
+    ]
+   }
+  },
+  {
+   "name": "5/7 界面套件（隔离实例）",
+   "ok": true,
+   "detail": "2/2 套件通过",
+   "dur": 32.770747900009155,
+   "extra": {
+    "tail": "========================================================================\n批次开始 2026-11-12 15:11:05\n套件 2 个：e2e-sw, dedup\n========================================================================\n[隔离] 下载目录已重定向：D:\\test\\download\\work\\dl\\isolated\n[隔离] 启动测试 Edge：profile=D:\\test\\download\\work\\e2e-profile，port=9490\n[隔离] 扩展 ID 自动探测：ceogmckiinjolbbdkjfelmfcfepccabp → pmohaojeocdjiideohghomdkchbofchg\n\n========================================================================\n[LOCAL] e2e-sw         后台 SW 存活（护栏：静默失效）\n$ C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe tools/e2e-sw.py --port 9490 --ext pmohaojeocdjiideohghomdkchbofchg\n------------------------------------------------------------------------\nPASS  后台 HeartBeat 有应答（SW 活着）\nPASS  getAllData 有应答（消息路由已注册）\nPASS  vrVideoOptions 12s 内返回（不会永久 loading）\nPASS  扩展上下文正常\n\n4/4 PASS\n------------------------------------------------------------------------\n[PASS] e2e-sw   用时 5.5s   4/4\n\n========================================================================\n[LOCAL] dedup          去重指纹单测（纯 Node）\n$ node tools/dedup-test.mjs\n------------------------------------------------------------------------\nPASS  同内容同指纹\nPASS  指纹是 64 位 hex\nPASS  首次不判重\nPASS  首次写入 sha256\nPASS  首次 isRef=0\nPASS  重复内容判重命中\nPASS  重复标记 isRef=1\nPASS  重复记录 refOf 指向原件\nPASS  重复时删掉刚落盘的物理件\nPASS  引用计数=2\nPASS  删引用后剩余 1 条\nPASS  还有引用时不删物理文件\nPASS  最后一条引用：剩余 0\nPASS  最后一条引用：物理文件可被真删\nPASS  重命名写 displayName\nPASS  displayName 落库\nPASS  统计 count=2\nPASS  统计 uniqCount=1\nPASS  物理占用只算一份（非逻辑大小）\nPASS  垃圾输入返回空串而非抛错\nPASS  垃圾输入 afterDownload 不抛\n\n21/21 PASS\n------------------------------------------------------------------------\n[PASS] dedup   用时 0.3s   21/21\n\n========================================================================\n批次汇总：2/2 套件通过，用时 10.9s\n  PASS   e2e-sw         4/4         5.5s  \n  PASS   dedup          21/21       0.3s  \n========================================================================\n报告：D:\\test\\download\\video-rod\\deliverables\\test-runs\\2026-11-12-1511-e2e-all.md\n[隔离] 保留测试实例 port=9490（--keep-isolated）\n",
+    "fails": [],
+    "fresh": [],
+    "known": []
+   }
+  },
+  {
+   "name": "附 发布物就绪",
+   "ok": true,
+   "detail": "dist 就绪，最新包 video-rod-2.7.2.2.zip",
+   "dur": 0.0008416175842285156,
+   "extra": {
+    "dist": true,
+    "zip": "video-rod-2.7.2.2.zip"
+   }
+  }
+ ]
+}
