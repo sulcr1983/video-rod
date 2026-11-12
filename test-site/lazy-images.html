@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>懒加载图片（尺寸未知）测试页</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px/1.6 system-ui, sans-serif; }
+  h1 { padding: 16px; margin: 0; }
+  .note { padding: 0 16px 12px; color: #999; }
+  /* 关键：把图片区域推到首屏之外，配合 loading="lazy" 让它们进页面时都不解码 */
+  .spacer { height: 2000px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 16px; }
+  .grid img { width: 100%; height: 160px; object-fit: cover; background: #222; display: block; }
+</style>
+</head>
+<body>
+  <h1>懒加载图片（模拟微博信息流的「尺寸未知」）</h1>
+  <p class="note">
+    下面的图都在首屏之外，且带 <code>loading="lazy"</code> ——
+    进页面时它们的 <code>naturalWidth</code> 都是 0，扫描会标成「尺寸未知」。
+    扩展应该能自己预载一次把真实尺寸补回来。
+  </p>
+  <div class="spacer"></div>
+  <div class="grid" id="grid"></div>
+<script>
+  /* 30 张真实图片，全部 loading=lazy 且不在首屏 */
+  const srcs = [
+    'media/big-square.png', 'media/cover.jpg', 'media/data-300.png',
+    'media/i5-unique.png', 'media/original-1200.png', 'media/placeholder.png',
+    'media/sprite.png', 'media/srcset-1200.png', 'media/srcset-400.png',
+    'media/tall.png', 'media/thumb-320.png'
+  ];
+  const grid = document.getElementById('grid');
+  for (let i = 0; i < 30; i++) {
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.src = srcs[i % srcs.length] + (i < srcs.length ? '' : '?v=' + i);
+    img.alt = 'lazy-' + i;
+    grid.appendChild(img);
+  }
+</script>
+</body>
+</html>

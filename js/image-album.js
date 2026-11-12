@@ -66,20 +66,66 @@
      * 用 scanImages 而不是自己遍历：过滤口径（最小尺寸 / 占位图 / 长宽比 / 同 URL 去重）
      * 必须和悬停、面板完全一致，否则图集抓到的数量和用户看到的不一样。
      */
-    function collectForSw(min) {
+    async function collectForSw(min) {
         const m = Math.max(16, Number(min) || U.MIN_SIZE);
-        let list = [];
-        try {
-            list = U.scanImages(document, {
-                minWidth: m, minHeight: m, minShow: U.PANEL_MIN_SHOW, dedupe: true
+        const out = [];
+        const have = Object.create(null);
+        const push = (it) => {
+            if (!it || !it.url || have[it.url]) { return; }
+            have[it.url] = 1;
+            out.push({
+                url: it.url,
+                w: Number(it.w) || 0,
+                h: Number(it.h) || 0,
+                bg: !!it.bg,
+                srcOnly: !!it.srcOnly,
+                candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url]
             });
-        } catch (e) { list = []; }
-        return list.map(it => ({
-            url: it.url,
-            w: it.w,
-            h: it.h,
-            candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url]
-        }));
+        };
+
+        /* 通道 ①：<img>（原实现只有这一条） */
+        try {
+            U.scanImages(document, {
+                minWidth: m, minHeight: m, minShow: U.PANEL_MIN_SHOW, dedupe: true
+            }).forEach(push);
+        } catch (e) { /* 单通道失败不影响其它通道 */ }
+
+        /* 通道 ②：背景图（2026-11-12 补，苏哥报「图集只扫到 1 张」）。
+         * 微博/花瓣这类站点的信息流大量用 background-image 或把 <img> 藏起来，
+         * 只扫 <img> 会得到个位数，而侧边栏（走三条通道）能扫到几十张 ——
+         * 同一页面两个入口数量差 50 倍，用户只会觉得「这功能坏了」。 */
+        try {
+            if (U.scanBackgrounds) {
+                U.scanBackgrounds(document, { minShow: U.PANEL_MIN_SHOW, dedupe: true })
+                    .forEach(push);
+            }
+        } catch (e) { /* 同上 */ }
+
+        /* 通道 ③：源码/JSON 里的地址（懒加载站点图只在脚本里，DOM 上还没有 <img>） */
+        try {
+            const S = self.VRDownloadScan;
+            if (S && S.extractUrlsFromHtml && document.body) {
+                S.extractUrlsFromHtml(document.body.innerHTML || '', location.href, 400)
+                    .forEach(u => push({ url: u, w: 0, h: 0, srcOnly: true }));
+            }
+        } catch (e) { /* 同上 */ }
+
+        /* 尺寸回填：懒加载站点扫描瞬间大量图未解码，w/h 全是 0
+         * （微博信息流实测 53 张全「尺寸未知」）。在页面上下文预载一次拿真实尺寸，
+         * 限 60 张 / 2.5 秒，超时保留「未知」，绝不拖住扫描。 */
+        try {
+            const miss = out.filter(x => !(x.w > 0 && x.h > 0)).map(x => x.url);
+            if (miss.length && typeof U.fillSizes === 'function') {
+                const got = await U.fillSizes(miss.slice(0, 60), 2500);
+                out.forEach(x => {
+                    if (x.w > 0 && x.h > 0) { return; }
+                    const sz = got[x.url];
+                    if (sz && sz.w > 0 && sz.h > 0) { x.w = sz.w; x.h = sz.h; }
+                });
+            }
+        } catch (e) { /* 回填失败保持未知 */ }
+
+        return out;
     }
 
     /* executeScript 是「序列化函数源码后单独求值」，拿不到本文件的闭包变量（U 会 undefined），

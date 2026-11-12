@@ -182,7 +182,10 @@
             });
         }).then(() => chrome.scripting.executeScript({
             target: { tabId: tabId },
-            func: o => {
+            /* 改成 async：末尾要做「尺寸回填」（见下面的 fillSizes）。
+             * chrome.scripting.executeScript 会等待返回的 Promise，所以调用方
+             * 拿到的仍是结果数组，不需要改上层。 */
+            func: async o => {
                 const U = self.VRImageUtil;
                 /* 工具模块没注入时**不能静默返回空数组** —— 那会让人误以为
                  * 「这个页面真的没有图」。实测花瓣 pins 页就是因为内容脚本未注入，
@@ -247,6 +250,38 @@
                     have[u] = 1;
                     out.push({ url: u, w: 0, h: 0, bg: false, srcOnly: true, candidates: [u] });
                 }
+
+                /* 尺寸回填（2026-11-12，苏哥报「微博页全是尺寸未知」）。
+                 *
+                 * 根因是**时序**：懒加载站点的 <img> 在扫描这一瞬间往往还没解码
+                 * （naturalWidth=0），于是整个列表都标成「尺寸未知」——
+                 * 既不能按档位筛，也看不出哪张是大图。微博信息流实测 53 张全中。
+                 *
+                 * 做法：把没尺寸的地址用 new Image() 在**页面上下文**里预载一次。
+                 * 页面上下文带正确 Referer/Cookie，比扩展页加载更可靠；
+                 * 同一 URL 通常已在缓存里，几乎不额外下载。
+                 * 上限：只补前 60 个、总预算 2.5 秒 —— 宁可留几个「未知」，
+                 * 也不能让扫描卡住（用户点一下要立刻有反应）。 */
+                try {
+                    const miss = [];
+                    for (let i = 0; i < out.length; i++) {
+                        if (!(out[i].w > 0 && out[i].h > 0) && out[i].url) {
+                            miss.push(out[i].url);
+                        }
+                    }
+                    if (miss.length && U && typeof U.fillSizes === 'function') {
+                        const got = await U.fillSizes(miss.slice(0, 60), 2500);
+                        for (let i = 0; i < out.length; i++) {
+                            if (out[i].w > 0 && out[i].h > 0) { continue; }
+                            const sz = got[out[i].url];
+                            if (sz && sz.w > 0 && sz.h > 0) {
+                                out[i].w = sz.w;
+                                out[i].h = sz.h;
+                            }
+                        }
+                    }
+                } catch (eFill) { /* 回填失败保持「未知」，不影响已扫到的结果 */ }
+
                 return out;
             },
             args: [opts]
@@ -528,9 +563,23 @@
         const img = document.createElement('img');
         img.className = 'ip-thumb';
         img.loading = 'lazy';
+        /* 缩略图裂（2026-11-12，苏哥微博页实测）：
+         * 侧边栏是 chrome-extension:// 页面，加载图床图片时 Referer 是扩展来源，
+         * 部分站点按 Referer 放行 → 整屏裂图、连带「尺寸未知」的观感更差。
+         * 先按「不带 Referer」请求（多数图床允许，且不会带一个明显错误的来源），
+         * 失败再退回默认策略试一次 —— 反过来（先默认后 no-referrer）会先裂一下。 */
+        img.referrerPolicy = 'no-referrer';
         img.src = it.url;
         img.alt = '';
-        img.addEventListener('error', () => div.classList.add('loadfail'));
+        img.addEventListener('error', () => {
+            if (!div.dataset.retried) {
+                div.dataset.retried = '1';
+                try { img.referrerPolicy = 'origin'; } catch (e) { /* 老内核忽略 */ }
+                img.src = it.url;   // 重新发一次请求
+                return;
+            }
+            div.classList.add('loadfail');
+        });
 
         /* 勾选是**独立控件**：点图看大图，点这个圈才改勾选状态。
          * 这样「看」和「选」不会互相误触 —— 之前点图即勾选，

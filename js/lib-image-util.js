@@ -579,6 +579,58 @@
      * 性能：getComputedStyle 会强制样式计算，所以先按标签白名单 + 面积预筛，
      * 只对「可能是内容容器」的元素取值，避免在长页面上把主线程卡死。
      */
+    /**
+     * 给「扫描时还没解码」的地址补尺寸（2026-11-12）。
+     *
+     * 问题：懒加载站点的 <img> 在扫描那一刻 naturalWidth 往往是 0 ——
+     * 微博信息流实测 53 张全部「尺寸未知」。结果是用户看到一屏「尺寸未知」，
+     * 既不能按档位筛，也不知道哪张是大图。
+     *
+     * 做法：用 new Image() 把地址预载一次。同 URL 已在页面请求过时走缓存，
+     * 几乎不产生额外流量；拿到 naturalWidth/naturalHeight 就回填，超时保持未知。
+     * **必须有总时长上限**：几十张串起来可能很慢，扫描不能被它拖死。
+     *
+     * @param {string[]} urls 需要补尺寸的地址（调用方已按需截断）
+     * @param {number} timeoutMs 总预算，默认 2500
+     * @returns {Promise<Object>} { url: {w,h} }，拿不到的键不存在
+     */
+    function fillSizes(urls, timeoutMs) {
+        var list = (urls || []).filter(Boolean).slice(0, 80);
+        var budget = Math.max(500, Number(timeoutMs) || 2500);
+        if (!list.length) { return Promise.resolve({}); }
+        return new Promise(function (resolve) {
+            var out = Object.create(null);
+            var left = list.length;
+            var done = false;
+            var timer = setTimeout(function () {
+                if (!done) { done = true; resolve(out); }
+            }, budget);
+            function one() {
+                left--;
+                if (left <= 0 && !done) {
+                    done = true;
+                    clearTimeout(timer);
+                    resolve(out);
+                }
+            }
+            list.forEach(function (u) {
+                try {
+                    var im = new Image();
+                    /* 不设 no-referrer：微博/图床有按 Referer 放行的，去掉反而更差。
+                     * 加载失败就跳过（保留「尺寸未知」），不能因此卡住整个扫描。 */
+                    im.onload = function () {
+                        if (im.naturalWidth > 0 && im.naturalHeight > 0) {
+                            out[u] = { w: im.naturalWidth, h: im.naturalHeight };
+                        }
+                        one();
+                    };
+                    im.onerror = one;
+                    im.src = u;
+                } catch (e) { one(); }
+            });
+        });
+    }
+
     function scanBackgrounds(doc, opts) {
         if (!doc || !doc.querySelectorAll) { return []; }
         var o = opts || {};
@@ -970,6 +1022,7 @@
         pickLargestSrcset: pickLargestSrcset,
         sizeOf: sizeOf,
         collectCandidates: collectCandidates,
-        scanImages: scanImages
+        scanImages: scanImages,
+        fillSizes: fillSizes
     };
 });

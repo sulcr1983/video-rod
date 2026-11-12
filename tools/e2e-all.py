@@ -255,6 +255,32 @@ def detect_ext_id(port, timeout=25):
         except Exception:
             pass
         time.sleep(1)
+
+    # 兜底：从 profile 里读（2026-11-12）
+    #
+    # 为什么要这条：MV3 的 service worker **不一定**出现在 /json/list 里 ——
+    # 浏览器启动后没有事件触发时它根本不跑，而扩展本身是好的
+    # （实测 library.html 能正常打开、VRDB/VRApp 都在，只是没有 SW target）。
+    # 以前探测失败就退回硬编码 ID → 全部扩展页 404 → 整套界面测试全灭，
+    # 而报告只写「探测失败，套件可能全灭」，很容易被当成产品坏了。
+    #
+    # 注意读的是 **Secure Preferences**：普通 Preferences 里 extensions.settings
+    # 是空的（实测扩展只登记在 Secure Preferences）。
+    try:
+        import json as _json
+        for fname in ("Secure Preferences", "Preferences"):
+            fp = os.path.join(ISOLATED_PROFILE, "Default", fname)
+            if not os.path.exists(fp):
+                continue
+            with open(fp, encoding="utf-8", errors="replace") as f:
+                d = _json.load(f)
+            settings = ((d.get("extensions") or {}).get("settings") or {})
+            for eid, v in settings.items():
+                pth = str((v or {}).get("path", "") or "")
+                if "video-rod" in pth and len(eid) == 32:
+                    return eid
+    except Exception:
+        pass
     return None
 
 
@@ -273,12 +299,13 @@ def cleanup_pages(port):
             sys.path.insert(0, os.path.join(ROOT, "tools"))
         from cdp_client import Cdp, find_ext_id
         cdp = Cdp("http://127.0.0.1:%d" % port)
-        _ext, sw = find_ext_id(cdp)
+        got = find_ext_id(cdp)
+        _ext, sw = (got if got else (None, None))
         pages = [t for t in cdp.targets() if t.get("type") in ("page", "iframe")]
         # 千万别把页面关到 0 个：Edge 没有窗口会直接退出，后面的套件全部"实例离线"
         #（2026-11-12 实测：关干净之后 e2e-all 只跑了 2 个套件就中止）。
         for t in pages[1:]:
-            if t.get("targetId") == sw.get("targetId"):
+            if sw and t.get("targetId") == sw.get("targetId"):
                 continue
             try:
                 cdp.send("Target.closeTarget", {"targetId": t["targetId"]})
