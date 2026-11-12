@@ -859,12 +859,17 @@ body.popupBody {
 }
 
 /* ---------- 遮罩 / 弹层 ---------- */
+/* 层级（从低到高，改这里前先看全表）：
+ *   400/450 已经是历史值，但**猫抓原生提示条 #TipsFixed 是 9999** ——
+ *   实测「还没闻到味儿~」那条灰提示会浮在弹窗正中间挡住列表（2026-11-12 抓图截图复现）。
+ *   所有 .mask/.modal 抬到 10000 以上，同时把 libintro 抬到 10100 保住「引导最顶」的关系。
+ *   仍然低于 toast(99999) 与设置整页层(10050)。 */
 .mask {
     position: fixed;
     inset: 0;
     background: rgba(14, 17, 22, .32);
     backdrop-filter: blur(2px);
-    z-index: 400;
+    z-index: 10000;
     display: none;
 }
 
@@ -880,7 +885,7 @@ body.popupBody {
     border: 1px solid var(--vr-line-2);
     border-radius: 13px;
     padding: 15px;
-    z-index: 450;
+    z-index: 10005;
     display: none;
     box-shadow: var(--vr-shadow);
 }
@@ -1905,8 +1910,9 @@ body.popupBody {
   position: fixed;
   inset: 0;
   /* 必须压过猫抓原生提示 #TipsFixed（z-index: 9999）——
-     实测 9000 时「还没闻到味儿~」灰条会浮在蒙层上遮住大字标题 */
-  z-index: 10001;
+     实测 9000 时「还没闻到味儿~」灰条会浮在蒙层上遮住大字标题。
+     2026-11-12：.mask/.modal 抬到 10000/10005 后，引导层再抬到 10100 保持最顶。 */
+  z-index: 10100;
   display: flex;
   align-items: center;
   justify-content: center;

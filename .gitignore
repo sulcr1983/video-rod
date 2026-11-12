@@ -31,3 +31,6 @@ __pycache__/
 # 公开前治理（2026-11-09）：未引用的截图留证在本地，不进 git
 # 规范见 docs/ARTIFACT-MANAGEMENT.md §4.2（只有被文档引用的截图才可进 git）
 /archive/deliverables-unreferenced/
+
+# 套件级诊断日志（e2e-all 每次覆盖写，过程产物不入库）
+/deliverables/test-runs/parts/

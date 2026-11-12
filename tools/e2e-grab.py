@@ -135,22 +135,74 @@ def main():
     cdp = Cdp("http://127.0.0.1:%d" % a.port)
     psid, tab_id = open_popup(cdp, page_url)
 
-    # 点「抓图」→ 等扫描 + 弹窗渲染（含 2.5s 的尺寸/可达性预载预算）
+    # 起跑线固定（TEST-PLAN §二「每例前复位状态」）。两件事：
+    #   ① 钉掉一次性新手引导浮层 —— 不钉会盖住整个界面，截图只有「素材库在这」；
+    #   ② 钉住扫描门槛与背景图开关 —— 前序套件（e2e-buttons 会逐个点设置开关）
+    #      会把 imgMinSize / imgBgScan 改掉，导致整批跑时本套件红、单跑却绿。
+    #      实测：整批 9/10、单跑 10/10，就是这一项没钉。
+    try:
+        cdp.eval(
+            "new Promise(function(d){chrome.storage.local.get('vrLibSettings',function(o){"
+            "var s=Object.assign({},o.vrLibSettings||{});"
+            "s.imgMinSize=100;s.imgBgScan=true;s.imgHover=true;s.imgBatch=true;"
+            "chrome.storage.local.set({vrLibSettings:s,vrLibIntroDone:true,vrLibIntroSeen:9},"
+            "function(){d(1);});});})", psid)
+        cdp.send("Page.reload", {}, psid)
+        time.sleep(2.5)
+    except Exception as e:
+        print("  （钉起跑线失败，继续：%s）" % e)
+
+    # 钉掉 popup 的一次性新手引导浮层。不钉的话它会盖住整个界面，
+    # 截图拍出来只有「素材库在这」，看不到图片清单（视觉基线里踩过同一个坑）。
+    try:
+        cdp.eval("new Promise(function(d){chrome.storage.local.set("
+                 "{vrLibIntroDone:true,vrLibIntroSeen:9},function(){d(1);});})", psid)
+        cdp.send("Page.reload", {}, psid)
+        time.sleep(2.5)
+    except Exception as e:
+        print("  （钉引导失败，继续：%s）" % e)
+
+    # 必须把 popup 提到前台再做断言。
+    # 缩略图是 loading="lazy" 的，后台标签页里懒加载**永不触发** ——
+    # 整批跑时前序套件留下别的标签页，popup 不是 active tab，
+    # 于是 7 张缩略图 naturalWidth 全 0、等 12 秒也不变（单跑却是好的）。
+    try:
+        cdp.send("Page.bringToFront", {}, psid)
+        time.sleep(0.6)
+    except Exception:
+        pass
+
+    # 点「抓图」→ 轮询到「弹窗有行 + 缩略图全部解码」为止（上限 12s）。
+    #
+    # 为什么不用固定 sleep：早先写死 4.2s，冷启动够、热缓存时缩略图有时还差一张，
+    # 于是同一条断言「整批 9/10、单跑 10/10」（2026-11-12 实测）。轮询才是稳的。
     got = cdp.eval("""
       (() => {
         document.getElementById('vrScanImages').click();
-        return new Promise(r => setTimeout(() => {
+        const t0 = Date.now();
+        const snap = () => {
           const rows = document.querySelectorAll('#vrImgList .vrimg-row').length;
           const metas = [...document.querySelectorAll('#vrImgList .vrimg-meta')].map(e => e.textContent);
-          const imgs = [...document.querySelectorAll('#vrImgList img')].map(e => e.getAttribute('src'));
-          r({
+          const imgs = [...document.querySelectorAll('#vrImgList img')];
+          return {
             cnt: (document.getElementById('vrImgCount') || {}).textContent,
             rows: rows,
             metas: metas,
-            srcs: imgs,
+            srcs: imgs.map(e => e.getAttribute('src')),
+            loaded: imgs.filter(i => i.naturalWidth > 0).length,
+            total: imgs.length,
             empty: (document.querySelector('#vrImgList div') || {}).textContent || ''
-          });
-        }, 4200));
+          };
+        };
+        return new Promise(r => {
+          const tick = () => {
+            const s = snap();
+            const settled = s.rows > 0 && s.total > 0 && s.loaded === s.total;
+            if ((settled && Date.now() - t0 > 2600) || Date.now() - t0 > 12000) { r(s); return; }
+            setTimeout(tick, 250);
+          };
+          tick();
+        });
       })()
     """, psid)
 
@@ -158,6 +210,14 @@ def main():
         print("FAIL  抓图弹窗没渲染出来：%r" % (got,))
         print("0/1 PASS")
         return 1
+
+    # 调试：清单原样打出来（断言失败时靠它定位是哪一条混进来了）
+    for _i, _s in enumerate(got.get("srcs") or []):
+        print("  [%d] %s" % (_i + 1, _s))
+
+    # 调试：清单原样打出来（断言失败时靠它定位是哪一条混进来了）
+    for _i, _s in enumerate(got.get("srcs") or []):
+        print("  [%d] %s" % (_i + 1, _s))
 
     rows = got.get("rows") or 0
     metas = got.get("metas") or []
@@ -184,6 +244,14 @@ def main():
 
     # ⑤ 60×60 图标被挡
     check("图标 60×60 未混入", "60×60" in " ".join(metas), False)
+
+    # 缩略图：弹窗里的预览图必须真的加载出来（否则用户只能看尺寸文字，
+    # 分不清哪张是哪张 —— 苏哥原截图的裂图就是这个位置）
+    loaded, total = got.get("loaded") or 0, got.get("total") or 0
+    if loaded != total:
+        print("  缩略图 %d/%d 未全部加载（等满 12s 仍差 %d 张）"
+              % (total - loaded, total, total - loaded))
+    check("缩略图全部加载出来", loaded, total)
 
     # 弹窗本体可见
     visible = cdp.eval("(function(){var m=document.getElementById('vrImgModal');return !!m && m.classList.contains('on');})()", psid)

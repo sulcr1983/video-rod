@@ -334,10 +334,13 @@ def reset_ext_settings(port):
         _ext, sw = find_ext_id(cdp)
         sid = cdp.attach(sw["targetId"])
         cdp.send("Runtime.enable", {}, sid)
+        # imgMinSize / imgBgScan 也要复位：e2e-grab 依赖门槛=100 与背景图开着，
+        # 被前序套件改掉会「整批红、单跑绿」（2026-11-12 实测 9/10 vs 10/10）。
         cdp.eval(
             "new Promise(function(r){chrome.storage.local.get('vrLibSettings',function(o){"
             "var s=Object.assign({},o.vrLibSettings||{});"
             "s.imgHover=true; s.imgBatch=true; s.imgTierMin=0;"
+            "s.imgMinSize=100; s.imgBgScan=true;"
             "chrome.storage.local.set({vrLibSettings:s},function(){r(1)});});})", sid)
     except Exception:
         pass
@@ -389,6 +392,19 @@ def run_suite(name, cmd, is_live, desc, port, ext, timeout):
 
     dur = time.time() - t0
     safe_console(out.rstrip())
+
+    # 每个套件的完整输出落一份（2026-11-12 加）。
+    # 起因：health-check 报告里只有「批次汇总」那张表，某个套件 9/10 时
+    # 根本看不出红的哪一条，只能重跑一遍撞运气。落盘后直接看日志。
+    try:
+        parts = os.path.join(REPORT_DIR, 'parts')
+        os.makedirs(parts, exist_ok=True)
+        with open(os.path.join(parts, name + '.log'), 'w', encoding='utf-8') as f:
+            f.write("$ " + " ".join(full) + "\n")
+            f.write("rc=%s dur=%.1fs\n\n" % (rc, dur))
+            f.write(out)
+    except Exception:
+        pass
 
     m = PASS_RE.findall(out)
     if m:

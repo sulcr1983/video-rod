@@ -2263,7 +2263,20 @@
                                     var sz = got[out[n].url];
                                     if (!sz) { continue; }
                                     if (sz.fail) { out[n].dead = true; continue; }
-                                    if (sz.w > 0 && sz.h > 0) { out[n].w = sz.w; out[n].h = sz.h; }
+                                    if (sz.w > 0 && sz.h > 0) {
+                                        /* 回填拿到真实尺寸后**再过一遍采集门槛**。
+                                         * 未解码的图先收进来是为了不漏（懒加载），
+                                         * 但补到尺寸才知道它其实是个 60×60 图标 ——
+                                         * 不过这一道，批量清单里会混进一堆表情/图标。
+                                         * 实测（e2e-grab）：不判就多收 1 张 60×60。 */
+                                        if (sz.w < MIN || sz.h < MIN) {
+                                            out[n].dead = true;
+                                            out[n].tiny = true;
+                                            continue;
+                                        }
+                                        out[n].w = sz.w;
+                                        out[n].h = sz.h;
+                                    }
                                 }
                             }
                         } catch (e) { /* 回填失败保持「尺寸未知」 */ }
@@ -2271,17 +2284,25 @@
                         /* 明确打不开的剔掉（超时未探的不在此列）。
                          * 全页只剩坏图时宁可返回空 —— 空列表带提示，比一堆裂图诚实。 */
                         var alive = [];
+                        var deadCnt = 0;
+                        var tinyCnt = 0;
                         for (var q = 0; q < out.length; q++) {
-                            if (!out[q].dead) { alive.push(out[q]); }
+                            if (!out[q].dead) { alive.push(out[q]); continue; }
+                            if (out[q].tiny) { tinyCnt++; } else { deadCnt++; }
                         }
-                        return { items: alive, dropped: out.length - alive.length };
+                        return { items: alive, dropped: deadCnt, tiny: tinyCnt };
                     },
                     args: [opts]
                 });
             }).then(function (res) {
                 var r = (res && res[0] && res[0].result) || {};
                 if (r && r.__noUtil) { return { list: [], noUtil: true }; }
-                return { list: (r && r.items) || [], noUtil: false, dropped: r.dropped || 0 };
+                return {
+                    list: (r && r.items) || [],
+                    noUtil: false,
+                    dropped: r.dropped || 0,
+                    tiny: r.tiny || 0
+                };
             }).catch(function () { return { list: [], noUtil: false }; });
         });
     }
@@ -2433,9 +2454,13 @@
                 btn.disabled = false;
                 btn.textContent = '抓图';
                 openImageModal(scan);
-                /* 剔掉坏图要说一声，不能让用户以为「页面上本来就这么点图」 */
-                if (scan && scan.dropped > 0) {
-                    tip('已剔除 ' + scan.dropped + ' 张打不开的图');
+                /* 剔掉东西要说一声，不能让用户以为「页面上本来就这么点图」。
+                 * 两种原因分开讲：打不开（坏图）vs 太小（图标/表情）。 */
+                if (scan && (scan.dropped > 0 || scan.tiny > 0)) {
+                    var parts = [];
+                    if (scan.dropped > 0) { parts.push(scan.dropped + ' 张打不开'); }
+                    if (scan.tiny > 0) { parts.push(scan.tiny + ' 张太小（图标）'); }
+                    tip('已过滤 ' + parts.join('、'));
                 }
             });
         });
