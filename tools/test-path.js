@@ -288,6 +288,25 @@ const bare = V.detectSite('https://never-learned.xyz/a');
 eq('优先级 全无时用域名', bare.dir, 'never-learned.xyz');
 eq('优先级 全无时 name 为空', bare.name, '');
 
+/* ---------- 恢复改名（DEF-02 后续：同名不再判失败） ---------- */
+eq('恢复改名 基本形态',
+   V.restoreAltName('video-rod/x/NASA/图.webp', 1), 'video-rod/x/NASA/图_restored.webp');
+eq('恢复改名 第二次冲突',
+   V.restoreAltName('video-rod/x/NASA/图.webp', 2), 'video-rod/x/NASA/图_restored_2.webp');
+eq('恢复改名 无扩展名',
+   V.restoreAltName('video-rod/x/NASA/README', 1), 'video-rod/x/NASA/README_restored');
+eq('恢复改名 隐藏文件不切扩展名',
+   V.restoreAltName('video-rod/.gitignore', 1), 'video-rod/.gitignore_restored');
+eq('恢复改名 点开头带扩展名',
+   V.restoreAltName('video-rod/.env.local', 1), 'video-rod/.env_restored.local');
+eq('恢复改名 多点名只切最后一段',
+   V.restoreAltName('a/b/c.tar.gz', 1), 'a/b/c.tar_restored.gz');
+eq('恢复改名 只有文件名无目录',
+   V.restoreAltName('图.jpg', 1), '图_restored.jpg');
+eq('恢复改名 空串原样返回', V.restoreAltName('', 1), '');
+eq('恢复改名 n 非法回落 1', V.restoreAltName('a.jpg', 0), 'a_restored.jpg');
+eq('恢复改名 n 小数取整', V.restoreAltName('a.jpg', 2.9), 'a_restored_2.jpg');
+
 /* ---------- 汇总 ---------- */
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail) {

@@ -345,6 +345,35 @@
         return clampLength(full);
     }
 
+    /**
+     * 恢复冲突时的改名候选（纯函数，便于单测）
+     *
+     * 背景（2026-11-12）：回收站恢复遇到「原位置已有同名文件」时直接判失败跳过了，
+     * 用户唯一出路是「彻底删除」——等于为了拿回文件先放弃它。现在改成改名恢复，
+     * 这里只负责算名字，是否存在由调用方探测。
+     *
+     * 命名口径：`图_restored.webp` → 再撞就 `图_restored_2.webp`。
+     * 为什么不叫 `图 (1).webp`：项目里同名的既定风格是下划线序号（`_01`），
+     * 而 `_restored` 一眼能看出「这是从回收站救回来的」，不与正常序号混淆。
+     *
+     * @param {string} relPath 原相对路径
+     * @param {number} [n] 第几个候选（1 = `_restored`，2 = `_restored_2`…）
+     * @returns {string} 改名后的相对路径；入参为空时原样返回
+     */
+    function restoreAltName(relPath, n) {
+        var full = String(relPath == null ? '' : relPath);
+        if (!full) { return full; }
+        var idx = n > 1 ? Math.floor(n) : 1;
+        var tag = idx === 1 ? '_restored' : '_restored_' + idx;
+        var slash = full.lastIndexOf('/');
+        var dir = slash >= 0 ? full.slice(0, slash + 1) : '';
+        var file = slash >= 0 ? full.slice(slash + 1) : full;
+        var dot = file.lastIndexOf('.');
+        /* 隐藏文件（.gitignore 这类）与「点开头无扩展名」不当作扩展名切分 */
+        if (dot <= 0) { return dir + file + tag; }
+        return dir + file.slice(0, dot) + tag + file.slice(dot);
+    }
+
     /** 超长时只截文件名段，保住目录结构 */
     function clampLength(relPath, maxLen) {
         var limit = maxLen || MAX_REL_LEN;
@@ -569,6 +598,7 @@
         cleanPath: cleanPath,
         toFileUrl: toFileUrl,
         checkLength: checkLength,
+        restoreAltName: restoreAltName,
         thumbFileName: thumbFileName,
         _fnv1a32: fnv1a32
     };

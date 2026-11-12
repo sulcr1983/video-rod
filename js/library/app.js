@@ -3339,7 +3339,8 @@
         } catch (e) { /* 预检失败不阻断，restore 自己也会兜 */ }
         var msg = '恢复所选 ' + picks.length + ' 项？文件会回到原来的相对路径。';
         if (conflicts.length) {
-            msg += '\n\n注意：' + conflicts.length + ' 项原位置已有同名文件，会跳过（不覆盖）。';
+            msg += '\n\n注意：' + conflicts.length + ' 项原位置已有同名文件。' +
+                '内容一样的会自动合并，内容不同的会改名成「_restored」恢复，都不会覆盖原文件。';
         }
         ask(msg, async function () {
             TR.busy = true; trSyncPicked();
@@ -3924,7 +3925,13 @@
                         var r = await root.VRTrash.restore(batch, rel);
                         if (r && r.restored) {
                             delete TR.picked[pk];
-                            toast('已恢复');
+                            var re0 = (r.renamed && r.renamed[0]) || null;
+                            if (re0) {
+                                toast('已恢复，但原位置有同名文件，改名为 ' +
+                                    String(re0.to).split('/').pop(), { ms: 6000 });
+                            } else {
+                                toast('已恢复');
+                            }
                         } else {
                             var why = (r && r.failed && r.failed[0] && (r.failed[0].message || r.failed[0].code)) || '未知';
                             toast('恢复失败：' + why, { ms: 6000 });
@@ -4032,22 +4039,27 @@
                 if (!pf.total) { toast('回收站是空的'); return; }
                 var warn = '';
                 if (pf.conflicts.length) {
-                    warn = '\n\n注意：' + pf.conflicts.length + ' 项原位置已有同名文件，会被跳过（不会覆盖）。\n例：' +
+                    /* 2026-11-12：恢复不再「同名即失败」。内容一致自动消重，
+                     * 内容不同自动改名（_restored），全程不覆盖。 */
+                    warn = '\n\n注意：' + pf.conflicts.length + ' 项原位置已有同名文件。' +
+                        '内容一样的会自动合并（不留副本），内容不同的会改名成「_restored」恢复，都不会覆盖原文件。\n例：' +
                         String(pf.conflicts[0]).split('/').pop();
                 }
                 S.batchBusy = true;
                 ask('恢复回收站里的全部 ' + pf.total + ' 项？文件会回到原来的相对路径。' + warn, async function () {
                     try {
                         var batches = await root.VRTrash.list();
-                        var okN = 0, failN = 0;
+                        var okN = 0, failN = 0, reN = 0;
                         for (var i = 0; i < batches.length; i++) {
                             toast('正在恢复 ' + (i + 1) + '/' + batches.length + ' 批…', { ms: 600000 });
                             var r = await root.VRTrash.restore(batches[i].batch);
                             okN += (r && r.restored) || 0;
+                            reN += (r && r.renamed && r.renamed.length) || 0;
                             failN += (r && r.failed && r.failed.length) || 0;
                         }
                         var msg = '已恢复 ' + okN + ' 项';
-                        if (failN) { msg += '，' + failN + ' 项因同名被跳过'; }
+                        if (reN) { msg += '（其中 ' + reN + ' 项因同名改名恢复）'; }
+                        if (failN) { msg += '，' + failN + ' 项失败'; }
                         toast(msg);
                         /* 恢复后清单整体变了，残留的勾选指向已不存在的条目，
                          * 不清掉会让紧随其后的批量操作带上脏数据。 */

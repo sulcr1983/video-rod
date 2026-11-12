@@ -144,6 +144,23 @@
         }
     }
 
+    /**
+     * 读某个相对路径的文件内容指纹（SHA-256）。
+     * 只在恢复遇到同名冲突时用：判断「原位那份」与「回收站这份」是不是同一个文件。
+     * 算不出来（文件读不到 / 无 WebCrypto）返回空串 —— 调用方按「内容不同」处理，
+     * 走改名恢复，绝不覆盖，也不会因为算指纹失败就把用户挡在门外。
+     */
+    async function hashAt(rootHandle, rel) {
+        try {
+            var fh = await fileAt(rootHandle, rel);
+            var file = await fh.getFile();
+            if (root.VRDedup && typeof root.VRDedup.hashBlob === 'function') {
+                return (await root.VRDedup.hashBlob(file)) || '';
+            }
+        } catch (e) { /* 见函数头：失败一律当不同 */ }
+        return '';
+    }
+
     async function writeText(rootHandle, rel, text) {
         var segs = split(rel);
         var name = segs.pop();
@@ -740,6 +757,11 @@
 
         var restored = [];
         var failed = [];
+        var renamed = [];
+        var deduped = [];
+        /* 清单里记的是原 relPath，改名恢复后 restored[].relPath 会变，
+         * 所以收缩清单要用这份「原始键」，不能拿新路径去对。 */
+        var touchedRel = [];
 
         for (var i = 0; i < targets.length; i++) {
             var t = targets[i];
@@ -752,28 +774,64 @@
                 }
                 var noFile = row ? !!row.trashNoFile : !!(t.item && t.item.trashNoFile);
 
+                var movedRel = rel;
                 if (!noFile) {
+                    var fromRel = TRASH + '/' + t.batch + '/' + fsRel;
                     if (await exists(rr.handle, fsRel)) {
-                        throw makeErr('LIB_E_EXISTS', '原位置已有同名文件');
+                        /* 2026-11-12：同名不再直接判失败。
+                         * 原位那份内容相同 → 说明已经回来了，删掉回收站副本即可；
+                         * 内容不同 → 改名恢复，绝不覆盖（覆盖等于用旧版顶掉新版）。 */
+                        var hSrc = await hashAt(rr.handle, fromRel);
+                        var hDst = await hashAt(rr.handle, fsRel);
+                        if (hSrc && hSrc === hDst) {
+                            await removeAt(fromRel);
+                            deduped.push(rel);
+                        } else {
+                            var altFs = '';
+                            for (var k = 1; k <= 99; k++) {
+                                var cand = root.VRPath.restoreAltName(fsRel, k);
+                                if (!(await exists(rr.handle, cand))) { altFs = cand; break; }
+                            }
+                            if (!altFs) {
+                                throw makeErr('LIB_E_EXISTS', '原位置同名且改名 99 次仍冲突');
+                            }
+                            await moveFile(rr.handle, fromRel, altFs, { resolveRoot: resolveRoot });
+                            movedRel = rr.prefix ? (rr.prefix + '/' + altFs) : altFs;
+                            renamed.push({ from: rel, to: movedRel });
+                        }
+                    } else {
+                        await moveFile(rr.handle, fromRel, fsRel, { resolveRoot: resolveRoot });
                     }
-                    await moveFile(rr.handle, TRASH + '/' + t.batch + '/' + fsRel, fsRel,
-                        { resolveRoot: resolveRoot });
                 }
 
                 var item = row || t.item || { relPath: rel, fileName: baseName(rel) };
                 var next = Object.assign({}, item, {
-                    relPath: rel,
+                    relPath: movedRel,
+                    fileName: baseName(movedRel),
                     state: 'ok',
                     trashBatch: '',
                     trashedAt: 0,
                     trashNoFile: 0
                 });
-                if (row) {
+                if (movedRel !== rel) {
+                    /* 改名恢复：主键就是 relPath，旧行不删会留下指向空路径的死卡 */
+                    var oldAbs = String(next.absPath || '');
+                    var oldName = baseName(rel);
+                    if (oldAbs && oldName && oldAbs.slice(-oldName.length) === oldName) {
+                        next.absPath = oldAbs.slice(0, oldAbs.length - oldName.length) + baseName(movedRel);
+                    }
+                    if (dbReady()) {
+                        await root.VRDB.deleteFiles([rel]);
+                        await root.VRDB.putFiles([next]);
+                        await dropThumbs([rel]);
+                    }
+                } else if (row) {
                     await patchRow(rel, { state: 'ok', trashBatch: '', trashedAt: 0, trashNoFile: 0 });
                 } else if (dbReady()) {
                     await root.VRDB.putFiles([next]);
                 }
                 restored.push(next);
+                touchedRel.push(rel);
             } catch (e) {
                 failed.push(failInfo(rel, e));
             }
@@ -794,12 +852,14 @@
                     var man = await readJson(rr.handle, TRASH + '/' + batch + '/' + MANIFEST);
                     if (man && Array.isArray(man.items)) {
                         var doneSet = {};
-                        restored.forEach(function (x) { doneSet[x.relPath] = 1; });
+                        /* 用原始键（改名恢复后 relPath 已变，拿新路径对不上清单条目） */
+                        touchedRel.forEach(function (r0) { doneSet[r0] = 1; });
                         var left = man.items.filter(function (it) { return !doneSet[it.relPath]; });
-                        if (left.length) {
-                            man.items = left;
-                            await writeManifest(rr.handle, TRASH + '/' + batch, man);
-                        }
+                        /* 全部恢复完也要写回空清单（2026-11-12）：原来只在 left 非空时写，
+                         * 全恢复后清单仍列着已搬回原位的文件 → dropBatchIfEmpty 认为批次还有货，
+                         * 目录与清单永久残留，下次「按清单恢复」还会指到已存在的文件（ENOENT）。 */
+                        man.items = left;
+                        await writeManifest(rr.handle, TRASH + '/' + batch, man);
                     }
                 }
             } catch (e3) { /* 清单更新失败不阻断恢复 */ }
@@ -809,10 +869,21 @@
         await writeOps(rr.handle, 'restore', {
             batch: batch,
             restored: restored.map(function (it) { return it.relPath; }),
+            renamed: renamed,
+            deduped: deduped,
             failed: failed
         });
 
-        return { restored: restored.length, failed: failed };
+        /* renamed / deduped 是 2026-11-12 新增的如实口径：
+         *   deduped = 原位已有同一份内容，删掉回收站副本（用户视角「已回来」）
+         *   renamed = 原位被别的内容占着，改名救回（用户视角「回来了，但改了名」）
+         * 老调用方只读 restored / failed，不受影响。 */
+        return {
+            restored: restored.length,
+            failed: failed,
+            renamed: renamed,
+            deduped: deduped
+        };
     }
 
     /* ---------------- 彻底删除 ---------------- */
