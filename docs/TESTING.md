@@ -488,6 +488,34 @@ python tools/health-check.py --full # 9 项全绿
 >    表现为「扩展所有界面全灭、SW 探测失败」。改 `lib-image-util.js` 后务必跑一次单测。
 > 4. 侧边栏缩略图在扩展页里加载外部图：先 `referrerPolicy=no-referrer`，失败再退回默认。
 
+### 4.16 「抓图」弹窗：门槛与通道（2026-11-12，B-79）
+
+改 `js/popup-videorod.js`（`collectImagesInPage`）、`js/lib-image-util.js`
+（`upgradeSinaimg` / `pickUrl` / `fillSizes`）后必须跑：
+
+```bash
+node tools/test-grab-scan.js        # 10（离线复刻「显示小原图大」页面）
+node tools/test-image-util.js       # 127
+python tools/health-check.py --full # 9 项全绿
+python tools/e2e-all.py --only e2e-grab   # 7 条断言（隔离实例，需配额）
+```
+
+> 五条口径：
+> 1. **采集门槛判「原始像素 ≥ 100」，不判显示尺寸**。显示尺寸由站点 CSS 决定 ——
+>    信息流把 1200px 原图缩到 320px 展示，用显示尺寸当门槛等于「按站点排版决定用户能不能存图」。
+>    显示尺寸只用来挡图标（`PANEL_MIN_SHOW` 48）。这条踩过一次，代价是全功能不可用。
+> 2. **抓图必须复用 `VRImageUtil`**，不许再写第二份扫描器。两份实现必然漂移，
+>    漂移的表现就是「侧栏 53 张、弹窗 2 张」，用户只会说这功能坏了。
+> 3. **原图候选要排在首位**。后台 `vrImgResolve` 按数组顺序 fetch，第一个返回 `image/*` 的定案 ——
+>    微博 `/large/` 排在 `/mw690/` 后面等于永远拿不到原图。
+> 4. **裂图不许进列表**：预载明确失败的地址标 `fail` 并剔除（超时未探的保留，不能因为慢判死）。
+> 5. 占位型懒加载（`src` 是 1×1 / blank.gif）要回退 `data-src`，且**尺寸记未知**，
+>    否则拿占位图的 1×1 去判门槛，真图会被当图标丢掉。
+
+> **反证记录（TEST-PLAN §六④）**：把 `PANEL_MIN_SHOW` 临时改回 600 → `test-grab-scan` 从
+> 10/10 变 4/10（收到张数 7→1，正是苏哥截图的样子）；关掉 `upgradeSinaimg` 的候选前置 →
+> 2 条红（`test-image-util` 也红 1 条）。确认断言真的会红，不是永远绿的摆设。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

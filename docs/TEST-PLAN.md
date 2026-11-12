@@ -11,7 +11,7 @@
 
 | 层 | 现有资产 | 状态 |
 |---|---|---|
-| 纯逻辑单测 | 31 个脚本 / **775 条断言**（命名、路径、保存、选源、去重、图片、实况、站名、YT、微博…） | 全绿，最慢 11s |
+| 纯逻辑单测 | 32 个脚本 / **1300+ 条断言**（命名、路径、保存、选源、去重、图片、抓图、实况、站名、YT、微博…） | 全绿，最慢 11s |
 | 界面套件（CDP 驱动扩展页） | 9 个（SW 存活、去重、舞台皮肤、换皮、归档路径、库页 60 按钮、popup、页面浮标、preview） | 有 2 个长期红（并行会话在改） |
 | 真实站点脚本 | 20+ 个（小红书/B站/抖音/微博/YouTube），需实例 + 登录态 | 靠人临时挑着跑 |
 | 打包校验 | `qa-pack-verify.py`、`build-dist.js`、`pack-dist.js` | 有，但不在流程里强制 |
@@ -78,9 +78,9 @@ python tools/health-check.py --live     # 全量 + 真实站点（需登录态�
 |---|---|---|---|
 | 1 | 源码语法 | 130 个 js `node --check` | 语法错、半截改动 |
 | 2 | manifest | JSON 可解析、name/version/MV 齐 | 装不上 |
-| 3 | 断言契约 | 32 个测试脚本引用的 DOM id 是否真实存在 | **测试腐烂**（本次新增） |
-| 4 | 单元测试 | 冒烟 8 个 / 全量 31 个（775 条断言） | 逻辑回归 |
-| 5 | 界面套件 | 冒烟 2 个 / 全量 9 个（隔离实例） | 界面/消息/流程回归 |
+| 3 | 断言契约 | 35 个测试脚本引用的 DOM id 是否真实存在 | **测试腐烂**（本次新增） |
+| 4 | 单元测试 | 冒烟 9 个 / 全量 32 个（1300+ 条断言） | 逻辑回归 |
+| 5 | 界面套件 | 冒烟 2 个 / 全量 10 个（隔离实例） | 界面/消息/流程回归 |
 | 附 | 发布物 | dist 与 zip 是否存在 | 发出去的包是旧的 |
 
 产出：终端一句话结论（**可以发 / 不能发**）+ `deliverables/test-runs/health-<时间>.md`。
@@ -90,7 +90,7 @@ python tools/health-check.py --live     # 全量 + 真实站点（需登录态�
 | 场景 | 必须过 | 不过怎么办 |
 |---|---|---|
 | 改代码（每次） | 冒烟 6 项 | 修到绿再继续，不许「先提交后面再看」 |
-| 发版 / 打包 | 全量（含 9 套件） | 红即停；确属他人未完成 → 走 baseline 登记 |
+| 发版 / 打包 | 全量（含 10 套件） | 红即停；确属他人未完成 → 走 baseline 登记 |
 | 新站点适配 / 大改 | 全量 + L3 该类站点真机 + 手工清单 | 同上 |
 
 **已知失败基线**（`tools/health-baseline.json`）：
@@ -120,6 +120,7 @@ python tools/health-check.py --full --update-baseline
 | 视频取址·YouTube | 选项解析、队列 | `test-yt-options` / `test-yt-queue` | A（逻辑层） |
 | 流媒体 | HLS/DASH 分片合并、range 切分 | `test-range-split` / `test-m11-*` | A |
 | 图片嗅探 | 侧栏扫描、尺寸档位、未知档、批量 | `test-image-*` / `test-sidebar-tiers` / `test-tier-unknown` | A |
+| **抓图（popup 本页图片）** | 采集门槛、三通道、原图升级、裂图剔除、占位回退 | `test-grab-scan` / `e2e-grab` / `test-image-util` | A（2026-11-12 补，见 TESTING §4.16） |
 | 图片去重 | 归一键、内容 sha、跨平台留一份、引用卡 | `dedup-test` / `test-dedupe-*` | A（55 条） |
 | 图片缓存/缩略图 | 队列、并发、失败重试 | `test-thumbs-queue` | A |
 | 资源库·列表/树/筛选 | 计数、类型页签、收藏、标签 | `e2e-buttons` / `stage-rewrite` | A（2 套件，一个有已知失败） |
@@ -150,7 +151,8 @@ python tools/health-check.py --full --update-baseline
 1. **装/重载**：`edge://extensions` 重新加载，无红色错误，图标在
 2. **B 站**：单P 一键下载 → 有进度 → 落 `B站/<作者>/`；再点一次 → 提示「已下过」；换清晰度 → 能下
 3. **小红书**：图文页侧栏 → 只勾实况 → 落 `jpg + _live.mp4` 两件套
-4. **图片**：任意图站 → 侧栏切「大 ≥1200」→ 不混入「尺寸未知」；点「未知」→ 只剩未知
+4. **图片**：任意图站 → 侧栏切「大 ≥1200」→ 不混入「尺寸未知」；点「未知」→ 只剩未知；
+   微博/图墙页点 popup「抓图」→ 张数与侧栏接近、每行有真实尺寸、无裂图
 5. **资源库**：左上角路径卡 → 弹文件夹选择器 → 取消无副作用；右侧箭头 → 进设置
 6. **资源库**：详情页预览图片/视频各一次；删除 → 回收站 → 恢复
 7. **换皮**：popup / 库页 / 设置 / 安装页 四屏颜色一致（舞台金、暖白字），无白底残留
@@ -209,6 +211,8 @@ python tools/health-check.py --full --update-baseline
 | `tools/live-sites.py` + `live-sites.json` | 真实站点固定清单：本地 HLS/图片夹具 + B站必过，小红书/抖音/微博只探活 |
 | `tools/visual-baseline.py` + `deliverables/visual-baseline/` | 三屏视觉基线（popup / options / install），像素比对 + 红色 diff 图 |
 | `tools/test-legacy-path.js` | 历史作者 ID 污染的路径迁移纯逻辑（26 条） |
+| `tools/test-grab-scan.js` | 抓图口径离线验证（10 条）：显示小原图大 / 占位回退 / 原图升级 / 老门槛对照 |
+| `tools/e2e-grab.py` | 抓图弹窗界面套件（7 条断言）：本地夹具复刻翻车形态，接入 `e2e-all` |
 
 ### 视觉基线怎么用
 
