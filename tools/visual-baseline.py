@@ -224,6 +224,14 @@ def main():
         if ok:
             print('PASS %-9s %s' % (name, msg))
             ok_n += 1
+            # 过期的 diff 图会误导：屏幕上已经一致了，目录里还躺着一张红图，
+            # 下次排障的人会以为还在走样。通过即删（2026-11-12）。
+            try:
+                stale = os.path.join(DIFF_DIR, 'visual-diff-%s.png' % name)
+                if os.path.exists(stale):
+                    os.remove(stale)
+            except Exception:
+                pass
         else:
             print('FAIL %-9s %s%s' % (name, msg, ('｜diff: ' + os.path.relpath(diff_path, ROOT)) if diff_path else ''))
             fail_n += 1
