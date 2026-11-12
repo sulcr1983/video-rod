@@ -23,8 +23,9 @@ python tools/health-check.py --live    # 全量 + 真实站点（需登录态）
 ```
 
 它依次跑：源码语法 → manifest → **测试断言契约** → 单元测试（冒烟 8 / 全量 31 个）
-→ 界面套件（冒烟 2 / 全量 9 个，隔离实例）→ 发布物，最后给一句「可以发 / 不能发」，
-并把明细写进 `deliverables/test-runs/health-<时间>.md`。
+→ 界面套件（冒烟 2 / 全量 9 个，隔离实例）→ **视觉回归**（全量，3 屏像素比对）
+→ **真实站点清单**（全量只跑本地夹具；`--live` 连同真站探活）→ 发布物，
+最后给一句「可以发 / 不能发」，并把明细写进 `deliverables/test-runs/health-<时间>.md`。
 
 - **已知失败基线**：`tools/health-baseline.json` 登记的失败不算回归（当前 2 项：`stage-rewrite`、`skin`，
   是并行会话在改的库页详情与安装页）。**新**失败才拦发布；
@@ -32,6 +33,11 @@ python tools/health-check.py --live    # 全量 + 真实站点（需登录态）
 - **断言契约检查**：`tools/check-assert-dom.py` 会把测试脚本里 `getElementById('x')` / `$('#x')`
   与源码里真实存在的 id 对账 —— 页面上删了元素而测试还在断言它，会当场红。
   （2026-11-12 靠它抓出 `#setdrawer` / `#sdDirVal` 已删两周没人发现。）
+- **视觉回归**：`tools/visual-baseline.py`（popup / options / install 三屏）。
+  差异 >0.15% 判红并输出红色 diff 图到 `deliverables/test-runs/visual-diff-<屏>.png`。
+  改完样式且确认是想要的效果后，跑 `--update` 刷新基线。
+- **真实站点清单**：`tools/live-sites.json` + `tools/live-sites.py`。
+  `required:true` 的（本地 HLS/图片夹具、B站）失败会拦；小红书/抖音/微博是探活，失败只 WARN。
 - 完整方案与功能矩阵：`docs/TEST-PLAN.md`。
 
 ## 1. 测试策略

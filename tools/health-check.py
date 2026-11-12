@@ -167,7 +167,7 @@ def load_baseline():
 
 
 def s_suites(full, live):
-    cmd = [sys.executable, 'tools/e2e-all.py', '--isolated',
+    cmd = [sys.executable, 'tools/e2e-all.py', '--isolated', '--keep-isolated',
            '--reason', '健康体检（%s）' % ('全量' if full else '冒烟')]
     if full:
         if live:
@@ -195,6 +195,65 @@ def s_suites(full, live):
         detail += '｜已知失败 %d（见 baseline）' % len(known_hit)
     return (ok, detail, {'tail': out[-2500:], 'fails': fails,
                          'fresh': fresh, 'known': known_hit})
+
+
+ISO_PORT = 9490     # e2e-all --isolated 的实例端口，视觉/真实站点复用它
+
+
+def _instance_alive(port):
+    import urllib.request
+    try:
+        urllib.request.urlopen('http://127.0.0.1:%d/json/version' % port, timeout=2).read()
+        return True
+    except Exception:
+        return False
+
+
+def s_visual():
+    """视觉回归：3 屏截图与基线逐像素比对（popup / options / install）。"""
+    if not _instance_alive(ISO_PORT):
+        return (True, '跳过：隔离实例不在线（先跑界面套件即可起实例）', {})
+    r = run([sys.executable, 'tools/visual-baseline.py', '--port', str(ISO_PORT)], timeout=300)
+    ok = r['rc'] == 0
+    m = re.search(r'(\d+) passed, (\d+) failed', r['out'])
+    detail = '%s 屏一致' % m.group(1) if m else ('比对通过' if ok else '有屏走样')
+    if m and int(m.group(2)):
+        detail += '，%s 屏走样' % m.group(2)
+    if '没有基线' in r['out']:
+        return (True, '跳过：还没生成基线（python tools/visual-baseline.py --update）', {})
+    return (ok, detail, {'tail': r['out'][-1500:]})
+
+
+def s_live(full_only):
+    """真实站点清单：full 只跑本地夹具（稳定），--live 才跑真站。"""
+    if not _instance_alive(ISO_PORT):
+        return (True, '跳过：隔离实例不在线', {})
+    cmd = [sys.executable, 'tools/live-sites.py', '--port', str(ISO_PORT)]
+    if not full_only:
+        cmd += ['--only', 'local']
+    r = run(cmd, timeout=600)
+    ok = r['rc'] == 0
+    m = re.search(r'(\d+) passed, (\d+) failed', r['out'])
+    if m:
+        detail = '%s 个通过' % m.group(1)
+        if int(m.group(2)):
+            detail += '，%s 个拦截' % m.group(2)
+    else:
+        detail = '通过' if ok else '有站点失败'
+    if 'WARN（只告警不拦）' in r['out']:
+        detail += '｜另有探活告警'
+    return (ok, detail, {'tail': r['out'][-2000:]})
+
+
+def close_instance(port):
+    """跑完精确回收自己起的隔离实例（CDP Browser.close，不用 taskkill）。"""
+    try:
+        if os.path.join(ROOT, 'tools') not in sys.path:
+            sys.path.insert(0, os.path.join(ROOT, 'tools'))
+        from cdp_client import Cdp
+        Cdp('http://127.0.0.1:%d' % port).send('Browser.close')
+    except Exception:
+        pass
 
 
 def s_artifact(full):
@@ -234,10 +293,16 @@ def main():
     results.append(step('2/5 manifest 合法性', s_manifest))
     results.append(step('3/5 测试断言契约（防测试腐烂）', s_dom_contract))
     results.append(step('4/5 单元测试（纯逻辑）', lambda: s_units(a.full)))
-    results.append(step('5/5 界面套件（隔离实例）', lambda: s_suites(a.full, a.live)))
+    results.append(step('5/7 界面套件（隔离实例）', lambda: s_suites(a.full, a.live)))
+    if a.full:
+        results.append(step('6/7 视觉回归（3 屏像素比对）', s_visual))
+        results.append(step('7/7 真实站点清单（本地夹具）', lambda: s_live(False)))
+    if a.live:
+        results.append(step('7/7 真实站点清单（含真站）', lambda: s_live(True)))
     results.append(step('附 发布物就绪', lambda: s_artifact(a.full)))
 
     total_dur = time.time() - t0
+    close_instance(ISO_PORT)
 
     if a.update_baseline:
         suite_res = next((r for r in results if '界面套件' in r['name']), None)

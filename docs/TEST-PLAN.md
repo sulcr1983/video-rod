@@ -177,8 +177,8 @@ python tools/health-check.py --full --update-baseline
 
 | 优先级 | 缺口 | 影响 | 建议做法 | 预估 |
 |---|---|---|---|---|
-| P0 | 真实站点无固定清单 | 站点改版无人知 | 固定 5 条 URL（B站/小红书/抖音/微博/通用HLS）写进 `health-live.json`，`--live` 依次跑 | 半天 |
-| P0 | 视觉回归无基线 | 换皮/布局只能人看 | 4 屏截图 + 像素阈值比对（先用现有截图当基线） | 1 天 |
+| ~~P0~~ | ~~真实站点无固定清单~~ | — | **✅ 2026-11-12 完成**：`tools/live-sites.json` + `tools/live-sites.py`（required 拦、optional 只告警） | 已完成 |
+| ~~P0~~ | ~~视觉回归无基线~~ | — | **✅ 2026-11-12 完成**：`tools/visual-baseline.py`（popup/options/install 三屏，差异 >0.15% 判红并出 diff 图） | 已完成 |
 | P1 | 详情/预览断言随并行会话漂移 | 长期红 | 等并行会话收口后重写该段断言 | — |
 | P1 | 性能无基准 | 万条库可能卡死 | 造 1 万条索引 + 500 图，量首屏与滚动 | 1 天 |
 | P2 | 无 CI | 全靠人记得跑 | 本地 git hook：commit 前跑冒烟（40s） | 半天 |
@@ -206,3 +206,26 @@ python tools/health-check.py --full --update-baseline
 | `tools/e2e-all.py` | 套件级重试（启动失败才重试）+ 套件间回收标签页 |
 | `tools/e2e-buttons.py` | 护栏判据修正（`_selftest`、隔离下载目录不算真实数据） |
 | `tools/test-bili-source.py` | B 站 12 条真机回归（上一轮 B-72 补） |
+| `tools/live-sites.py` + `live-sites.json` | 真实站点固定清单：本地 HLS/图片夹具 + B站必过，小红书/抖音/微博只探活 |
+| `tools/visual-baseline.py` + `deliverables/visual-baseline/` | 三屏视觉基线（popup / options / install），像素比对 + 红色 diff 图 |
+
+### 视觉基线怎么用
+
+```bash
+python tools/visual-baseline.py --update      # 改了样式、确认是"想要的改动"之后刷新基线
+python tools/visual-baseline.py               # 平时比对（health-check --full 会自动跑）
+```
+
+> 三屏都做了「起跑线固定」：popup 的一次性引导浮层被钉成已读、options 的动态下载路径文案被钉成固定串。
+> 不钉的话会得到 0.2%~24% 的**假差异**（都实测踩过）。
+> 资源库主界面由数据驱动（树计数/卡片数每天变），不做像素基线，结构与交互交给 stage-rewrite / e2e-buttons。
+
+### 真实站点清单怎么用
+
+```bash
+python tools/live-sites.py --only local   # 无网络也能跑（本地夹具）
+python tools/live-sites.py                # 全部（含 B站 + 3 个真站探活）
+```
+
+> `required: true`（本地夹具、B站公开视频）失败会拦；`required: false`（小红书/抖音/微博探活）
+> 失败只记 WARN —— 登录态、风控、站点改版都会让它红，不该因此挡住发版。

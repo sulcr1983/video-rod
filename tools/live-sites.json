@@ -1,0 +1,59 @@
+{
+ "_note": "真实站点固定回归清单（2026-11-12，B-74）。required=true 的失败会拦发布；optional 的失败只记为 WARN —— 登录态、风控、站点改版都会让它红，不该因此挡住发版。local-* 用仓库自带测试站，永远可跑。",
+ "sites": [
+  {
+   "name": "local-hls",
+   "kind": "sniff",
+   "required": true,
+   "url": "{local}/hls.html",
+   "wait": 5,
+   "expect": { "minSniff": 2, "urlHas": ".m3u8" },
+   "why": "本地 HLS 夹具：页面主动请求两个 master playlist，扩展必须嗅到 ≥2 条"
+  },
+  {
+   "name": "local-image",
+   "kind": "image",
+   "required": true,
+   "url": "{local}/images.html",
+   "wait": 3,
+   "expect": { "minCells": 5 },
+   "why": "本地图片页：侧栏扫描必须能列出 ≥5 张"
+  },
+  {
+   "name": "bilibili",
+   "kind": "video",
+   "required": true,
+   "url": "https://www.bilibili.com/video/BV1GJ411x7h7",
+   "wait": 9,
+   "expect": { "site": "bili", "minOptions": 1, "workIdPrefix": "BV" },
+   "why": "B站单P：必须给出 durl/dash 选项且带 bvid 作品键（B-72 的回归锚点）"
+  },
+  {
+   "name": "xiaohongshu",
+   "kind": "page",
+   "required": false,
+   "url": "https://www.xiaohongshu.com/explore",
+   "wait": 8,
+   "expect": { "pageOk": true },
+   "why": "小红书首页探活。具体笔记需要 xsec_token，会过期，所以只验证「打开后扩展不崩」"
+  },
+  {
+   "name": "douyin",
+   "kind": "page",
+   "required": false,
+   "url": "https://www.douyin.com/",
+   "wait": 8,
+   "expect": { "pageOk": true },
+   "why": "抖音首页探活（作品 URL 需要具体 aweme_id，会变）"
+  },
+  {
+   "name": "weibo",
+   "kind": "page",
+   "required": false,
+   "url": "https://weibo.com/",
+   "wait": 8,
+   "expect": { "pageOk": true },
+   "why": "微博首页探活（未登录会跳登录页，只验证不崩）"
+  }
+ ]
+}
