@@ -359,6 +359,98 @@
         host.appendChild(btn);
     }
 
+    /* ---------- feed 列表页图文绑定（B-46 视频版） ----------
+     * 浮标本来就贴在 activeVideo 上，点下载那一刻从这条 video 向上找所属内容卡片，
+     * 现场抽作者/标题，随下载消息带去后台。不再依赖全页单点全局 __vrFeedMeta
+     * （那玩意谁最后点记谁，列表页必串台）。
+     * 通用启发式：不判站点，找「含独立文字块 + 作者署名」的最近祖先；
+     * 微博 feed 用既有精确选择器（与 __vrFeedMeta 捕获同款）命中即稳。
+     * 暴露到 window 供 CDP 测试直接调用。 */
+    function vrCardText(el) {
+        if (!el) { return ''; }
+        return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    function vrFindAuthorLink(card) {
+        const sel = 'header a[href*="/profile/"], header a[href*="/u/"], ' +
+            'header a[href*="/user/"], a[href*="/profile/"], ' +
+            'a[href*="/u/"], a[href*="/user/"]';
+        const links = card.querySelectorAll(sel);
+        for (let i = 0; i < links.length; i++) {
+            const txt = vrCardText(links[i]).replace(/^@/, '').trim();
+            if (txt) { return links[i]; }
+        }
+        return null;
+    }
+    function vrLooksLikeCard(el) {
+        // 卡片需含一段足够长的独立文字（>=15 字）才认它是内容卡
+        return vrCardText(el).length >= 15;
+    }
+    function vrBestTextEl(card) {
+        const cand = card.querySelectorAll(
+            '.weibo-text, .txt, [class*="text"], [class*="content"], ' +
+            '[class*="desc"], [class*="caption"], [class*="title"], ' +
+            '[class*="summary"], [class*="body"], [class*="detail"], article, p, span');
+        let best = null, bestLen = 0;
+        for (let i = 0; i < cand.length; i++) {
+            const t = vrCardText(cand[i]);
+            if (t.length < 8) { continue; }
+            if (t.length > bestLen) { bestLen = t.length; best = cand[i]; }
+        }
+        return best || card;
+    }
+    function vrExtractCardMeta(media) {
+        try {
+            if (!media || !media.parentElement) { return null; }
+            // 微博 feed：精确选择器，命中即稳
+            if (/(^|\.)(weibo\.com|weibo\.cn)$/i.test(location.hostname)) {
+                const wcard = media.closest('.card-video, .wb-item, article, [class*="card-wrap"]');
+                if (wcard) {
+                    const wtext = wcard.querySelector('article.weibo-main .weibo-text') ||
+                        wcard.querySelector('.weibo-text') ||
+                        wcard.querySelector('.txt') ||
+                        wcard.querySelector('[class*="text"]');
+                    const wauthor = vrFindAuthorLink(wcard);
+                    let wid = '';
+                    if (wauthor) {
+                        const mm = (wauthor.getAttribute('href') || '').match(/\/(?:profile|u)\/(\d+)/);
+                        if (mm) { wid = mm[1]; }
+                    }
+                    const wtitle = wtext ? vrCardText(wtext).replace(/^@[^:：]+[:：]\s*/, '').slice(0, 200) : '';
+                    if (wauthor || wtitle) {
+                        return {
+                            author: wauthor ? vrCardText(wauthor).replace(/^@/, '').replace(/\s+/g, ' ').trim() : '',
+                            authorId: wid, title: wtitle, post: wtitle
+                        };
+                    }
+                }
+            }
+            // 通用：向上找最近的内容卡
+            let el = media.parentElement, card = null;
+            for (let i = 0; i < 12 && el; i++, el = el.parentElement) {
+                if (vrLooksLikeCard(el)) { card = el; break; }
+            }
+            if (!card) {
+                card = media.closest('article, [class*="card"], [class*="feed"], [class*="post"], ' +
+                    '[class*="item"], [class*="note"]') || media.parentElement;
+            }
+            if (!card) { return null; }
+            const textEl = vrBestTextEl(card);
+            const title = vrCardText(textEl).replace(/^@[^:：]+[:：]\s*/, '').slice(0, 200);
+            const authorLink = vrFindAuthorLink(card);
+            let authorId = '';
+            if (authorLink) {
+                const m = (authorLink.getAttribute('href') || '').match(/\/(?:profile|u|user|n)\/([^\/\?]+)/);
+                if (m) { authorId = m[1]; }
+            }
+            const author = authorLink ? vrCardText(authorLink).replace(/^@/, '').replace(/\s+/g, ' ').trim() : '';
+            if (author || title) {
+                return { author: author, authorId: authorId, title: title, post: title };
+            }
+            return null;
+        } catch (e) { return null; }
+    }
+    window.__vrExtractCardMeta = vrExtractCardMeta;
+
     /* ---------- 下载 ---------- */
     /* 兜底超时：后台说「已开始」后如果迟迟收不到任何进度（页面被切/后台被回收），
      * 按钮不能永远卡在 busy —— 否则用户只能刷新页面。 */
@@ -385,12 +477,16 @@
          * 先给「准备中 + 不确定」，等后台第一条真进度再换成数字。 */
         setState('busy', null, true, '准备中');
         armWatchdog();
+        // feed 列表页图文绑定：从浮标当前挂载的 video 现场抽「这条所属卡片」的文字，
+        // 随下载消息带去后台（优先级高于全页单点全局 __vrFeedMeta）。
+        const cardMeta = vrExtractCardMeta(activeVideo);
         // 扩展被更新/重新加载后，旧页面的 content script 会变成「孤儿」，
         // 此时 sendMessage 会同步抛 "Extension context invalidated."（Edge 错误面板可查）。
         // 以前这里没包 try，用户点一下按钮就是一条红色错误且永久 busy。
         try {
             chrome.runtime.sendMessage(
-                { Message: 'vrVideoDownload', optionId: optionId, wantBest: !!wantBest },
+                { Message: 'vrVideoDownload', optionId: optionId, wantBest: !!wantBest,
+                  meta: cardMeta || undefined },
                 function (res) {
                     if (chrome.runtime.lastError || !res || !res.ok) {
                         busy = false;

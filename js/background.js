@@ -3039,7 +3039,7 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         const tabId = (sender && sender.tab && sender.tab.id != null)
             ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
         const fId = (sender && sender.frameId != null) ? sender.frameId : Message.frameId;
-        vrVideoDownload(tabId, Message.optionId, Message.wantBest !== false, fId)
+        vrVideoDownload(tabId, Message.optionId, Message.wantBest !== false, fId, Message.meta || null)
             .then(function (r) {
                 // 诊断：把「有几个可选源 / 选了哪个 / 结果」记一条到 storage。
                 // 用户反馈「点了没反应」时，先看这条就知道是没源、还是下载被拒。
@@ -6254,7 +6254,7 @@ async function vrVideoOptions(tabId, frameId) {
 
 /** 页内按钮：按选项下载。完成后主动推 vrVideoProgress 给按钮更新状态。
  *  B站 的两条路都必须在页面主世界跑（CDN 要页面 Referer，ADR-029）。 */
-async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
+async function vrVideoDownload(tabId, optionId, wantBest, frameId, metaFromCaller) {
     const opt = await vrVideoOptions(tabId, frameId);
     let pick = null;
     if (wantBest || !optionId) {
@@ -6322,10 +6322,16 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId) {
     // 「downloads → 2.5s 内被拒则撤账清残件 → 页面主世界 fetch」两段式，
     // 页面 fetch 天然带 Referer/Cookie 才能过。
     let metaOverride = null;
+    // feed 列表页图文绑定（B-46 视频版）：
+    // 抖音/小红书用自家 note 级 meta（已稳，不覆盖）；
+    // 通用/微博 feed 优先用浮标在点下载瞬间现场抽到的「这条视频所属卡片」文字，
+    // 直接解决列表页张冠李戴；无则回退 vrPageMetaInTab（读 __vrFeedMeta / 页面级）。
     if (opt.site === 'douyin' || opt.site === 'xiaohongshu') {
-        /* 小红书同抖音：options 与 meta 取自同一个 note 对象，下载侧直接用，
-         * 不要再从 DOM 抠一次（SPA 会自动切下一条，抠到的是别人）。 */
         metaOverride = opt.meta || null;
+    } else if (metaFromCaller && (metaFromCaller.title || metaFromCaller.author)) {
+        metaOverride = metaFromCaller;
+    }
+    if (opt.site === 'douyin' || opt.site === 'xiaohongshu') {
         /* 标签页可能在探测/选源期间被用户关掉：这里必须兜住。
          * 另外 5 处 tabs.get（3970/4051/4116/4127/4164）都判了 try，
          * 唯独这一处是裸 await —— 关页后整次下载会以未捕获 Promise 拒绝结束
