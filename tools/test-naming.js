@@ -379,6 +379,22 @@ console.log('\n===== N9 AIX 占位符（{NO001}/{PAGETITLE}/{DATE}） =====');
     eq(Naming.extractPageInfo(mock('正常内容标题'), 'https://example.com/p/1').title,
         '正常内容标题', '正常标题不受影响');
 
+    /* 2026-11-13 苏哥报「微博下载的文件名全是 @地球知识局 的个人主页」。
+     * 在用户主页点视频下载时 document.title 就是「<昵称> 的个人主页」，
+     * 它既不是访客墙也不是内容标题，但同样不是作品名 —— 必须清空走 URL 兜底，
+     * 否则一页几十条视频全落成同一个名字。 */
+    eq(Naming.extractPageInfo(mock('@地球知识局 的个人主页'), 'https://weibo.com/u/5750600479').title,
+        '', '微博个人主页标题被清空');
+    eq(Naming.extractPageInfo(mock('某某的主页'), 'https://www.douyin.com/user/x').title,
+        '', '抖音个人主页标题被清空');
+    eq(Naming.extractPageInfo(mock('个人空间'), 'https://space.bilibili.com/1').title,
+        '', 'B站个人空间标题被清空');
+    eq(Naming.extractPageInfo(mock('张三的个人主页'), 'https://example.com/u/1').title,
+        '', '通用个人主页标题被清空');
+    /* 反例：内容标题里恰好含「主页」二字，不能被误杀 */
+    eq(Naming.extractPageInfo(mock('我的主页设计分享'), 'https://example.com/p/2').title,
+        '我的主页设计分享', '含「主页」的内容标题不被误杀');
+
     /* 标题/作者都空时不能落成 "mp4" 这种只有扩展名的文件 */
     const empty = mock('');
     const u1 = 'https://f.video.weibocdn.com/o0/video123.mp4';

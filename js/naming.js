@@ -59,7 +59,17 @@
         '^无标题$', '^未命名$', '^新建网页',
         '^(登录|登入|注册)\\s*[-_–—]',
         '^Sign in\\s*[-_–—]',
-        '^Log in\\s*[-_–—]'
+        '^Log in\\s*[-_–—]',
+        /* 2026-11-13 苏哥报「微博下载的文件名全是 @地球知识局 的个人主页」：
+         * 在用户主页（weibo.com/u/<uid>）点视频下载时，页面 document.title 就是
+         * 「<昵称> 的个人主页」，它既不是访客墙也不是内容标题，但同样不是作品名。
+         * 实测该页 og:title 为空、__vrFeedMeta 为 null，extractArticle 的
+         * doc.title 兜底就把主页名当成了视频标题 —— 一页几十条视频全同名。
+         * 同类站点（B站空间、抖音主页、小红书主页）也有这个形态，一并覆盖。 */
+        '的个人主页$',
+        '的主页$',
+        '^(Bilibili\\s*)?个人空间$',
+        '^\\S+\\s*[-_–—]\\s*(YouTube|Bilibili|bilibili)$'
     ].join('|'), 'i');
 
     function isUselessTitle(title) {
@@ -360,9 +370,18 @@
         // 作者 ID 统一成 @handle 形式（推特天然 handle；小红书/B站为数字 ID）
         const author = (info.author || '').trim();
         const authorId = (info.authorId || '').trim();
+        /* 统一兜底过滤（2026-11-13）：isUselessTitle 原来只在 extractArticle 里调，
+         * 抖音/B站/小红书这些**专用规则**直接返回自己的 title，绕过了过滤。
+         * 用户报「微博下载全是 @地球知识局 的个人主页」时，同类主页标题在
+         * 抖音「某某的主页」、B站「个人空间」也会出现 —— 单测当场抓到两条失败。
+         * 放在出口统一做，避免每加一个站点规则就漏一次。 */
+        let title = (info.title || '').trim();
+        let post = (info.post || '').trim();
+        if (isUselessTitle(title)) { title = ''; }
+        if (isUselessTitle(post)) { post = ''; }
         return {
-            title: (info.title || '').trim(),
-            post: (info.post || '').trim(),
+            title,
+            post,
             author,
             authorId,
             authorFull: buildAuthorFull(author, authorId),
