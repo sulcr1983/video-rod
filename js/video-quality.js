@@ -251,6 +251,16 @@
         try {
             var u = new URL(s);
             var host = u.hostname.toLowerCase();
+            /* 微博特别处理：同一个视频的各码率放在不同文件名下
+             * （…/o0/xxx…030.mp4?label=mp4_720p 与 …/u0/yyy…080.mp4?label=mp4_2160p），
+             * 只按 pathname 归族会把 4K/2K 当成「另一个视频」——
+             * 结果是「正在播放」锁的是 720p 那一族，最高档永远选不到
+             * （2026-11-12 苏哥报「微博最高只给 1080」，这是第二层原因）。
+             * 微博 URL 里的 media_id 才是作品身份，按它归族。 */
+            if (/^(.*\.)?f\.video\.weibocdn\.com$/i.test(host)) {
+                var mid = u.searchParams.get('media_id');
+                if (mid) { return 'weibocdn.com/video#media_id=' + mid; }
+            }
             var mapped = '';
             for (var i = 0; i < CDN_FAMILY.length; i++) {
                 if (CDN_FAMILY[i][0].test(host)) { mapped = CDN_FAMILY[i][1]; break; }
@@ -418,25 +428,121 @@
     }
 
     /**
+     * 从微博 detail 接口的返回体里列出**全部**码率档位（2026-11-12 苏哥报「微博最高只给 1080」）。
+     *
+     * 为什么以前拿不到 4K：老实现只按固定字段名挑一条
+     * （mp4_1080p_url > mp4_hd_url > stream_url_hd …），而微博的 4K/2K 根本
+     * 不在这几个字段里，它在 `media_info.playback_list` 数组里：
+     *   { meta: { label:'mp4_2160p', quality_index:2160, quality_label:'4K',
+     *             quality_desc:'超清', type:1 },
+     *     play_info: { url, width:3840, height:2160, size, bitrate, video_codecs } }
+     * 只认固定字段 = 永远封顶 1080p。改成先读 playback_list（全档位，含 4K/2K），
+     * 没有这个字段的老视频再退回固定字段。
+     *
+     * 返回按「高度降序 → 码率降序」排好，调用方拿 [0] 就是最高清，
+     * 其余档位一并交给面板，用户想省流量可以自己挑低清。
+     *
+     * @param {object} detail ajax/statuses/show 的返回
+     * @returns {Array<{url:string,height:number,width:number,size:number,bitrate:number,quality:string,codec:string}>}
+     */
+    function weiboVariants(detail) {
+        var d = detail || {};
+        var pi = (d.page_info && d.page_info.media_info) || d.media_info || null;
+        if (!pi) { return []; }
+
+        var out = [];
+        var seen = {};
+
+        var list = Array.isArray(pi.playback_list) ? pi.playback_list : [];
+        for (var i = 0; i < list.length; i++) {
+            var it = list[i] || {};
+            var info = it.play_info || {};
+            var meta = it.meta || {};
+            /* type=3 是封面/拖动预览图（实测 scrubber_hd 就是 image/jpeg），
+             * 混进来会多出一个「假档位」。 */
+            if (Number(meta.type) === 3) { continue; }
+            var u = (typeof info.url === 'string') ? info.url : '';
+            if (!/^https?:/i.test(u) || seen[u]) { continue; }
+            seen[u] = 1;
+            /* 分辨率一律取**短边**（行业惯例：1080p 指短边 1080）。
+             * 竖屏视频 width=1080、height=1920，按 height 当档位会显示成
+             * 「1920p」，排序时还会压过真正更高的横屏档（实测踩到）。
+             * quality_index 是微博自己算好的档位（竖屏 1080p 也给 1080），优先用它。 */
+            var w = Number(info.width) || 0;
+            var hh = Number(info.height) || 0;
+            var shortSide = (w > 0 && hh > 0) ? Math.min(w, hh) : (hh || 0);
+            var h = Number(meta.quality_index) || shortSide || heightFromUrl(u) || 0;
+            out.push({
+                url: u,
+                height: h,
+                width: w,
+                size: Number(info.size) || 0,
+                bitrate: Number(info.bitrate) || 0,
+                quality: String(meta.quality_label || meta.label || ''),
+                codec: String(info.video_codecs || '')
+            });
+        }
+
+        /* 老视频/转发帖可能没有 playback_list：退回固定字段，只取一条。
+         *
+         * 兜底分支**不排序**：字段本身就有明确优先级（mp4_1080p_url 就是 1080p），
+         * 而靠 URL 猜高度会猜错 —— `hd.mp4` 会被解析成 720p，反把
+         * `1080.mp4`（猜不出高度=0）挤到后面，结果「有 1080p 字段却给了 hd」
+         * （2026-11-12 单测 E11 当场抓到）。顺序即语义，别自作聪明。 */
+        if (!out.length) {
+            var keys = ['mp4_1080p_url', 'mp4_hd_url', 'stream_url_hd', 'hd_url',
+                'mp4_sd_url', 'stream_url', 'url'];
+            for (var k = 0; k < keys.length; k++) {
+                var v = pi[keys[k]];
+                if (typeof v === 'string' && /^https?:/i.test(v) && !seen[v]) {
+                    seen[v] = 1;
+                    out.push({
+                        url: v,
+                        /* 只在能确定时才填高度：hd_mp4 / stream_url_hd 按名字即 720p 档起步，
+                         * 具体高度交给下载前的真实探测，不在这里编。 */
+                        height: heightFromUrl(v) || 0,
+                        width: 0,
+                        size: Number(pi.size) || Number(pi.duration_size) || 0,
+                        bitrate: 0,
+                        quality: '',
+                        codec: ''
+                    });
+                }
+            }
+            return out;
+        }
+
+        out.sort(function (a, b) {
+            if ((b.height || 0) !== (a.height || 0)) { return (b.height || 0) - (a.height || 0); }
+            return (b.bitrate || 0) - (a.bitrate || 0);
+        });
+
+        /* 同一档位只留一条：playback_list 里偶尔会给同分辨率的多条（不同编码/不同节点），
+         * 全列出来用户会看到两个「1080p」，以为是两个不同的视频。
+         * 排序已按「高度降序 → 码率降序」，所以每组第一条就是该档最好的那条。 */
+        var seenH = {};
+        var dedup = [];
+        for (var j = 0; j < out.length; j++) {
+            var key = out[j].height ? ('h' + out[j].height) : ('u' + out[j].url);
+            if (seenH[key]) { continue; }
+            seenH[key] = 1;
+            dedup.push(out[j]);
+        }
+        return dedup;
+    }
+
+    /**
      * 从微博 detail 接口的返回体里挑出最高清的视频直链。
      *
-     * 字段优先级（抄笃笃 v0.16.14 的 I() 函数，本地实测覆盖）：
-     *   mp4_hd_url > stream_url_hd > mp4_sd_url > stream_url
-     * 再补几个新版字段（mp4_1080p_url / hd_url），有就用。
+     * 优先用 weiboVariants（playback_list，能到 4K）；没有列表时退回固定字段
+     * （抄笃笃 v0.16.14 的 I() 函数，覆盖老视频）。
      *
      * @param {object} detail ajax/statuses/show 的返回
      * @returns {string} 直链；取不到返回 ''
      */
     function pickWeiboHdUrl(detail) {
-        var d = detail || {};
-        var pi = (d.page_info && d.page_info.media_info) || d.media_info || null;
-        if (!pi) { return ''; }
-        var keys = ['mp4_1080p_url', 'mp4_hd_url', 'stream_url_hd', 'hd_url',
-            'mp4_sd_url', 'stream_url', 'url'];
-        for (var i = 0; i < keys.length; i++) {
-            var v = pi[keys[i]];
-            if (typeof v === 'string' && /^https?:/i.test(v)) { return v; }
-        }
+        var vs = weiboVariants(detail);
+        if (vs.length) { return vs[0].url; }
         return '';
     }
 
@@ -554,6 +660,7 @@
         assetKey: assetKey,
         labelOf: labelOf,
         weiboMidFromUrl: weiboMidFromUrl,
+        weiboVariants: weiboVariants,
         pickWeiboHdUrl: pickWeiboHdUrl,
         unsegmentUrl: unsegmentUrl,
         variantUrls: variantUrls,

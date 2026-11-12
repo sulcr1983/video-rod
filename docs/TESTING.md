@@ -408,6 +408,27 @@ python tools/health-check.py --full                 # 9/9 套件、8 项全绿
 >    安装页色板变量 --gold、反馈链接按 11-11 决策改本仓库），不是产品回归。
 >    断言已跟真源，`health-baseline.json` 已清空，此后任何套件红都算新失败。
 
+### 4.13 微博多档位 / 通用默认最高清 / 回收站弹窗（2026-11-12，B-76）
+
+改 `js/video-quality.js`（weiboVariants / familyKey 的微博分支 / 档位短边与去重）、
+`js/background.js`（vrWeiboHdProbe 的 id 收集与解析归属、weiboVariants 入池、vrDownloadLooksInvalid）、
+`css/library.css`（.drawer 系列）后必须跑：
+
+```bash
+node tools/test-weibo-variants.js    # 32  全档位 / 4K / 竖屏短边 / 同档去重 / 归族
+node tools/test-video-quality.js     # 100 选源与文档归属
+python tools/health-check.py --full  # 8 项全绿 + 9/9 套件
+```
+
+> 四条口径：
+> 1. `ajax/statuses/show?id=` 只认**微博正文 id**，传 media_id 会得到 `error_code:20101`；
+>    id 来源依次为 URL → query(fid/mid/id) → `[mid]` 属性 → `//weibo.com/<uid>/<id>` 链接。
+> 2. **页面主世界没有 VRVideoQuality**（它只装在后台 SW）。注入函数只负责取数，
+>    解析必须回后台做 —— 否则 `if (!Q) return null` 恒真、整条链路静默空转。
+> 3. 档位一律按**短边**（优先 `quality_index`）；同档位只保留一条。
+> 4. `vrDownloadLooksInvalid` 必须拦「落盘后缀是 html/json/xml」——
+>    downloads 记录里 mime 常为空，只看 mime 会把反爬页当成功（实测 238 字节 .htm）。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |

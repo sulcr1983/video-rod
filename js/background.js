@@ -3747,6 +3747,15 @@ function vrDownloadLooksInvalid(it) {
     const mime = String(it.mime || '').toLowerCase();
     const bytes = Number(it.fileSize) || Number(it.totalBytes) || 0;
     if (!bytes) { return true; }
+
+    /* 后缀判据（2026-11-12 补）：downloads 记录里 `mime` 经常是空的，
+     * 只看 mime 会让「服务器给了一张 238 字节的 .htm 反爬页」被当成成功 ——
+     * 微博视频就是这么落了一个 .htm 出去（实测，用户看到的是「下载了但打不开」）。
+     * 说明：下载是我们自己发起的，落盘后缀变成网页/数据文件就一定是错的。
+     * 字幕（.vtt/.srt/.ass）本来就不走这条函数，不必特判。 */
+    const fn = String(it.filename || '').toLowerCase().split('?')[0];
+    if (/\.(html?|xhtml|json|xml)$/.test(fn)) { return true; }
+
     return /^(text\/|application\/(json|xml|xhtml\+xml))/i.test(mime)
         && !/^text\/(vtt|plain|srt)/i.test(mime);     // 字幕是文本，别误杀
 }
@@ -5198,39 +5207,90 @@ function vrWithTimeout(promise, ms, label) {
  *
  * @param {number} tabId
  * @param {string} mid
- * @returns {Promise<{url:string, size:number, height:number}|null>}
+ * @returns {Promise<{variants:Array<{url:string,height:number,size:number,bitrate:number,quality:string}>}|null>}
  */
-async function vrWeiboHdProbe(tabId, mid) {
-    if (!mid) { return null; }
+async function vrWeiboHdProbe(tabId, seedIds) {
+    const seeds = (Array.isArray(seedIds) ? seedIds : [seedIds]).filter(Boolean).slice(0, 4);
     try {
         const r = await vrWithTimeout(chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'MAIN',
-            args: [String(mid)],
-            func: async function (id) {
+            args: [seeds.map(String)],
+            func: async function (extraIds) {
+                /* ⚠️ 这里跑在**页面主世界**，没有 VRVideoQuality（它只装在后台 SW 里）。
+                 * 老实现写成 `const Q = self.VRVideoQuality; if (!Q) return null;`
+                 * —— 恒真分支，补高清从来没成功过，用户看到的上限就是嗅探到那一档。
+                 * 现在这里只负责「找 id + 取 JSON」，解析交给后台。 */
+                const ids = [];
+                const push = function (v) {
+                    v = String(v == null ? '' : v).trim();
+                    if (/^\d{15,20}$/.test(v) && ids.indexOf(v) < 0) { ids.push(v); }
+                };
+
+                /* status id（微博正文 id）来源：
+                 *   · URL：/status/<id>、/detail/<id>、/<uid>/<id>
+                 *   · 卡片属性：mid / data-mid / data-status-id
+                 *   · 链接：//weibo.com/<uid>/<statusId>（tv/show 页的发布时间链接）
+                 * 注意 ajax/statuses/show 要的是**正文 id**，不是 media_id；
+                 * 传 media_id 会返回 {ok:0, error_code:20101, 该微博不存在}。 */
+                const path = String(location.pathname || '');
+                let m;
+                if ((m = path.match(/\/(?:status|detail)\/(\d{15,20})/))) { push(m[1]); }
+                if ((m = path.match(/\/\d{5,15}\/(\d{15,20})(?:[/?#]|$)/))) { push(m[1]); }
+                /* video.weibo.com/show?fid=1034:<id> —— 视频播放页的 id 在 query 里，
+                 * 不解析 query 就只剩 DOM 一条来源（2026-11-12 苏哥给的 t.cn 短链
+                 * 展开后正是这种形态）。 */
+                const qs = String(location.search || '');
+                if ((m = qs.match(/[?&]fid=\d+:(\d{15,20})/))) { push(m[1]); }
+                if ((m = qs.match(/[?&](?:mid|id)=(\d{15,20})/))) { push(m[1]); }
+
                 try {
-                    const url = 'https://' + (location.hostname || 'weibo.com') +
-                        '/ajax/statuses/show?id=' + encodeURIComponent(id) + '&locale=zh-CN';
-                    const res = await fetch(url, {
-                        credentials: 'include',
-                        headers: { accept: 'application/json, text/plain, */*' }
+                    document.querySelectorAll('[mid],[data-mid],[data-status-id]').forEach(function (el) {
+                        push(el.getAttribute('mid'));
+                        push(el.getAttribute('data-mid'));
+                        push(el.getAttribute('data-status-id'));
                     });
-                    if (!res.ok) { return null; }
-                    const j = await res.json();
-                    const Q = self.VRVideoQuality;
-                    if (!Q) { return null; }
-                    const hd = Q.pickWeiboHdUrl(j);
-                    if (!hd) { return null; }
-                    const pi = (j.page_info && j.page_info.media_info) || {};
-                    return {
-                        url: hd,
-                        size: Number(pi.size) || Number(pi.duration_size) || 0,
-                        height: Q.heightFromUrl(hd)
-                    };
-                } catch (e) { return null; }
+                } catch (e0) { /* 选择器异常不影响继续 */ }
+
+                try {
+                    document.querySelectorAll('a[href]').forEach(function (a) {
+                        const h = a.getAttribute('href') || '';
+                        let mm;
+                        if ((mm = h.match(/\/(?:status|detail)\/(\d{15,20})/))) { push(mm[1]); }
+                        else if ((mm = h.match(/weibo\.(?:com|cn)\/\d{5,15}\/(\d{15,20})/))) { push(mm[1]); }
+                        else if ((mm = h.match(/^\/\d{5,15}\/(\d{15,20})$/))) { push(mm[1]); }
+                    });
+                } catch (e1) { /* 同上 */ }
+
+                extraIds.forEach(push);   // media_id 等兜底种子，放最后
+
+                const base = 'https://' + (location.hostname || 'weibo.com');
+                for (let i = 0; i < ids.length && i < 4; i++) {
+                    try {
+                        const res = await fetch(base + '/ajax/statuses/show?id=' +
+                            encodeURIComponent(ids[i]) + '&locale=zh-CN', {
+                            credentials: 'include',
+                            headers: { accept: 'application/json, text/plain, */*' }
+                        });
+                        if (!res.ok) { continue; }
+                        const j = await res.json();
+                        if (!j || Number(j.ok) !== 1) { continue; }   // 20101 = 不是正文 id
+                        const pi = (j.page_info && j.page_info.media_info) || null;
+                        if (!pi) { continue; }
+                        /* 只回传需要的部分：整条微博对象几十上百 KB，没必要跨界搬。 */
+                        return { statusId: ids[i], media: pi };
+                    } catch (e2) { /* 试下一个 */ }
+                }
+                return null;
             }
-        }), 6000, 'weibo-hd');
-        return (r && r[0] && r[0].result) || null;
+        }), 8000, 'weibo-hd');
+        const got = r && r[0] && r[0].result;
+        if (!got || !got.media) { return null; }
+        const Q = self.VRVideoQuality;
+        if (!Q || typeof Q.weiboVariants !== 'function') { return null; }
+        const variants = Q.weiboVariants({ page_info: { media_info: got.media } });
+        if (!variants.length) { return null; }
+        return { variants: variants, statusId: got.statusId || '' };
     } catch (e) { return null; }
 }
 
@@ -6069,23 +6129,51 @@ async function vrVideoOptions(tabId, frameId) {
      *
      * 失败不阻断：拿不到就沿用嗅探结果，面板照常可用。 */
     try {
+        /* 只在微博域下调：探针会发站内请求，别的站点上跑纯属浪费（还有风控风险）。 */
+        let isWeibo = false;
+        try {
+            const t0 = await chrome.tabs.get(tabId);
+            isWeibo = /(^|\.)weibo\.(com|cn)$/i.test(String((t0 && t0.url) || '')
+                .replace(/^https?:\/\//i, '').split('/')[0]);
+        } catch (e0) { isWeibo = false; }
+
+        /* media_id 只是兜底种子：接口要的是**正文 id**，media_id 会返回 20101。
+         * 真正的 id 由探针在页面里自己找（DOM 上的发布时间链接 / mid 属性）。 */
         const mid = self.VRVideoQuality.weiboMidFromUrl(
             (list[0] && list[0].url) || playing || '');
-        if (mid) {
-            const hd = await vrWeiboHdProbe(tabId, mid);
-            if (hd && hd.url) {
-                /* 已存在就不重复插（避免同一地址出现两次） */
-                if (!list.some(function (m) { return m.url === hd.url; })) {
-                    list.push({ url: hd.url, ext: 'mp4', size: hd.size || 0,
-                        height: hd.height || self.VRVideoQuality.heightFromUrl(hd.url) });
-                }
-                if (hd.size && !hd.height) {
-                    /* 有体积无分辨率时按体积给个粗略档位，保证排序不把它压到最后 */
-                    const last = list[list.length - 1];
-                    if (!last.height) {
-                        last.height = hd.size > 20 * 1048576 ? 1080 : 720;
-                    }
-                }
+        if (isWeibo) {
+            const hd = await vrWeiboHdProbe(tabId, mid ? [mid] : []);
+            const vs = (hd && Array.isArray(hd.variants)) ? hd.variants : [];
+            if (vs.length) {
+                /* 全部档位入池（4K/2K/1080p/720p…），不是只取最高一条：
+                 * 苏哥 2026-11-12 明确「默认最高清，需要低的自己选」。
+                 * 只塞一条最高清 = 面板里没有低档可选；只塞一条 1080p = 4K 永远拿不到。 */
+                vs.forEach(function (v) {
+                    if (!v || !v.url) { return; }
+                    if (list.some(function (m) { return m.url === v.url; })) { return; }
+                    const vh = Number(v.height) || self.VRVideoQuality.heightFromUrl(v.url) || 0;
+                    /* 同档位已经有一条（嗅探来的，地址不同但同一个文件）就不再插，
+                     * 否则面板里会出现两个「1080p」，用户以为选错了。
+                     * 比较时必须用「有效高度」：嗅探条目的 height 字段经常是空的
+                     * （只在渲染时才从 URL 猜），直接读 m.height 会恒为 0、去重失效
+                     * —— 苏哥那条 4K 微博就多出了两个重复的 720p/480p（实测）。
+                     * 保留先到的嗅探条：它是页面真实在播的那条，下载最稳。 */
+                    if (vh && list.some(function (m) {
+                        const mh = Number(m.height) ||
+                            self.VRVideoQuality.heightFromUrl(m.url) || 0;
+                        return mh === vh;
+                    })) { return; }
+                    list.push({
+                        url: v.url,
+                        ext: 'mp4',
+                        size: Number(v.size) || 0,
+                        height: vh,
+                        bitrate: Number(v.bitrate) || 0
+                    });
+                });
+                /* 重排：微博各档位的 CDN 文件名不同，靠 familyKey 按 media_id 归族，
+                 * 才能让「正在播放」锁到同一个作品、再在族内取到 4K。 */
+                list = self.VRVideoQuality.prioritizePlaying(list, playing);
             }
         }
     } catch (e) { /* 补高清失败不影响已有候选 */ }

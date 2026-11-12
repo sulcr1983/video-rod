@@ -1186,25 +1186,43 @@ a.pi-item:hover dd .go{opacity:1}
 .pi-item .tag-warn{flex:0 0 auto;color:var(--danger);opacity:.8;display:grid;place-items:center}
 .pi-item .tag-warn .i{width:10px;height:10px}
 .pi-empty{font-size:12px;color:var(--faint);padding:2px 0}
-/* ---------- 回收站抽屉 ---------- */
+/* ---------- 回收站弹窗（2026-11-12 由右侧抽屉改成居中弹窗） ----------
+ * 苏哥原话「右侧的很难用」：抽屉宽 440px 贴右边，列表被压得很窄，
+ * 文件名稍长就换行，一屏只看得到五六条；而且遮罩挡住整个库页，
+ * 想对着库里的卡片判断「这条要不要恢复」也做不到。
+ * 改成居中弹窗（720~760px）后一屏能看十几条，遮罩仍在，关闭方式不变。
+ * 只改样式：HTML 的 #drawer 与 app.js 的 openTrash/closeTrash 一行没动。 */
 .drawer-mask{
-  position:fixed;inset:0;z-index:78;background:rgba(10,14,20,.42);
-  opacity:0;pointer-events:none;transition:opacity .18s var(--ease);
+  position:fixed;inset:0;z-index:94;background:rgba(10,14,20,.48);
+  display:grid;place-items:center;padding:24px;
+  opacity:0;pointer-events:none;transition:opacity .16s var(--ease);
 }
 .drawer-mask.on,.drawer-mask.show{opacity:1;pointer-events:auto}
 .drawer{
-  position:fixed;top:0;right:0;bottom:0;z-index:79;width:440px;max-width:92vw;
-  background:var(--surface);border-left:1px solid var(--line);
-  box-shadow:-18px 0 48px rgba(16,24,40,.14);
+  position:fixed;left:50%;top:50%;z-index:95;
+  width:min(760px,92vw);max-height:min(82vh,760px);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--sh-3);overflow:hidden;
   display:flex;flex-direction:column;
-  transform:translateX(100%);transition:transform .22s var(--ease);
+  /* 关闭态必须 visibility:hidden + pointer-events:none：
+   * 原来是靠 translateX(100%) 推出屏幕，改成居中后没有「屏幕外」可躲，
+   * 只把 opacity 设 0 的话透明层仍然吃点击，库页会变得点不动。 */
+  opacity:0;visibility:hidden;pointer-events:none;
+  transform:translate(-50%,-46%) scale(.985);
+  transition:opacity .16s var(--ease),transform .18s var(--ease),visibility 0s linear .18s;
 }
-/* 两套类名并存是历史遗留：回收站抽屉原来只写了 .on，
+/* 两套类名并存是历史遗留：回收站原来只写了 .on，
  * 而 app.js（以及设置抽屉那套）一直用 .show。
- * 结果 openTrash() 加上 .show 后抽屉仍停在 translateX(100%) 屏幕外，
+ * 结果 openTrash() 加上 .show 后抽屉仍停在屏幕外，
  * 点「回收站」看起来毫无反应 —— 2026-11-06 实测确认。
  * 两个都认，避免再因为命名不一致让整个功能隐身。 */
-.drawer.on,.drawer.show{transform:none}
+.drawer.on,.drawer.show{
+  opacity:1;visibility:visible;pointer-events:auto;
+  transform:translate(-50%,-50%);
+  transition:opacity .16s var(--ease),transform .18s var(--ease),visibility 0s;
+}
+/* 列表在弹窗里要占满剩余高度并自己滚动，否则长列表会把底部按钮顶出屏幕 */
+.drawer .dw-list{min-height:120px}
 .dw-head{
   display:flex;align-items:center;gap:9px;padding:14px 16px;
   border-bottom:1px solid var(--line-2);flex:0 0 auto;
@@ -1843,7 +1861,7 @@ kbd{
 .btn{background:#1A1714;border-color:#2B2620;color:#C8C0B2}
 .btn:hover{background:#272320;color:#EFEAE0}
 .btn.primary{background:linear-gradient(145deg,#F0C878,#C98A2E);border-color:transparent;color:#1A0C05; box-shadow:0 4px 16px rgba(232,176,75,.3);}
-.drawer{background:#131110;border-left-color:#26221D}
+.drawer{background:#191715;border-color:#2B2620}
 .modal{background:#191715;border-color:#2B2620}
 body{background:radial-gradient(110% 70% at 50% 0%, #171410 0%, #100F0E 62%) fixed}
 .card:hover{box-shadow:0 12px 32px rgba(0,0,0,.55),0 0 0 1px rgba(232,176,75,.30)}
