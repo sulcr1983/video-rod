@@ -228,6 +228,24 @@ def s_visual():
     return (ok, detail, {'tail': r['out'][-1500:]})
 
 
+def s_contrast():
+    """文字对比度：库页 + 7 个弹窗 + 侧边栏 + popup，正文需 ≥4.5:1（B-77）。
+
+    为什么进体检：这类问题肉眼能感觉到但改完没人复核就会退回
+    （2026-11-12 实测 `--faint` 只有 2.85:1，且 public.css 里还留着浅色时代的
+    `button:disabled{background:#ccc}` —— 深色页面上每个禁用按钮都是浅灰块）。"""
+    if not _instance_alive(ISO_PORT):
+        return (True, '跳过：隔离实例不在线（先跑界面套件即可起实例）', {})
+    r = run([sys.executable, 'tools/check-contrast.py', '--port', str(ISO_PORT)], timeout=600)
+    ok = r['rc'] == 0
+    m = re.search(r'对比度检查：(\d+) 个元素，(\d+) 个不达标', r['out'])
+    if m:
+        detail = '%s 个元素，%s 个不达标' % (m.group(1), m.group(2))
+    else:
+        detail = '通过' if ok else '有元素不达标'
+    return (ok, detail, {'tail': r['out'][-2500:]})
+
+
 def s_live(include_real):
     """真实站点清单：full 只跑本地夹具（稳定），--live 才跑真站。"""
     if not _instance_alive(ISO_PORT):
@@ -293,16 +311,17 @@ def main():
     print('=' * 68)
 
     results = []
-    results.append(step('1/7 源码语法（node --check）', s_syntax))
-    results.append(step('2/7 manifest 合法性', s_manifest))
-    results.append(step('3/7 测试断言契约（防测试腐烂）', s_dom_contract))
-    results.append(step('4/7 单元测试（纯逻辑）', lambda: s_units(a.full)))
-    results.append(step('5/7 界面套件（隔离实例）', lambda: s_suites(a.full, a.live)))
+    results.append(step('1/8 源码语法（node --check）', s_syntax))
+    results.append(step('2/8 manifest 合法性', s_manifest))
+    results.append(step('3/8 测试断言契约（防测试腐烂）', s_dom_contract))
+    results.append(step('4/8 单元测试（纯逻辑）', lambda: s_units(a.full)))
+    results.append(step('5/8 界面套件（隔离实例）', lambda: s_suites(a.full, a.live)))
     if a.full:
-        results.append(step('6/7 视觉回归（3 屏像素比对）', s_visual))
-        results.append(step('7/7 真实站点清单（本地夹具）', lambda: s_live(False)))
+        results.append(step('6/8 视觉回归（3 屏像素比对）', s_visual))
+        results.append(step('7/8 文字对比度（WCAG）', s_contrast))
+        results.append(step('8/8 真实站点清单（本地夹具）', lambda: s_live(False)))
     if a.live:
-        results.append(step('7/7 真实站点清单（含真站）', lambda: s_live(True)))
+        results.append(step('8/8 真实站点清单（含真站）', lambda: s_live(True)))
     results.append(step('附 发布物就绪', lambda: s_artifact(a.full)))
 
     total_dur = time.time() - t0

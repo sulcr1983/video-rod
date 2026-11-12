@@ -1819,7 +1819,9 @@ kbd{
 /* ===== 真实缩略图与缺失角标（R3 追加；原型用渐变占位，真实库用 blob 图） ===== */
 .thumb > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .28s var(--ease);z-index:1}
 .thumb > img.loaded{opacity:1}
-.thumb .missing-tag{position:absolute;left:8px;top:8px;z-index:3;font-size:11.5px;color:#fff;background:var(--danger);padding:2px 7px;border-radius:999px}
+/* 「文件缺失」角标：原来白字压在 --danger(#E86466) 上只有 3.26:1（11.5px 小字要 4.5）。
+ * 改成深色字压鲜红底 ≈ 5.4:1 —— 反而更醒目，也符合「警示标签」的读法（2026-11-12）。 */
+.thumb .missing-tag{position:absolute;left:8px;top:8px;z-index:3;font-size:11.5px;color:#2A0A0B;background:var(--danger);padding:2px 7px;border-radius:999px;font-weight:650}
 
 /* ===== 原型深色分面覆盖（R1 补回：删除旧 B+D 段时误删，从原型 data-theme=dark 规则还原）===== */
 .cover{filter:saturate(.6) contrast(1.02) brightness(.8)}

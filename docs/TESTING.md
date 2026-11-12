@@ -429,6 +429,23 @@ python tools/health-check.py --full  # 8 项全绿 + 9/9 套件
 > 4. `vrDownloadLooksInvalid` 必须拦「落盘后缀是 html/json/xml」——
 >    downloads 记录里 mime 常为空，只看 mime 会把反爬页当成功（实测 238 字节 .htm）。
 
+### 4.14 文字对比度（WCAG）（2026-11-12 新增，B-77）
+
+改任何颜色 token（`--ink/--muted/--faint/--line`、`--vr-text-mute`、`--vr-line`）
+或 `public.css` 的 `button:disabled` 之后必须跑：
+
+```bash
+python tools/check-contrast.py --port 9490   # 库页 + 7 弹窗 + 侧边栏 + popup
+python tools/health-check.py --full          # 第 7/8 步已含（全量档）
+```
+
+> 三条口径：
+> 1. 正文 ≥4.5:1，大字（≥24px 或 ≥18.66px 且粗体）≥3:1。禁用态不受 WCAG 1.4.3 约束，
+>    但仍会算 —— 深色页面上的「浅灰块」本身就是视觉噪音（实测踩过）。
+> 2. **渐变背景取末色**。主按钮是金色渐变、引导卡是「金色微光 + 透明」，
+>    只读 `backgroundColor` 会把它们判成 1.0:1 的假告警（实测 4 个 `.btn.primary` + popup 引导 6 条全中）。
+> 3. `·` 这类分隔符算**文字**，必须跟文字色（`--faint`），不能跟边框色（`--line`）。
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |
