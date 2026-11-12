@@ -6,9 +6,12 @@
 只有出问题才临时拼命令 —— 这就是「老是出问题」的组织性原因。
 
 三档（默认冒烟）：
-    python tools/health-check.py            # 冒烟 ~2 分钟：改完代码自检
-    python tools/health-check.py --full     # 全量 ~5 分钟：发布前必跑
+    python tools/health-check.py            # 冒烟 ~40 秒：改完代码自检（6 项）
+    python tools/health-check.py --full     # 全量 ~5 分钟：发布前必跑（8 项）
     python tools/health-check.py --live     # 全量 + 真实站点（需登录态，有风控风险）
+
+冒烟只跑 1/2/3/4/5 里的关键两项 + 附；全量才跑 6（视觉）/7（真实站点）。
+步骤编号按全量口径写，冒烟档会跳号，属正常。
 
 每条结论都写进 deliverables/test-runs/health-<时间>.md，给自己/下次会话看。
 """
@@ -36,7 +39,6 @@ SMOKE_SUITES = 'e2e-sw,dedup'
 # 不算本次回归；**新**的失败才拦发布。红着红着没人看 = 等于没测，所以要显式登记。
 BASELINE_PATH = os.path.join(ROOT, 'tools', 'health-baseline.json')
 
-NODE_SKIP = re.compile(r'(^|/)(dist|node_modules|lib)/(.*min\.js|.*\.min\.js)$')
 
 
 def run(cmd, timeout=600, cwd=ROOT):
@@ -224,12 +226,12 @@ def s_visual():
     return (ok, detail, {'tail': r['out'][-1500:]})
 
 
-def s_live(full_only):
+def s_live(include_real):
     """真实站点清单：full 只跑本地夹具（稳定），--live 才跑真站。"""
     if not _instance_alive(ISO_PORT):
         return (True, '跳过：隔离实例不在线', {})
     cmd = [sys.executable, 'tools/live-sites.py', '--port', str(ISO_PORT)]
-    if not full_only:
+    if not include_real:
         cmd += ['--only', 'local']
     r = run(cmd, timeout=600)
     ok = r['rc'] == 0
@@ -289,10 +291,10 @@ def main():
     print('=' * 68)
 
     results = []
-    results.append(step('1/5 源码语法（node --check）', s_syntax))
-    results.append(step('2/5 manifest 合法性', s_manifest))
-    results.append(step('3/5 测试断言契约（防测试腐烂）', s_dom_contract))
-    results.append(step('4/5 单元测试（纯逻辑）', lambda: s_units(a.full)))
+    results.append(step('1/7 源码语法（node --check）', s_syntax))
+    results.append(step('2/7 manifest 合法性', s_manifest))
+    results.append(step('3/7 测试断言契约（防测试腐烂）', s_dom_contract))
+    results.append(step('4/7 单元测试（纯逻辑）', lambda: s_units(a.full)))
     results.append(step('5/7 界面套件（隔离实例）', lambda: s_suites(a.full, a.live)))
     if a.full:
         results.append(step('6/7 视觉回归（3 屏像素比对）', s_visual))

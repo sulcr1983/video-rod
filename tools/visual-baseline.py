@@ -22,9 +22,10 @@
 """
 import argparse
 import base64
-import json
 import os
+import shutil
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -166,10 +167,11 @@ def main():
     ok_n = fail_n = 0
     fails = []
     opened = []
+    # 当前截图是过程产物，不该留在交付目录里 —— 用临时目录，退出即清。
+    tmp_dir = tempfile.mkdtemp(prefix='vr-visual-')
     for name, path, w, h, prep in SHOTS:
         url = 'chrome-extension://%s/%s' % (ext, path)
-        tmp = os.path.join(DIFF_DIR, '_shot-%s.png' % name)
-        os.makedirs(DIFF_DIR, exist_ok=True)
+        tmp = os.path.join(tmp_dir, name + '.png')
         try:
             tid, ps = open_page(cdp, url, w, h)
             opened.append(tid)
@@ -207,7 +209,6 @@ def main():
         base = os.path.join(BASE_DIR, name + '.png')
         if a.update:
             try:
-                import shutil
                 shutil.copyfile(tmp, base)
                 print('BASE %-9s 已写入基线 %s' % (name, os.path.relpath(base, ROOT)))
                 ok_n += 1
@@ -234,6 +235,7 @@ def main():
                 cdp.send('Target.closeTarget', {'targetId': tid})
             except Exception:
                 pass
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     if a.update:
         print('\n基线已更新：%d 屏' % ok_n)

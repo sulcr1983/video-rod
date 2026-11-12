@@ -105,7 +105,7 @@ def check_sniff(cdp, sid, case, tab):
     return True, '嗅到 %d 条 %s' % (len(hits), want or '媒体')
 
 
-def check_image(cdp, sid, ext, case, tab):
+def check_image(cdp, ext, case, tab):
     exp = case.get('expect') or {}
     tid, ps = open_page(cdp, 'chrome-extension://%s/image.html?tabId=%d' % (ext, tab), 430, 900)
     try:
@@ -130,9 +130,13 @@ def check_page(cdp, sid, case, ps):
         href = cdp.eval('location.href || ""', ps)
         if not href or href == 'about:blank':
             return False, '页面没打开（停留在 about:blank）'
-        # 扩展崩了的典型表现：SW 不响应。这里顺带 ping 一次。
-        hb = cdp.eval("self.VRHeartbeat ? 'has' : 'ok'", sid)
-        return True, '打开成功（title=%s，SW=%s）' % (str(title)[:24], hb)
+        # 真的探一次 SW 存活：SW 上下文里 vrVideoOptions 必须是函数。
+        # 早先写的是 `self.VRHeartbeat ? ... : 'ok'` —— 这个变量不存在，
+        # 恒返回 'ok'，等于没检查（自测发现的假断言，已修）。
+        hb = cdp.eval("typeof vrVideoOptions", sid)
+        if hb != 'function':
+            return False, 'SW 上下文异常（vrVideoOptions=%r）' % hb
+        return True, '打开成功（title=%s，SW 存活）' % str(title)[:24]
     return True, '无断言'
 
 
@@ -182,7 +186,7 @@ def main():
                 elif kind == 'sniff':
                     ok, msg = check_sniff(cdp, sid, case, tab)
                 elif kind == 'image':
-                    ok, msg = check_image(cdp, sid, ext, case, tab)
+                    ok, msg = check_image(cdp, ext, case, tab)
                 else:
                     ok, msg = check_page(cdp, sid, case, ps)
             except Exception as e:
