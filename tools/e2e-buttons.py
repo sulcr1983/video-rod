@@ -139,11 +139,21 @@ def main():
         rows = json.loads(rows_raw) if isinstance(rows_raw, str) else []
     except Exception:
         rows = []
+    # 测试产物不算「真实数据」：
+    #   d:/f/、d:/fake/      —— 套件自己造的假条目
+    #   .../work/dl/         —— e2e-all --isolated 的隔离下载目录
+    #   _selftest/           —— 各套件自检留下的目录（2026-11-12：隔离库里一条
+    #                           _selftest 残留让本套件一直「拒绝执行」，批次里
+    #                           永远红，单独跑却是 32/32 —— 就是这个判据太宽）
+    TEST_MARKS = ("d:/f/", "d:/fake/", "/work/dl/", "/_selftest/")
     real = []
     for r in rows:
         apath = str((r or {}).get("absPath") or "").replace("\\", "/").lower()
-        if apath and not (apath.startswith("d:/f/") or apath.startswith("d:/fake/")):
-            real.append(r)
+        if not apath:
+            continue
+        if any(m in apath for m in TEST_MARKS):
+            continue
+        real.append(r)
     if real and not a.allow_real_db:
         print("[拒绝] 当前库含 %d 条真实数据（示例：%s）。" %
               (len(real), (real[0] or {}).get("relPath", "?")))

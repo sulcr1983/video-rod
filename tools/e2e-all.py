@@ -258,6 +258,63 @@ def detect_ext_id(port, timeout=25):
     return None
 
 
+def cleanup_pages(port):
+    """
+    跑下一个套件前，关掉上一个套件留下的网页标签。
+    只关 page/iframe，不碰 service_worker（关了扩展就断）。
+
+    为什么需要（2026-11-12 实测）：整批跑时 e2e-overlay 偶发 11/12，
+    单跑和两两组合都是 16/16 —— 前面套件留下的标签（还挂着视频/图片面板）
+    会让「页面上应该有几个浮标」这类断言数漂移。套件之间必须互不残留，
+    否则报告里的红是噪音，看久了就没人信。
+    """
+    try:
+        if os.path.join(ROOT, "tools") not in sys.path:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+        from cdp_client import Cdp, find_ext_id
+        cdp = Cdp("http://127.0.0.1:%d" % port)
+        _ext, sw = find_ext_id(cdp)
+        pages = [t for t in cdp.targets() if t.get("type") in ("page", "iframe")]
+        # 千万别把页面关到 0 个：Edge 没有窗口会直接退出，后面的套件全部"实例离线"
+        #（2026-11-12 实测：关干净之后 e2e-all 只跑了 2 个套件就中止）。
+        for t in pages[1:]:
+            if t.get("targetId") == sw.get("targetId"):
+                continue
+            try:
+                cdp.send("Target.closeTarget", {"targetId": t["targetId"]})
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def reset_ext_settings(port):
+    """
+    每个套件开跑前，把「会影响其他套件」的用户设置拉回默认。
+
+    2026-11-12 实测的真问题：e2e-buttons 会逐个点设置弹窗里的开关并保存，
+    于是后面 e2e-overlay 的「图片悬停按钮」用例红 —— 单独跑 16/16，
+    整批跑 11/12。这类红是污染，不是回归，必须复位。
+
+    只复位确定会被测试改到、又影响断言的几项，不动其它（别把用户设置搞乱）。
+    """
+    try:
+        if os.path.join(ROOT, "tools") not in sys.path:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+        from cdp_client import Cdp, find_ext_id
+        cdp = Cdp("http://127.0.0.1:%d" % port)
+        _ext, sw = find_ext_id(cdp)
+        sid = cdp.attach(sw["targetId"])
+        cdp.send("Runtime.enable", {}, sid)
+        cdp.eval(
+            "new Promise(function(r){chrome.storage.local.get('vrLibSettings',function(o){"
+            "var s=Object.assign({},o.vrLibSettings||{});"
+            "s.imgHover=true; s.imgBatch=true; s.imgTierMin=0;"
+            "chrome.storage.local.set({vrLibSettings:s},function(){r(1)});});})", sid)
+    except Exception:
+        pass
+
+
 def run_suite(name, cmd, is_live, desc, port, ext, timeout):
     full = list(cmd)
     if not name == "dedup":
@@ -398,7 +455,17 @@ def main():
                             "got": None, "total": None, "dur": 0, "timeout": False,
                             "note": "实例离线"})
             break
-        results.append(run_suite(name, cmd, is_live, desc, a.port, a.ext, a.timeout))
+        if results:
+            cleanup_pages(a.port)
+        reset_ext_settings(a.port)
+        res = run_suite(name, cmd, is_live, desc, a.port, a.ext, a.timeout)
+        # 套件「没跑起来」时重试一次：判据是 rc!=0 且一条 PASS 计数都没抓到
+        #（实测 e2e-buttons 在批次里偶发 3.9s 退出，单独跑 32/32 —— 属于
+        #  实例/端口抖动，不是真回归。不重试就会把偶发当回归，久了没人看报告。）
+        if (not res["ok"]) and res["got"] is None and not is_live and not res["timeout"]:
+            log("\n[重试] %s 没跑起来（rc=%s），重跑一次" % (name, res["rc"]))
+            res = run_suite(name, cmd, is_live, desc, a.port, a.ext, a.timeout)
+        results.append(res)
 
     total_dur = time.time() - t_all
     passed = sum(1 for r in results if r["ok"])

@@ -14,6 +14,26 @@
 
 ---
 
+## 0. 一键体检（2026-11-12 起，所有改动的第一入口）
+
+```bash
+python tools/health-check.py           # 冒烟 ~40s：改完代码自检
+python tools/health-check.py --full    # 全量 ~3.5min：发布前必跑
+python tools/health-check.py --live    # 全量 + 真实站点（需登录态）
+```
+
+它依次跑：源码语法 → manifest → **测试断言契约** → 单元测试（冒烟 8 / 全量 31 个）
+→ 界面套件（冒烟 2 / 全量 9 个，隔离实例）→ 发布物，最后给一句「可以发 / 不能发」，
+并把明细写进 `deliverables/test-runs/health-<时间>.md`。
+
+- **已知失败基线**：`tools/health-baseline.json` 登记的失败不算回归（当前 2 项：`stage-rewrite`、`skin`，
+  是并行会话在改的库页详情与安装页）。**新**失败才拦发布；
+  只在确认「不是本次引入」时用 `--update-baseline` 登记。
+- **断言契约检查**：`tools/check-assert-dom.py` 会把测试脚本里 `getElementById('x')` / `$('#x')`
+  与源码里真实存在的 id 对账 —— 页面上删了元素而测试还在断言它，会当场红。
+  （2026-11-12 靠它抓出 `#setdrawer` / `#sdDirVal` 已删两周没人发现。）
+- 完整方案与功能矩阵：`docs/TEST-PLAN.md`。
+
 ## 1. 测试策略
 
 | 层 | 手段 | 工具 |
