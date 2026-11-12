@@ -66,9 +66,12 @@ const ALLOW_ROOT_FILES = ['manifest.json'];
  * 运行时「备份扩展到用户文件夹」用的导出清单文件名。
  * 由构建期生成（列出 dist 的全部文件相对路径），不在 HEAD 里 ——
  * 所以 --check 比较 dist==HEAD 时必须豁免它，否则永远报「多出」。
- * 命名以 _ 开头，避开 walk() 的「. 开头」过滤，也避开 FORBIDDEN_FILE。
+ * 命名绝不能以 _ 开头：Chromium 规定扩展目录里以 _ 开头的文件/目录是系统保留的，
+ * 只有 _locales / _metadata 例外，其余一律拒绝加载（报 Cannot load extension
+ * with file or directory name ...）。本文件曾经叫 _vr_export.json，结果整个扩展
+ * 加载不了 —— 别为了绕 walk() 的过滤再改回下划线。
  */
-const EXPORT_MANIFEST = '_vr_export.json';
+const EXPORT_MANIFEST = 'vr-export.json';
 
 /** 永不进 dist 的一级条目（自检用） */
 const FORBIDDEN_TOP = [

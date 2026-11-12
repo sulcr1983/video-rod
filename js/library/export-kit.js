@@ -27,7 +27,7 @@
 (function (root) {
     'use strict';
 
-    var EXPORT_MANIFEST = '_vr_export.json';
+    var EXPORT_MANIFEST = 'vr-export.json';
     var BACKUP_DIR = '钓鱼竿扩展程序备份';
     var EXT_DIR = 'extension';
     var MANUAL_NAME = '使用说明.html';
