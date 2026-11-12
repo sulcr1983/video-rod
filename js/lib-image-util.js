@@ -33,6 +33,16 @@
      * 面板判的是**原始像素**（imgMinSize），显示尺寸这层固定 48 就够 ——
      * 若跟着 imgMinSize 走，设 1200 时会把「原图 1200 但显示 160px」的图全挡掉。 */
     var PANEL_MIN_SHOW = 48;
+
+    /* 清单/批量场景的「显示短边」门槛（2026-11-13 补，B-81）。
+     *
+     * 为什么单独一个值：悬停按钮的 200 是为了「别在小图上冒按钮」，
+     * 但清单是用户主动要的完整列表，200 太狠 —— 微博信息流的正文配图
+     * 显示宽度 542、缩略图墙 133，全被挡在外面；而**头像原图 750×750 显示只有 52**，
+     * 按「原始像素」判又拦不住（原图够大）。
+     * 唯一的通用判据是「页面上看着有多大」：80px 能挡掉头像(52)/图标(32)/箭头(10)，
+     * 放行 133 的缩略图和 542 的正文图。悬停仍走 MIN_SHORT=200，不传这个值。 */
+    var LIST_MIN_SHORT = 80;
     /* 细长装饰条的门槛：用「短边/长边」比来判断，不用面积。
      * 面积法会误杀正常的方形图（600×600=36万 比 1200×6=7200 还大，
      * 任何固定面积阈值都同时拦不住细条又放过方图 —— 踩过两次）。
@@ -572,14 +582,15 @@
         var o = opts || {};
         var minNatural = o.minNatural == null ? MIN_SIZE : Number(o.minNatural);
         var minShow = o.minShow == null ? MIN_SHOW : Number(o.minShow);
+        var minShort = o.minShort == null ? MIN_SHORT : Number(o.minShort);
         var maxAspect = o.maxAspect == null ? MAX_ASPECT : Number(o.maxAspect);
         var nw = Number(el.naturalWidth) || 0;
         var nh = Number(el.naturalHeight) || 0;
         if (nw < minNatural || nh < minNatural) { return false; }
         var sh = shownSize(el);
         if (sh.w <= 0 || sh.h <= 0) { return false; }
-        // 短边硬底线（挡图标、头像、细装饰条）
-        if (Math.min(sh.w, sh.h) < MIN_SHORT) { return false; }
+        // 短边底线（挡图标、头像、细装饰条）。悬停用 200，清单用 LIST_MIN_SHORT
+        if (Math.min(sh.w, sh.h) < minShort) { return false; }
         // 长边门槛（用户可配 imgHoverMinSize；挡缩略图列表里的中小图）
         if (Math.max(sh.w, sh.h) < minShow) { return false; }
         // 长宽比过大的条状图（400×2 分隔线、横幅装饰）不认
@@ -782,6 +793,10 @@
                 var url = pickUrl(el, base);
                 if (!url) { continue; }
                 if (isDataUri(url) || isSvgUrl(url) || isPlaceholderUrl(url)) { continue; }
+                /* 图片地址 == 当前页面地址 → 站点懒加载失败后写坏的假图。
+                 * 微博实测有一张 <img src="https://weibo.com/">，在清单里就是一张裂图。
+                 * 图片不可能是它所在页面的 HTML 地址，这条判据通用且零误杀。 */
+                if (url === base || url === String(doc.URL || '')) { continue; }
                 /* 地址是从 data-src 回退来的 → 这张 <img> 现在的 naturalWidth 属于**占位图**
                  * （1×1），不能拿来判尺寸门槛，否则真图会被当成「1px 图标」丢掉。
                  * 记成「尺寸未知」，由调用方的 fillSizes 去预载真图回填。 */
@@ -790,9 +805,13 @@
                  * 否则长页面上大半张图会被无声吞掉。 */
                 var sized = (nw > 0 && nh > 0);
                 if (sized && (nw < minW || nh < minH)) { continue; }
-                // 显示尺寸过滤：小图标/按钮/表情不进列表（默认开，可传 checkShow:false 关掉）
+                // 显示尺寸过滤：小图标/头像/表情不进列表（默认开，可传 checkShow:false 关掉）。
+                // 短边默认走 LIST_MIN_SHORT(80) 这个**清单口径**；悬停自己调
+                // isWorthDownloading 时不传，仍然是 200 —— 两边场景不同，不能共用一个值。
                 if (sized && o.checkShow !== false && !isWorthDownloading(el, {
-                    minNatural: minW, minShow: o.minShow, maxAspect: o.maxAspect
+                    minNatural: minW, minShow: o.minShow,
+                    minShort: o.minShort == null ? LIST_MIN_SHORT : o.minShort,
+                    maxAspect: o.maxAspect
                 })) { continue; }
                 if (dedupe && seen[url]) { continue; }
                 seen[url] = 1;

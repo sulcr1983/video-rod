@@ -2238,16 +2238,19 @@
                             } catch (e) { /* 同上 */ }
                         }
 
-                        // 通道 ③：源码/JSON 里的地址（懒加载站点的图只在脚本里）
-                        try {
-                            var S = self.VRDownloadScan;
-                            if (S && S.extractUrlsFromHtml && document.body) {
-                                var src = S.extractUrlsFromHtml(
-                                    document.body.innerHTML || '', location.href, 400
-                                );
-                                for (var k = 0; k < src.length; k++) { push(src[k], 0, 0, [src[k]], false); }
-                            }
-                        } catch (e) { /* 同上 */ }
+                        // 通道 ③：源码/JSON 里的地址 —— 只在前两条通道一张都没扫到时兜底。
+                        // 否则会把热搜徽章、logo、箭头图标一起抓进来（微博实测多 5 张噪音）。
+                        if (out.length === 0) {
+                            try {
+                                var S = self.VRDownloadScan;
+                                if (S && S.extractUrlsFromHtml && document.body) {
+                                    var src = S.extractUrlsFromHtml(
+                                        document.body.innerHTML || '', location.href, 400
+                                    );
+                                    for (var k = 0; k < src.length; k++) { push(src[k], 0, 0, [src[k]], false); }
+                                }
+                            } catch (e) { /* 同上 */ }
+                        }
 
                         /* 尺寸回填 + 可达性探测（页面上下文预载，带正确 Referer/Cookie）。
                          * 懒加载站点扫描瞬间大量 naturalWidth=0，不补就全是「尺寸未知」。 */

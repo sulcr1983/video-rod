@@ -213,10 +213,14 @@
                         });
                     } catch (e) { bgs = []; }
                 }
-                /* 源码通道（抄星愿「图片下载器」contentScript.js 的 body.innerHTML 正则）：
-                 * 懒加载站点把图片地址只写在脚本/JSON 里，DOM 上还没有 <img>，
-                 * 只扫标签会整批漏掉。抓到的地址没有尺寸信息，交给下面标 0 由 UI 显示「尺寸未知」。 */
-                if (o.srcScan) {
+                /* 源码通道（抄星愿「图片下载器」contentScript.js 的 body.innerHTML 正则）。
+                 * 它是**兜底**，不是主通道（2026-11-13 改，B-81）。
+                 * 微博首页实测：DOM 里能扫到 12 张正文配图，源码通道又塞进来
+                 * 5 个「新 / 上新 / 沸 / 辟谣」热搜徽章、logo、箭头图标 ——
+                 * 它们没有 el、没有尺寸，页面上显示 20~60px，用户看到的就是
+                 * 「识别到的图片全错」。源码通道存在的意义是「图只在脚本里」
+                 * （test-site/src-only.html 那种），所以 DOM 有货时就不该跑。 */
+                if (o.srcScan && (imgs.length + bgs.length) === 0) {   // 注意：out 在下方才定义，别在这里用
                     try {
                         const S = self.VRDownloadScan;
                         if (S && S.extractUrlsFromHtml && document.body) {
@@ -321,6 +325,22 @@
                 return;
             }
             downloaded = (await storageGet('vrImgDownloaded')) || {};
+
+            /* 缩略图渲染前先给图床放行（2026-11-13，B-82）。
+             * 侧栏是 chrome-extension:// 页面，直接 <img src="https://wx1.sinaimg.cn/...">
+             * 会被防盗链 403 → 19 张卡片全是空框（微博实测，用户会以为「没识别到图」）。
+             * 后台按结果里的域名批量设 Referer（DNR），10 分钟自动清。
+             * 必须**在渲染之前**做：先渲染再设规则，失败的 img 不会自己重试。 */
+            try {
+                await new Promise(function (resolve) {
+                    chrome.runtime.sendMessage({
+                        Message: 'vrMedia.headers',
+                        urls: (raw || []).map(function (x) { return x && x.url; }).filter(Boolean).slice(0, 80),
+                        referer: pageUrl
+                    }, function () { void chrome.runtime.lastError; resolve(1); });
+                });
+            } catch (e) { /* 设不上就照常渲染，最差是缩略图空白 */ }
+
             buildItems(raw);
             /* 小红书 live 图（实况照片）补链（2026-11-11）：侧栏扫到的只是静态首帧，
              * 实况的那段 2~3 秒 mp4 在 SSR state 里。拿到后按「素材 id」把

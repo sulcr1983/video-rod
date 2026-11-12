@@ -2713,6 +2713,14 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         });
         return true;
     }
+    /* 侧栏/弹窗缩略图的 Referer 兜底（2026-11-13，B-82）。
+     * 不设的话，带防盗链的图床（微博 sinaimg 等）在扩展页里整片 403，卡片全空白。 */
+    if (Message && (Message.Message === 'vrMedia.headers' || Message.action === 'vrMedia.headers')) {
+        vrSetHeadersForUrls(Message.urls, Message.referer || '')
+            .then(function (n) { sendResponse({ ok: true, domains: n }); })
+            .catch(function (e) { sendResponse({ ok: false, message: String((e && e.message) || e) }); });
+        return true;
+    }
     if (Message && (Message.Message === 'vrImg.download' || Message.action === 'vrImg.download')) {
         (async function () {
             try {
@@ -3702,6 +3710,33 @@ async function vrSetMediaHeaders(domain, referer) {
 
 /** 通用直链：按目标 URL 的 host 回放页面 Referer（抄 CocoCut 的通用做法）。
  *  很多站的 CDN 会校验 Referer；blob:/data: 没有 host，直接跳过。 */
+/**
+ * 按一组图片地址，给它们各自的图床域名批量设 Referer（2026-11-13，B-82）。
+ *
+ * 场景：侧栏 / 弹窗里的**缩略图**由扩展页（chrome-extension://）直接 <img> 加载，
+ * 微博 sinaimg 这类图床按 Referer 放行 → 整屏卡片空白（实测 403 text/html，
+ * 而带 referrerPolicy/no-referrer、手动设 Referer 头都没用，只有 DNR 改头才通）。
+ * 下载链路本来在落盘前会调 vrSetMediaHeadersFor，但**渲染**这条没人管。
+ *
+ * 通用做法：不写站点名，取结果里出现过的域名（最多 6 个）；
+ * 规则 10 分钟后由既有 alarm 自动清，不会长期影响页面自身请求。
+ */
+async function vrSetHeadersForUrls(urls, referer) {
+    const hosts = new Set();
+    const arr = Array.isArray(urls) ? urls : [];
+    for (let i = 0; i < arr.length && hosts.size < 6; i++) {
+        try {
+            const h = new URL(arr[i]).hostname;
+            if (h && !/\.(mp4|m3u8)$/i.test(h)) { hosts.add(h); }
+        } catch (e) { /* 非 http 地址跳过 */ }
+    }
+    let n = 0;
+    for (const h of hosts) {
+        try { await vrSetMediaHeaders(h, referer); n++; } catch (e) { /* 单域名失败不影响其它 */ }
+    }
+    return n;
+}
+
 async function vrSetMediaHeadersFor(url, referer) {
     try {
         const u = new URL(url);
