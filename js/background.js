@@ -625,12 +625,25 @@ function vrMergeSendToOffscreen(msg, tries) {
     });
 }
 
-function vrMergeStart(taskId, urls) {
-    if (!taskId || !urls || urls.length < 2) {
+/* 静默 HLS 合并：等离屏文档把清单拉完拼好，再由 SW 直接落盘入库。
+ * key = taskId，值是 {resolve, P}。这是「用户点一下下载就不管了」的唯一入口，
+ * 不允许把它改成开页面让用户二次点击（2026-11-13 苏哥明确指出那是退步）。 */
+const vrMergeAutoWait = {};
+
+function vrMergeStart(taskId, urls, opts) {
+    /* urls 允许 1 条（2026-11-13）：HLS 站点往往只有一个 m3u8 清单，
+     * 原实现要求 >=2 是给「多段手动合并」用的，直接套用会把单清单站点挡在门外。 */
+    if (!taskId || !urls || urls.length < 1) {
         vrMergeNotify({ Message: 'vrMergeError', taskId: taskId, error: '参数不完整' });
         return;
     }
-    vrMergeTasks[taskId] = { id: taskId, urls: urls, state: 'running' };
+    const o = opts || {};
+    vrMergeTasks[taskId] = {
+        id: taskId, urls: urls, state: 'running',
+        autoSave: o.filename || '',
+        meta: o.meta || null,
+        onProgress: typeof o.onProgress === 'function' ? o.onProgress : null
+    };
     vrMergeEnsureOffscreen().then(function () {
         return vrMergeSendToOffscreen({ Message: 'vrMergeRun', taskId: taskId, urls: urls });
     }).then(function (ok) {
@@ -638,6 +651,19 @@ function vrMergeStart(taskId, urls) {
             delete vrMergeTasks[taskId];
             vrMergeNotify({ Message: 'vrMergeError', taskId: taskId, error: '离屏文档没响应' });
         }
+    });
+}
+
+/**
+ * 跑一次「合并 → 落盘 → 入库」，全程静默，返回 {ok, bytes, error}。
+ *
+ * 复用既有离屏管线（vrMergeRun/vrMergeReady），只是把「等用户点保存」
+ * 换成 SW 自己接手落盘 —— 这正是用户要的「点一下就好」。
+ */
+function vrMergeRunAndSave(taskId, urls, filename, meta, P) {
+    return new Promise(function (resolve) {
+        vrMergeAutoWait[taskId] = { resolve: resolve, P: P || null, filename: filename, meta: meta || null };
+        vrMergeStart(taskId, urls, { filename: filename, meta: meta, onProgress: P });
     });
 }
 
@@ -2374,12 +2400,43 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             task.ext = Message.ext;
             task.blobUrl = Message.blobUrl;   // 离屏上下文建的 blob URL，SW 负责落盘
         }
+        /* 静默模式（2026-11-13）：HLS 站点点一下就该下完，不该弹页面让用户点第二次。
+         * 这条路直接接手落盘 + 入库，和普通 mp4 的体验完全一致。 */
+        const auto = vrMergeAutoWait[Message.taskId];
+        if (auto && task && task.blobUrl) {
+            delete vrMergeAutoWait[Message.taskId];
+            const fn = auto.filename || task.autoSave || '';
+            const P = auto.P;
+            vrDownloadWithName(task.blobUrl, fn, { meta: auto.meta || task.meta || null }).then(function (id) {
+                const ok = id !== null && id !== undefined;
+                if (ok) {
+                    try { vrMarkDownloaded(fn); } catch (e) { /* 记账失败不影响结果 */ }
+                    delete vrMergeTasks[Message.taskId];
+                    vrMergeSendToOffscreen({ Message: 'vrMergeRevoke', taskId: Message.taskId });
+                    if (P) { P.done(true, '', Message.bytes || 0); }
+                    auto.resolve({ ok: true, bytes: Message.bytes || 0, filename: fn });
+                } else {
+                    if (P) { P.done(false, '保存失败', 0); }
+                    auto.resolve({ ok: false, error: '保存失败，文件名或目录可能不可写', filename: fn });
+                }
+            }).catch(function (e) {
+                if (P) { P.done(false, String((e && e.message) || e), 0); }
+                auto.resolve({ ok: false, error: String((e && e.message) || e), filename: fn });
+            });
+            return;
+        }
         // 对 popup 统一用 vrMergeDone（ready 是离屏→SW 的内部消息名）
         vrMergeNotify({ Message: 'vrMergeDone', taskId: Message.taskId, bytes: Message.bytes, ext: Message.ext });
         return;
     }
     if (Message && Message.Message == "vrMergeError") {
         // 来自离屏文档（SW 自己 vrMergeNotify 发的不会回投自身，无冲突）
+        const autoErr = vrMergeAutoWait[Message.taskId];
+        if (autoErr) {
+            delete vrMergeAutoWait[Message.taskId];
+            if (autoErr.P) { autoErr.P.done(false, Message.error || '合并失败', 0); }
+            autoErr.resolve({ ok: false, error: Message.error || '合并失败' });
+        }
         delete vrMergeTasks[Message.taskId];
         vrMergeNotify(Message);
         return;
@@ -6427,42 +6484,43 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId, metaFromCalle
         } catch (e) { /* ignore */ }
         const ext = (pick.url.split('#')[0].split('?')[0].split('.').pop() || 'mp4').toLowerCase();
 
-        /* HLS/DASH 清单必须走合并通道（2026-11-13 新增）。
+        /* HLS/DASH 清单必须走合并通道（2026-11-13）。
          *
          * 为什么不能走下面的普通直链下载：m3u8 本身只是一份文本清单，
          * 按直链下回来得到的是几百字节的 #EXTM3U，播放器打不开 ——
          * 用户看到的就是「下不了」。真正的视频是清单里那一串 ts/m4s 分片。
          *
-         * 复用猫抓原生的 m3u8 处理页（js/m3u8.js + m3u8-merge.js）：
-         * 它本来就能解析清单、并发拉分片、按顺序拼接、处理加密 key。
-         * 参数约定见 js/m3u8.js 开头（url/title/filename/tabid/initiator/autoDown）。 */
+         * ⚠️ 必须**静默**：用户点一下就该拿到 mp4，不能弹 m3u8.html 让他再点一次。
+         * 早前一版就是这么做的，被苏哥当场指出「违背系统设计、没有静默下载」。
+         * 现在直接复用离屏合并管线（vrMergeRun → vrMergeReady），
+         * 拼好后由本函数接手落盘 + 入库，体验与普通 mp4 完全一致。
+         * 该管线本来就能解析清单 / 并发拉分片 / AES-128 解密 / 转 MP4
+         * （见 js/m3u8-merge.js 抬头），不需要第二套实现。 */
         if (VR_PLAYLIST_EXT.test(ext)) {
-            let pageUrl = '';
-            try {
-                const tab = await chrome.tabs.get(tabId);
-                pageUrl = (tab && tab.url) || '';
-            } catch (e) { /* ignore */ }
             const meta = metaOverride || await vrPageMetaInTab(tabId);
             /* 文件名去掉清单后缀：合并产物是 mp4，别让用户看到 .m3u8 */
             const baseName = await vrNameInTab(tabId, 'mp4', meta || null);
-            const q = new URLSearchParams({
-                url: pick.url,
+            const taskId = 'hls' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            const P = vrProgressReporter(tabId, baseName);
+            P.note('解析清单中', null);
+            const res = await vrMergeRunAndSave(taskId, [pick.url], baseName, {
+                pageUrl: (meta && meta.pageUrl) || pageUrl || '',
+                mediaUrl: pick.url || '',
+                sourceUrl: pick.url || '',
+                author: (meta && meta.author) || '',
+                authorId: (meta && meta.authorId) || '',
                 title: (meta && meta.title) || '',
-                filename: baseName,
-                tabid: String(tabId),
-                initiator: pageUrl,
-                autoDown: '1',
-                autoClose: '1'
-            });
-            try {
-                await chrome.tabs.create({
-                    url: 'm3u8.html?' + q.toString(),
-                    active: false
-                });
-            } catch (e) {
-                return { ok: false, reason: 'download-failed' };
+                platform: (meta && meta.site) ||
+                    (self.VRPath && typeof self.VRPath.detectPlatform === 'function'
+                        ? self.VRPath.detectPlatform(pageUrl || '')
+                        : '') || '',
+                type: 'video'
+            }, P);
+            if (!res || !res.ok) {
+                P.done(false, (res && res.error) || '合并失败', 0);
+                return { ok: false, reason: 'download-failed', error: (res && res.error) || '' };
             }
-            return finish({ ok: true, kind: 'hls', filename: baseName });
+            return finish({ ok: true, kind: 'hls', filename: baseName, bytes: res.bytes || 0 });
         }
 
         // 微博等站点：页面 $render_data 里有作者/正文，优先用它命名

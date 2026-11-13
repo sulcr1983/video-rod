@@ -386,18 +386,35 @@
         return vrCardText(el).length >= 15;
     }
     function vrBestTextEl(card) {
+        /* 2026-11-13：排除播放器自身的 UI 文本。
+         * 实测 xx.knit.bid（video.js）：播放器容器里有一个 aria-live 区域，
+         * 文案是「Beginning of dialog window. Escape will cancel and close the window.」，
+         * 它比正文长，被下面「取最长文本」的规则选中，结果文件名变成
+         * `of dialog window. Escape will cancel and close the….mp4`。
+         * 这类文本不是内容标题，永远不该参与命名。 */
         const cand = card.querySelectorAll(
             '.weibo-text, .txt, [class*="text"], [class*="content"], ' +
             '[class*="desc"], [class*="caption"], [class*="title"], ' +
             '[class*="summary"], [class*="body"], [class*="detail"], article, p, span');
         let best = null, bestLen = 0;
         for (let i = 0; i < cand.length; i++) {
-            const t = vrCardText(cand[i]);
+            const el = cand[i];
+            /* 播放器无障碍提示 / 隐藏字幕轨：aria-live、role=status|alert、vjs-* */
+            if (el.closest && el.closest('[aria-live], [role="status"], [role="alert"], [class*="vjs-"]')) { continue; }
+            const t = vrCardText(el);
             if (t.length < 8) { continue; }
-            if (t.length > bestLen) { bestLen = t.length; best = cand[i]; }
+            if (PLAYER_UI_RE.test(t)) { continue; }
+            if (t.length > bestLen) { bestLen = t.length; best = el; }
         }
         return best || card;
     }
+
+    /* 播放器/浏览器给的空文案，出现即说明抓到的是 UI 而不是内容。
+     * 英文是 video.js / hls.js 的标配提示；中文是部分国产播放器的同款。
+     * 2026-11-13 补：video.js 的控件条文本（"Pause Unmute Loaded: 0% Remaining Time"）
+     * 也会被「取最长文本」选中，实测文件名变成
+     * `er is loading. Pause Unmute Loaded_ 0% Remaining T….mp4`。 */
+    const PLAYER_UI_RE = /dialog window|Escape will cancel|Beginning of dialog|Play Video|Pause\b|Unmute|Loaded:?\s*\d|Remaining Time|Playback rate|你的浏览器不支持|无法播放此视频|Loading\.\.\.|正在加载|僅 VIP|VIP 下載/i;
     function vrExtractCardMeta(media) {
         try {
             if (!media || !media.parentElement) { return null; }
@@ -443,8 +460,15 @@
                 if (m) { authorId = m[1]; }
             }
             const author = authorLink ? vrCardText(authorLink).replace(/^@/, '').replace(/\s+/g, ' ').trim() : '';
-            if (author || title) {
-                return { author: author, authorId: authorId, title: title, post: title };
+            /* 2026-11-13：播放器容器不能当内容卡。
+             * 实测 xx.knit.bid（video.js）：向上只 1 层就命中 `.article-video-block`，
+             * 它的文本是「Play Video VIP 下載影片 僅 VIP 可用，生成約需 10-60 秒」，
+             * 或者控件条「Pause Unmute Loaded: 0% Remaining Time」。
+             * 这些都不是标题。命中就返回 null，让上层回落到页面级标题
+             * （weibo/site 的 og:title 或 h1 都是对的）。 */
+            const cleanTitle = PLAYER_UI_RE.test(title) ? '' : title;
+            if (author || cleanTitle) {
+                return { author: author, authorId: authorId, title: cleanTitle, post: cleanTitle };
             }
             return null;
         } catch (e) { return null; }
