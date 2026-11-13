@@ -82,6 +82,8 @@ SUITES = {
         ("cdp", "tools/cdp-trash-empty-repro.py"),
         ("cdp", "tools/cdp-trash-dup-index-test.py"),
         ("cdp", "tools/cdp-trash-full-rescan-test.py"),
+        # 授权链路真机验收（ADR-087）：选择器同步调用 / 报错翻译 / 恢复按钮
+        ("cdp", "tools/e2e-settings-auth.py"),
     ],
     "image": [
         ("node", "tools/test-image-util.js"),
