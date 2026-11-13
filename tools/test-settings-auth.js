@@ -75,7 +75,7 @@ function buildEnv(opts) {
             queryPermission: function () { probe.sawAsync = true; return Promise.resolve(permState); },
             requestPermission: function () {
                 probe.sawAsync = true; probe.permCalls++;
-                return Promise.resolve(opts.grant || 'granted');
+                return Promise.resolve('granted');
             },
             getDirectoryHandle: function (n) {
                 probe.sawAsync = true;
@@ -107,7 +107,7 @@ function buildEnv(opts) {
         showDirectoryPicker: function (o) {
             /* 记录「调用瞬间」的状态，不记录调用之后 */
             probe.pickerCalls.push({ sawAsyncAtCall: probe.sawAsync, mode: o && o.mode });
-            return Promise.resolve(opts.pickResult === undefined ? makeHandle('video-rod') : opts.pickResult);
+            return Promise.resolve(makeHandle('video-rod'));
         },
         VRDB: { getHandle: function () { probe.sawAsync = true; return Promise.resolve(rootHandle); } },
         VRHandleStore: {

@@ -194,12 +194,14 @@ def start_isolated(port):
         if newest_src > newest_dist:
             log("[隔离] dist/ 落后于源码（源 %.0f vs 包 %.0f），先重建" % (newest_src, newest_dist))
             subprocess.run(["node", os.path.join(TOOLS, "build-dist.js")],
-                           cwd=ROOT, capture_output=True, text=True, timeout=300)
+                           cwd=ROOT, capture_output=True, text=True, timeout=300,
+                           encoding="utf-8", errors="replace")
     except Exception as e:
         log("[隔离] dist/ 检查失败（%s），尝试重建" % e)
         try:
             subprocess.run(["node", os.path.join(TOOLS, "build-dist.js")],
-                           cwd=ROOT, capture_output=True, text=True, timeout=300)
+                           cwd=ROOT, capture_output=True, text=True, timeout=300,
+                           encoding="utf-8", errors="replace")
         except Exception as e2:
             raise RuntimeError("dist/ 不可用且重建失败：%s" % e2)
     if not os.path.exists(os.path.join(dist_dir, "manifest.json")):
@@ -367,12 +369,19 @@ def run_suite(name, cmd, is_live, desc, port, ext, timeout):
                 break
         if script and os.path.exists(script):
             try:
+                # 必须显式 UTF-8：套件的 --help 是中文，Windows 默认 GBK 解码
+                # 会抛 UnicodeDecodeError，被下面的 except 吞掉 → 误判「不支持 --ext」
+                # → 子套件拿硬编码旧 ID 打开 404 页 → 断言全灭（2026-11-13 实测）。
+                # encoding 与 errors 双保险，避免个别字符再次炸掉整条探测。
                 g = subprocess.run([sys.executable, script, "--help"],
-                                   capture_output=True, text=True, timeout=30)
+                                   capture_output=True, text=True, timeout=30,
+                                   encoding="utf-8", errors="replace")
                 if "--ext" in (g.stdout or "") + (g.stderr or ""):
                     full += ["--ext", ext]
-            except Exception:
-                pass
+                else:
+                    log("[警告] %s 的 --help 里没看到 --ext，套件会用默认扩展 ID" % name)
+            except Exception as e:
+                log("[警告] %s 探测 --ext 失败（%s），套件会用默认扩展 ID" % (name, e))
 
     tag = "LIVE" if is_live else "LOCAL"
     log("\n" + "=" * 72)
