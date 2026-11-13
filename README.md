@@ -337,6 +337,17 @@ X（推特）的推文里，操作栏会多一个下载按钮——**看到就�
 > 改源码后重跑 `node tools/build-dist.js --from-head`，再到扩展页点「重新加载」。
 > 直接加载仓库根会让体积虚胖（文档、测试产物、`.git` 全算进去），规则见 [`docs/ARTIFACT-MANAGEMENT.md`](docs/ARTIFACT-MANAGEMENT.md)。
 
+**点「授权写入」报 `NotAllowedError`？** 设置页 → 保存位置 → 授权写入，报
+
+> The request is not allowed by the user agent or the platform in the current context.
+
+这是浏览器拒绝弹目录框，**有两种成因，先分清再动手**：
+
+1. **操作太久、这次点击已失效**（最常见）。刷新设置页，然后**立刻**再点一次按钮。
+2. **浏览器把「文件编辑」权限禁用了**。打开 `chrome://settings/content/fileEditing`（Edge 为 `edge://settings/content/fileEditing`），把该扩展／该网站设为「允许」或「询问」，改完**完全退出浏览器再重开**；Edge 的「增强安全性模式」若为「严格」也调成「平衡」。
+
+判别技巧：如果同一页的「自选文件夹 → 选择文件夹…」能正常弹框，说明权限没被禁，属第 1 种。权限被收回时点「**恢复上次授权**」即可，不用重选目录。想完全绕开目录授权，可把浏览器下载目录改成目标文件夹，再用设置页的「默认位置」——那条路走 `chrome.downloads`，不需要 File System Access 权限。
+
 ---
 
 ## 三分钟上手
