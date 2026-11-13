@@ -18,13 +18,18 @@
         <span class="ip-sico">⌕</span>
         <input id="ipSearch" placeholder="搜索 URL 关键词，支持 /正则/" spellcheck="false">
       </label>
-      <button class="ip-icb" id="ipRescan" title="重新扫描本页">⟳</button>
       <button class="ip-icb" id="ipAlbum" title="图集翻页抓全">⧉</button>
-      <button class="ip-icb" id="ipLibrary" title="打开资源库（已下载的都在这里）">▤</button>
       <button class="ip-icb" id="ipMore" title="更多操作">⋯</button>
       <button class="ip-icb" id="ipOpenVideo" title="切换到视频嗅探">▶</button>
+      <!-- 「重新探测」与「媒体库」是苏哥点名要显眼的两件事（2026-11-13）：
+           箭头图标藏在⋯菜单里的时代过去了 —— 下载完想去找文件、页面变了想重扫，
+           这两个动作的使用频率远高于其它工具按钮，所以升格成带文字的主按钮。 -->
+      <button class="ip-btn-primary" id="ipRescan" title="重新探测本页（页面滚动后点一下）">⟳ 重新探测</button>
+      <button class="ip-btn-primary ip-btn-lib" id="ipLibrary" title="打开媒体库（已下载的都在这里）">▤ 媒体库</button>
     </div>
   </header>
+
+  <div class="ip-types" id="ipTypes"></div>
 
   <div class="ip-tiers" id="ipTiers"></div>
 

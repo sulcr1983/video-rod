@@ -31,6 +31,10 @@
     let selected = new Set();      // 选中的 key
     let rendered = 0;
     let tierMin = 0;   // 0 = 全部（含尺寸未知的懒加载图）；TIER_UNKNOWN = 只看尺寸未知
+    /* 类型筛选（2026-11-13 新增）：面板不能只出图片，要兼容图片/动图/视频/音频。
+     * 与 tierMin 是**两级**筛选：先按类型定大类，再按尺寸细分图片。
+     * 默认 'all' —— 一进来就把视频藏起来，用户会以为又「嗅探不到」。 */
+    let typeFilter = 'all';
     /* 2026-11-09（苏哥报）：尺寸未知的图混在「大 ≥1200」里，看着像筛选没生效。
      * 现在把它单列成一档。用 -1 而不是 0：0 已经被「全部」占了，且
      * `shortSide < 0` 恒为假，能安全复用同一套比较。 */
@@ -40,6 +44,7 @@
     let filteredOut = 0;                    // 被过滤规则拦下的张数（底部要明示）
     let batchId = '';
     let running = false;
+    let autoScanTimer = 0;
 
     const $ = id => document.getElementById(id);
     const el = {
@@ -47,7 +52,7 @@
         rescan: $('ipRescan'), openVideo: $('ipOpenVideo'), album: $('ipAlbum'),
         library: $('ipLibrary'),
         more: $('ipMore'), moreMenu: $('ipMoreMenu'), webp: $('ipWebp'),
-        tiers: $('ipTiers'), body: $('ipBody'), grid: $('ipGrid'),
+        tiers: $('ipTiers'), types: $('ipTypes'), body: $('ipBody'), grid: $('ipGrid'),
         empty: $('ipEmpty'), emptyT: $('ipEmptyT'), emptyS: $('ipEmptyS'),
         all: $('ipAll'), sum: $('ipSum'), dl: $('ipDl'),
         prog: $('ipProg'), progT: $('ipProgT'), progBar: $('ipProgBar'), progX: $('ipProgX'),
@@ -90,6 +95,13 @@
         const a = Number(w) || 0;
         const b = Number(h) || 0;
         return Math.min(a, b);
+    }
+
+    /** 把失败原因转成可插进 innerHTML 的安全文本 */
+    function escText(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     /* ---------------- 目标标签页 ---------------- */
@@ -151,146 +163,24 @@
      * 注入函数里**不能**引用外部闭包变量，只能靠参数与 self.VRImageUtil。
      */
     function scanInPage(opts) {
-        /* 先确保扫描模块在页面上可用，**再**扫描。
-         *
-         * 为什么不能只依赖 manifest 的 content_scripts：
-         * 用户装好/更新扩展后，**已经打开的标签页不会重新注入内容脚本**，
-         * 于是侧边栏显示「本页 0 张 / 这个页面需要刷新一次」，要用户手动刷新才行。
-         * 那不是他该做的事——扩展自己有能力补注入。
-         *
-         * `chrome.scripting.executeScript({files})` 与 `{func}` 都落在同一隔离世界，
-         * 前者的 `self.VRImageUtil` 对后者可见，所以按顺序串起来即可。 */
-        return chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            func: o => ({
-                has: typeof self.VRImageUtil !== 'undefined',
-                hasScan: typeof self.VRDownloadScan !== 'undefined'
-            }),
-            args: [opts]
+        /* 统一走 SW 的 vrImg.scan：逐帧注入扫描库、合并网络缓存与源码通道。
+         * 旧实现在这里又抄了一份扫描器，导致侧栏 / popup / 图集口径漂移；
+         * 这一层只负责参数与错误提示，不再自己遍历 DOM。 */
+        return send({
+            Message: 'vrImg.scan',
+            action: 'vrImg.scan',
+            tabId: tabId,
+            minSize: opts.minSize,
+            bgScan: opts.bgScan,
+            srcScan: opts.srcScan,
+            max: opts.max || 400
         }).then(res => {
-            const r = (res && res[0] && res[0].result) || {};
-            /* 两个模块各自判断，缺哪个补哪个。
-             * VRDownloadScan 是 2026-11-07 新增（抄星愿两个扩展的源码抓图），
-             * 老标签页里必然没有 —— 不补注入的话源码通道会静默失效。 */
-            const need = [];
-            if (!r.has) { need.push('js/lib-image-util.js'); }
-            if (!r.hasScan) { need.push('js/lib-download-scan.js'); }
-            if (!need.length) { return null; }
-            return chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                files: need
-            });
-        }).then(() => chrome.scripting.executeScript({
-            target: { tabId: tabId },
-            /* 改成 async：末尾要做「尺寸回填」（见下面的 fillSizes）。
-             * chrome.scripting.executeScript 会等待返回的 Promise，所以调用方
-             * 拿到的仍是结果数组，不需要改上层。 */
-            func: async o => {
-                const U = self.VRImageUtil;
-                /* 工具模块没注入时**不能静默返回空数组** —— 那会让人误以为
-                 * 「这个页面真的没有图」。实测花瓣 pins 页就是因为内容脚本未注入，
-                 * 界面显示「0 张」，而页面上其实有 82 张 <img>。
-                 * 这里返回带标记的结果，由调用方给出可操作的提示。 */
-                if (!U) {
-                    return { __noUtil: true, imgs: document.images ? document.images.length : 0 };
-                }
-                let imgs = [];
-                let bgs = [];
-                let fromSrc = [];
-                try {
-                    imgs = U.scanImages(document, {
-                        minWidth: o.minSize,
-                        minHeight: o.minSize,
-                        minShow: U.PANEL_MIN_SHOW,
-                        dedupe: true
-                    });
-                } catch (e) { imgs = []; }
-                if (o.bgScan) {
-                    try {
-                        bgs = U.scanBackgrounds(document, {
-                            minShow: U.PANEL_MIN_SHOW,
-                            dedupe: true
-                        });
-                    } catch (e) { bgs = []; }
-                }
-                /* 源码通道（抄星愿「图片下载器」contentScript.js 的 body.innerHTML 正则）。
-                 * 它是**兜底**，不是主通道（2026-11-13 改，B-81）。
-                 * 微博首页实测：DOM 里能扫到 12 张正文配图，源码通道又塞进来
-                 * 5 个「新 / 上新 / 沸 / 辟谣」热搜徽章、logo、箭头图标 ——
-                 * 它们没有 el、没有尺寸，页面上显示 20~60px，用户看到的就是
-                 * 「识别到的图片全错」。源码通道存在的意义是「图只在脚本里」
-                 * （test-site/src-only.html 那种），所以 DOM 有货时就不该跑。 */
-                if (o.srcScan && (imgs.length + bgs.length) === 0) {   // 注意：out 在下方才定义，别在这里用
-                    try {
-                        const S = self.VRDownloadScan;
-                        if (S && S.extractUrlsFromHtml && document.body) {
-                            fromSrc = S.extractUrlsFromHtml(document.body.innerHTML || '', location.href, 400);
-                        }
-                    } catch (e) { fromSrc = []; }
-                }
-                const out = [];
-                const all = imgs.concat(bgs);
-                for (let i = 0; i < all.length; i++) {
-                    const it = all[i];
-                    if (!it || !it.url) { continue; }
-                    const cands = (it.candidates && it.candidates.length)
-                        ? it.candidates.slice()
-                        : [it.url];
-                    out.push({
-                        url: it.url,
-                        w: Number(it.w) || 0,
-                        h: Number(it.h) || 0,
-                        bg: !!it.bg,
-                        candidates: cands
-                    });
-                }
-                /* 源码里多出来的地址（DOM 上还没有对应 <img>）追加在最后。
-                 * 已在 out 里的跳过，避免同一张图出现两次。 */
-                const have = Object.create(null);
-                for (let i = 0; i < out.length; i++) { have[out[i].url] = 1; }
-                for (let i = 0; i < fromSrc.length; i++) {
-                    const u = fromSrc[i];
-                    if (!u || have[u]) { continue; }
-                    have[u] = 1;
-                    out.push({ url: u, w: 0, h: 0, bg: false, srcOnly: true, candidates: [u] });
-                }
-
-                /* 尺寸回填（2026-11-12，苏哥报「微博页全是尺寸未知」）。
-                 *
-                 * 根因是**时序**：懒加载站点的 <img> 在扫描这一瞬间往往还没解码
-                 * （naturalWidth=0），于是整个列表都标成「尺寸未知」——
-                 * 既不能按档位筛，也看不出哪张是大图。微博信息流实测 53 张全中。
-                 *
-                 * 做法：把没尺寸的地址用 new Image() 在**页面上下文**里预载一次。
-                 * 页面上下文带正确 Referer/Cookie，比扩展页加载更可靠；
-                 * 同一 URL 通常已在缓存里，几乎不额外下载。
-                 * 上限：只补前 60 个、总预算 2.5 秒 —— 宁可留几个「未知」，
-                 * 也不能让扫描卡住（用户点一下要立刻有反应）。 */
-                try {
-                    const miss = [];
-                    for (let i = 0; i < out.length; i++) {
-                        if (!(out[i].w > 0 && out[i].h > 0) && out[i].url) {
-                            miss.push(out[i].url);
-                        }
-                    }
-                    if (miss.length && U && typeof U.fillSizes === 'function') {
-                        const got = await U.fillSizes(miss.slice(0, 60), 2500);
-                        for (let i = 0; i < out.length; i++) {
-                            if (out[i].w > 0 && out[i].h > 0) { continue; }
-                            const sz = got[out[i].url];
-                            if (sz && sz.w > 0 && sz.h > 0) {
-                                out[i].w = sz.w;
-                                out[i].h = sz.h;
-                            }
-                        }
-                    }
-                } catch (eFill) { /* 回填失败保持「未知」，不影响已扫到的结果 */ }
-
-                return out;
-            },
-            args: [opts]
-        }))
-          .then(res => (res && res[0] && res[0].result) || []);
+            if (!res || !res.ok) {
+                return { __noUtil: true, imgs: 0, message: (res && res.message) || '扫描失败' };
+            }
+            if (res.noUtil) { return { __noUtil: true, imgs: 0 }; }
+            return Array.isArray(res.items) ? res.items : [];
+        });
     }
 
     async function scan() {
@@ -324,6 +214,8 @@
                 );
                 return;
             }
+            /* 网络层图片（ADR-082）已由 vrImg.scan / VRImageScanService 在页面上下文
+             * 合并并做完尺寸回填，这里不再重复拉一次 netCache。 */
             downloaded = (await storageGet('vrImgDownloaded')) || {};
 
             /* 缩略图渲染前先给图床放行（2026-11-13，B-82）。
@@ -342,6 +234,23 @@
             } catch (e) { /* 设不上就照常渲染，最差是缩略图空白 */ }
 
             buildItems(raw);
+            /* 音视频条目并入同一个 items（2026-11-13，t2b）：
+             * 面板不能只出图片 —— 苏哥要的是「图片/动图/视频/音频都在这里分类下」。
+             * 数据来自 vrVideoOptions（与浮标菜单同一份），所以排除站内已下载判断、
+             * 去重、命名都天然一致。
+             * 失败不影响图片列表：拿不到就只显示图片，绝不让整个面板空白。 */
+            try {
+                const vids = await fetchVideoItems();
+                if (vids && vids.length) {
+                    const seenK = Object.create(null);
+                    for (const it of items) { seenK[it.key] = 1; }
+                    for (const v of vids) {
+                        if (seenK[v.key]) { continue; }
+                        seenK[v.key] = 1;
+                        items.push(v);
+                    }
+                }
+            } catch (eV) { /* 视频嗅探失败不影响图片 */ }
             /* 小红书 live 图（实况照片）补链（2026-11-11）：侧栏扫到的只是静态首帧，
              * 实况的那段 2~3 秒 mp4 在 SSR state 里。拿到后按「素材 id」把
              * `it.live = mp4地址` 挂到对应条目上 —— 批量下载时静态+实况一起落。 */
@@ -427,6 +336,49 @@
         return U.bestCandidate(it.candidates, it.url);
     }
 
+    /* ---------------- 音视频条目（2026-11-13 新增，t2b） ---------------- */
+    /**
+     * 从后台嗅探结果构造音视频条目，与图片共用同一个 items 网格。
+     *
+     * 数据源是 vrVideoOptions（浮标右键菜单用的同一个接口）：
+     *   { ok, site, options: [{ id, url, label, note, size, ext, type, ... }] }
+     * 每个 option 是一条「可下载的档位」，label 形如 `1080p` / `HLS` / `MP4`。
+     *
+     * 为什么复用它的输出而不是另开一套嗅探：
+     *   1) 它已经做完站点适配（微博 $render_data、小红书 SSR、HLS 清单展开、
+     *      m3u8 分片剔除）—— 面板再扫一遍必然口径漂移；
+     *   2) 用户点「下载」时走的也是这套 option id（t2d），两边必须是同一份。
+     */
+    async function fetchVideoItems() {
+        const r = await send({ Message: 'vrVideoOptions', tabId: tabId, frameId: 0 });
+        const opts = (r && r.ok && Array.isArray(r.options)) ? r.options : [];
+        const out = [];
+        for (let i = 0; i < opts.length; i++) {
+            const o = opts[i] || {};
+            if (!o.url) { continue; }
+            const ext = String(o.ext || '').toLowerCase();
+            const isAudio = /^(mp3|m4a|aac|flac|wav|ogg|opus)$/i.test(ext);
+            const k = 'v:' + (o.id != null ? o.id : keyOf(o.url));
+            out.push({
+                url: o.url,
+                w: 0, h: 0, bg: false,
+                candidates: [o.url],
+                key: k,
+                orig: o.url,
+                better: false,
+                done: false,
+                kind: isAudio ? TYPE_AUDIO : TYPE_VIDEO,
+                /* 视频专用展示字段：label 是清晰度（1080p/HLS/MP4），
+                 * note 是「最高清 · 当前播放」这类说明，dim 位置改显示它们。 */
+                vlabel: o.label || '',
+                vnote: o.note || '',
+                vsize: Number(o.size) || 0,
+                optionId: o.id
+            });
+        }
+        return out;
+    }
+
     /* ---------------- 小红书实况（live 图） ---------------- */
 
     /** 素材 id：URL pathname 尾段，剥掉 `!xx` 变体后缀（与 background 同规则） */
@@ -494,13 +446,74 @@
         return true;
     }
 
+    /* ---------------- 类型判定（2026-11-13 新增） ---------------- */
+    /* 面板要同时容纳图片/动图/视频/音频，与尺寸档位是两级筛选：
+     *   先选「看哪一类」→ 图片再按尺寸细分；视频/音频没有尺寸概念，尺寸档位对它们不生效。
+     * 判定优先用条目自带的 kind（t2b 接入音视频时会带上），
+     * 没有就按扩展名推断 —— 这样 t2a 先跑起来，t2b 接入时不用改这里。 */
+    const TYPE_IMG = 'image', TYPE_GIF = 'gif', TYPE_VIDEO = 'video', TYPE_AUDIO = 'audio';
+    const EXT_GIF = /\.(gif|apng)$/i;
+    const EXT_VIDEO = /\.(mp4|webm|mov|mkv|m4v|flv|ts|m4s|m3u8|mpd|avi)$/i;
+    const EXT_AUDIO = /\.(mp3|m4a|aac|flac|wav|ogg|opus|wma)$/i;
+
+    function typeOf(it) {
+        if (it && it.kind) { return it.kind; }
+        const u = String((it && it.url) || '').split('#')[0].split('?')[0];
+        if (EXT_AUDIO.test(u)) { return TYPE_AUDIO; }
+        if (EXT_VIDEO.test(u)) { return TYPE_VIDEO; }
+        if (EXT_GIF.test(u)) { return TYPE_GIF; }
+        return TYPE_IMG;
+    }
+
+    /** 该条目是否属于当前类型筛选。'all' 恒真。 */
+    function inType(it) {
+        if (typeFilter === 'all') { return true; }
+        return typeOf(it) === typeFilter;
+    }
+
+    /** 尺寸档位只对「静态图片」有意义；动图/视频/音频不参与尺寸筛选 */
+    function inTierFor(it, min) {
+        const t = typeOf(it);
+        if (t === TYPE_VIDEO || t === TYPE_AUDIO) {
+            /* 音视频没有「尺寸档」，任何尺寸档下都照常显示；
+             * 但「未知」档专指没量出尺寸的图，音视频不该混进去。 */
+            return min !== TIER_UNKNOWN;
+        }
+        return inTier(it, min);
+    }
+
+    function renderTypes() {
+        if (!el.types) { return; }
+        const counts = { all: items.length, image: 0, gif: 0, video: 0, audio: 0 };
+        for (const it of items) {
+            const t = typeOf(it);
+            if (counts[t] != null) { counts[t]++; }
+        }
+        const tabs = [
+            { k: 'all', label: '全部', n: counts.all },
+            { k: TYPE_IMG, label: '图片', n: counts.image },
+            { k: TYPE_GIF, label: '动图', n: counts.gif },
+            { k: TYPE_VIDEO, label: '视频', n: counts.video },
+            { k: TYPE_AUDIO, label: '音频', n: counts.audio }
+        ];
+        el.types.innerHTML = tabs.map(function (t) {
+            /* 0 项的类别不置灰 —— 与尺寸档位同一条理由：
+             * 置灰会让人以为「点不动=功能坏了」，而切过去看到空列表才是明确结果。 */
+            const on = typeFilter === t.k ? ' on' : '';
+            const zero = t.n === 0 ? ' zero' : '';
+            return '<button class="ip-type' + on + zero + '" data-type="' + t.k + '">' +
+                t.label + '<span class="c">' + t.n + '</span></button>';
+        }).join('');
+    }
+
     function autoSelect() {
         selected.clear();
         for (const it of items) {
             if (it.done) { continue; }
             /* 与 visibleItems 同口径：看不见的不该被勾上，否则「已选 10 张」里有 8 张
              * 根本不在当前筛选结果里，用户会以为程序乱选。 */
-            if (!inTier(it, tierMin)) { continue; }
+            if (!inType(it)) { continue; }
+            if (!inTierFor(it, tierMin)) { continue; }
             if (!matchKeyword(it, keyword)) { continue; }
             selected.add(it.key);
         }
@@ -523,7 +536,7 @@
     /* ---------------- 渲染 ---------------- */
 
     function visibleItems() {
-        return items.filter(it => inTier(it, tierMin) && matchKeyword(it, keyword));
+        return items.filter(it => inType(it) && inTierFor(it, tierMin) && matchKeyword(it, keyword));
     }
 
     function renderTiers() {
@@ -580,26 +593,41 @@
         div.setAttribute('data-act', 'open');
         div.title = it.done ? '已下载 · 点击看大图' : '点击看大图';
 
-        const img = document.createElement('img');
-        img.className = 'ip-thumb';
-        img.loading = 'lazy';
-        /* 缩略图裂（2026-11-12，苏哥微博页实测）：
-         * 侧边栏是 chrome-extension:// 页面，加载图床图片时 Referer 是扩展来源，
-         * 部分站点按 Referer 放行 → 整屏裂图、连带「尺寸未知」的观感更差。
-         * 先按「不带 Referer」请求（多数图床允许，且不会带一个明显错误的来源），
-         * 失败再退回默认策略试一次 —— 反过来（先默认后 no-referrer）会先裂一下。 */
-        img.referrerPolicy = 'no-referrer';
-        img.src = it.url;
-        img.alt = '';
-        img.addEventListener('error', () => {
-            if (!div.dataset.retried) {
-                div.dataset.retried = '1';
-                try { img.referrerPolicy = 'origin'; } catch (e) { /* 老内核忽略 */ }
-                img.src = it.url;   // 重新发一次请求
-                return;
-            }
-            div.classList.add('loadfail');
-        });
+        /* 音视频条目（2026-11-13，t2b）：没有缩略图，用「类型徽标 + 清晰度」占位。
+         * 不能塞 <img src="xxx.m3u8"> —— 清单不是图片，只会留一个裂图框，
+         * 用户会以为「视频嗅探失败了」。 */
+        const kindNow = typeOf(it);
+        if (kindNow === TYPE_VIDEO || kindNow === TYPE_AUDIO) {
+            const ph = document.createElement('div');
+            ph.className = 'ip-media-ph' + (kindNow === TYPE_AUDIO ? ' audio' : '');
+            ph.textContent = kindNow === TYPE_AUDIO ? '♪' : '▶';
+            div.appendChild(ph);
+            /* 视频条目的「打开」没有意义（预览层只放图），改成直接下载这一条 */
+            div.setAttribute('data-act', 'pick');
+            div.title = (it.vlabel || '') + (it.vnote ? ' · ' + it.vnote : '');
+        } else {
+            const img = document.createElement('img');
+            img.className = 'ip-thumb';
+            img.loading = 'lazy';
+            /* 缩略图裂（2026-11-12，苏哥微博页实测）：
+             * 侧边栏是 chrome-extension:// 页面，加载图床图片时 Referer 是扩展来源，
+             * 部分站点按 Referer 放行 → 整屏裂图、连带「尺寸未知」的观感更差。
+             * 先按「不带 Referer」请求（多数图床允许，且不会带一个明显错误的来源），
+             * 失败再退回默认策略试一次 —— 反过来（先默认后 no-referrer）会先裂一下。 */
+            img.referrerPolicy = 'no-referrer';
+            img.src = it.url;
+            img.alt = '';
+            img.addEventListener('error', () => {
+                if (!div.dataset.retried) {
+                    div.dataset.retried = '1';
+                    try { img.referrerPolicy = 'origin'; } catch (e) { /* 老内核忽略 */ }
+                    img.src = it.url;   // 重新发一次请求
+                    return;
+                }
+                div.classList.add('loadfail');
+            });
+            div.appendChild(img);
+        }
 
         /* 勾选是**独立控件**：点图看大图，点这个圈才改勾选状态。
          * 这样「看」和「选」不会互相误触 —— 之前点图即勾选，
@@ -632,15 +660,27 @@
         /* 尺寸未知分两种来源，不能一律叫「背景图」：
          *   · 背景图（it.bg）：确实没有 img 标签，本来就没有宽高
          *   · 源码通道抓到的（srcOnly）：DOM 里还没 <img>，尺寸无从得知
-         * 早先一律写「背景图」，实测源码抓来的 3 张全被标成背景图（2026-11-07 端到端暴露）。 */
-        dim.textContent = (it.w && it.h)
-            ? (it.w + ' × ' + it.h)
-            : (it.bg ? '背景图' : '尺寸未知');
+         * 早先一律写「背景图」，实测源码抓来的 3 张全被标成背景图（2026-11-07 端到端暴露）。
+         *
+         * 音视频（2026-11-13，t2b）：它们本来就没有像素尺寸，写「尺寸未知」是误导。
+         * 改显示「清晰度 · 体积」（HLS 清单不显示体积，见 video-quality 的同款理由）。 */
+        if (kindNow === TYPE_VIDEO || kindNow === TYPE_AUDIO) {
+            const bits = [];
+            if (it.vlabel) { bits.push(it.vlabel); }
+            if (it.vsize > 0) { bits.push((it.vsize / 1048576).toFixed(1) + 'MB'); }
+            dim.textContent = bits.join(' · ') || (kindNow === TYPE_AUDIO ? '音频' : '视频');
+        } else {
+            dim.textContent = (it.w && it.h)
+                ? (it.w + ' × ' + it.h)
+                : (it.bg ? '背景图' : '尺寸未知');
+        }
 
         /* 不再有悬停放大镜：点图本身就是看大图，
          * 再放一个 ⌕ 会让人以为「这里才能看」，而且侧边栏窄，多一个控件就多一份误触。 */
 
-        div.appendChild(img);
+        /* 注意：img / 占位块已在上面按类型 append 过，这里不能再 append(img) ——
+         * 那个变量只在图片分支里存在，音视频分支走到这儿会抛
+         * 「img is not defined」，整个扫描直接失败（2026-11-13 实测踩到）。 */
         div.appendChild(ck);
         if (liveTag) { div.appendChild(liveTag); }
         if (badge.textContent) { div.appendChild(badge); }
@@ -689,6 +729,7 @@
 
     function renderAll() {
         renderCount();
+        renderTypes();
         renderTiers();
         renderGrid();
         renderFoot();
@@ -703,7 +744,9 @@
 
     function setBusy(b) {
         el.rescan.disabled = b;
-        el.rescan.textContent = b ? '…' : '⟳';
+        /* 文案与主按钮保持一致（2026-11-13，t2c）：原来是 '⟳'，现在按钮带文字，
+         * 忙时也要说清在做什么，而不是只把图标换成省略号。 */
+        el.rescan.textContent = b ? '⟳ 探测中…' : '⟳ 重新探测';
     }
 
     /* ---------------- 交互：勾选 ---------------- */
@@ -751,6 +794,21 @@
             b.title = on ? '取消勾选' : '勾选这张';
             b.setAttribute('aria-label', b.title);
         }
+    }
+
+    /* 类型栏（2026-11-13 新增）：先定「看哪一类」，尺寸档位在其下细分图片。
+     * 点类型不重置尺寸档位 —— 从「大 ≥1200」切到「视频」再切回「全部」时，
+     * 用户期望原来的尺寸筛选还在，而不是被悄悄清空。 */
+    if (el.types) {
+        el.types.addEventListener('click', ev => {
+            const b = ev.target.closest ? ev.target.closest('.ip-type') : null;
+            if (!b || b.disabled) { return; }
+            const t = b.getAttribute('data-type');
+            if (!t) { return; }
+            typeFilter = t;
+            autoSelect();
+            renderAll();
+        });
     }
 
     el.tiers.addEventListener('click', ev => {
@@ -927,36 +985,147 @@
         runBatch(list);
     });
 
-    async function runBatch(list) {
+    let lastFailedItems = [];
+
+    /** 批量回执归一：失败/硬失败（FSA 未授权等）不能算成功（阶段二口径）。 */
+    function normalizeRes(res, total) {
+        const r = res || {};
+        const hard = r.ok === false || !!r.code || !!r.needGrant;
+        return {
+            ok: !hard && !(Number(r.fail) || 0),
+            succeeded: Number(r.succeeded) || 0,
+            fail: Number(r.fail) || (hard ? total : 0),
+            skipped: Number(r.skipped) || 0,
+            failures: Array.isArray(r.failures) ? r.failures : [],
+            needGrant: !!r.needGrant,
+            code: String(r.code || ''),
+            message: String(r.message || '')
+        };
+    }
+
+    /** 失败明细 → 原条目（重试时用，保持原序号命名） */
+    function failedItemsOf(list, failures) {
+        if (!failures.length) { return []; }
+        const bad = Object.create(null);
+        for (const f of failures) {
+            if (f && f.url) { bad[String(f.url)] = 1; }
+        }
+        return list.filter(it => bad[it.url] || bad[it.orig] || (it.live && bad[it.live]));
+    }
+
+    /** 重试按钮：动态插在底部文案旁，不改 image.html（避免与并行会话冲突） */
+    function setRetryUi(on) {
+        const box = el.sum && el.sum.parentElement;
+        if (!box) { return; }
+        let btn = document.getElementById('ipRetry');
+        if (!on) {
+            if (btn) { btn.remove(); }
+            return;
+        }
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.id = 'ipRetry';
+            btn.type = 'button';
+            btn.className = 'ip-icb';
+            btn.textContent = '重试失败';
+            btn.addEventListener('click', () => {
+                if (!lastFailedItems.length) { return; }
+                runBatch(lastFailedItems, { retry: true });
+            });
+            box.appendChild(btn);
+        }
+        btn.textContent = '重试失败 ' + lastFailedItems.length;
+    }
+
+    /* 音视频批量（2026-11-13，t2d）：
+     * 复用 vrVideoDownload —— 浮标点下载走的就是它，含 HLS 清单展开、
+     * 分片合并、改名、入库。这里**不重写内核**，只负责逐条发起 + 汇总结果。 */
+    async function runMediaBatch(mediaList) {
+        let ok = 0, fail = 0;
+        for (let i = 0; i < mediaList.length; i++) {
+            const it = mediaList[i];
+            el.progT.textContent = '音视频 ' + (i + 1) + ' / ' + mediaList.length;
+            el.progBar.style.width = Math.round((i + 1) / mediaList.length * 100) + '%';
+            let r = null;
+            try {
+                r = await send({
+                    Message: 'vrVideoDownload',
+                    tabId: tabId,
+                    optionId: it.optionId,
+                    wantBest: false,
+                    frameId: 0,
+                    meta: { title: pageTitle, pageUrl: pageUrl }
+                });
+            } catch (e) { r = null; }
+            if (r && r.ok && !r.skipped) {
+                ok++;
+                downloaded[it.key] = 1;
+                it.done = true;
+            } else if (r && r.ok && r.skipped) {
+                /* 后台去重命中：算成功（文件已在库里），但不重复计数 */
+                it.done = true;
+            } else {
+                fail++;
+            }
+        }
+        return { ok: ok, fail: fail };
+    }
+
+    async function runBatch(list, opts) {
+        const o = opts || {};
+        if (!list.length) { return; }
+        /* 拆分：音视频走 vrVideoDownload，图片继续走 vrImg.batch（原链路不动） */
+        const mediaList = list.filter(it => {
+            const t = typeOf(it);
+            return t === TYPE_VIDEO || t === TYPE_AUDIO;
+        });
+        const imgList = list.filter(it => {
+            const t = typeOf(it);
+            return t !== TYPE_VIDEO && t !== TYPE_AUDIO;
+        });
         running = true;
+        setRetryUi(false);
         batchId = 'b-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
         el.prog.hidden = false;
         el.progBar.style.width = '0%';
         el.progT.textContent = '0 / ' + list.length;
         renderFoot();
 
+        /* 先跑音视频：数量少但单条耗时长（要拉分片合并），放前面用户能先看到进度 */
+        let mediaOk = 0, mediaFail = 0;
+        if (mediaList.length) {
+            const mr = await runMediaBatch(mediaList);
+            mediaOk = mr.ok;
+            mediaFail = mr.fail;
+            if (!imgList.length) {
+                running = false;
+                el.prog.hidden = true;
+                autoSelect();
+                renderAll();
+                el.sum.innerHTML = '已保存 <b>' + mediaOk + '</b> 个音视频' +
+                    (mediaFail ? '，失败 <b style="color:var(--danger)">' + mediaFail + '</b> 个' : '');
+                return;
+            }
+        }
+
         const payload = [];
-        list.forEach((it, i) => {
+        imgList.forEach((it) => {
+            const pos = items.indexOf(it);
+            const seq = (pos >= 0 ? pos : payload.length) + 1;
             payload.push({
-                /* 用 it.orig（候选链里最像原图的那条），不是 it.url。
-                 * 2026-11-08 苏哥报「嗅探不准确」：单张下载走的是 it.orig，
-                 * 批量却用 it.url（页面显示的预览版），同一张图两条路径落盘尺寸不同。
-                 * 小红书实测 26 张全是 640 宽的预览档，就是这条造成的。 */
                 url: it.orig || it.url,
                 candidates: it.candidates,
                 /* 必须带序号：同页多张图共用 pageTitle 时，背景会按 title 命名，
                  * 两张同名只剩扩展名能区分（实测 cover.jpg / sprite.png 落成同名 .jpg/.png）。
-                 * 序号补零到两位，超过 99 张自然变成三位，不截断。 */
-                title: (pageTitle || '图片') + '_' + String(i + 1).padStart(2, '0')
+                 * 序号用条目在全量清单里的位置，重试时命名不漂。 */
+                title: (pageTitle || '图片') + '_' + String(seq).padStart(2, '0')
             });
-            /* 实况图：静态图后面跟一条实况 mp4（2026-11-11）。
-             * 同一队列里，去重/进度/失败统计天然覆盖；实况失败只算它自己一条。 */
             if (it.live) {
                 payload.push({
                     url: it.live,
                     candidates: (it.liveBackup && it.liveBackup.length)
                         ? [it.live].concat(it.liveBackup) : [it.live],
-                    title: (pageTitle || '图片') + '_' + String(i + 1).padStart(2, '0') + '_live'
+                    title: (pageTitle || '图片') + '_' + String(seq).padStart(2, '0') + '_live'
                 });
             }
         });
@@ -970,25 +1139,38 @@
             /* 本页是扩展页面，读不到网页 DOM，拿不到站名。
              * 带上 tabId，由后台注入目标页取一次站名并落库。 */
             tabId: tabId,
-            concurrency: Number(settings.imgConcurrency) || 3,
+            concurrency: Number(settings.imgConcurrency) || 2,
             batchId: batchId
         });
 
         running = false;
         el.prog.hidden = true;
+        const out = normalizeRes(res, payload.length);
+        lastFailedItems = out.fail ? failedItemsOf(imgList, out.failures) : [];
         renderFoot();
 
-        if (res && typeof res.succeeded === 'number') {
-            const fail = Number(res.fail) || 0;
-            if (fail) {
-                el.sum.innerHTML = '完成 ' + res.succeeded + ' 张，失败 <b style="color:var(--danger)">' + fail + '</b> 张';
-            } else {
-                // 下完就标记，下次打开默认不再勾
-                for (const it of list) { downloaded[it.key] = 1; it.done = true; }
-                autoSelect();
-                renderAll();
-                el.sum.innerHTML = '已保存 <b>' + res.succeeded + '</b> 张';
+        if (out.needGrant || out.code === 'IMG_E_FSA_PERM') {
+            el.sum.innerHTML = '<b style="color:var(--danger)">批量保存需要先授权资源库目录</b> · 去媒体库选目录后重试';
+            return;
+        }
+        const fresh = Math.max(0, out.succeeded - out.skipped);
+        if (out.fail) {
+            /* 只标记真正成功的：失败项不能写「已下载」，否则下次被跳过（B-84 验收） */
+            for (const it of imgList) {
+                if (lastFailedItems.indexOf(it) >= 0) { continue; }
+                downloaded[it.key] = 1; it.done = true;
             }
+            autoSelect();
+            renderAll();
+            el.sum.innerHTML = '完成 <b>' + (fresh + mediaOk) + '</b> 个，失败 <b style="color:var(--danger)">' +
+                (out.fail + mediaFail) + '</b> 个' + (out.failures[0] ? '（' + escText(out.failures[0].message || out.failures[0].code) + '）' : '');
+            setRetryUi(lastFailedItems.length > 0);
+        } else {
+            for (const it of imgList) { downloaded[it.key] = 1; it.done = true; }
+            autoSelect();
+            renderAll();
+            el.sum.innerHTML = '已保存 <b>' + (fresh + mediaOk) + '</b> 个' +
+                (out.skipped ? '，已存在跳过 <b>' + out.skipped + '</b> 张' : '');
         }
     }
 
@@ -1081,13 +1263,19 @@
      * 注意：扩展页面的 fetch 不带页面 Referer，防盗链站点（微博等）会 403 ——
      * 这是已知限制，取不到就跳过并如实报数，不假装成功。
      */
-    async function fetchBytes(url) {
+    async function fetchBytes(url, candidates) {
         try {
-            const r = await fetch(url, { credentials: 'include' });
-            if (!r.ok) { return null; }
-            const ct = r.headers.get('content-type') || '';
-            const buf = await r.arrayBuffer();
-            return { buf, ct };
+            /* 走后台统一候选解析：扩展页直接 fetch 不带页面 Referer，
+             * 防盗链站点会 403（微博/小红书实测）。 */
+            const r = await send({
+                Message: 'vrImg.fetchBytes',
+                action: 'vrImg.fetchBytes',
+                url: url,
+                candidates: (candidates && candidates.length) ? candidates : [url],
+                pageUrl: pageUrl
+            });
+            if (!r || !r.ok || !r.buf) { return null; }
+            return { buf: r.buf, ct: r.mime || '' };
         } catch (e) { return null; }
     }
 
@@ -1131,7 +1319,7 @@
             el.progBar.style.width = Math.round((i / list.length) * 100) + '%';
 
             const src = it.orig || it.url;
-            const got = await fetchBytes(src);
+            const got = await fetchBytes(src, it.candidates);
             if (!got) { failed.push(src); continue; }
 
             let bytes = new Uint8Array(got.buf);
@@ -1410,6 +1598,28 @@
             } catch (e) { /* 拿不到就用空 */ }
         }
         await scan();
+
+        /* 页面变化自动重扫（ADR-080）：内容脚本的 MutationObserver 只发信号，
+         * 侧栏在这里节流重扫；保留用户已选中的 key。 */
+        try {
+            chrome.runtime.onMessage.addListener((msg, sender) => {
+                if (!msg || (msg.Message !== 'vrImg.pageChanged' && msg.action !== 'vrImg.pageChanged')) { return; }
+                if (sender && sender.tab && sender.tab.id !== tabId) { return; }
+                if (running) { return; }
+                clearTimeout(autoScanTimer);
+                autoScanTimer = setTimeout(async () => {
+                    if (running) { return; }
+                    const keep = new Set(selected);
+                    await scan();
+                    if (keep.size) {
+                        const valid = new Set(items.map(it => it.key));
+                        selected = new Set([...keep].filter(k => valid.has(k)));
+                        syncCells();
+                        renderFoot();
+                    }
+                }, 1800);
+            });
+        } catch (eWatch) { /* 无 runtime 时忽略 */ }
         bindWebpToggle();
     }
 

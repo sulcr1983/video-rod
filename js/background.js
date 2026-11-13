@@ -3066,8 +3066,18 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     // 苏哥的钓鱼竿：X(推特) 推文内联按钮下载（M8），js/x-button.js 发起
     // 钓鱼竿：页内视频悬浮按钮（ADR-030），js/video-overlay.js 发起
     if (Message.Message == "vrVideoOptions") {
-        const tabId = (sender && sender.tab && sender.tab.id != null)
-            ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
+        /* 扩展页面（侧边栏 image.html / popup / 下载页）发来的消息：
+         * sender.tab 是**扩展页自己**，不是用户正在看的网页。
+         * 必须让 Message.tabId 优先，否则问的是空面板自己 → 恒返回 0 个选项。
+         * 实测 2026-11-13：同一 tabId 在 SW 内直接调 vrVideoOptions 能拿到 1 个 HLS，
+         * 面板发消息却是 0 —— 因为这里用了面板自己的 tabId。
+         * 浮标（注入网页）不受影响：sender.tab 就是网页标签，走原路径。 */
+        const fromExtPage = !!(sender && sender.tab &&
+            /^chrome-extension:\/\//i.test(sender.tab.url || ''));
+        const tabId = (fromExtPage && Message.tabId != null)
+            ? Message.tabId
+            : ((sender && sender.tab && sender.tab.id != null)
+                ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId));
         /* frameId 来自注入点：按钮挂在 iframe 里时，要按那个 frame 去找「正在播的」 */
         const fId = (sender && sender.frameId != null) ? sender.frameId : Message.frameId;
         vrVideoOptions(tabId, fId).then(function (r) {
@@ -3101,8 +3111,17 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         return true;
     }
     if (Message.Message == "vrVideoDownload") {
-        const tabId = (sender && sender.tab && sender.tab.id != null)
-            ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId);
+        /* 与 vrVideoOptions 同一条规则（2026-11-13）：扩展页面（侧边栏 image.html /
+         * popup / 下载页）发消息时 sender.tab 是**扩展页自己**，不是目标网页。
+         * 面板批量下载视频曾因此把「面板 tabId」当成下载目标 → 后台拿不到选项 →
+         * 全部落成「失败」（实测：面板里点下载 0 成功 1 失败，而 SW 内直接
+         * 调 vrVideoDownload 用同一个 'm0' 能成功落 57MB）。 */
+        const fromExtPage = !!(sender && sender.tab &&
+            /^chrome-extension:\/\//i.test(sender.tab.url || ''));
+        const tabId = (fromExtPage && Message.tabId != null)
+            ? Message.tabId
+            : ((sender && sender.tab && sender.tab.id != null)
+                ? sender.tab.id : (Message.tabId != null ? Message.tabId : G.tabId));
         const fId = (sender && sender.frameId != null) ? sender.frameId : Message.frameId;
         vrVideoDownload(tabId, Message.optionId, Message.wantBest !== false, fId, Message.meta || null)
             .then(function (r) {

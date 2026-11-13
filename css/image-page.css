@@ -120,6 +120,77 @@ input { font: inherit; }
 .ip-icb:hover { border-color: var(--accent-deep); color: var(--accent); }
 .ip-icb:disabled { opacity: .45; cursor: default; }
 
+/* 主按钮（2026-11-13，t2c）：「重新探测」与「媒体库」。
+ * 苏哥点名这两个必须显眼 —— 下载完要找文件、页面滚动后要重扫，
+ * 使用频率远高于其它工具按钮，不能再缩成 26px 的图标藏在⋯菜单里。
+ * 用 accent 描边 + 文字，视觉重量介于普通图标与底部「下载选中」之间。 */
+.ip-btn-primary {
+    flex: 0 0 auto;
+    height: 26px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--accent-deep);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.ip-btn-primary:hover { background: var(--accent-dim, rgba(245,180,80,.12)); }
+.ip-btn-primary:disabled { opacity: .45; cursor: default; }
+/* 媒体库用实心，做成整条工具栏里最强的那个动作 —— 用户下完就想去看 */
+.ip-btn-lib {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #1b1b1b;
+    font-weight: 600;
+}
+.ip-btn-lib:hover { filter: brightness(1.08); background: var(--accent); }
+
+/* ---------------- 类型栏（2026-11-13 新增） ----------------
+ * 苏哥要求：面板不能只出现图片，要兼容图片/动图/视频/音频并分类下载。
+ * 类型栏放在尺寸档位**上面**：先决定「看哪一类」，再用尺寸档位细分图片。
+ * 与 .ip-tier 视觉区分：类型是「大类」，用实心选中块；尺寸是「阈值」，用描边胶囊。 */
+.ip-types {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px 0;
+}
+.ip-type {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-2);
+    font-size: 13px;
+    color: var(--ink);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: border-color .14s, color .14s, background .14s;
+}
+.ip-type .c { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+.ip-type:hover { border-color: var(--accent-deep); }
+.ip-type.on {
+    background: var(--accent-soft);
+    border-color: var(--accent-deep);
+    color: var(--accent-2);
+    font-weight: 600;
+}
+.ip-type.on .c { color: var(--accent); }
+/* 该类型一张都没有：淡化但仍可点（切过去看到空列表也是明确结果，
+ * 和尺寸档位保持同一口径，不禁用） */
+.ip-type.zero { opacity: .45; }
+
 /* ---------------- 尺寸档位 ---------------- */
 .ip-tiers {
     flex: 0 0 auto;
@@ -225,6 +296,23 @@ input { font: inherit; }
     background: var(--surface-2);
 }
 .ip-cell.loadfail .ip-thumb { opacity: .25; }
+
+/* 音视频条目的占位块（2026-11-13，t2b）：
+ * 视频没有可用的缩略图（m3u8 清单不是图片），用类型徽标占位，
+ * 尺寸与 .ip-thumb 一致，保证网格对齐不跳行。 */
+.ip-media-ph {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--surface-2);
+    color: var(--accent);
+    font-size: 42px;
+    line-height: 1;
+    user-select: none;
+}
+.ip-media-ph.audio { color: var(--ink-2); font-size: 36px; }
 
 /* 勾选圈现在是**独立按钮**：点它只改勾选，点图本身看大图。
  * 比原来 17px 再放大到 20px，否则侧边栏里太难点中（触控/高 DPI 都吃力）。 */
