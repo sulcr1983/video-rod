@@ -1,0 +1,124 @@
+{
+  "_meta": {
+    "purpose": "推特时间线响应结构样本（脱敏）",
+    "source": "2026-11-13 真机探针 x.com/NASA/media → UserVideoTimeline",
+    "sanitized": "推文 id / 媒体 id / 账号 / 文案 / URL 全部替换为虚构值；只保留结构",
+    "why": "钉死三件事：① instructions[0] 常是 TimelineClearCache（只有 type，没有 entries）② 真正的 entries 在 instructions[1] ③ media 在 legacy.extended_entities.media[]，视频变体在 media.video_info.variants[]"
+  },
+  "data": {
+    "user": {
+      "result": {
+        "__typename": "User",
+        "rest_id": "1000000001",
+        "timeline": {
+          "timeline": {
+            "instructions": [
+              { "type": "TimelineClearCache" },
+              {
+                "type": "TimelineAddEntries",
+                "entries": [
+                  {
+                    "entryId": "tweet-1111111111111111111",
+                    "sortIndex": "1900000000000000000",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "__typename": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "__typename": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "__typename": "Tweet",
+                            "rest_id": "1111111111111111111",
+                            "core": {
+                              "user_results": {
+                                "result": {
+                                  "__typename": "User",
+                                  "rest_id": "1000000001",
+                                  "legacy": { "name": "样本账号", "screen_name": "sample_user" }
+                                }
+                              }
+                            },
+                            "legacy": {
+                              "id_str": "1111111111111111111",
+                              "user_id_str": "1000000001",
+                              "full_text": "这条推文带一个视频 https://t.co/FIXTURE01",
+                              "created_at": "Sat Nov 01 12:00:00 +0000 2025",
+                              "extended_entities": {
+                                "media": [
+                                  {
+                                    "id_str": "2222222222222222222",
+                                    "media_key": "13_2222222222222222222",
+                                    "type": "video",
+                                    "media_url_https": "https://pbs.twimg.com/amplify_video_thumb/2222222222222222222/img/FIXTURE.jpg",
+                                    "original_info": { "width": 3840, "height": 2160 },
+                                    "video_info": {
+                                      "aspect_ratio": [16, 9],
+                                      "duration_millis": 60000,
+                                      "variants": [
+                                        { "content_type": "application/x-mpegURL", "url": "https://video.twimg.com/amplify_video/2222222222222222222/pl/FIXTURE.m3u8" },
+                                        { "content_type": "video/mp4", "bitrate": 256000, "url": "https://video.twimg.com/amplify_video/2222222222222222222/vid/avc1/480x270/FIXTURE.mp4" },
+                                        { "content_type": "video/mp4", "bitrate": 832000, "url": "https://video.twimg.com/amplify_video/2222222222222222222/vid/avc1/640x360/FIXTURE.mp4" },
+                                        { "content_type": "video/mp4", "bitrate": 2176000, "url": "https://video.twimg.com/amplify_video/2222222222222222222/vid/avc1/1280x720/FIXTURE.mp4" },
+                                        { "content_type": "video/mp4", "bitrate": 10368000, "url": "https://video.twimg.com/amplify_video/2222222222222222222/vid/avc1/1920x1080/FIXTURE.mp4" },
+                                        { "content_type": "video/mp4", "bitrate": 25128000, "url": "https://video.twimg.com/amplify_video/2222222222222222222/vid/avc1/3840x2160/FIXTURE.mp4" }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "entryId": "tweet-3333333333333333333",
+                    "sortIndex": "1899999999999999000",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "__typename": "TweetWithVisibilityResults",
+                            "tweet": {
+                              "__typename": "Tweet",
+                              "rest_id": "3333333333333333333",
+                              "core": {
+                                "user_results": {
+                                  "result": {
+                                    "legacy": { "name": "样本账号", "screen_name": "sample_user" }
+                                  }
+                                }
+                              },
+                              "legacy": {
+                                "id_str": "3333333333333333333",
+                                "user_id_str": "1000000001",
+                                "full_text": "这条是一条纯文字推文",
+                                "created_at": "Fri Oct 31 12:00:00 +0000 2025"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "entryId": "cursor-bottom-1",
+                    "content": {
+                      "entryType": "TimelineTimelineCursor",
+                      "cursorType": "Bottom",
+                      "value": "FIXTURE_CURSOR_NEXT"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

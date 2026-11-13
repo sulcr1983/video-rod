@@ -1030,6 +1030,12 @@ a.pi-row:hover .go{opacity:1}
 .pi-more-head b{color:var(--ink-2);font-weight:650;margin:0 1px}
 .pi-more-head button{font-size:11.5px;color:var(--muted);padding:1px 4px;border-radius:4px}
 .pi-more-head button:hover{color:var(--accent);background:var(--surface-2)}
+/* 「只看此人 · 循环播放」：主操作，比「查看全部」重一档 */
+.pi-more-head .pv-peer-loop{
+  margin-left:8px;font-size:11.5px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);padding:2px 8px;border-radius:6px;background:transparent;
+}
+.pi-more-head .pv-peer-loop:hover{background:var(--accent);color:var(--ink-inv, #fff)}
 .pi-more-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
 .pi-more-item{
   aspect-ratio:1;border-radius:5px;overflow:hidden;position:relative;

@@ -16,7 +16,7 @@ _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 class Cdp:
     def __init__(self, url=None):
-        ver = json.load(_opener.open((url or CDP_URL) + "/json/version"))
+        ver = json.load(_opener.open((url or os.environ.get("VR_CDP", CDP_URL)) + "/json/version"))
         # timeout 拉长到 120s：截图/大批量偶发慢响应，60s 会整条连接挂死
         self.ws = create_connection(ver["webSocketDebuggerUrl"],
                                     suppress_origin=True, timeout=120)

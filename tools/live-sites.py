@@ -105,17 +105,48 @@ def check_sniff(cdp, sid, case, tab):
     return True, '嗅到 %d 条 %s' % (len(hits), want or '媒体')
 
 
+def wait_cells_stable(cdp, ps, timeout=25.0):
+    """等侧栏卡片数稳定。
+    统一发现层现在会合并网络缓存并做尺寸回填（预算 5s），
+    固定 sleep 会「有时 2 张有时 3 张」——轮询到连续两次不变才算扫完。"""
+    last, stable, n = -1, 0, 0
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        time.sleep(1.5)
+        try:
+            cur = int(cdp.eval("document.querySelectorAll('.ip-cell').length", ps) or 0)
+        except Exception:
+            cur = 0
+        n = cur
+        if cur == last and cur > 0:
+            stable += 1
+            if stable >= 2:
+                break
+        else:
+            stable = 0
+        last = cur
+    return n
+
+
 def check_image(cdp, ext, case, tab):
     exp = case.get('expect') or {}
     tid, ps = open_page(cdp, 'chrome-extension://%s/image.html?tabId=%d' % (ext, tab), 430, 900)
     try:
-        time.sleep(12)          # 侧栏扫描 + 解码要时间（懒加载站更慢）
-        n = cdp.eval("document.querySelectorAll('.ip-cell').length", ps)
-        n = int(n or 0)
+        n = wait_cells_stable(cdp, ps)
         need = int(exp.get('minCells') or 1)
         if n < need:
             return False, '侧栏只列出 %d 张（需要 ≥%d）' % (n, need)
-        return True, '侧栏列出 %d 张' % n
+        # 裂图（缩略图 no-referrer + 默认策略两次都失败才加 .loadfail）
+        broken = int(cdp.eval("document.querySelectorAll('.ip-cell.loadfail').length", ps) or 0)
+        if exp.get('maxBroken') is not None and broken > int(exp['maxBroken']):
+            return False, '%d 张裂图（允许 ≤%s）；共 %d 张' % (broken, exp['maxBroken'], n)
+        # 尺寸回填：ip-dim 里没有「×」的就是未知（含「尺寸未知」「背景图」两种文案）
+        unknown = int(cdp.eval(
+            "Array.from(document.querySelectorAll('.ip-dim'))"
+            ".filter(e => (e.textContent || '').indexOf('\\u00d7') < 0).length", ps) or 0)
+        if exp.get('maxUnknown') is not None and unknown > int(exp['maxUnknown']):
+            return False, '%d 张尺寸未知（允许 ≤%s）；共 %d 张' % (unknown, exp['maxUnknown'], n)
+        return True, '侧栏列出 %d 张（裂图 %d，尺寸未知 %d）' % (n, broken, unknown)
     finally:
         try:
             cdp.send('Target.closeTarget', {'targetId': tid})

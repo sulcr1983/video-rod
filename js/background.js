@@ -741,7 +741,7 @@ function vrDownloadWithName(url, filename, extra) {
                 vrAbortFilename(url, filename);
                 /* relPath 用 save.js 回传的真实落盘路径（同名会被 freeName 改成 _01），
                  * 不能用入参预测的那个 —— 否则后续判重/删文件会打到别的条目上。 */
-                return { __fsa: true, path: r.path, relPath: r.relPath || filename };
+                return { __fsa: true, path: r.path, relPath: r.relPath || filename, size: Number(r.size) || 0 };
             }
             if (r && r.ok && r.mode === 'downloads') {
                 // 契约要求「名字可能被浏览器改名（ADR-040）要如实告知用户」：
@@ -1129,14 +1129,287 @@ async function vrSiteNameProbe(msg) {
     };
 }
 
+/* ==========================================================
+ * 图片网络缓存（ADR-082）
+ *
+ * 为什么需要：DOM 扫描只能看到「此刻还在页面上的 <img>」。滚过去的图、
+ * JS 加载后从 DOM 移除的图、懒加载前就请求过的图、外部 CSS 背景图都扫不到。
+ * ImageAssistant 1.70.7 的核心就是 webRequest 按 tab 缓存所有 image/* 响应。
+ *
+ * 边界（已拍板）：
+ *   · 只存 URL/来源/类型/字节数，不存内容；
+ *   · per-tab 2000 条、24h 过期、chrome.storage.session 之外只放内存；
+ *   · 不进媒体嗅探列表（G.Type 不动），只供图片清单合并。
+ * ========================================================== */
+var VR_IMG_NET = new Map();          // tabId -> Map<url, {url,ct,bytes,frameId,referer,at}>
+var VR_IMG_NET_MAX = 2000;
+var VR_IMG_NET_TTL = 24 * 3600 * 1000;
+var VR_IMG_NET_MIN_BYTES = 1024;
+
+function vrImgNetUseful(url, ct, bytes) {
+    var s = String(url || '');
+    if (!/^https?:/i.test(s)) { return false; }
+    if (bytes && bytes < VR_IMG_NET_MIN_BYTES) { return false; }
+    if (/\.(?:svg|ico)(?:[?#]|$)/i.test(s.split('?')[0])) { return false; }
+    /* 明显装饰/头像/图标：网络层没有 DOM 尺寸，只能先按路径挡；
+     * 宁可漏一点，也别把整页头像塞进清单。 */
+    if (/(?:^|[/_.-])(?:avatars?|icons?|logos?|emoji|emoji?s?|sprites?|spacer|loading|placeholder)(?:[/_.-]|$)/i.test(s)) {
+        return false;
+    }
+    return true;
+}
+
+function vrImgNetTab(tabId, create) {
+    var id = Number(tabId);
+    if (!(id > 0)) { return null; }
+    var m = VR_IMG_NET.get(id);
+    if (!m && create) { m = new Map(); VR_IMG_NET.set(id, m); }
+    return m || null;
+}
+
+function vrImgNetAdd(tabId, url, info) {
+    var m = vrImgNetTab(tabId, true);
+    if (!m) { return; }
+    var s = String(url || '');
+    if (!s) { return; }
+    var now = Date.now();
+    var prev = m.get(s);
+    m.set(s, {
+        url: s,
+        ct: String((info && info.ct) || (prev && prev.ct) || ''),
+        bytes: Number((info && info.bytes) || (prev && prev.bytes) || 0),
+        frameId: (info && info.frameId != null) ? info.frameId : (prev && prev.frameId),
+        referer: String((info && info.referer) || (prev && prev.referer) || ''),
+        at: now
+    });
+    /* 超上限 / 过期：按插入顺序淘汰最旧 */
+    if (m.size > VR_IMG_NET_MAX) {
+        var drop = m.size - VR_IMG_NET_MAX;
+        for (var k of m.keys()) {
+            if (drop-- <= 0) { break; }
+            m.delete(k);
+        }
+    }
+    if (m.size % 64 === 0) {
+        for (var [k2, v2] of m) {
+            if (!v2 || now - (v2.at || 0) > VR_IMG_NET_TTL) { m.delete(k2); }
+        }
+    }
+}
+
+function vrImgNetList(tabId) {
+    var m = vrImgNetTab(tabId, false);
+    if (!m) { return []; }
+    var now = Date.now();
+    var out = [];
+    for (var [k, v] of m) {
+        if (!v || now - (v.at || 0) > VR_IMG_NET_TTL) { m.delete(k); continue; }
+        out.push(v);
+    }
+    out.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+    return out;
+}
+
+try {
+    chrome.webRequest.onHeadersReceived.addListener(function (d) {
+        try {
+            if (!d || !(d.tabId >= 0) || !d.url) { return; }
+            var headers = d.responseHeaders || [];
+            var ct = '', len = 0;
+            for (var i = 0; i < headers.length; i++) {
+                var n = String(headers[i].name || '').toLowerCase();
+                if (n === 'content-type') { ct = String(headers[i].value || '').toLowerCase(); }
+                else if (n === 'content-length') { len = parseInt(headers[i].value, 10) || 0; }
+            }
+            var isImg = d.type === 'image' || ct.indexOf('image/') === 0;
+            if (!isImg) { return; }
+            if (!vrImgNetUseful(d.url, ct, len)) { return; }
+            vrImgNetAdd(d.tabId, d.url, {
+                ct: ct,
+                bytes: len,
+                frameId: d.frameId,
+                referer: d.initiator || ''
+            });
+        } catch (e) { /* 单条失败不影响请求 */ }
+    }, { urls: ['<all_urls>'] }, ['responseHeaders']);
+} catch (e) { /* 无 webRequest 权限时静默：DOM 扫描仍可用 */ }
+
+/* ==========================================================
+ * 图片候选解析（阶段二，ADR-080）
+ *
+ * 为什么必须做：扫描器给的是候选链（a[href]、srcset 最大、data-src、
+ * 去 resize、微博 /large/），批量入口却只把 bestCandidate 当唯一 URL；
+ * 首选 404/403 就整张失败。这里按序探测，第一个“真的是图片”的定案。
+ * ========================================================== */
+
+function vrImgSniffHead(buf, mime) {
+    var b = buf || new Uint8Array(0);
+    if (!b.length) { return ''; }   // 0 字节响应不能只凭 content-type 当图片
+    if (b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) { return 'jpg'; }
+    if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) { return 'png'; }
+    if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) { return 'gif'; }
+    if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+        b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) { return 'webp'; }
+    if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+        var brand = '';
+        for (var i = 8; i < 12; i++) { brand += String.fromCharCode(b[i]); }
+        if (/avif|avis/i.test(brand)) { return 'avif'; }
+        if (/heic|heix|hevc|hevx|mif1|msf1/i.test(brand)) { return 'heic'; }
+    }
+    if (b.length >= 2 && b[0] === 0x42 && b[1] === 0x4D) { return 'bmp'; }
+    var ct = String(mime || '').toLowerCase();
+    var map = {
+        'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
+        'image/webp': 'webp', 'image/avif': 'avif', 'image/bmp': 'bmp',
+        'image/heic': 'heic', 'image/heif': 'heif'
+    };
+    return map[ct] || '';
+}
+
+/** 只读响应前 N 字节，读完立即 cancel，避免把整张大图拉下来 */
+async function vrImgReadHead(r, max) {
+    var n = Math.max(16, Number(max) || 32);
+    if (!r.body || typeof r.body.getReader !== 'function') {
+        var blob = await r.blob();
+        return new Uint8Array(await blob.slice(0, n).arrayBuffer());
+    }
+    var reader = r.body.getReader();
+    var parts = [], got = 0;
+    while (got < n) {
+        var x = await reader.read();
+        if (x.done) { break; }
+        var v = x.value;
+        if (!v || !v.byteLength) { continue; }
+        parts.push(v);
+        got += v.byteLength;
+    }
+    try { reader.cancel(); } catch (e) { /* 已结束 */ }
+    var total = new Uint8Array(got);
+    var off = 0;
+    for (var i = 0; i < parts.length; i++) {
+        total.set(parts[i], off);
+        off += parts[i].byteLength;
+    }
+    return total.slice(0, n);
+}
+
+async function vrImgProbeCandidate(url, pageUrl) {
+    if (/^data:image\//i.test(url)) {
+        return { ok: true, url: url, mime: '', ext: '', bytes: 0 };
+    }
+    if (!/^https?:/i.test(url)) {
+        return { ok: false, reason: 'bad-url' };
+    }
+    /* 探测请求同样要 Referer：按域名设 DNR，跨域 fetch 的 referrer 会被裁成 origin。
+     * 复用既有 vrSetMediaHeadersFor（10 分钟自动清，12 条规则池）。 */
+    try { await vrSetMediaHeadersFor(url, pageUrl); } catch (e) { /* 设头失败仍可试 */ }
+
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { try { ctl.abort(); } catch (e) { } }, 8000) : 0;
+    var init = {
+        method: 'GET',
+        headers: { 'Range': 'bytes=0-2047' },
+        credentials: 'include',
+        cache: 'no-store'
+    };
+    if (ctl) { init.signal = ctl.signal; }
+    if (/^https?:/i.test(pageUrl)) { init.referrer = pageUrl; }
+
+    try {
+        var r = await fetch(url, init);
+        var ct = String(r.headers.get('content-type') || '').toLowerCase();
+        if (!r.ok) {
+            return { ok: false, status: r.status, reason: 'http', url: url };
+        }
+        if (ct && ct.indexOf('image/') !== 0) {
+            return { ok: false, status: r.status, reason: 'content-type', mime: ct, url: url };
+        }
+        var head = null;
+        try { head = await vrImgReadHead(r, 32); } catch (e) { head = null; }
+        var ext = head ? vrImgSniffHead(head, ct) : '';
+        if (!ext) {
+            return { ok: false, status: r.status, reason: 'not-image', mime: ct, url: url };
+        }
+        return {
+            ok: true,
+            url: url,
+            mime: ct || ('image/' + ext),
+            ext: ext,
+            bytes: Number(r.headers.get('content-length') || 0) || (head ? head.length : 0)
+        };
+    } catch (e) {
+        return { ok: false, reason: 'network', message: String((e && e.message) || e), url: url };
+    } finally {
+        if (timer) { clearTimeout(timer); }
+    }
+}
+
+async function vrImgResolveCandidates(item, pageUrl) {
+    var seen = Object.create(null);
+    var list = [];
+    function push(u) {
+        var s = String(u || '').trim();
+        if (!s || seen[s]) { return; }
+        if (!/^(?:https?:|data:image\/)/i.test(s)) { return; }
+        seen[s] = 1;
+        list.push(s);
+    }
+    var arr = Array.isArray(item && item.candidates) ? item.candidates : [];
+    for (var i = 0; i < arr.length; i++) { push(arr[i]); }
+    push(item && item.url);
+    if (!list.length) {
+        return { ok: false, code: 'IMG_E_NO_URL', message: '没找到可下载的图片' };
+    }
+    var last = null;
+    for (var j = 0; j < list.length && j < 8; j++) {
+        var r = await vrImgProbeCandidate(list[j], pageUrl);
+        if (r && r.ok) { r.candidateIndex = j; return r; }
+        last = r;
+    }
+    return {
+        ok: false,
+        code: 'IMG_E_CANDIDATE_ALL_FAILED',
+        message: '原图地址都打不开' + (last && last.reason ? '（' + last.reason + '）' : ''),
+        last: last || null
+    };
+}
+
 /**
  * 单张下载：命名 <日期>_<标题>.<ext>，落 video-rod/<平台>/<博主>/图片/
  * 走 vrDownloadWithName（ADR-027 文件名保护），并预登记资源库 meta。
  */
+async function vrImgFetchBytes(msg) {
+    const pageUrl = String((msg && msg.pageUrl) || '');
+    const resolved = await vrImgResolveCandidates(msg, pageUrl);
+    if (!resolved.ok) {
+        return { ok: false, code: resolved.code, message: resolved.message };
+    }
+    const url = resolved.url;
+    const init = { method: 'GET', credentials: 'include', cache: 'no-store' };
+    if (/^https?:/i.test(pageUrl)) { init.referrer = pageUrl; }
+    try {
+        const r = await fetch(url, init);
+        if (!r.ok) {
+            return { ok: false, code: 'IMG_E_HTTP', message: 'HTTP ' + r.status, status: r.status };
+        }
+        const ct = String(r.headers.get('content-type') || '').toLowerCase();
+        if (ct && ct.indexOf('image/') !== 0) {
+            return { ok: false, code: 'IMG_E_CONTENT_INVALID', message: '服务器返回的不是图片' };
+        }
+        const buf = await r.arrayBuffer();
+        if (!buf || !buf.byteLength) {
+            return { ok: false, code: 'IMG_E_CONTENT_INVALID', message: '空文件' };
+        }
+        return { ok: true, buf: buf, mime: ct, url: url };
+    } catch (e) {
+        return { ok: false, code: 'IMG_E_FETCH', message: String((e && e.message) || e) };
+    }
+}
+
 async function vrImgDownload(msg) {
     const P = self.VRPath;
-    const url = String((msg && msg.url) || '').trim();
-    if (!url || !/^(https?:|data:)/i.test(url)) {
+    const rawUrl = String((msg && msg.url) || '').trim();
+    if (!rawUrl || !/^(https?:|data:)/i.test(rawUrl)) {
         return { ok: false, code: 'IMG_E_NO_URL', message: '没找到可下载的图片' };
     }
     if (!P || !P.buildRelPath) {
@@ -1147,16 +1420,43 @@ async function vrImgDownload(msg) {
     /* 站名：消息里带的（网页内触发点）→ 注入目标页（扩展页面）→ 本地缓存。
      * 解析到就顺手落库，供以后重扫磁盘（无 DOM）时复用。 */
     const site = await vrResolveSiteName(msg);
+    const plat = (P.detectPlatform ? P.detectPlatform(pageUrl) : '');
+
+    /* 先用页面显示地址查一次重，避免对已经下过的图发探测请求。 */
     try {
-        const plat = (P.detectPlatform ? P.detectPlatform(pageUrl) : '');
-        const dupe = await vrFindExistingMedia({ site: plat, kind: 'image', url: url, pageUrl: pageUrl });
+        const dupe = await vrFindExistingMedia({ site: plat, kind: 'image', url: rawUrl, pageUrl: pageUrl });
         if (dupe) {
-            /* 苏哥口径（2026-11-09）：同一平台不允许重复下。命中就跳过，
-             * 并把 skipped 带回去，批量进度才能报「N 张已存在」。 */
-            return { ok: true, duplicate: true, skipped: true, path: dupe.relPath, downloadId: null };
+            const alive = await vrEntryFileAlive(dupe);
+            if (alive) {
+                return { ok: true, duplicate: true, skipped: true, path: dupe.relPath, downloadId: null };
+            }
+            /* 幽灵记录（0 字节/文件已删/权限失效）不能拦下载 */
+            try { await self.VRDB.deleteFiles([dupe.relPath]); } catch (e0) { /* 删不掉也继续 */ }
         }
     } catch (e) { /* 查重失败不阻断下载 */ }
-    const ext = vrImgExt(url, msg && msg.contentType);
+
+    /* 候选逐个探测：第一个真正是图片的定案（首选 404/403 自动退下一个）。
+     * 这是批量失败的头号根因：以前只拿 bestCandidate 当唯一 URL。 */
+    const resolved = await vrImgResolveCandidates(msg, pageUrl);
+    if (!resolved.ok) {
+        return { ok: false, code: resolved.code, message: resolved.message, path: '' };
+    }
+    const url = resolved.url;
+    const mime = resolved.mime || String((msg && msg.contentType) || '') || '';
+
+    /* 候选换成另一条地址时再查一次库：同一张图换 URL/图床也不能重复下。 */
+    if (url !== rawUrl) {
+        try {
+            const dupe2 = await vrFindExistingMedia({ site: plat, kind: 'image', url: url, pageUrl: pageUrl });
+            if (dupe2 && await vrEntryFileAlive(dupe2)) {
+                return { ok: true, duplicate: true, skipped: true, path: dupe2.relPath, downloadId: null };
+            }
+        } catch (e2) { /* 忽略 */ }
+    }
+
+    const ext = (resolved.ext && VR_IMG_EXT_OK.test(resolved.ext))
+        ? resolved.ext
+        : vrImgExt(url, mime);
     let title = '';
     try { title = P.cleanSeg(String((msg && msg.title) || '')) || ''; } catch (e) { title = ''; }
     // 标题太弱就换更有信息量的：
@@ -1249,6 +1549,14 @@ async function vrImgDownload(msg) {
         if (ruleId) { vrImgClearRefererRule(ruleId); }   // 没发下载请求，规则立刻撤
         /* 真实落盘路径（freeName 可能已经把文件名改成 _01），判重与删文件都必须用它 */
         const relReal = String(downloadId.relPath || relPath);
+        /* FSA 写成功但 0 字节 = 写盘失败/被站点反爬页截断，不能计成功 */
+        if (!downloadId.size) {
+            const S0 = self.VRSave;
+            if (S0 && typeof S0.removeFile === 'function') {
+                try { await S0.removeFile(relReal); } catch (e0) { /* 删不掉也报失败 */ }
+            }
+            return { ok: false, code: 'IMG_E_CONTENT_INVALID', message: '写入的文件为空', path: relReal };
+        }
         /* 落盘后立刻做内容判重（2026-11-09，B-67）：
          * URL 归一键挡得住「同图换签名/镜像/格式」，挡不住「同图换路径/换桶」，
          * 也挡不住「别的平台同一个文件」。以前只靠用户手动点「扫描重复」，
@@ -1271,7 +1579,7 @@ async function vrImgDownload(msg) {
     // 微博 sinaimg 这类 CDN 只认 Referer，而 downloads 请求带不上（DNR 对它不生效），
     // 于是会落一个 0 字节文件再报 SERVER_FORBIDDEN。以前这里直接当成功，用户看到空文件。
     // 现在 2.5s 内判到 interrupted 就撤账、清残件，改走离屏直连（扩展上下文 fetch 能带 Referer）。
-    const outcome = await vrWaitDownload(downloadId, 2500);
+    const outcome = await vrWaitDownload(downloadId, 4000);
     if (outcome && outcome.state === 'interrupted') {
         try { vrAbortFilename(url, relPath); } catch (e) { /* ignore */ }
         vrDropDownload(downloadId);
@@ -1301,6 +1609,17 @@ async function vrImgDownload(msg) {
             path: relPath,
             offscreen: off || null
         };
+    }
+
+    /* 完成态也要验内容：200 + HTML 反爬页、0 字节都会被 downloads 当 complete。
+     * 以前只在视频链路用 vrDownloadLooksInvalid，图片批量完全没接。 */
+    if (outcome && outcome.state === 'complete' && vrDownloadLooksInvalid(outcome)) {
+        try {
+            chrome.downloads.removeFile(downloadId, function () { void chrome.runtime.lastError; });
+            chrome.downloads.erase({ id: downloadId }, function () { void chrome.runtime.lastError; });
+        } catch (eBad) { /* 文件可能已被删除 */ }
+        if (ruleId) { vrImgClearRefererRule(ruleId); }
+        return { ok: false, code: 'IMG_E_CONTENT_INVALID', message: '下载到的不是图片', path: relPath };
     }
 
     // 规则要覆盖到请求真正发出为止，不能 download() 一返回就删——
@@ -1392,7 +1711,7 @@ async function vrImgBatch(msg, sender) {
     }
 
     const items = raw.slice(0, VR_IMG_BATCH_MAX);
-    const state = { canceled: false, done: 0, ok: 0, fail: 0, skipped: 0, total: items.length, lastEmit: 0, failures: [] };
+    const state = { canceled: false, done: 0, ok: 0, fail: 0, skipped: 0, total: items.length, lastEmit: 0, failures: [], paths: [] };
     VR_IMG_BATCH.set(batchId, state);
 
     if (!items.length) {
@@ -1437,30 +1756,41 @@ async function vrImgBatch(msg, sender) {
                 batchSeen.add(key);
             }
             try {
-                const r = await vrImgDownload({
-                    url: url,
-                    candidates: it.candidates || [url],
-                    pageUrl: pageUrl,
-                    siteName: site.name || '',
-                    _siteResolved: true,
-                    /* 同一网页的一批图收进以网页标题命名的子文件夹：
-                     * 用户要的是「九张图一个文件夹」，而不是九张平铺。 */
-                    pageTitle: (xhs && xhs.ok && xhs.title) || pageTitle,
-                    title: (xhs && xhs.ok && xhs.title) || it.title || pageTitle || '图片',
-                    /* state 权威作者（格式与 popup 通道/路径引擎一致：昵称(@id)）。
-                     * 小红书走 state 覆盖；其它站点（抖音图文浮层）由消息自带。 */
-                    authorFull: (xhs && xhs.ok && xhs.author)
-                        ? String(xhs.author) + (xhs.authorId ? '(@' + String(xhs.authorId) + ')' : '')
-                        : (dyAuthor || String((msg && msg.authorFull) || '')),
-                    creatorId: (xhs && xhs.ok)
-                        ? String(xhs.authorId || '')
-                        : String((msg && msg.creatorId) || '')
-                });
+                let r = null;
+                /* 网络类失败重试 1 次；内容/权限类重试也不会变，直接保留原因。 */
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    r = await vrImgDownload({
+                        url: url,
+                        candidates: it.candidates || [url],
+                        pageUrl: pageUrl,
+                        siteName: site.name || '',
+                        _siteResolved: true,
+                        /* 同一网页的一批图收进以网页标题命名的子文件夹：
+                         * 用户要的是「九张图一个文件夹」，而不是九张平铺。 */
+                        pageTitle: (xhs && xhs.ok && xhs.title) || pageTitle,
+                        title: (xhs && xhs.ok && xhs.title) || it.title || pageTitle || '图片',
+                        /* state 权威作者（格式与 popup 通道/路径引擎一致：昵称(@id)）。
+                         * 小红书走 state 覆盖；其它站点（抖音图文浮层）由消息自带。 */
+                        authorFull: (xhs && xhs.ok && xhs.author)
+                            ? String(xhs.author) + (xhs.authorId ? '(@' + String(xhs.authorId) + ')' : '')
+                            : (dyAuthor || String((msg && msg.authorFull) || '')),
+                        creatorId: (xhs && xhs.ok)
+                            ? String(xhs.authorId || '')
+                            : String((msg && msg.creatorId) || '')
+                    });
+                    if (r && r.ok) { break; }
+                    const code = (r && r.code) || '';
+                    if (code === 'IMG_E_CONTENT_INVALID' || code === 'IMG_E_FSA_PERM' || code === 'IMG_E_DEDUPE_SKIP') {
+                        break;
+                    }
+                    if (attempt === 0) { await new Promise(res => setTimeout(res, 350)); }
+                }
                 if (r && r.ok) {
                     state.ok++;
                     /* 下载前查重命中（库里已有同平台同一张）：
                      * 不落盘、只算「跳过」，并且要把 URL 记进账本，下次直接命中。 */
                     if (r.duplicate) { state.skipped++; }
+                    if (r.path) { state.paths.push(r.path); }
                     /* 只记「平台|归一键」。整条 URL 不再入账：它会让跨平台同图
                      * 被误判成重复，导致库里缺一张卡。旧账本里的整条 URL 仍会被
                      * 上面的 rawKey 检查认出来（一次性向后兼容）。 */
@@ -1478,7 +1808,7 @@ async function vrImgBatch(msg, sender) {
                 }
             } catch (e) {
                 state.fail++;
-                state.failures.push({ url: url, code: 'IMG_E_FETCH' });
+                state.failures.push({ url: url, code: 'IMG_E_FETCH', message: String((e && e.message) || e) });
             }
             state.done++;
             vrImgProgressThrottle(batchId, state);
@@ -1500,6 +1830,7 @@ async function vrImgBatch(msg, sender) {
         skipped: state.skipped || 0,
         fail: state.fail,
         failures: state.failures.slice(0, 50),
+        paths: state.paths.slice(0, 200),
         canceled: state.canceled
     };
 }
@@ -2778,6 +3109,14 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             .catch(function (e) { sendResponse({ ok: false, message: String((e && e.message) || e) }); });
         return true;
     }
+    if (Message && (Message.Message === 'vrImg.fetchBytes' || Message.action === 'vrImg.fetchBytes')) {
+        vrImgFetchBytes(Message).then(function (res) {
+            sendResponse(res);
+        }).catch(function (e) {
+            sendResponse({ ok: false, code: 'IMG_E_FETCH', message: String(e) });
+        });
+        return true;
+    }
     if (Message && (Message.Message === 'vrImg.download' || Message.action === 'vrImg.download')) {
         (async function () {
             try {
@@ -3307,6 +3646,35 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message.Message == "clearRedundant") {
         clearRedundant();
         sendResponse("OK");
+        return true;
+    }
+    /* 图片网络缓存：MAIN world 挖到的图片 URL（ADR-082）。
+     * 只写缓存，不进 addMedia/媒体列表；侧栏/popup 扫描时再合并。 */
+    if (Message && (Message.Message === 'vrImg.netSeen' || Message.action === 'vrImg.netSeen')) {
+        try {
+            const tabId = (sender && sender.tab && sender.tab.id) || parseInt(Message.tabId, 10) || -1;
+            if (tabId > 0) {
+                const list = Array.isArray(Message.urls) ? Message.urls : [];
+                const frameUrl = String(Message.frameUrl || (sender && sender.url) || '');
+                for (const it of list.slice(0, 50)) {
+                    const u = String((it && it.url) || it || '');
+                    if (u) {
+                        vrImgNetAdd(tabId, u, {
+                            ct: (it && it.ct) || '',
+                            bytes: (it && it.bytes) || 0,
+                            frameId: sender && sender.frameId,
+                            referer: frameUrl
+                        });
+                    }
+                }
+            }
+        } catch (e) { /* 缓存失败不影响页面 */ }
+        sendResponse({ ok: true });
+        return true;
+    }
+    if (Message && (Message.Message === 'vrImg.netCache' || Message.action === 'vrImg.netCache')) {
+        const tabId = parseInt(Message.tabId, 10) || (sender && sender.tab && sender.tab.id) || -1;
+        sendResponse({ ok: true, items: vrImgNetList(tabId) });
         return true;
     }
     // 从 content-script 或 catch-script 传来的媒体url
@@ -6268,6 +6636,45 @@ async function vrVideoOptions(tabId, frameId) {
         });
     }
 
+    /* DOM 兜底（2026-11-13 苏哥：「连视频预览都做不到」）：
+     * X 这类站点的视频是 blob/MSE，没播放时嗅探缓存是空的，
+     * 于是媒体页「视频」分类下**一条都没有** —— 用户看到的就是「做不到」。
+     * 这里把页面里真实存在的 <video> 元素收进来（含 poster），
+     * 让它至少出现在清单里、有封面可看；能不能下仍由点击时的解析决定。 */
+    if (!list.length) {
+        try {
+            const dv = await vrWithTimeout(chrome.scripting.executeScript({
+                target: { tabId: tabId }, world: 'MAIN',
+                func: function () {
+                    var out = [];
+                    var vs = document.querySelectorAll('video');
+                    for (var i = 0; i < vs.length && out.length < 6; i++) {
+                        var v = vs[i];
+                        var src = String(v.currentSrc || v.src || '');
+                        out.push({
+                            src: /^https?:/i.test(src) ? src : '',
+                            poster: String(v.poster || ''),
+                            w: Number(v.videoWidth) || 0,
+                            h: Number(v.videoHeight) || 0
+                        });
+                    }
+                    return out;
+                }
+            }), 2500, 'dom-videos');
+            const dvList = (dv && dv[0] && dv[0].result) || [];
+            dvList.forEach(function (v) {
+                if (!v) { return; }
+                /* 有直链就当一个候选；没有直链但至少有封面，也先占一条位，
+                 * 由面板标注「先点播放」。绝不能因为「还没有直链」就整条不显示。 */
+                if (v.src && !list.some(function (m) { return m.url === v.src; })) {
+                    list.push({ url: v.src, ext: 'mp4', size: 0, domCover: v.poster || '' });
+                } else if (!v.src && v.poster) {
+                    list.push({ url: '', ext: 'mp4', size: 0, domCover: v.poster, pending: true });
+                }
+            });
+        } catch (e) { /* DOM 兜底失败不阻断 */ }
+    }
+
     /* 主动补高清档（通用思路，微博先落地）。
      *
      * 为什么必须有这一步：嗅探只能看到浏览器**实际请求过**的码率。
@@ -6380,6 +6787,40 @@ async function vrVideoOptions(tabId, frameId) {
         }
     } catch (e) { /* MPD 探测失败不影响已有候选 */ }
 
+    /* 封面（2026-11-13 苏哥：「连视频预览都做不到」）：
+     * 面板网格里音视频条目此前只有 ▶/♪ 占位，因为 vrVideoOptions 只回 url/label/size。
+     * 这里用一次页面注入取 poster（微博/X/抖音/B站 的 <video> 都有），
+     * 失败回退 og:image；都拿不到就保持空串，面板仍显示占位，不假装有封面。 */
+    let cover = '';
+    try {
+        const cr = await vrWithTimeout(chrome.scripting.executeScript({
+            target: { tabId: tabId }, world: 'MAIN',
+            func: function () {
+                var v = document.querySelector('video[poster]');
+                var p = v ? String(v.poster || '') : '';
+                if (p && !/^data:/i.test(p)) { return p; }
+                var og = document.querySelector('meta[property="og:image"], meta[name="og:image"]');
+                var ogv = og ? String(og.getAttribute ? og.getAttribute('content') || '' : '') : '';
+                if (ogv) { return ogv; }
+                /* 微博/抖音这类站：video 没有 poster，封面是页面上的大图。
+                 * 取一张「不是头像/小图标」的图顶上，宁可近似也不要空白。
+                 * 判据：自然宽度 ≥ 200，且路径不像头像。 */
+                var imgs = document.querySelectorAll('img');
+                for (var i = 0; i < imgs.length && i < 40; i++) {
+                    var im = imgs[i];
+                    var src = String(im.currentSrc || im.src || '');
+                    if (!/^https?:/i.test(src)) { continue; }
+                    if (/avatar|profile_images|crop\.0\.0\.|face\.|icon|logo/i.test(src)) { continue; }
+                    if (Number(im.naturalWidth) >= 200) { return src; }
+                }
+                return '';
+            }
+        }), 2500, 'video-cover');
+        cover = String((cr && cr[0] && cr[0].result) || '');
+        if (cover && !/^https?:/i.test(cover)) { cover = ''; }
+    } catch (e) { cover = ''; }
+    if (cover) { out.cover = cover; }
+
     out.options = list.slice(0, 8).map(function (m, i) {
         /* 标签带上分辨率，用户才能一眼看出哪档更高。
          * 旧标签只有 "MP4 · 4.0MB"，6 个档位看起来像 6 个不同大小的视频，
@@ -6391,6 +6832,11 @@ async function vrVideoOptions(tabId, frameId) {
             srcUrl: m.srcUrl || '',
             segmented: !!m.segmented,
             height: h,
+            /* 该条目自带的封面（DOM 兜底收来的那批有，嗅探来的没有） */
+            cover: m.domCover || cover || '',
+            /* pending：只有封面、还没拿到直链（页面视频没播放）——
+             * 面板据此提示「先点播放」，而不是把它当成可下载条目。 */
+            pending: !!m.pending,
             label: self.VRVideoQuality.labelOf(m),
             /* 预检判死的条目仍会列出来（否则列表空着更让人慌），
              * 但要说清原因 —— 直接说「下不了」等于没说。 */

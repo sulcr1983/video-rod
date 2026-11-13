@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试站 X：推特时间线拦截夹具</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7f9; }
+    h1 { font-size: 18px; margin: 16px 24px 4px; }
+    .note { color: #666; font-size: 13px; margin: 0 24px 12px; line-height: 1.6; }
+    #timeline { max-width: 560px; margin: 0 auto 40vh; padding: 0 16px; }
+    .card { background: #fff; border: 1px solid #e5e8ef; border-radius: 10px; padding: 12px; margin: 10px 0; }
+    .card b { font-size: 13px; }
+    .card p { margin: 6px 0 0; color: #333; font-size: 13px; }
+    .card .m { font-size: 12px; color: #666; margin-top: 6px; }
+    #hud { position: fixed; right: 0; bottom: 0; background: #111; color: #0f0;
+           font: 12px/1.5 ui-monospace, monospace; padding: 8px 10px; white-space: pre; z-index: 9; }
+    #spacer { height: 120vh; }
+  </style>
+</head>
+<body>
+  <h1>推特时间线拦截夹具</h1>
+  <p class="note">
+    模拟 <code>x.com/&lt;user&gt;/media</code>：页面每滚到底部就发一次「时间线」请求，
+    主世界 hook 旁读响应体并用 <code>VRTwitterTimeline.parseTimeline</code> 解析，
+    再把结果 <code>postMessage</code> 给内容脚本侧（本页用一个监听器代替），
+    最后由 <code>scrollStep</code> 决定继续还是停止。全程不发真实网络请求（由本地 mock 提供）。
+  </p>
+  <div id="timeline"></div>
+  <div id="spacer"></div>
+  <div id="hud">初始化…</div>
+
+  <script src="/js/lib/twitter-timeline.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var T = self.VRTwitterTimeline;
+    var api = { hooked: 0, requests: 0, tweets: 0, medias: 0, queue: [], posts: [], stops: [], errors: [] };
+    self.__vrXFixture = api;
+
+    /* ---------------- 内容脚本侧（模拟）：收 postMessage ----------------
+     * 真实实现里这一段是 js/x-bulk.js。这里只保留「统一的入队口径」：
+     *   site/kind/url/author/statusId/mediaId/title/pageUrl —— 与
+     *   background.js 的 vrBulkDownload 消费的字段一致。 */
+    var seen = Object.create(null);
+    window.addEventListener('message', function (ev) {
+      if (ev.source !== window) { return; }
+      var d = ev.data;
+      if (!d || d.action !== 'vrXTimeline') { return; }
+      var payload = d.payload || {};
+      var res = T.parseMediaItems(payload);
+      api.tweets += res.tweets.length;
+      api.medias += res.items.length;
+      for (var i = 0; i < res.items.length; i++) {
+        var it = res.items[i];
+        if (seen[it.key]) { continue; }
+        seen[it.key] = 1;
+        api.queue.push(it);
+      }
+      render(res.tweets);
+      api.posts.push({ nextCursor: res.nextCursor, items: res.items.length });
+      self.postMessage({ action: 'vrXFixtureState' }, '*');
+      if (typeof api.onEnqueue === 'function') { api.onEnqueue(); }
+    });
+
+    /* ---------------- 主世界侧（模拟）：旁读 fetch ---------------- */
+    var origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      var p = origFetch.apply(this, arguments);
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (!/\/mock\/UserTweets/.test(url)) { return p; }
+      api.hooked++;
+      try {
+        p.then(function (res) {
+          /* 与 js/net-sniff.js 同款：clone 后再读，绝不消耗页面的响应体 */
+          return res.clone().json();
+        }).then(function (json) {
+          window.postMessage({ action: 'vrXTimeline', payload: json }, '*');
+        }, function (e) {
+          api.errors.push(String(e));
+        });
+      } catch (e) { api.errors.push(String(e)); }
+      return p;
+    };
+
+    /* ---------------- 渲染 ---------------- */
+    var list = document.getElementById('timeline');
+    function render(tweets) {
+      for (var i = 0; i < tweets.length; i++) {
+        var t = tweets[i];
+        var el = document.createElement('div');
+        el.className = 'card';
+        el.setAttribute('data-status', t.statusId);
+        var b = document.createElement('b');
+        b.textContent = '@' + t.authorId + (t.isRetweet ? '（转推）' : '') + (t.isQuote ? '（引用）' : '');
+        var p = document.createElement('p');
+        p.textContent = t.text || '(无正文)';
+        var m = document.createElement('div');
+        m.className = 'm';
+        m.textContent = t.media.length
+          ? t.media.map(function (x) { return x.kind + ':' + x.ext; }).join(' · ')
+          : '无媒体';
+        el.appendChild(b); el.appendChild(p); el.appendChild(m);
+        list.appendChild(el);
+      }
+    }
+
+    function hud() {
+      document.getElementById('hud').textContent =
+        'hook=' + api.hooked + ' req=' + api.requests + '\n' +
+        'tweets=' + api.tweets + ' medias=' + api.medias + '\n' +
+        'queue=' + api.queue.length +
+        (api.stops.length ? '\nstop=' + api.stops[api.stops.length - 1].action + ':' + api.stops[api.stops.length - 1].reason : '') +
+        (api.errors.length ? '\nERR ' + api.errors[0] : '');
+    }
+    setInterval(hud, 200);
+
+    /* ---------------- 自动滚动（用 scrollStep 判定） ----------------
+     * 驱动必须**数据驱动**：收到 hook 送来的新数据后再判定下一步。
+     * 早先写成「fetch 链自己调 step()」，与 postMessage 链存在竞态 ——
+     * step 读到的 queue 还没更新，idle 会被提前累加（实测 tweets 重复计数、
+     * queue 停在 2 条就停了）。 */
+    var state = { rounds: 0, idleRounds: 0, lastCount: 0, maxItems: 100, maxRounds: 40, idleLimit: 2 };
+    var cursor = '';
+    var running = true;
+    var busy = false;
+    var ended = false;
+
+    function nextPage() {
+      if (busy || !running || ended) { return; }
+      busy = true;
+      api.requests++;
+      var u = '/mock/UserTweets' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : '');
+      /* 必须走被包装后的 window.fetch：hook 只在包装层旁读响应，
+       * 用 origFetch 会绕过它，「拦截 → postMessage」这条链路就测不到。 */
+      window.fetch(u).then(function (r) { return r.json(); }).then(function (json) {
+        var res = T.parseTimeline(json);
+        cursor = res.nextCursor || '';
+        busy = false;
+        if (!cursor) {
+          /* 没有下一页 cursor = 到底。等最后一帧 postMessage 入队后收尾。 */
+          ended = true;
+          setTimeout(function () { finish('bottom'); }, 120);
+          return;
+        }
+        /* 兜底：若 hook 没送来消息（例如响应体不合法），不能卡死 */
+        setTimeout(function () { if (!api.done) { step(); } }, 400);
+      }, function () { busy = false; step(); });
+    }
+
+    function step() {
+      var o = T.scrollStep(state, { count: api.queue.length, atBottom: ended });
+      state = o.state;
+      if (o.action === 'stop') { finish(o.reason); return; }
+      window.scrollTo(0, document.body.scrollHeight);
+      setTimeout(nextPage, 60);
+    }
+
+    function finish(reason) {
+      if (api.done) { return; }
+      running = false;
+      api.done = true;
+      api.stops.push({ action: 'stop', reason: reason });
+    }
+
+    /* hook 每送来一帧 → 入队后立刻判定下一步 */
+    api.onEnqueue = function () { if (running && !api.done) { step(); } };
+
+    self.__vrXStart = function () { running = true; api.done = false; nextPage(); };
+    self.__vrXStop = function () { finish('stopped'); };
+
+    api.ready = true;
+  })();
+  </script>
+</body>
+</html>

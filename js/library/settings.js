@@ -162,6 +162,10 @@
     /* 推导出的下载根绝对路径：只活在内存里，不落库（见 resolveDetectedRoot 注释）。
      * 换机器/换系统后这里自然重算，不会留下污染设置的脏值。 */
     var detectedRootCache = '';
+    /* 已保存的目录句柄内存副本：让「恢复上次授权」点击时**同步**拿到句柄，
+     * 不必在点下按钮后再 await IndexedDB（那样会丢掉用户手势）。
+     * 由 refreshAuthState() 在页面加载/授权后顺带填。 */
+    var savedRootHandle = null;
 
     function modeOf() {
         return (state && state.mode === 'custom') ? 'custom' : 'system';
@@ -418,64 +422,114 @@
         } catch (e) { /* 忽略 */ }
     }
 
-    /** 默认位置授权：已有句柄先尝试恢复权限；没有才弹目录选择 */
-    async function authDefault() {        var sub = cleanSeg($('vrLibSubdir') ? $('vrLibSubdir').value : state.subdir);
-        var base = detectedRootCache
-            ? (String(detectedRootCache).replace(/\/+$/, '') + '/' + sub)
-            : '';
-        var parent = detectedRootCache ? baseNameOf(detectedRootCache) : '';
-        var h = null;
-        try { h = await root.VRDB.getHandle('root'); } catch (e) { /* 忽略 */ }
-        if (!h) { try { h = await idbGet('root'); } catch (e) { /* 忽略 */ } }
-        /* 旧版本可能存了错目录的句柄（如 download）。只接受本目录或它的上级，
-         * 否则「授权写入」会去申请一个错句柄，恢复完仍然不能写。 */
-        if (h && h.name !== sub && (!parent || h.name !== parent)) { h = null; }
-        if (h) {
-            try {
-                /* 先对已有句柄申请权限，再下钻子目录；顺序反了会在 prompt 状态
-                 * 直接因为「不能创建目录」失败，白白把用户踢去重选。 */
-                var grant = (typeof h.requestPermission !== 'function')
-                    ? 'granted'
-                    : await h.requestPermission({ mode: 'readwrite' });
-                if (grant === 'granted') {
-                    if (h.name !== sub) {
-                        try { h = await h.getDirectoryHandle(sub, { create: true }); }
-                        catch (e2) { h = null; }
-                    }
-                    if (h) {
-                        await root.VRIndex.setRoot(h, base, sub);
-                        await idbPut('root', h);
-                        handleName = h.name || handleName;
-                        render();
-                        text('vrLibAuthMsg', '已恢复写入权限' +
-                            (base ? ('：' + base.replace(/\//g, '\\')) : ''), '#2e7d32');
-                        refreshAuthState();
-                        offerKitBackup(h);
-                        return;
-                    }
-                }
-            } catch (e) { /* 落到重新选择 */ }
+    /** 浏览器「文件编辑」权限页的本地地址。目录选择被站点设置拦死时，
+     *  只能请用户自己去改，给对路径才有人能照做（Chrome 与 Edge 前缀不同）。 */
+    function fileEditingSettingsUrl() {
+        var ua = '';
+        try { ua = String(navigator.userAgent || ''); } catch (e) { ua = ''; }
+        return /Edg\//.test(ua)
+            ? 'edge://settings/content/fileEditing'
+            : 'chrome://settings/content/fileEditing';
+    }
+
+    /** 把 showDirectoryPicker 的报错翻成**用户能照做**的中文。
+     *
+     *  为什么不能直接甩原文（2026-11-13 苏哥报障复盘）：
+     *  原样显示就是一句英文 "The request is not allowed by the user agent or the
+     *  platform in the current context."，用户看不出该改哪、还以为扩展坏了。
+     *
+     *  这句兜底文案的成因要分清（按可能性排）：
+     *   1) 用户激活已过期 —— content 层 `kConsumeTransientActivation` 失败返回
+     *      kPermissionDenied；新内核带 "User activation required."，**较老内核
+     *      不带 message，就落到这句 DOMException 默认文案**。判断依据：
+     *      同一个 origin 下同步调用的「选择文件夹…」能正常弹框 → 说明不是权限被禁。
+     *   2) 站点设置把「文件编辑」设成「阻止」—— 该 origin 的 fileEditing 权限
+     *      不是 ASK/ALLOW，选择器根本不弹（此时「选择文件夹…」也会一起失败）。
+     *  两种出路完全不同，所以先让用户重试（1），再给设置页路径（2）兜底。
+     */
+    function describePickerError(e) {
+        var name = (e && e.name) || '';
+        var msg = String((e && e.message) || e || '');
+        if (/user gesture|user activation/i.test(msg)) {
+            return '浏览器没把这次点击算作有效操作。请刷新本页后**立刻**再点一次按钮' +
+                '（点击后别停留、别切到别的窗口）。';
         }
+        if (name === 'NotAllowedError') {
+            return '浏览器没同意这次目录请求。最常见的原因是点击后等待太久、' +
+                '这次操作已不再被认可 —— 先刷新本页并立刻重试。' +
+                '若反复如此，再检查浏览器设置：打开 ' + fileEditingSettingsUrl() +
+                ' 确认「文件编辑」是「允许」或「询问」，改完完全退出浏览器再重开；' +
+                'Edge 的「增强安全性模式」若为「严格」，调成「平衡」。';
+        }
+        if (name === 'SecurityError') {
+            return '当前页面不被允许选择目录（可能被安全策略限制）。' +
+                '请确认这是从扩展设置页打开的页面，并给该扩展放开「文件编辑」权限：' +
+                fileEditingSettingsUrl();
+        }
+        return msg;
+    }
+
+    /** 默认位置授权：**先同步弹出目录选择器**，拿到句柄后再做异步处理。
+     *
+     * 为什么选择器要放最前（2026-11-13，苏哥 Win11 报错后复盘）：
+     *   showDirectoryPicker() 要求调用时仍在 transient activation（用户手势）内。
+     *   旧实现先 await VRDB.getHandle → idbGet（内含 handle-store 的旧库迁移）
+     *   → 有句柄时再 await requestPermission，之后才弹选择器。IndexedDB 一慢，
+     *   激活期就过了。同仓库 js/library/app.js 的 authorizeRoot() 与下面的
+     *   pickCustom() 早就是「先弹选择器」，只有这里漏改。
+     *
+     * 报错文案怎么读（Chromium 源码取证，别再猜）：
+     *   · `NotAllowedError` + "The request is not allowed by the user agent or the
+     *     platform in the current context." —— 这是 DOMException 的**兜底文案**，
+     *     出现在 kPermissionDenied 且没带自定义 message 时。典型成因：
+     *       (a) 站点内容设置把「文件编辑」设成了「阻止」（该 origin 的
+     *           fileEditing 权限不是 ASK/ALLOW，浏览器直接不弹选择器）；
+     *       (b) 较老内核里 content 层的手势检查同样走 kPermissionDenied 无文案。
+     *   · `SecurityError` + "Must be handling a user gesture to show a file picker."
+     *     —— 渲染层的手势检查，即「await 把激活期耗掉了」。
+     *   · `NotAllowedError` + "User activation required." —— 新内核 content 层的手势检查。
+     *   三种要分别处理：前两种要先修浏览器设置，最后一种才是调整调用顺序。
+     *
+     * 已有句柄的静默恢复已拆到 restoreAuth()，不再占用本条链路的用户手势。
+     */
+    async function authDefault() {
         if (typeof root.showDirectoryPicker !== 'function') {
             text('vrLibAuthMsg', '此浏览器不支持目录选择（需 Chrome 86+）', '#c0392b');
             return;
         }
+        var sub = cleanSeg($('vrLibSubdir') ? $('vrLibSubdir').value : state.subdir);
+        var base = detectedRootCache
+            ? (String(detectedRootCache).replace(/\/+$/, '') + '/' + sub)
+            : '';
+        var parent = detectedRootCache ? baseNameOf(detectedRootCache) : '';
+        /* ↑ 以上全是同步计算。在下面这行 await 之前**不许插入任何 await**，
+         *   否则就是本次要修的那个 bug。 */
+        var picked;
         try {
-            var picked = await root.showDirectoryPicker({ mode: 'readwrite' });
-            if (picked.name !== sub) {
-                if (!parent || picked.name !== parent) {
-                    text('vrLibAuthMsg', '请选择「' + sub + '」文件夹' +
-                        (parent ? ('，或它的上级「' + parent + '」') : ''), '#c0392b');
-                    return;
-                }
-                try { picked = await picked.getDirectoryHandle(sub, { create: true }); }
-                catch (e2) {
-                    text('vrLibAuthMsg', '无法打开或创建「' + sub + '」文件夹', '#c0392b');
-                    return;
-                }
+            picked = await root.showDirectoryPicker({ mode: 'readwrite' });
+        } catch (e) {
+            /* 用户取消：静默；其余翻成人话，别让用户对着英文原文猜 */
+            if (e && e.name === 'AbortError') { return; }
+            text('vrLibAuthMsg', '授权失败：' + describePickerError(e), '#c0392b');
+            return;
+        }
+        /* 以下是选择器返回之后的处理，所有 await 都在激活期之外，安全 */
+        if (picked.name !== sub) {
+            if (!parent || picked.name !== parent) {
+                text('vrLibAuthMsg', '请选择「' + sub + '」文件夹' +
+                    (parent ? ('，或它的上级「' + parent + '」') : ''), '#c0392b');
+                return;
             }
+            try { picked = await picked.getDirectoryHandle(sub, { create: true }); }
+            catch (e2) {
+                text('vrLibAuthMsg', '无法打开或创建「' + sub + '」文件夹', '#c0392b');
+                return;
+            }
+        }
+        try {
             await root.VRIndex.setRoot(picked, base, sub);
             await idbPut('root', picked);
+            savedRootHandle = picked;
             handleName = picked.name || handleName;
             render();
             text('vrLibAuthMsg', '已授权写入' +
@@ -483,9 +537,82 @@
             refreshAuthState();
             offerKitBackup(picked);
         } catch (e) {
-            if (e && e.name === 'AbortError') { return; }
             text('vrLibAuthMsg', '授权失败：' + ((e && e.message) || e), '#c0392b');
         }
+    }
+
+    /** 恢复上次授权：不弹选择器，直接对**已缓存**的句柄 requestPermission。
+     *
+     * 为什么单拆成按钮（2026-11-13）：
+     *   旧实现把「静默恢复」塞在「授权写入」开头，导致用户每点一次都要先等一串
+     *   IndexedDB 读取（含旧句柄库迁移），手势过期后选择器直接报
+     *   NotAllowedError——结果恢复没做成、选目录也做不了，两个功能一起坏。
+     *   现在句柄由 refreshAuthState() 事先读进内存（那次读取发生在页面加载，
+     *   不要求手势），点击这里时同步调用 requestPermission()，不会错过激活期。
+     */
+    function restoreAuth() {
+        var sub = cleanSeg($('vrLibSubdir') ? $('vrLibSubdir').value : state.subdir);
+        var base = detectedRootCache
+            ? (String(detectedRootCache).replace(/\/+$/, '') + '/' + sub)
+            : '';
+        var parent = detectedRootCache ? baseNameOf(detectedRootCache) : '';
+        var h = savedRootHandle;
+        if (!h) {
+            text('vrLibAuthMsg', '没有可恢复的授权，请点「授权写入」选择文件夹', '#b26a00');
+            showRestore(false);
+            return;
+        }
+        /* 旧版本可能存了错目录的句柄（如 download）。只接受本目录或它的上级，
+         * 否则恢复完仍然不能写，还会把用户困在「已授权」的假象里。
+         * （原 authDefault() 里同一条校验，拆函数时一并搬过来。） */
+        if (h.name !== sub && (!parent || h.name !== parent)) {
+            text('vrLibAuthMsg', '上次授权的是「' + h.name + '」，不是「' + sub +
+                '」；点「授权写入」重新选择', '#b26a00');
+            showRestore(false);
+            return;
+        }
+        text('vrLibAuthMsg', '正在恢复权限…', '#666');
+        /* 用户手势内同步发起；前面不许 await 任何读取 */
+        var p = (typeof h.requestPermission === 'function')
+            ? h.requestPermission({ mode: 'readwrite' })
+            : Promise.resolve('granted');
+        p.then(function (grant) {
+            if (grant !== 'granted') {
+                text('vrLibAuthMsg', '恢复失败：浏览器没有放行（' + grant +
+                    '）；点「授权写入」重新选择', '#c0392b');
+                refreshAuthState();
+                return;
+            }
+            return (async function () {
+                var dir = h;
+                if (dir.name !== sub) {
+                    try { dir = await dir.getDirectoryHandle(sub, { create: true }); }
+                    catch (e) { dir = null; }
+                    if (!dir) {
+                        text('vrLibAuthMsg', '无法打开或创建「' + sub + '」文件夹', '#c0392b');
+                        return;
+                    }
+                }
+                await root.VRIndex.setRoot(dir, base, sub);
+                await idbPut('root', dir);
+                savedRootHandle = dir;
+                handleName = dir.name || handleName;
+                render();
+                text('vrLibAuthMsg', '已恢复写入权限' +
+                    (base ? ('：' + base.replace(/\//g, '\\')) : ''), '#2e7d32');
+                refreshAuthState();
+                offerKitBackup(dir);
+            })();
+        }).catch(function (e) {
+            text('vrLibAuthMsg', '恢复失败：' + ((e && e.message) || e), '#c0392b');
+            refreshAuthState();
+        });
+    }
+
+    /** 「恢复上次授权」按钮只在「有句柄但权限被收回」时出现 */
+    function showRestore(on) {
+        var b = $('vrLibAuthRestore');
+        if (b) { b.hidden = !on; }
     }
 
     /** 设置页显示当前写入授权状态；浏览器收回权限时给出可操作提示 */
@@ -495,9 +622,14 @@
         var h = null;
         try { h = await root.VRDB.getHandle('root'); } catch (e) { /* 忽略 */ }
         if (!h) { try { h = await idbGet('root'); } catch (e) { /* 忽略 */ } }
+        /* 顺手缓存给 restoreAuth()：那次点击里不许再 await 读取，
+         * 否则用户手势会在 IndexedDB 往返中过期（本次 bug 的成因）。
+         * 页面加载时 refreshAuthState() 本来就会跑一遍，这里读到的就是最新句柄。 */
+        savedRootHandle = h || null;
         if (!h) {
             msg.textContent = '未授权写入（可选）；下载和浏览不受影响';
             msg.style.color = '';
+            showRestore(false);
             return;
         }
         var sub = cleanSeg(($('vrLibSubdir') && $('vrLibSubdir').value) || (state && state.subdir));
@@ -505,6 +637,8 @@
         if (h.name !== sub && (!parent || h.name !== parent)) {
             msg.textContent = '当前授权的是「' + h.name + '」，不是「' + sub + '」；点「授权写入」重新选择';
             msg.style.color = '#b26a00';
+            /* 错目录不能恢复，只能重选 */
+            showRestore(false);
             return;
         }
         var st = 'granted';
@@ -517,9 +651,12 @@
                 : (h.name || '');
             msg.textContent = '已授权写入：' + p;
             msg.style.color = '#2e7d32';
+            showRestore(false);
         } else {
-            msg.textContent = '已选过目录，但浏览器暂时收回了写入权限；点「授权写入」恢复，不用重选';
+            msg.textContent = '已选过目录，但浏览器暂时收回了写入权限；点「恢复上次授权」即可，不用重选';
             msg.style.color = '#b26a00';
+            /* 句柄还在、只是权限变成 prompt/denied：这才值得亮出恢复按钮 */
+            showRestore(true);
         }
     }
 
@@ -528,6 +665,9 @@
         pendingName = '';
         pendingCount = null;
         handleName = '';
+        /* 句柄已丢弃，恢复按钮与缓存必须同步清掉，否则会出现「点了没反应」 */
+        savedRootHandle = null;
+        showRestore(false);
         try { idbPut('root', null); } catch (e) { /* 忽略 */ }
         try {
             if (root.VRIndex && root.VRIndex.setRoot) { root.VRIndex.setRoot(null, '', ''); }
@@ -943,6 +1083,10 @@
 
         var authBtn = $('vrLibAuthDefault');
         if (authBtn) { authBtn.addEventListener('click', authDefault); }
+
+        /* 恢复上次授权：不弹选择器，所以不占用户手势，单独一个按钮 */
+        var restoreBtn = $('vrLibAuthRestore');
+        if (restoreBtn) { restoreBtn.addEventListener('click', restoreAuth); }
 
         var verifyBtn = $('vrLibVerify');
         if (verifyBtn) { verifyBtn.addEventListener('click', verify); }

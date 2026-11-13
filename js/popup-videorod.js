@@ -2173,9 +2173,43 @@
         if (!chrome.scripting || tabId < 0) {
             return Promise.resolve({ list: [], noUtil: false });
         }
-        var target = { tabId: tabId };
+        /* 统一发现层（阶段三，B-83/B-85）：抓图必须和侧栏是同一套扫描。
+         * 走 SW 的 vrImg.scan → 逐帧注入 VRImageScanService（DOM 全属性 /
+         * Shadow / 背景 / 伪元素 / poster / 链接 / SVG / 源码 / 网络缓存）。
+         * 早先「侧栏 53 张、弹窗 2 张」就是因为这里另抄了一份扫描器。 */
+        return readImgScanOpts().then(function (opts) {
+            return new Promise(function (resolve) {
+                try {
+                    chrome.runtime.sendMessage({
+                        Message: 'vrImg.scan', action: 'vrImg.scan',
+                        tabId: tabId, minSize: opts.minSize, bgScan: opts.bgScan,
+                        srcScan: true, netScan: true, max: 400
+                    }, function (r) {
+                        void chrome.runtime.lastError;
+                        resolve(r);
+                    });
+                } catch (e) { resolve(null); }
+            }).then(function (r) {
+                if (r && r.ok && Array.isArray(r.items)) {
+                    return {
+                        list: r.items,
+                        noUtil: !!r.noUtil,
+                        dropped: Number(r.dropped) || 0,
+                        tiny: Number(r.tiny) || 0
+                    };
+                }
+                return scanLegacy(tabId);   // 老后台 / patch 未加载时的回退
+            });
+        }).catch(function () { return { list: [], noUtil: false }; });
+    }
+
+    /* 回退路径：旧的自抄扫描器。只在 vrImg.scan 不可用时走；
+     * 阶段六（B-87）确认无回归后删除。 */
+    function scanLegacy(tabId) {
+        var target = { tabId: tabId, allFrames: true };
 
         return readImgScanOpts().then(function (opts) {
+            opts.tabId = tabId;
             /* 工具模块是普通内容脚本（document_idle 注入）。刚打开的页面、或扩展
              * 重新加载后的老标签页里可能还没有 —— 先探一次，缺了就地补注入，
              * 否则会静默返回 0 张，用户只会以为「这功能彻底坏了」。 */
@@ -2185,7 +2219,9 @@
                     return { has: typeof self.VRImageUtil !== 'undefined' };
                 }
             }).then(function (res) {
-                var r = (res && res[0] && res[0].result) || {};
+                const arr = Array.isArray(res) ? res : [];
+                const main = arr.find(x => x && x.frameId === 0) || arr[0];
+                var r = (main && main.result) || {};
                 if (r.has) { return null; }
                 return chrome.scripting.executeScript({
                     target: target,
@@ -2252,6 +2288,28 @@
                             } catch (e) { /* 同上 */ }
                         }
 
+                        /* 网络层缓存（ADR-082）：先并入 out，再做尺寸回填；
+                         * 否则网络项永远是「尺寸未知」（因为它是在页面执行函数
+                         * 返回之后才合并的）。 */
+                        try {
+                            var nc = await new Promise(function (resolve) {
+                                chrome.runtime.sendMessage({
+                                    Message: 'vrImg.netCache',
+                                    action: 'vrImg.netCache',
+                                    tabId: o.tabId
+                                }, function (r) {
+                                    void chrome.runtime.lastError;
+                                    resolve(r);
+                                });
+                            });
+                            var netItems = (nc && nc.items) || [];
+                            for (var ni = 0; ni < netItems.length; ni++) {
+                                var nit = netItems[ni];
+                                if (!nit || !nit.url) { continue; }
+                                push(nit.url, 0, 0, [nit.url], false);
+                            }
+                        } catch (eNet) { /* 网络缓存失败不影响 DOM 结果 */ }
+
                         /* 尺寸回填 + 可达性探测（页面上下文预载，带正确 Referer/Cookie）。
                          * 懒加载站点扫描瞬间大量 naturalWidth=0，不补就全是「尺寸未知」。 */
                         try {
@@ -2260,7 +2318,9 @@
                                 if (!(out[m].w > 0 && out[m].h > 0)) { miss.push(out[m].url); }
                             }
                             if (miss.length && typeof U.fillSizes === 'function') {
-                                var got = await U.fillSizes(miss.slice(0, 60), 2500);
+                                var got = await U.fillSizesV2(miss, {
+                                    max: 160, concurrency: 8, timeout: 2500, retry: 1, budget: 5000
+                                });
                                 for (var n = 0; n < out.length; n++) {
                                     if (out[n].w > 0 && out[n].h > 0) { continue; }
                                     var sz = got[out[n].url];
@@ -2298,14 +2358,58 @@
                     args: [opts]
                 });
             }).then(function (res) {
-                var r = (res && res[0] && res[0].result) || {};
-                if (r && r.__noUtil) { return { list: [], noUtil: true }; }
+                /* allFrames:true 时 res 是每帧一项；合并所有帧的 items。 */
+                const arr = Array.isArray(res) ? res : [];
+                const list = [];
+                const have = Object.create(null);
+                let dropped = 0, tiny = 0, noUtil = false;
+                for (const item of arr) {
+                    const r = item && item.result;
+                    if (!r) { continue; }
+                    if (r.__noUtil) { noUtil = true; continue; }
+                    const items = Array.isArray(r.items) ? r.items : [];
+                    for (const it of items) {
+                        if (!it || !it.url || have[it.url]) { continue; }
+                        have[it.url] = 1;
+                        list.push(it);
+                    }
+                    dropped += Number(r.dropped) || 0;
+                    tiny += Number(r.tiny) || 0;
+                }
                 return {
-                    list: (r && r.items) || [],
-                    noUtil: false,
-                    dropped: r.dropped || 0,
-                    tiny: r.tiny || 0
+                    list: list,
+                    noUtil: noUtil && !list.length,
+                    dropped: dropped,
+                    tiny: tiny
                 };
+            }).then(function (scan) {
+                /* 网络层缓存合并（ADR-082）：滚过去/已从 DOM 移除的图只能从这里补。 */
+                return new Promise(function (resolve) {
+                    try {
+                        chrome.runtime.sendMessage({
+                            Message: 'vrImg.netCache',
+                            action: 'vrImg.netCache',
+                            tabId: tabId
+                        }, function (nc) {
+                            void chrome.runtime.lastError;
+                            const items = (nc && nc.items) || [];
+                            if (items.length) {
+                                const have = Object.create(null);
+                                for (const it of scan.list) { if (it && it.url) { have[it.url] = 1; } }
+                                for (const it of items) {
+                                    const u = String((it && it.url) || '');
+                                    if (!u || have[u]) { continue; }
+                                    have[u] = 1;
+                                    scan.list.push({
+                                        url: u, w: 0, h: 0, bg: false,
+                                        source: 'network', candidates: [u]
+                                    });
+                                }
+                            }
+                            resolve(scan);
+                        });
+                    } catch (e) { resolve(scan); }
+                });
             }).catch(function () { return { list: [], noUtil: false }; });
         });
     }
@@ -2396,55 +2500,54 @@
 
         var dir = cleanPath(settings.defaultDir) || DEFAULTS.defaultDir;
         var base = (pageInfo && pageInfo.title) || (el('vrPageTitle') && el('vrPageTitle').textContent) || '图片';
-        var N = naming();
 
-        var names = picked.map(function (im, i) {
-            /* 扩展名按**实际会下载的地址**推：candidates[0] 是原图候选
-             * （微博 /large/ 升级后的地址），拿显示地址推可能推错。 */
-            var pick = (im.candidates && im.candidates.length) ? im.candidates[0] : im.url;
-            var ext = (String(pick).split('#')[0].split('?')[0].split('.').pop() || 'jpg').toLowerCase();
-            if (!/^(jpg|jpeg|png|gif|webp|avif|bmp)$/.test(ext)) { ext = 'jpg'; }
-            var nm;
-            if (N && N.buildNameFromInfo) {
-                nm = N.buildNameFromInfo({ title: base, site: '' }, im.url, {
-                    tpl: '${title}_${index}', ext: ext, index: i
-                });
-            } else {
-                nm = base + '_' + String(i + 1).padStart(2, '0') + '.' + ext;
-            }
-            return nm;
-        });
-        names = dedupe(names);
-
-        var ok = 0;
-        picked.forEach(function (im, i) {
-            var filename = dir + '/' + cleanPath(names[i]);
-            if (isDownloaded(filename)) { return; }
-            markDownloaded(filename);
-            // 交给 SW 落盘（vrImg.download），不再直接调 chrome.downloads。
-            // Chrome 147 起 downloads 的文件名保护失效（ADR-040），SW 侧会优先走
-            // FSA 直写保住文件名，拿不到句柄才回退下载器。
-            chrome.runtime.sendMessage({
-                Message: 'vrImg.download',
+        /* 统一执行器（阶段三，审计 D-05/D-06）：
+         *   · 走 vrImg.batch（SW 并发池），不再逐张 sendMessage —— 一次发几十张
+         *     会把浏览器自己的并发打满，微博 CDN 直接拒。
+         *   · 不预标记「已下载」：早先 markDownloaded 在发送前就写账本，
+         *     失败后下次被跳过 → 用户永远补不回来。
+         *   · title 不带扩展名：后台按解析到的 mime/文件头决定 ext，
+         *     这里再拼一次会得到 xxx.jpg.jpg。序号保证同页多图不重名。 */
+        var items = picked.map(function (im, i) {
+            return {
                 url: im.url,
-                /* 候选一起给后台：vrImgResolve 会按顺序 fetch 校验，
-                 * 微博 /large/ 拿不到就退 /mw690/，不会因为原图 404 就整张失败。 */
                 candidates: (im.candidates && im.candidates.length) ? im.candidates : [im.url],
-                title: names[i],
-                index: i,
-                pageUrl: (G && G.pageUrl) || '',
-                /* 面板是扩展页面，无网页 DOM；带 tabId 让后台注入取站名。 */
-                tabId: (G && G.tabId) || -1
-            }, function (r) {
-                if (chrome.runtime.lastError || !r || !r.ok) {
-                    console.warn('[video-rod] 抓图落盘失败', chrome.runtime.lastError || r);
-                }
-            });
-            ok++;
+                title: String(base || '图片').slice(0, 60) + '_' + String(i + 1).padStart(2, '0')
+            };
         });
 
+        var batchId = 'b-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
         closeImageModal();
-        tip(ok ? ('已保存 ' + ok + ' 张图片到 ' + dir + '/') : '这些图都下过了');
+        tip('开始保存 ' + items.length + ' 张…');
+
+        chrome.runtime.sendMessage({
+            Message: 'vrImg.batch',
+            action: 'vrImg.batch',
+            items: items,
+            pageUrl: (G && G.pageUrl) || '',
+            pageTitle: String(base || '').slice(0, 120),
+            /* 面板是扩展页面，无网页 DOM；带 tabId 让后台注入取站名。 */
+            tabId: (G && G.tabId) || -1,
+            concurrency: 2,
+            batchId: batchId
+        }, function (res) {
+            var r = (chrome.runtime.lastError || !res) ? null : res;
+            if (!r) { tip('批量下载没有响应（扩展后台可能刚重启），请重试'); return; }
+            if (r.needGrant || r.code === 'IMG_E_FSA_PERM') {
+                tip('批量保存需先授权资源库目录：打开媒体库 → 选择目录');
+                return;
+            }
+            var okN = Number(r.succeeded) || 0;
+            var failN = Number(r.fail) || 0;
+            var skipN = Number(r.skipped) || 0;
+            var fresh = Math.max(0, okN - skipN);
+            if (failN) {
+                tip('保存 ' + fresh + ' 张，失败 ' + failN + ' 张（失败项未记账，可重试）');
+            } else {
+                tip('已保存 ' + fresh + ' 张到 ' + dir + '/' +
+                    (skipN ? '，已存在跳过 ' + skipN + ' 张' : ''));
+            }
+        });
     }
 
     function bindImageScan() {

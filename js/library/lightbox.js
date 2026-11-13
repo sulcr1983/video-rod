@@ -617,6 +617,9 @@
                 : '';   /* 空态不写「还没有标签」，+ 添加 按钮本身就是入口 */
         }
         hideEmptyFields(!hasPage && !hasMedia);
+        /* 同作者区必须在 paintInfo 里刷新（有 f），不能放进 hideEmptyFields
+         * —— 那里没有参数 f，会直接 ReferenceError（2026-11-13 真机踩到）。 */
+        paintPeers(f);
         /* 切换素材时刷新「已有标签」候选：刚加过的标签要从候选里消失，
          * 换到另一条素材时它自己的标签也要排除掉。 */
         if (tagPickRefresh) {
@@ -660,6 +663,93 @@
         var srcGroup = document.getElementById('pvSrcGroup');
         if (srcGroup) { srcGroup.classList.toggle('hidden', !!noSource); }
         if (noSource && el.pvSrcMiss) { el.pvSrcMiss.classList.add('hidden'); }
+    }
+
+    /* ---------------- 同作者区（2026-11-13 苏哥需求） ----------------
+     * 诉求原话：「只想看同一个博主的，现在都是一个平台的混在一起；点博主名字会跳回原站，
+     * 但我只想看同一个博主的循环播放就没办法了」。
+     *
+     * 做法：详情页就把「同作者」的条目列出来并可直接切换；
+     * 另给一个「只看此人 · 循环播放」按钮 —— 把预览队列收窄成该作者的全部素材并开连播。
+     * 不跳站、不改筛选状态，纯本地行为。 */
+    var peerUrls = [];
+    function peersOf(f) {
+        if (!f) { return []; }
+        var who = String(f.author || '').trim();
+        var uid = String(f.authorId || '').trim();
+        if (!who && !uid) { return []; }
+        var all = [];
+        if (root.VRApp && root.VRApp.getFiles) {
+            try { all = root.VRApp.getFiles() || []; } catch (e) { all = []; }
+        }
+        /* 「同一个博主」的判定：优先 authorId（X 的 handle / 微博的 uid，全局唯一），
+         * 没有 id 才退回昵称比对。只按昵称会把不同平台的同名博主混进来
+         * （苏哥要的正是「只看这一个博主」，混人就违背初衷）。 */
+        return all.filter(function (x) {
+            if (x.relPath === f.relPath) { return false; }
+            if (uid) { return String(x.authorId || '').trim() === uid; }
+            return String(x.author || '').trim() === who;
+        });
+    }
+
+    function paintPeers(f) {
+        var grid = el.pvMoreGrid;
+        var host = grid && grid.closest ? grid.closest('.pi-more') : null;
+        if (!grid) { return; }
+        peerUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) { /* ignore */ } });
+        peerUrls = [];
+        var peers = peersOf(f);
+        if (el.pvMoreCount) { el.pvMoreCount.textContent = String(peers.length); }
+        if (host) { host.classList.toggle('hidden', peers.length === 0); }
+        if (!peers.length) { grid.innerHTML = ''; return; }
+
+        /* 最多展示 24 个，避免右栏被同作者刷屏；「查看全部」走原路径（按作者筛全库） */
+        grid.innerHTML = peers.slice(0, 24).map(function (p) {
+            return '<button class="pi-more-item" type="button" data-peers="' + esc(p.relPath) + '" ' +
+                'title="' + esc(p._title || p.title || p.relPath) + '">' +
+                '<span class="cover" data-rel="' + esc(p.relPath) + '"></span></button>';
+        }).join('');
+
+        /* 「只看此人 · 循环播放」：把队列换成该博主全部素材并开连播 */
+        var head = host ? host.querySelector('.pi-more-head') : null;
+        if (head && !head.querySelector('.pv-peer-loop')) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'pv-peer-loop';
+            b.textContent = '只看此人 · 循环播放';
+            b.title = '播放队列只保留该作者的素材，并开启连播';
+            b.addEventListener('click', function () {
+                var cur = S.list[S.idx];
+                var mine = peersOf(cur).concat([cur]);
+                /* 保持库内原顺序（按下载时间等既有排序），不要打乱 —— 用户认的是习惯顺序 */
+                var order = {};
+                var all = [];
+                try { all = root.VRApp.getFiles() || []; } catch (e) { all = []; }
+                all.forEach(function (x, i) { order[x.relPath] = i; });
+                mine.sort(function (a, b2) { return (order[a.relPath] || 0) - (order[b2.relPath] || 0); });
+                if (mine.length < 2) { return; }
+                S.list = mine;
+                S.idx = 0;
+                for (var i = 0; i < mine.length; i++) {
+                    if (mine[i].relPath === cur.relPath) { S.idx = i; break; }
+                }
+                S.auto = true;
+                var ab = document.getElementById('autoBtn');
+                if (ab) { ab.classList.add('on'); ab.setAttribute('aria-pressed', 'true'); }
+                render();
+            });
+            head.appendChild(b);
+        }
+
+        if (!root.VRDB || !root.VRDB.getThumb) { return; }
+        grid.querySelectorAll('.cover[data-rel]').forEach(function (node) {
+            root.VRDB.getThumb('t:' + node.getAttribute('data-rel')).then(function (t) {
+                if (!t || !t.blob || !node.isConnected) { return; }
+                var u = URL.createObjectURL(t.blob);
+                peerUrls.push(u);
+                node.style.backgroundImage = 'url(' + u + ')';
+            }).catch(function () { /* 无缓存保留底色 */ });
+        });
     }
 
     var filmUrls = [];
@@ -865,6 +955,31 @@
             el.pvFilm.addEventListener('click', function (e) {
                 var b = e.target.closest('.film'); if (!b) { return; }
                 S.idx = Number(b.dataset.i) || 0; render();
+            });
+        }
+        /* 同作者卡片：点击直接切到那条。
+         * 它可能不在当前播放队列里（比如从「平台货架」进来，队列只有该平台），
+         * 所以找不到就插到当前条后面 —— 而不是把用户原来的队列打乱。 */
+        if (el.pvMoreGrid) {
+            el.pvMoreGrid.addEventListener('click', function (e) {
+                var b = e.target.closest('[data-peers]'); if (!b) { return; }
+                var rel = b.getAttribute('data-peers');
+                var cur = S.list[S.idx];
+                var target = null;
+                for (var i = 0; i < S.list.length; i++) {
+                    if (S.list[i].relPath === rel) { S.idx = i; render(); return; }
+                }
+                if (root.VRApp && root.VRApp.getFiles) {
+                    try {
+                        target = (root.VRApp.getFiles() || []).filter(function (x) {
+                            return x.relPath === rel;
+                        })[0] || null;
+                    } catch (err) { target = null; }
+                }
+                if (!target) { return; }
+                S.list.splice(S.idx + 1, 0, target);
+                S.idx += 1;
+                render();
             });
         }
         if (el.pvPathCopy) {

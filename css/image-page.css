@@ -314,6 +314,23 @@ input { font: inherit; }
 }
 .ip-media-ph.audio { color: var(--ink-2); font-size: 36px; }
 
+/* 视频封面上的播放标记（2026-11-13）：有 poster 时画真图，
+ * 这层小 ▶ 让人一眼看出「这是视频不是图」；纯装饰，不吃点击。 */
+.ip-play {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .45);
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    pointer-events: none;
+    text-indent: 2px;   /* ▶ 视觉重心偏左，右移一点 */
+}
+
 /* 勾选圈现在是**独立按钮**：点它只改勾选，点图本身看大图。
  * 比原来 17px 再放大到 20px，否则侧边栏里太难点中（触控/高 DPI 都吃力）。 */
 .ip-ck {

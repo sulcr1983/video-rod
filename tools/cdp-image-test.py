@@ -193,6 +193,12 @@ def shot(cdp, sid, name):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=0, help="CDP 调试端口（e2e-all 注入）")
+    a = ap.parse_args()
+    if a.port:
+        os.environ["VR_CDP"] = "http://127.0.0.1:%d" % a.port
     cdp = Cdp()
     ext_id, _ = find_ext_id(cdp)
     check("A1 扩展已加载（background.js）", bool(ext_id), True)
@@ -212,6 +218,13 @@ def main():
     cdp.send("Page.enable", {}, osid)
     # 等扩展 API 可用即可，不用盲等 1.8s
     cdp.wait_js(osid, "typeof chrome !== 'undefined' && !!chrome.downloads", 8.0)
+
+    # 重置资源库索引（vrLib.clear 只动 IndexedDB，不删磁盘/真实库）：
+    # 上一跑中断留下的条目会让「同 URL 已存在」把 G 组（懒加载图）判成「已存在跳过」，
+    # 整条 G2 假失败（2026-11-13 实测：cdp-image-test 连跑确定性挂 G2→C1）。
+    ev(cdp, osid, """new Promise(r => chrome.runtime.sendMessage(
+      {Message:'vrLib.clear', action:'vrLib.clear'}, x => r((x && x.ok) || false)))""")
+    time.sleep(0.8)
 
     tid = cdp.send("Target.createTarget", {"url": "about:blank"})["targetId"]
     sid = cdp.attach(tid)
@@ -296,8 +309,8 @@ def main():
         return finish(cdp)
     created_ids.append(rec["id"])
     path = rec["filename"].replace("\\", "/")
-    check("C2 路径含 video-rod/.../图片/", "/video-rod/" in path and "/图片/" in path, True)
-    check("C3 平台按 host 归入其他网页", "/video-rod/其他网页/127.0.0.1/图片/" in path, True)
+    check("C2 路径在资源库目录（video-rod/...）", "/video-rod/" in path, True)
+    check("C3 平台按 host 归入 127.0.0.1", "/video-rod/127.0.0.1/" in path, True)
     check("C4 文件名 <日期>_<标题>.<ext>",
           bool(re.search(r"/\d{8}_[^/]+\.(?:png|jpg|jpeg|webp|gif)$", path)), True)
     exists = os.path.exists(rec["filename"])
@@ -325,7 +338,7 @@ def main():
       box.innerHTML = `
         <a id="lnk" href="/media/original-1200.png"><img id="linked" src="/media/thumb-320.png" width="640" height="640"></a>
         <img id="srcset" src="/media/srcset-400.png" srcset="/media/srcset-400.png 400w, /media/srcset-1200.png 1200w" width="660" height="660">
-        <img id="lazy" src="/media/thumb-320.png" data-original-src="/media/original-1200.png" width="620" height="620">
+        <img id="lazy" src="/media/thumb-320.png" data-original-src="/media/original-lazy.png" width="620" height="620">
         <img id="tiny" src="/media/tiny.png" width="16" height="16">
         <img id="svgimg" src="/media/icon.svg" width="120" height="120">
         <img id="ph" src="/media/placeholder.png" width="300" height="150">
@@ -372,7 +385,7 @@ def main():
     time.sleep(0.2)
     click_and_size("#srcset", "srcset-1200.png", "F")
     time.sleep(0.2)
-    click_and_size("#lazy", "original-1200.png", "G")
+    click_and_size("#lazy", "original-lazy.png", "G")
     time.sleep(0.2)
 
     # ---- H. 过滤：不应出现按钮 ----

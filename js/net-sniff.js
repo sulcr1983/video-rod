@@ -32,6 +32,14 @@
     // 实测抖音一次响应挖出 1353 条无关 URL，把真正的播放地址挤掉了。
     var PATHY_RE = /https?:\/\/[^\s"'\\<>()]+?\/(?:video\/tos|playwm|playlist|vod\/)[^\s"'\\<>()]*/gi;
 
+    /* 图片扩展名地址（ADR-082）：网络层 onHeadersReceived 已覆盖大部分；
+     * 这里补「只出现在 JSON/XHR 文本里、还没被请求」的图片地址。 */
+    var IMG_RE = /https?:\/\/[^\s"'\\<>()]+?\.(?:jpe?g|png|gif|webp|avif|bmp)(?:\?[^\s"'\\<>()]*)?/gi;
+    var IMG_PER_SCAN = 12;
+    var MAX_IMG_REPORT = 300;
+    var imgReported = 0;
+    var IMG_BAD_RE = /(?:^|[/_.-])(?:avatars?|icons?|logos?|emoji|emoji?s?|sprites?|spacer|loading|placeholder)(?:[/_.-]|$)/i;
+
     /**
      * 小红书 CDN：图片地址**没有文件扩展名**，靠路径特征识别。
      * 实测（2026-11-06 搜索页）45 条 xhscdn 资源全部如此，
@@ -164,6 +172,41 @@
         } catch (e) { /* 忽略 */ }
     }
 
+    function reportImages(list) {
+        if (!list.length) { return; }
+        try {
+            var out = [];
+            for (var i = 0; i < list.length; i++) {
+                var u = String(list[i] || '');
+                if (!u || seen[u]) { continue; }
+                if (IMG_BAD_RE.test(u)) { continue; }
+                seen[u] = 1;
+                out.push(u);
+                if (out.length >= IMG_PER_SCAN) { break; }
+            }
+            if (!out.length) { return; }
+            if (imgReported + out.length > MAX_IMG_REPORT) { return; }
+            imgReported += out.length;
+            dbg.hits += out.length;
+            /* 直接发后台，不走 window.postMessage 给 content-script.js 转发：
+             * 本脚本在 document_start 运行，而 content-script 的 'message' 监听在
+             * document_idle 才挂上 —— 页面早期 new Image().src 触发的上报会在监听器
+             * 就绪前发出，整条消息被丢（ADR-082 网络缓存偶发漏抓根因）。
+             * MAIN world 内容脚本同样持有 chrome.runtime，可直接发后台。 */
+            try {
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage({
+                        Message: 'vrImg.netSeen', action: 'vrImg.netSeen',
+                        urls: out.map(function (x) { return { url: String(x) }; }),
+                        frameUrl: location.href
+                    });
+                    return;
+                }
+            } catch (eDirect) { /* 退回 postMessage 兜底 */ }
+            window.postMessage({ action: 'vrNetImage', urls: out }, location.origin);
+        } catch (e) { /* 忽略 */ }
+    }
+
     function pushHit(hit, out) {
         if (!hit || seen[hit]) { return; }
         dbg.hits++;
@@ -200,6 +243,16 @@
             reported += out.length;
             report(out);
         }
+
+        /* 图片：与视频分开计数，避免把 PER_SCAN(8) 全占满后视频地址丢失 */
+        var imgs = [];
+        IMG_RE.lastIndex = 0;
+        var im;
+        while ((im = IMG_RE.exec(text))) {
+            imgs.push(im[0]);
+            if (imgs.length >= IMG_PER_SCAN) { break; }
+        }
+        if (imgs.length) { reportImages(imgs); }
     }
 
     /* ---------------- fetch ---------------- */
@@ -290,4 +343,31 @@
             }, 1500);
         } catch (e3) { /* 忽略 */ }
     }
+
+    /* Image.src 钩子（ADR-082）：JS 动态创建的图（懒加载器/图墙）不会出现在
+     * JSON 响应里，但都会走这里。只读，不改页面行为。 */
+    try {
+        var OrigImage = window.Image;
+        if (typeof OrigImage === 'function') {
+            window.Image = function () {
+                var img = new OrigImage();
+                try {
+                    var desc = Object.getOwnPropertyDescriptor(OrigImage.prototype, 'src');
+                    if (desc && desc.set && desc.get) {
+                        Object.defineProperty(img, 'src', {
+                            configurable: true,
+                            enumerable: true,
+                            get: function () { return desc.get.call(img); },
+                            set: function (v) {
+                                try { if (v) { reportImages([String(v)]); } } catch (e) { /* 忽略 */ }
+                                return desc.set.call(img, v);
+                            }
+                        });
+                    }
+                } catch (e) { /* 忽略 */ }
+                return img;
+            };
+            window.Image.prototype = OrigImage.prototype;
+        }
+    } catch (e) { /* 忽略 */ }
 })();

@@ -56,3 +56,26 @@ X ✅ ｜ 小红书 ✅ ｜ 微博 ✅ ｜ 抖音 ✅ ｜ B站 ✅ ｜ YouTube�
 > "花瓣网这种应该是通用适配下载图片的吧？不一定要每个网站都适配吧？**有图片就可以单独下载或者批量，有视频就可以单独下载或者批量。这才是我们设计的意义。**"
 
 **通用优先，专站增强**：嗅探引擎对任何页面的图/视频必须做到单张/批量可下（这是底线，缺陷按 bug 修通道本身，绝不为单站写特例）；单站适配（猫抓式规则）只用于增强体验——页面悬浮按钮、命名模板变量、文件夹归组、防盗链头、防失效取源。新站点诉求先问"通用通道为什么不行"，答不出才立适配任务。
+
+---
+
+## 6. 图片管线 v2 本地夹具（2026-11-13 新增）
+
+> 用途：`docs/IMAGE-PIPELINE-REDESIGN.md` 的发现层/执行层回归。全部放 `test-site/`，用现有 `python -m http.server 18080 --directory test-site`，**不新增测试框架**。
+> 这些是夹具资产，不是真实站点素材；真实站点只做登录态只读扫描（`TESTING.md §0.0`）。
+
+| 夹具 | 覆盖断言 | 关键构造 |
+|---|---|---|
+| `pipeline-candidates.html` | 候选回退、srcset 最大、a[href] 详情页 | 首选 `/media/missing-404.png`，次选真实图；srcset 最大 404、次大可用 |
+| `pipeline-auth.html` | 防盗链 403/200 | 服务端按 `Referer` 放行；无 Referer 403、带页面 Referer 200 |
+| `pipeline-noext.html` | 无后缀 CDN + content-type | `/media/noext?id=webp` 返回 `image/webp`，URL 无扩展名 |
+| `pipeline-dup.html` | 同名/同内容去重 | 多张同标题不同内容；两张同内容不同 URL |
+| `pipeline-slow.html` | 超时/重试/取消/断点 | 一张延迟 10s，一张中途断开 |
+| `pipeline-iframe.html` | iframe 逐帧 | 主文档 3 张 + 子 frame 4 张（同源/跨源各一） |
+| `pipeline-shadow.html` | Shadow DOM | open root 3 张；closed 模式 1 张（页面注入钩子） |
+| `pipeline-bg.html` | 背景/伪元素/poster/SVG | `background-image`、`::before content:url()`、`<video poster>`、SVG `<image>` |
+| `pipeline-network.html` | 网络缓存 | 图片先由 JS `fetch`/`Image.src` 请求，再从 DOM 移除；只应靠网络通道扫到 |
+| `pipeline-lazy.html` | 懒加载/尺寸门槛 | 800×600 缩到 320px 展示；未解码图；`data-src` 占位 |
+| `pipeline-batch-many.html` | 大批量/并发/进度 | 200 张，用于并发/断点/取消/进度 |
+
+**落盘与清理**：隔离实例的下载目录由 `e2e-all --isolated` 重定向到 `work/dl/isolated`；夹具产物不得进入真实 Downloads / 真实库。测试结束清 `work/dl/isolated`，不删 `.edge-login-profile`。

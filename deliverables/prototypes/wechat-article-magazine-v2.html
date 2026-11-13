@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>试了 6 个工具都差最后一步 · 公众号成稿 v2（松烟墨 × 香槟金）</title>
+<style>
+  /* ===== 仅页面外围，不进入公众号复制区 ===== */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #E8E7E1;
+    color: #1A1E1B;
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .toolbar {
+    position: sticky; top: 0; z-index: 30;
+    background: #141A18;
+    padding: 11px 20px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
+    border-bottom: 1px solid #2C3833;
+  }
+  .brand {
+    color: #D9C49A; font: 12px Georgia, serif; letter-spacing: 3px;
+    margin-right: 6px; white-space: nowrap;
+  }
+  .btn {
+    font: 13px/1 "Noto Sans SC", "PingFang SC", sans-serif;
+    padding: 9px 14px; border-radius: 0; cursor: pointer;
+    border: 1px solid #46544C; background: transparent; color: #E9E6DC;
+    transition: background .18s ease, color .18s ease, border-color .18s ease;
+  }
+  .btn:hover { background: #22302A; border-color: #B99A5B; }
+  .btn.primary { background: #B99A5B; color: #141A18; border-color: #B99A5B; font-weight: 700; }
+  .btn.primary:hover { background: #D3B879; }
+  .btn.active { border-color: #B99A5B; color: #D9C49A; }
+  .hint { color: #93A098; font-size: 11px; line-height: 1.7; margin-left: auto; max-width: 340px; }
+  .notice {
+    max-width: 760px; margin: 18px auto 0; padding: 13px 17px;
+    background: #F1F0EA; border-left: 3px solid #B99A5B;
+    font-size: 12px; line-height: 1.95; color: #4A504B;
+  }
+  .notice b { color: #141A18; }
+  .paper {
+    max-width: 760px; margin: 22px auto 90px;
+    background: #FAF9F6;
+    box-shadow: 0 22px 64px rgba(20,26,24,.18), 0 2px 6px rgba(20,26,24,.08);
+    padding: 0 30px 48px;
+  }
+  #copy-stage { position: absolute; left: -99999px; top: 0; width: 700px; }
+  #toast {
+    position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%);
+    background: #141A18; color: #D9C49A; border: 1px solid #B99A5B;
+    padding: 11px 22px; font-size: 13px; letter-spacing: .5px;
+    opacity: 0; pointer-events: none; transition: opacity .25s ease; z-index: 50;
+  }
+  #toast.show { opacity: 1; }
+  @media print {
+    .toolbar, .notice, #toast { display: none !important; }
+    body { background: #fff; }
+    .paper { box-shadow: none; margin: 0; max-width: 100%; padding: 0 8px; }
+  }
+  @media (max-width: 640px) {
+    .paper { padding: 0 15px 30px; margin: 14px 8px 50px; }
+    .hint { display: none; }
+    .toolbar { padding: 10px 12px; }
+    .btn { padding: 8px 10px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="brand">FIELD NOTES / NO.01</span>
+  <button class="btn primary" onclick="copyWechat()">一键复制到公众号</button>
+  <button class="btn" onclick="copyPlain()">复制纯文本</button>
+  <button class="btn" onclick="copyFigureList()">复制配图清单</button>
+  <button class="btn" onclick="exportFigures()">导出 2 张插画 PNG</button>
+  <button class="btn active" id="btnMag" onclick="setView('mag')">杂志版（真实截图）</button>
+  <button class="btn" id="btnWx" onclick="setView('wx')">公众号兼容预览</button>
+  <button class="btn" onclick="window.print()">打印 / 存 PDF</button>
+  <span class="hint">杂志版含真实截图与 SVG 插画；一键复制会自动转成微信兼容版，图位变占位卡（微信只认素材库图片，详见下方说明）。</span>
+</div>
+
+<div class="notice">
+  <b>关于图片，先说清楚（平台限制，不是偷懒）：</b>公众号编辑器会过滤 SVG、base64 内嵌图与本地路径，只认上传到自己素材库的图片。所以——① 点「一键复制」得到的是<b>排版完整、图位为占位卡</b>的正文，粘进后台后按占位卡上写的文件名逐张插入 PNG 即可（微信会自动转存）；② 「复制配图清单」给你 7 个图位对应的文件名；③ 本页杂志版可直接<b>打印成 PDF</b>，那一份是带真实截图的完整图文。
+</div>
+
+<div class="paper">
+<section id="article" style="display:block;margin:0;padding:0;background:#FAF9F6;color:#1A1E1B;font-family:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;">
+
+<!-- ============ 刊头 ============ -->
+<section style="padding:40px 0 0;">
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="font:11px Georgia,serif;letter-spacing:4px;color:#8A8F88;">FIELD NOTES &#183; 工具手记</td>
+      <td style="text-align:right;font:11px Georgia,serif;letter-spacing:3px;color:#8A8F88;">NO. 01 / 2026. 11</td>
+    </tr>
+  </table>
+  <section style="height:1px;background:#DCDDD4;margin:14px 0 30px;"></section>
+  <section style="width:38px;height:2px;background:#B99A5B;margin:0 0 22px;"></section>
+  <p style="margin:0 0 16px;font:11px Georgia,serif;letter-spacing:4px;color:#B99A5B;">A TOOL FOR ONE PERSON</p>
+  <h1 style="margin:0 0 20px;font-family:'Songti SC','Noto Serif SC',SimSun,Georgia,serif;font-size:34px;line-height:1.55;font-weight:700;color:#141A18;letter-spacing:.5px;">试了 6 个工具都差最后一步，<br>我给自己写了个不上架的插件</h1>
+  <p style="margin:0 0 26px;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:17px;line-height:1.95;color:#4A504B;">下载器只管抓，素材库只管收，中间那道「把文件放好、叫对名字、记住出处」的活，一直没人接。这个从不上架的小东西，只对我一个人的别扭负责。</p>
+  <table style="width:100%;border-collapse:collapse;border-top:1px solid #DCDDD4;border-bottom:1px solid #DCDDD4;">
+    <tr>
+      <td style="padding:12px 0;font-size:12px;color:#8A8F88;letter-spacing:1px;">文 / 苏哥　&#183;　约 6 分钟</td>
+      <td style="padding:12px 0;font-size:12px;color:#8A8F88;letter-spacing:1px;text-align:right;">自用 &#183; 不上架 &#183; 纯本地</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ============ 开篇钩子 ============ -->
+<section style="padding:36px 0 0;">
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;"><span style="font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:44px;line-height:1;color:#B99A5B;font-weight:700;">上</span>周三晚上 11 点，我在赶一版方案，需要三个月前存的一张参考图。</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">我记得清清楚楚存过。收藏夹翻了，网盘搜了，文件传输助手也翻了，最后在下载文件夹第 6 屏找到它——名字叫 IMG_20260814_091744(1).jpg。</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">四十分钟。就为了找一张自己的图。</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">那晚我没怪自己记性差。我打开浏览器，把能找到的下载工具又挨个试了一遍。我想搞清楚一件事：明明每一款都能「存下来」，为什么我每次都「找不回来」。</p>
+</section>
+
+<!-- ============ 图 01：虚构插画 · 乱下载文件夹 ============ -->
+<section style="margin:34px 0 0;">
+  <section data-layer="mag" style="display:block;">
+    <svg id="fig01" viewBox="0 0 680 250" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 01 示意插画：乱糟糟的下载文件夹</title>
+      <rect x="0" y="0" width="680" height="250" fill="#141A18"/>
+      <rect x="0" y="0" width="680" height="2" fill="#B99A5B"/>
+      <text x="26" y="34" font-family="Georgia,serif" font-size="10" letter-spacing="4" fill="#93A098">FIG. 01 / DOWNLOADS</text>
+      <text x="26" y="52" font-family="'Songti SC',serif" font-size="11" letter-spacing="2" fill="#6E7C73">第 6 屏，还是没有它</text>
+      <g font-family="Georgia,serif" font-size="11" fill="#C9D0C8">
+        <rect x="26" y="70" width="330" height="26" fill="none" stroke="#33423A"/>
+        <text x="36" y="87">IMG_20260814_091744.jpg</text>
+        <rect x="26" y="100" width="330" height="26" fill="none" stroke="#33423A"/>
+        <text x="36" y="117">IMG_20260814_091745(1).jpg</text>
+        <rect x="26" y="130" width="330" height="26" fill="none" stroke="#33423A"/>
+        <text x="36" y="147">video (2).mp4</text>
+        <rect x="26" y="160" width="330" height="26" fill="none" stroke="#33423A"/>
+        <text x="36" y="177" fill="#8A948B">8f3c9a1e...d41d.mp4</text>
+        <rect x="26" y="190" width="330" height="26" fill="none" stroke="#33423A"/>
+        <text x="36" y="207">未命名 副本 副本 3.png</text>
+      </g>
+      <circle cx="470" cy="128" r="46" fill="none" stroke="#B99A5B" stroke-width="1.2"/>
+      <line x1="503" y1="161" x2="536" y2="194" stroke="#B99A5B" stroke-width="2.4" stroke-linecap="round"/>
+      <text x="580" y="146" font-family="Georgia,serif" font-size="60" fill="#B99A5B" opacity=".9">137</text>
+      <text x="582" y="170" font-family="Georgia,serif" font-size="10" letter-spacing="3" fill="#93A098">FILES</text>
+      <line x1="26" y1="230" x2="654" y2="230" stroke="#33423A"/>
+      <text x="26" y="244" font-family="'Songti SC',serif" font-size="10" fill="#6E7C73">示意插画 &#183; 不对应任何真实文件</text>
+    </svg>
+  </section>
+  <section data-layer="wx" style="display:none;background:#141A18;padding:22px 24px;border-top:2px solid #B99A5B;">
+    <p style="margin:0 0 10px;font:11px Georgia,serif;letter-spacing:3px;color:#B99A5B;">FIG. 01 / 图位占位</p>
+    <p style="margin:0 0 8px;font-family:'Songti SC',serif;font-size:17px;line-height:1.9;color:#F2EFE6;">此处插入示意插画：乱糟糟的下载文件夹</p>
+    <p style="margin:0;font-size:12px;line-height:1.9;color:#A9B0A6;">对应文件：<strong style="color:#D9C49A;">article-fig-01-downloads.png</strong>（第 6 屏、137 个乱码文件名、放大镜）</p>
+  </section>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8F88;letter-spacing:.5px;">图 01 / 示意插画。真实的文件名比这更没规律。</p>
+</section>
+
+<!-- ============ 竞品调研 ============ -->
+<section style="padding:40px 0 0;">
+  <p style="margin:0 0 22px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;"><strong style="color:#141A18;">先说结论：不是它们做得不好，是它们各管一段。</strong></p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">猫抓是我最服气的一个，开源、免费、几百 KB，网页里播过的视频基本都能嗅出来。可它到「下载」就停了，往 Downloads 一丢，后面不管。</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">素材库那头正好反过来。Eagle、Billfish 的整理、标签、预览做得比我这套好得多，但它们不会自己上网抓东西——得我先把文件一个个搬进去。</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">抓图插件只管图，视频一概不认。</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">剩下几款，卡在别的地方。据官网，Video DownloadHelper 免费版够日常用，但去水印、无限高清转换要买一次性授权；公开评测里提到 CocoCut 有每日上限和限速，MPMUx 要播放前先手动启用、不支持批量；IDM 是收费软件。还有一条更根本的：Chrome 商店政策不允许上架扩展提供 YouTube 下载，所以商店版碰这类网址普遍直接失效。</p>
+</section>
+
+<!-- ============ 图 02：虚构插画 · 付费墙 ============ -->
+<section style="margin:32px 0 0;">
+  <section data-layer="mag" style="display:block;">
+    <svg id="fig02" viewBox="0 0 680 236" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 02 示意插画：通用的功能付费墙</title>
+      <rect x="0" y="0" width="680" height="236" fill="#F1F0EA"/>
+      <rect x="0" y="0" width="680" height="2" fill="#B99A5B"/>
+      <text x="26" y="32" font-family="Georgia,serif" font-size="10" letter-spacing="4" fill="#8A8F88">FIG. 02 / THE PAYWALL</text>
+      <rect x="178" y="46" width="324" height="154" fill="#FAF9F6" stroke="#C9CBC1"/>
+      <rect x="178" y="46" width="324" height="3" fill="#141A18"/>
+      <path d="M326 68 v -8 a 14 14 0 0 1 28 0 v 8" fill="none" stroke="#141A18" stroke-width="1.6"/>
+      <rect x="320" y="68" width="40" height="30" fill="none" stroke="#141A18" stroke-width="1.6"/>
+      <circle cx="340" cy="81" r="2.6" fill="#B99A5B"/>
+      <text x="340" y="120" font-family="'Songti SC',serif" font-size="14" fill="#141A18" text-anchor="middle">解锁完整功能</text>
+      <g fill="#DCDDD4">
+        <rect x="206" y="134" width="228" height="7"/><rect x="206" y="148" width="196" height="7"/>
+      </g>
+      <g fill="#B99A5B"><rect x="452" y="133" width="9" height="9"/><rect x="420" y="147" width="9" height="9"/></g>
+      <rect x="278" y="166" width="124" height="24" fill="#B99A5B"/>
+      <text x="340" y="182" font-family="'Songti SC',serif" font-size="12" fill="#141A18" text-anchor="middle">升级 Pro</text>
+      <text x="26" y="222" font-family="Georgia,serif" font-size="11" letter-spacing="2" fill="#8A8F88">TODAY'S QUOTA USED &#183; RESET 00:00</text>
+      <text x="654" y="222" font-family="'Songti SC',serif" font-size="10" fill="#8A8F88" text-anchor="end">示意插画 &#183; 不对应任何具体产品</text>
+    </svg>
+  </section>
+  <section data-layer="wx" style="display:none;background:#F1F0EA;padding:22px 24px;border-top:2px solid #B99A5B;">
+    <p style="margin:0 0 10px;font:11px Georgia,serif;letter-spacing:3px;color:#B99A5B;">FIG. 02 / 图位占位</p>
+    <p style="margin:0 0 8px;font-family:'Songti SC',serif;font-size:17px;line-height:1.9;color:#141A18;">此处插入示意插画：通用的「解锁完整功能」付费墙</p>
+    <p style="margin:0;font-size:12px;line-height:1.9;color:#4A504B;">对应文件：<strong style="color:#8A6D33;">article-fig-02-paywall.png</strong>（不画任何具体产品的真实界面）</p>
+  </section>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8F88;letter-spacing:.5px;">图 02 / 示意插画。功能本身没问题，只是最顺手那步常在里面。</p>
+</section>
+
+<!-- ============ 核心转折 · 深色整版 ============ -->
+<section style="background:#141A18;padding:38px 34px;margin:40px 0 0;">
+  <p style="margin:0 0 16px;font:11px Georgia,serif;letter-spacing:4px;color:#B99A5B;">THE TURN</p>
+  <p style="margin:0 0 22px;font-size:16px;line-height:2;color:#D8DDD5;letter-spacing:.3px;">我把这一圈试完，反而想明白了。</p>
+  <p style="margin:0 0 22px;font-size:16px;line-height:2;color:#D8DDD5;letter-spacing:.3px;">这些工具不是不肯把事做完，是不能。它们要上架、要过审核、要设置付费墙、要做大多数人用得上的功能。一个要伺候几百万人的产品，没道理为「某人想让文件按博主自动分文件夹」这种小事加班。</p>
+  <p style="margin:0 0 26px;font-size:16px;line-height:2;color:#D8DDD5;letter-spacing:.3px;">而我这个，从第一行代码起就没打算上架。</p>
+  <section style="height:1px;background:#3A4A41;margin:0 0 26px;"></section>
+  <p style="margin:0 0 14px;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:26px;line-height:1.75;color:#F2EFE6;">它只需要伺候我一个人。</p>
+  <p style="margin:0 0 26px;font-size:16px;line-height:2;color:#D8DDD5;letter-spacing:.3px;">不用过商店审核，所以不必为了合规把某些能力砍掉；不用做付费墙，所以不用把最顺手的那步藏在 Pro 后面；不用照顾所有人的习惯，所以我那些别人看着莫名其妙的别扭要求，都能一条条满足。</p>
+  <p style="margin:0;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:19px;line-height:1.9;color:#D9C49A;">市面上的工具都在做「下载」，我要的是「下载完不用再整理」。<br>中间那道没人愿意接的活，我自己接了。</p>
+</section>
+
+<!-- ============ 图 03：真实截图 · 媒体库首页 ============ -->
+<section style="margin:40px 0 0;">
+  <section data-layer="mag" style="display:block;">
+    <section style="background:#F1F0EA;padding:10px;border:1px solid #DCDDD4;">
+      <img src="../assets/layout-home.png" alt="媒体库首页：左侧按平台分组的资源树，右侧素材网格" style="display:block;width:100%;height:auto;border:0;" />
+    </section>
+  </section>
+  <section data-layer="wx" style="display:none;background:#F1F0EA;padding:22px 24px;border-left:3px solid #B99A5B;">
+    <p style="margin:0 0 10px;font:11px Georgia,serif;letter-spacing:3px;color:#B99A5B;">FIG. 03 / 真实截图占位</p>
+    <p style="margin:0 0 8px;font-family:'Songti SC',serif;font-size:17px;line-height:1.9;color:#141A18;">此处插入真实截图：媒体库首页</p>
+    <p style="margin:0;font-size:12px;line-height:1.9;color:#4A504B;">对应文件：<strong style="color:#8A6D33;">deliverables/assets/layout-home.png</strong>　（左侧资源树按平台／作者分组，右侧素材网格）</p>
+  </section>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8F88;letter-spacing:.5px;">图 03 / 真实界面。左边那棵树，是「下载即归档」自己长出来的。</p>
+</section>
+
+<!-- ============ 那张图的一生 ============ -->
+<section style="padding:40px 0 0;">
+  <p style="margin:0 0 8px;font:11px Georgia,serif;letter-spacing:4px;color:#B99A5B;">THE LIFE OF ONE IMAGE</p>
+  <h2 style="margin:0 0 24px;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:24px;line-height:1.6;color:#141A18;">那张图后来怎么样了</h2>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">现在我在网页上看见想要的，鼠标移过去，右上角浮出一个下载按钮，点一下就存；懒得动鼠标就右键，或者按 Alt+Shift+V 开面板，把这一页抓到的东西一次勾走。</p>
+</section>
+
+<!-- ============ 图 04：真实截图 · 悬停按钮 ============ -->
+<section style="margin:28px 0 0;">
+  <section data-layer="mag" style="display:block;">
+    <section style="background:#F1F0EA;padding:10px;border:1px solid #DCDDD4;">
+      <img src="../assets/iframe-video-hover.png" alt="鼠标悬停在视频上时右上角浮出的下载按钮" style="display:block;width:100%;height:auto;border:0;" />
+    </section>
+  </section>
+  <section data-layer="wx" style="display:none;background:#F1F0EA;padding:22px 24px;border-left:3px solid #B99A5B;">
+    <p style="margin:0 0 10px;font:11px Georgia,serif;letter-spacing:3px;color:#B99A5B;">FIG. 04 / 真实截图占位</p>
+    <p style="margin:0 0 8px;font-family:'Songti SC',serif;font-size:17px;line-height:1.9;color:#141A18;">此处插入真实截图：悬停浮出的下载按钮</p>
+    <p style="margin:0;font-size:12px;line-height:1.9;color:#4A504B;">对应文件：<strong style="color:#8A6D33;">deliverables/assets/iframe-video-hover.png</strong></p>
+  </section>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8F88;letter-spacing:.5px;">图 04 / 真实界面。不用先打开任何面板。</p>
+</section>
+
+<section style="padding:30px 0 0;">
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">存的时候，它不叫 IMG_20260814 了。它会去看这是谁的、这一页叫什么，按我定的规矩生成名字，再自己走进「站点／作者／作品」那个文件夹。B 站一个分 P 纪录片，就归到「第几话」那一层；同一个网页存一组图，自动收进以标题命名的子文件夹。落盘那一刻，索引也写好了。</p>
+</section>
+
+<!-- ============ 图 05：真实截图 · 命名规则 ============ -->
+<section style="margin:28px 0 0;">
+  <section data-layer="mag" style="display:block;">
+    <section style="background:#F1F0EA;padding:10px;border:1px solid #DCDDD4;">
+      <img src="../assets/setmodal.png" alt="设置面板：子目录名、命名模板与文件名规则" style="display:block;width:100%;height:auto;border:0;" />
+    </section>
+  </section>
+  <section data-layer="wx" style="display:none;background:#F1F0EA;padding:22px 24px;border-left:3px solid #B99A5B;">
+    <p style="margin:0 0 10px;font:11px Georgia,serif;letter-spacing:3px;color:#B99A5B;">FIG. 05 / 真实截图占位</p>
+    <p style="margin:0 0 8px;font-family:'Songti SC',serif;font-size:17px;line-height:1.9;color:#141A18;">此处插入真实截图：命名规则与子目录设置</p>
+    <p style="margin:0;font-size:12px;line-height:1.9;color:#4A504B;">对应文件：<strong style="color:#8A6D33;">deliverables/assets/setmodal.png</strong>　（子目录名、命名模板、文件名规则）</p>
+  </section>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8F88;letter-spacing:.5px;">图 05 / 真实界面。规矩只定一次，之后每次都照办。</p>
+</section>
+
+<section style="padding:30px 0 0;">
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">半年后我要用它，打开本地库搜两个词就出来，词前面加个减号还能排除。点开信息栏，原帖地址还在——直链带签名，过几天就失效，原帖不会。能回到出处，我才敢说这东西真存下来了。</p>
+</section>
+
+<!-- ============ 图 06：真实截图 · 详情信息栏 ============ -->
+<section style="margin:28px 0 0;">
+  <section data-layer="mag" style="display:block;">
+    <section style="background:#F1F0EA;padding:10px;border:1px solid #DCDDD4;">
+      <img src="../assets/r1-detail.png" alt="预览器与右侧详情信息栏：作者、大小、保存时间、收藏与定位操作" style="display:block;width:100%;height:auto;border:0;" />
+    </section>
+  </section>
+  <section data-layer="wx" style="display:none;background:#F1F0EA;padding:22px 24px;border-left:3px solid #B99A5B;">
+    <p style="margin:0 0 10px;font:11px Georgia,serif;letter-spacing:3px;color:#B99A5B;">FIG. 06 / 真实截图占位</p>
+    <p style="margin:0 0 8px;font-family:'Songti SC',serif;font-size:17px;line-height:1.9;color:#141A18;">此处插入真实截图：预览器与详情信息栏</p>
+    <p style="margin:0;font-size:12px;line-height:1.9;color:#4A504B;">对应文件：<strong style="color:#8A6D33;">deliverables/assets/r1-detail.png</strong>　（作者、大小、保存时间、重命名／移动／定位）</p>
+  </section>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8F88;letter-spacing:.5px;">图 06 / 真实界面。信息栏里留着的，是回得去的路。</p>
+</section>
+
+<section style="padding:30px 0 0;">
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">顺手还补了几件小事：同一个文件在不同地方存过三遍，硬盘里只占一份，删的时候也只是退一条引用；视频的音轨和画面在本地合并，不重编码、不掉画质；预览能连播、能十档倍速、GIF 能逐帧；误删进回收站，捞得回来。</p>
+</section>
+
+<!-- ============ 图 07：真实截图 · 文件信息与统计 ============ -->
+<section style="margin:28px 0 0;">
+  <section data-layer="mag" style="display:block;">
+    <section style="background:#F1F0EA;padding:10px;border:1px solid #DCDDD4;">
+      <img src="../assets/detail-stat.png" alt="预览器右侧的文件信息：作者、大小、保存时间与标签" style="display:block;width:100%;height:auto;border:0;" />
+    </section>
+  </section>
+  <section data-layer="wx" style="display:none;background:#F1F0EA;padding:22px 24px;border-left:3px solid #B99A5B;">
+    <p style="margin:0 0 10px;font:11px Georgia,serif;letter-spacing:3px;color:#B99A5B;">FIG. 07 / 真实截图占位</p>
+    <p style="margin:0 0 8px;font-family:'Songti SC',serif;font-size:17px;line-height:1.9;color:#141A18;">此处插入真实截图：文件信息与统计</p>
+    <p style="margin:0;font-size:12px;line-height:1.9;color:#4A504B;">对应文件：<strong style="color:#8A6D33;">deliverables/assets/detail-stat.png</strong></p>
+  </section>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8F88;letter-spacing:.5px;">图 07 / 真实界面。每个数字都是我某天真的用得上，才留下来。</p>
+</section>
+
+<!-- ============ 金句 · 浅雾块 ============ -->
+<section style="background:#F1F0EA;border-left:3px solid #B99A5B;padding:24px 26px;margin:38px 0 0;">
+  <p style="margin:0;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:20px;line-height:1.9;color:#141A18;">这些都不是什么了不起的功能。但每一件，都是我自己在某个晚上真的被绊过一次，才加上去的。给几百万人做工具，这些大概排不进优先级；给自己做，它们就是全部。</p>
+</section>
+
+<!-- ============ 诚实边界 ============ -->
+<section style="padding:44px 0 0;">
+  <p style="margin:0 0 8px;font:11px Georgia,serif;letter-spacing:4px;color:#B99A5B;">THE FINE PRINT</p>
+  <h2 style="margin:0 0 18px;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:23px;line-height:1.6;color:#141A18;">也得说清楚它不做什么</h2>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">有 DRM 保护的站点明确不做；YouTube 更高的档位主动藏起来，不硬撑；站点一改版，取名字可能暂时失灵，文档里对此留了一串踩坑记录。它安装时要全站读写权限，这是全站嗅探的前提，但所有数据都留在我自己硬盘上，不上传、不注册、不联网。</p>
+  <p style="margin:0;font-size:16px;line-height:1.95;color:#1A1E1B;letter-spacing:.3px;text-align:justify;">还有一句必须放前面：它只用来存我自己有版权、或者拿到授权的东西。别拿它搬别人的付费内容，尊重创作者是底线。</p>
+</section>
+
+<!-- ============ 结尾 · 深色 ============ -->
+<section style="background:#141A18;padding:36px 34px;margin:40px 0 0;">
+  <p style="margin:0 0 20px;font-size:16px;line-height:2;color:#D8DDD5;letter-spacing:.3px;">回到那四十分钟。工具解决不了「我为什么存了这么多」，但至少下次打开文件夹，每样东西都在它该在的位置，名字看得懂，出处找得回。</p>
+  <p style="margin:0 0 24px;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:21px;line-height:1.9;color:#D9C49A;">收藏的意义不是占有，是还能再遇见。</p>
+  <section style="height:1px;background:#3A4A41;margin:0 0 24px;"></section>
+  <p style="margin:0;font-size:16px;line-height:2;color:#F2EFE6;">我这个插件大概永远不会上架。它不是做给所有人的，它只是把我自己那道没人接的最后一步，接上了。</p>
+</section>
+
+<!-- ============ 互动 ============ -->
+<section style="background:#F1F0EA;padding:30px 28px;margin:0;text-align:center;">
+  <p style="margin:0 0 12px;font:11px Georgia,serif;letter-spacing:4px;color:#B99A5B;">YOUR TURN</p>
+  <p style="margin:0 0 14px;font-family:'Songti SC','Noto Serif SC',SimSun,serif;font-size:21px;line-height:1.8;color:#141A18;">你的下载文件夹里现在躺着多少个文件？</p>
+  <p style="margin:0;font-size:14px;line-height:1.95;color:#4A504B;">评论区报个数。<br>如果这篇让你想起了谁，转给那个总说「我明明存过」的朋友——他大概也刚翻完第 6 屏。</p>
+</section>
+
+<!-- ============ 页脚 ============ -->
+<section style="border-top:1px solid #DCDDD4;margin-top:44px;padding-top:18px;">
+  <table style="width:100%;border-collapse:collapse;font-size:11px;line-height:1.9;color:#8A8F88;">
+    <tr>
+      <td style="width:33%;vertical-align:top;padding-right:14px;"><span style="font:11px Georgia,serif;letter-spacing:2px;color:#B99A5B;">SOURCES</span><br>竞品限制据各产品官网与公开评测整理；<br>未引用未经核实的数据或排名。</td>
+      <td style="width:34%;vertical-align:top;padding-right:14px;"><span style="font:11px Georgia,serif;letter-spacing:2px;color:#B99A5B;">IMAGES</span><br>图 01–02 为示意插画；<br>图 03–07 为真实界面截图。</td>
+      <td style="width:33%;vertical-align:top;"><span style="font:11px Georgia,serif;letter-spacing:2px;color:#B99A5B;">COLOPHON</span><br>FIELD NOTES &#183; NO. 01<br>2026. 11 &#183; 松烟墨 × 香槟金</td>
+    </tr>
+  </table>
+  <p style="margin:16px 0 0;font-size:10px;line-height:1.8;color:#A5AAA3;letter-spacing:.5px;">本文为个人工具使用笔记，不构成对任何站点服务条款的规避建议；请遵守内容版权与平台规则。</p>
+</section>
+
+</section>
+</div>
+
+<div id="copy-stage"></div>
+<div id="toast"></div>
+
+<script>
+/* ===== 视图切换：杂志版（真实截图＋SVG） / 公众号兼容预览（图位占位卡） ===== */
+function setView(v) {
+  var layers = document.querySelectorAll('#article [data-layer]');
+  for (var i = 0; i < layers.length; i++) {
+    var el = layers[i];
+    el.style.display = (el.getAttribute('data-layer') === v) ? 'block' : 'none';
+  }
+  document.getElementById('btnMag').className = (v === 'mag') ? 'btn active' : 'btn';
+  document.getElementById('btnWx').className  = (v === 'wx')  ? 'btn active' : 'btn';
+}
+
+/* ===== 构造公众号兼容版：删除 SVG／本地图片层，启用占位卡层 ===== */
+function buildWechatClone() {
+  var src = document.getElementById('article');
+  var c = src.cloneNode(true);
+  var mag = c.querySelectorAll('[data-layer="mag"]');
+  for (var i = 0; i < mag.length; i++) { mag[i].parentNode.removeChild(mag[i]); }
+  var wx = c.querySelectorAll('[data-layer="wx"]');
+  for (var j = 0; j < wx.length; j++) { wx[j].style.display = 'block'; }
+  /* 双保险：微信会过滤 SVG 与本地 img，主动清干净 */
+  var svgs = c.querySelectorAll('svg');
+  for (var k = 0; k < svgs.length; k++) { svgs[k].parentNode.removeChild(svgs[k]); }
+  var imgs = c.querySelectorAll('img');
+  for (var m = 0; m < imgs.length; m++) { imgs[m].parentNode.removeChild(imgs[m]); }
+  return c;
+}
+
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show';
+  setTimeout(function () { t.className = ''; }, 2600);
+}
+
+/* ===== 一键复制：富文本（全内联样式）进剪贴板 ===== */
+function copyWechat() {
+  var stage = document.getElementById('copy-stage');
+  var c = buildWechatClone();
+  stage.innerHTML = '';
+  stage.appendChild(c);
+  stage.style.display = 'block';
+  var range = document.createRange();
+  range.selectNodeContents(c);
+  var sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  sel.removeAllRanges();
+  stage.innerHTML = '';
+  stage.style.display = 'none';
+  toast(ok ? '已复制 · 去公众号后台 Ctrl+V，按占位卡插入 PNG' : '复制失败，请切到「公众号兼容预览」后手动全选复制');
+}
+
+var FIGURES = [
+'配图清单（按正文出现顺序，逐个插入公众号素材库）',
+'',
+'封面 / 可用图 01 裁 2.35:1：article-fig-01-downloads.png（示意插画，需从本页导出）',
+'图 01　示意插画 · 乱糟糟的下载文件夹　→ article-fig-01-downloads.png',
+'图 02　示意插画 · 通用付费墙　　　　　→ article-fig-02-paywall.png',
+'图 03　真实截图 · 媒体库首页　　　　　→ deliverables/assets/layout-home.png',
+'图 04　真实截图 · 悬停下载按钮　　　　→ deliverables/assets/iframe-video-hover.png',
+'图 05　真实截图 · 命名规则设置　　　　→ deliverables/assets/setmodal.png',
+'图 06　真实截图 · 详情信息栏　　　　　→ deliverables/assets/r1-detail.png',
+'图 07　真实截图 · 文件信息与统计　　　→ deliverables/assets/detail-stat.png',
+'',
+'说明：图 01–02 为本页内联 SVG 插画，可「打印 / 存 PDF」后裁出，或让我导出成 PNG；',
+'图 03–07 已是 PNG，直接在公众号编辑器里插入即可（微信会自动转存到素材库）。',
+'剔除不用：含真人素材缩略图、旧版浅色皮肤、带「支持 4K」字样的截图。'
+].join('\n');
+
+function copyFigureList() {
+  var ta = document.createElement('textarea');
+  ta.value = FIGURES;
+  ta.style.position = 'fixed'; ta.style.left = '-99999px';
+  document.body.appendChild(ta); ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  toast(ok ? '配图清单已复制' : '复制失败');
+}
+
+/* ===== 导出两张示意插画为 PNG：浏览器原生 canvas，零依赖 =====
+   公众号不收 SVG，所以把内联 SVG 光栅化成 PNG，便于直接插入素材库。 */
+function exportFigures() {
+  var jobs = [
+    { id: 'fig01', w: 680, h: 250, bg: '#141A18', name: 'article-fig-01-downloads.png' },
+    { id: 'fig02', w: 680, h: 236, bg: '#F1F0EA', name: 'article-fig-02-paywall.png' }
+  ];
+  var done = 0, failed = 0;
+  jobs.forEach(function (job) {
+    var svg = document.getElementById(job.id);
+    if (!svg) { failed++; return; }
+    var clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', job.w);
+    clone.setAttribute('height', job.h);
+    var src = new XMLSerializer().serializeToString(clone);
+    var blob = new Blob([src], { type: 'image/svg+xml;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var scale = 2;
+        var cv = document.createElement('canvas');
+        cv.width = job.w * scale; cv.height = job.h * scale;
+        var ctx = cv.getContext('2d');
+        ctx.fillStyle = job.bg; ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        cv.toBlob(function (b) {
+          if (!b) { failed++; return; }
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(b);
+          a.download = job.name;
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+          done++;
+          if (done + failed === jobs.length) {
+            toast(failed ? '导出 ' + done + ' 张，' + failed + ' 张失败（可用打印 PDF 裁图）' : '2 张插画 PNG 已导出到下载目录');
+          }
+        }, 'image/png');
+      } catch (e) { failed++; }
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = function () {
+      failed++; URL.revokeObjectURL(url);
+      if (done + failed === jobs.length) toast('SVG 转 PNG 失败，可用「打印 / 存 PDF」裁图');
+    };
+    img.src = url;
+  });
+}
+
+var PLAIN = [
+'试了 6 个工具都差最后一步，我给自己写了个不上架的插件',
+'',
+'上周三晚上 11 点，我在赶一版方案，需要三个月前存的一张参考图。',
+'我记得清清楚楚存过。收藏夹翻了，网盘搜了，文件传输助手也翻了，最后在下载文件夹第 6 屏找到它——名字叫 IMG_20260814_091744(1).jpg。',
+'四十分钟。就为了找一张自己的图。',
+'那晚我没怪自己记性差。我打开浏览器，把能找到的下载工具又挨个试了一遍。我想搞清楚一件事：明明每一款都能「存下来」，为什么我每次都「找不回来」。',
+'先说结论：不是它们做得不好，是它们各管一段。',
+'猫抓是我最服气的一个，开源、免费、几百 KB，网页里播过的视频基本都能嗅出来。可它到「下载」就停了，往 Downloads 一丢，后面不管。',
+'素材库那头正好反过来。Eagle、Billfish 的整理、标签、预览做得比我这套好得多，但它们不会自己上网抓东西——得我先把文件一个个搬进去。',
+'抓图插件只管图，视频一概不认。',
+'剩下几款，卡在别的地方。据官网，Video DownloadHelper 免费版够日常用，但去水印、无限高清转换要买一次性授权；公开评测里提到 CocoCut 有每日上限和限速，MPMUx 要播放前先手动启用、不支持批量；IDM 是收费软件。还有一条更根本的：Chrome 商店政策不允许上架扩展提供 YouTube 下载，所以商店版碰这类网址普遍直接失效。',
+'我把这一圈试完，反而想明白了。',
+'这些工具不是不肯把事做完，是不能。它们要上架、要过审核、要设置付费墙、要做大多数人用得上的功能。一个要伺候几百万人的产品，没道理为「某人想让文件按博主自动分文件夹」这种小事加班。',
+'而我这个，从第一行代码起就没打算上架。',
+'这是我做它最任性、也最舒服的一点：它只需要伺候我一个人。不用过商店审核，所以不必为了合规把某些能力砍掉；不用做付费墙，所以不用把最顺手的那步藏在 Pro 后面；不用照顾所有人的习惯，所以我那些别人看着莫名其妙的别扭要求，都能一条条满足。',
+'说白了，市面上的工具都在做「下载」，我要的是「下载完不用再整理」。中间那道没人愿意接的活，我自己接了。',
+'那张图后来怎么样了？',
+'现在我在网页上看见想要的，鼠标移过去，右上角浮出一个下载按钮，点一下就存；懒得动鼠标就右键，或者按 Alt+Shift+V 开面板，把这一页抓到的东西一次勾走。',
+'存的时候，它不叫 IMG_20260814 了。它会去看这是谁的、这一页叫什么，按我定的规矩生成名字，再自己走进「站点／作者／作品」那个文件夹。B 站一个分 P 纪录片，就归到「第几话」那一层；同一个网页存一组图，自动收进以标题命名的子文件夹。落盘那一刻，索引也写好了。',
+'半年后我要用它，打开本地库搜两个词就出来，词前面加个减号还能排除。点开信息栏，原帖地址还在——直链带签名，过几天就失效，原帖不会。能回到出处，我才敢说这东西真存下来了。',
+'顺手还补了几件小事：同一个文件在不同地方存过三遍，硬盘里只占一份，删的时候也只是退一条引用；视频的音轨和画面在本地合并，不重编码、不掉画质；预览能连播、能十档倍速、GIF 能逐帧；误删进回收站，捞得回来。',
+'这些都不是什么了不起的功能。但每一件，都是我自己在某个晚上真的被绊过一次，才加上去的。给几百万人做工具，这些大概排不进优先级；给自己做，它们就是全部。',
+'也得说清楚它不做什么。有 DRM 保护的站点明确不做；YouTube 更高的档位主动藏起来，不硬撑；站点一改版，取名字可能暂时失灵，文档里对此留了一串踩坑记录。它安装时要全站读写权限，这是全站嗅探的前提，但所有数据都留在我自己硬盘上，不上传、不注册、不联网。',
+'还有一句必须放前面：它只用来存我自己有版权、或者拿到授权的东西。别拿它搬别人的付费内容，尊重创作者是底线。',
+'回到那四十分钟。工具解决不了「我为什么存了这么多」，但至少下次打开文件夹，每样东西都在它该在的位置，名字看得懂，出处找得回。',
+'收藏的意义不是占有，是还能再遇见。',
+'我这个插件大概永远不会上架。它不是做给所有人的，它只是把我自己那道没人接的最后一步，接上了。',
+'你的下载文件夹里现在躺着多少个文件？评论区报个数。如果这篇让你想起了谁，转给那个总说「我明明存过」的朋友——他大概也刚翻完第 6 屏。'
+].join('\n\n');
+
+function copyPlain() {
+  var ta = document.createElement('textarea');
+  ta.value = PLAIN;
+  ta.style.position = 'fixed'; ta.style.left = '-99999px';
+  document.body.appendChild(ta); ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  toast(ok ? '纯文本成稿已复制' : '复制失败');
+}
+
+/* 初始：杂志版 */
+setView('mag');
+</script>
+</body>
+</html>

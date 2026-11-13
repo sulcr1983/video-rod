@@ -233,6 +233,43 @@
 | B-79 | **✅ 完成 · 「抓图」完全不可用（苏哥 2026-11-12 报，微博页 53 张图只列 2 张裂图）** | ①popup 抓图**自己抄了一份扫描器**，门槛写成「显示尺寸**短边** ≥ 600」——信息流图片显示宽 300~500，一张都过不了，只剩两张背景广告位；②不校验可达性 → 裂图进列表；③只扫 `<img>`，不扫背景图/源码，也不走 `data-src`（占位 src 被整张丢弃）；④微博清晰度在**路径段**（`/mw690/`），「去 query 参数」那套拿不到原图，存下来是 690px 压缩图 | 改为复用页面已注入的 `VRImageUtil`（= 侧栏清单同一模块，口径天然一致）+ 缺注入时补一次；采集门槛回到原始像素 ≥100、显示尺寸只挡图标；新增 `upgradeSinaimg`（`/thumb150/` `/bmiddle/` `/mw690/` → `/large/`，且必须是候选**首位**，拿不到自动退下一个）；`fillSizes` 记 `fail` 并剔除坏图（提示剔了几张）；`scanImages` 新增 `pickUrl`：占位 src 自动回退 `data-src` | `test-image-util` **127/127**（新增 9 条）+ `test-grab-scan` **10/10**（离线复刻翻车形态）；新增 `tools/e2e-grab.py`（10 条断言，已接入 `e2e-all`）；**端到端实测 10/10**（截图 `deliverables/assets/e2e-grab-modal.png`：7 张、尺寸全回填、缩略图可读、无遮挡无裂图）；`health-check --full` **9 项全过「可以发」**（10/10 套件、34/34 单测 1381 断言）。端到端同时暴露并修掉 3 个单测看不到的问题：①未解码小图标混入清单（回填后没过门槛）②弹窗被猫抓原生提示条 `#TipsFixed`(9999) 压住（z-index 400/450 抬到 10000/10005）③`loading=lazy` 在后台标签页不加载导致「整批红单跑绿」（断言前 bringToFront + 复位 imgMinSize/imgBgScan） | `deliverables/reviews/2026-11-12-抓图不可用复盘与对标.md` | 2026-11-12 |
 | B-80 | **P2 · 「图片」计数恒 0 + 「图片嗅探」是死开关**（2026-11-12 复盘发现） | popup 顶部「图片 N」统计的是网络嗅探条目（按内容类型白名单 `G.Type` 收），图片类型默认未启用 → 微博页恒 0，用户以为没图；设置里 `imgSniff` 开关**全仓无消费方**，纯摆设 | 建议：点「图片」这个 chip 直接打开抓图弹窗（数字由扫描结果回填），而不是把整页图片塞进媒体列表；死开关要么接上要么删 | 待拍板 | 同上 | 2026-11-12 |
 | B-81 | **✅ 已完成真机验证 · 微博图片识别全错（苏哥 2026-11-13 截图：侧栏收到「新/上新/沸/辟谣」徽章 + 裂图，正文图 0 张）** | 真机诊断（登录态实例 dump）暴露三处：①`isWorthDownloading` 的「显示短边 ≥200」是**硬编码**，侧栏传 `minShow:48` 改不动它 → 微博正文图显示宽 133~542 全被挡；②头像原图 750×750、页面显示 52×52，按原始像素判拦不住，成了清单里的噪音；③**源码通道无条件跑**，把热搜徽章/logo/箭头图标（无 DOM、无尺寸）当图收进来；④`<img src="https://weibo.com/">` 这种站点写坏的假图进了列表（裂图）；⑤侧栏缩略图在扩展页 403（sinaimg 按 Referer 放行，`referrerPolicy` 与手动设头都无效），整屏空框 | 新增 `LIST_MIN_SHORT=80` 清单专用短边门槛（`isWorthDownloading` 支持 `minShort`，悬停仍 200）；`scanImages` 丢弃「图片地址 == 当前页面地址」的假图；源码通道改为**只在 DOM+背景都为空时兜底**（image-page + popup 两处）；新增 `vrMedia.headers` 消息 → 复用既有 `vrSetMediaHeaders`（DNR 按结果域名设 Referer、10 分钟自动清），侧栏**渲染前**调用 | 真机：微博首页 57 张 `<img>` → 清单 14~19 张**全是正文配图**（商品图/文字截图/视频封面），尺寸全部回填，无徽章无头像无裂图；缩略图 `naturalWidth=360` 正常显示；`vrImgResolve` 命中 `/large/` 原图（tried:1, image/jpeg）；`test-image-util` 127/127、`test-grab-scan` 10/10、`e2e-grab` 10/10、`e2e-popup` 8/8、冒烟 6 项全过。证据截图 `deliverables/assets/diag-weibo-sidebar-005335.png` | `deliverables/reviews/2026-11-12-抓图不可用复盘与对标.md` | 2026-11-13 |
+
+---
+
+## 图片管线 v2（2026-11-13 新增）
+
+> 触发：苏哥反馈「图片下载（尤其是批量下载和批量嗅探）一直失败；除了单图，其他都不太行」。
+> 审计：`deliverables/reviews/2026-11-13-图片批量失败审计.md`；设计：`docs/IMAGE-PIPELINE-REDESIGN.md`；测试：`docs/TEST-PLAN-IMAGE-PIPELINE.md`。
+> 原则：四入口收敛为一套发现层 + 一套执行层；批量必须落资源库目录；真实登录态只读，批量回归走隔离实例。
+
+| # | 任务 | 为什么 | 依赖/阻塞 | 验收 | 出处 |
+|---|---|---|---|---|---|
+| B-82 | **P0 · 图片批量失败审计与文档定稿** | 批量失败不是单点 bug：候选链不消费、失败当成功、静默回退下载目录、幽灵记录、命名四套、门禁不含批量。先把证据与接口定死，避免边修边漂 | 无 | 审计/设计/测试方案三份落盘；BACKLOG/ADR/TESTING/竞品拆解同步；每条问题有文件行号；用户批准的设计决策入档 | 审计 §二~§六 |
+| B-83 | **P0 · 统一图片发现层（扫描内核）** | 侧栏/popup/面板/图集各自扫描，门槛与通道不一致；只扫主 frame，漏 iframe/Shadow DOM/网络层/伪元素；`LIST_MIN_SHORT=80` 采集阶段丢图 | B-82 | 四入口同页数量一致；iframe/shadow/伪元素/网络缓存四类夹具都能扫到；显示 40px/原图 1200px 不被采集丢弃；登录态只读复测微博/小红书各一次 | 设计 §四；测试 §5.2 |
+| B-84 | **P0 · 统一下载执行层（候选回退/校验/队列/重试）** | `vrImgDownload` 不消费 `candidates`；首个 404/403 整张失败；2.5s 后当成功；FSA 写 HTML 也计成功；批量 200 张全表查重 + 全量哈希导致超时 | B-82 | 候选 404 仍成功；403 走兜底；内容校验拒绝 HTML/0 字节；失败可重试、中断可续；200 张在隔离实例完成 | 设计 §五；测试 §5.1/5.2 |
+| B-85 | **P0 · 入口收敛 + 落盘一致性** | popup 批量无队列且先记已下载；面板批量无序号/同名覆盖；`defaultDir` 不生效；FSA 未授权静默回退浏览器下载目录；命名四套并存 | B-83/B-84 | 四入口都走统一执行器；批量全部落资源库目录；文件名唯一、扩展名与内容一致；未授权时阻止并引导；失败可见可重试 | 设计 §五/§六；ADR-080/081 |
+| B-86 | **P0 · 批量落盘纳入门禁** | `e2e-all` 没有 `cdp-image-*`；`health-check` 只跑纯逻辑；批量坏了仍“9 项全绿”；现有套件默认端口/落盘目录接不进门禁 | B-85 | `e2e-all --isolated` 跑四个图片套件；`health-check --full` 包含批量；每条新断言有反证；`local-image` 保持 required | 测试 §七 |
+| B-87 | **✅ 完成 · 灰度开关、旧入口回退、文档收口（2026-11-13）** | 大改必须可回退；四套重复扫描/下载代码并存会再次漂移 | B-86 | `imgPipelineV2`/`imgSniff`/`imgRequireFsa` 三开关默认开，`imgPipelineV2=false` 走旧 DOM/背景快照（`legacyCollect`）、popup `scanLegacy`、补丁各 wrapper 的 `orig` 回退路径全部就位；开关合并逻辑单测 16/16；五个图片套件（test/panel/album/batch/grab）以新链路全绿（34/46/40/49/21）；保留旧链路作为回退能力（不删，避免丧失一键回退）；DOC-INDEX/HANDOFF/BACKLOG 同步 | `js/image-pipeline-patch.js` / `js/image-scan-service.js` / `docs/HANDOFF-20261113.md` | 设计 §十一 |
+
+> 关联：B-80（图片计数恒 0 / `imgSniff` 死开关）并入 B-83 的网络缓存开关；B-46（图片按笔记分组）在发现层预留 `cardKey`，命名分组另立任务。
+
+---
+
+## 推特 / 微博「博主全部下载」（2026-11-13 预研完成）
+
+> 触发：苏哥要求移植 Plucker XBD 的「单博主内容全部下载」（右侧全下载模式），先推特、微博，小红书/抖音后置。
+> 拆解：`docs/COMPETITOR-PLUCKER.md`；决策：ADR-084；预研报告：`deliverables/test-runs/2026-11-13-x-weibo-preresearch.md`。
+> 路线：**自动滚动 + 旁读 X 自身 GraphQL 响应**，不抓 `Authorization`、不代发私有请求。
+
+| # | 任务 | 为什么 | 依赖/阻塞 | 验收 | 出处 |
+|---|---|---|---|---|---|
+| B-88 | **✅ 预研完成 · 推特时间线解析与滚动判定** | 移植的地基：只要解析错，抓得再多也是垃圾。字段路径直读 Plucker 并真机校正 | 无 | `test-x-timeline` 56/56；真机 `UserVideoTimeline` 14/14 识别为 video，取 3840×2160 最高码率 | 预研 §2 / §四 |
+| B-89 | **✅ 完成 · 推特「博主全部下载」面板与自动滚动（2026-11-13）** | 苏哥要的「右侧全下载」体验；Plucker 无自动滚动，这是增量 | 无 | 离线 `test-x-timeline-hook` 23/23 + `test-x-bulk-profile` 33/33 + e2e 11/11；真机 x.com/NASA/media 抓取 149 项、下载落盘 160,237,155 B 4K mp4；停止/续抓/熔断可用 | 预研 §九；`js/lib/twitter-timeline-hook.js` |
+| B-90 | **✅ 完成 · 微博博主主页全部下载（接口分页，2026-11-13）** | 现有 `bulk-profile` 只能记「人工下拉已加载」；实测 `mymblog` 接口一页 20 条、DOM 只扫到 9 张图 | 无 | 真机 weibo.com/u/2803301701：4 页抓到 121 项（每页新增 29/25/31/33）；图片取 `pic_infos.*.largest`、视频取 `mp4_720p_mp4`；连续 2 页无新增即停 | 预研 §3 |
+| B-91 | **🟡 部分完成 · 推特视频落盘真机验收** | 页面内 fetch 视频被 CORS 拦是预期；已确认后台通道能下 4K | 无 | 已验：160MB / 3840×2160 mp4 落盘成功。待补：ffprobe 校验编码与时长、抽帧目视 | 预研 §2.3 / §七.1 |
+| B-92 | **P2 · 小红书 / 抖音博主全下载** | 风控更重，先不做 | B-90 | — | 用户 2026-11-13 拍板后置 |
+| B-93 | **✅ 完成 · 媒体面板：视频封面 + 常驻入口 + 媒体库「只看同博主」（2026-11-13）** | 苏哥：「连视频预览都做不到」「只想看同一个博主的循环播放」 | 无 | 浮标常驻（0 张也显示）；视频条目有真封面（poster→og:image→页面大图）；媒体库同作者区可点切、「只看此人 · 循环播放」把队列收窄到该作者并开连播（真机 10/10） | `HANDOFF-20261113.md` §十一 |
+| B-94 | **🟡 待补 · X `/media` 页视频封面真机复核** | 当前测试会话里 X `/media` 恒 `bodyLen=0`（`x.com/home` 正常），封面逻辑改用微博验证通过 | 需在正常浏览会话点开一次 | 视频分类下卡片显示 `amplify_video_thumb` 封面、无 ▶ 占位 | `HANDOFF` §11.3-1 |
 | B-95 | **✅ 完成 · 回收站删除后被全量扫描复活（苏哥 2026-11-13 报）** | 三条通道叠加：①`build()` 只对 downloads/snapshot 跳过 `trashed`，full/reconcile 没跳过；②`mergeEntry()` 无条件置 `ok` 并清 trashed 标记；③`refOnly` 删除文件留在原位，而 `sweep()` 的 `exists()` 判定排在 `trashNoFile` 之前 → 每次启动自愈都复活 | 无 | 删除态在扫描侧双层保护（build 跳过 + mergeEntry 不改写）；sweep 先判 `trashNoFile`、回滚需「回收站无副本」；存量脏数据按清单+副本+mtime 回打 `trashed`；新增 `cdp-trash-full-rescan-test` **18/18** | ADR-085；`tools/cdp-trash-full-rescan-test.py` |
 | B-96 | **✅ 完成 · 详情页「定位」在网页里出现文件夹（苏哥 2026-11-13 报）** | `revealWithoutDownload()` 用 `chrome.tabs.create({url:'file:///…/'})` 冒充「打开文件夹」，实际只在浏览器里开目录索引页；官方 API 只有 `downloads.show(id)`（只收 downloadId）与 `showDefaultFolder()` | 无 | 删除 `file://`/`tabs.create`/`window.open` 兜底；改为「同目录下载记录 show → showDefaultFolder → 复制路径」三级降级；`show` 回调检查 `lastError` 失败即降级；文案区分「已定位 / 已打开下载文件夹 / 请复制路径」 | ADR-086；`docs/RESEARCH-TRASH-RESCAN-AND-REVEAL.md` |
 | B-97 | **P2 · 「按任意路径精确定位并选中文件」需 native messaging 宿主** | 纯扩展 API 无法按路径唤起资源管理器；精确选中要本地宿主执行 `explorer /select,<path>`，并注册 `HKCU\SOFTWARE\Google\Chrome\NativeMessagingHosts\<name>` | 需苏哥决定是否接受「装扩展还要装一个本地程序」的安装成本 | 宿主安装后「定位」能精确选中该文件；未安装时行为不变（打开目录 + 复制路径） | 调研 §3.2；ADR-086 |

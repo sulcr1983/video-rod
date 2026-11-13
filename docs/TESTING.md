@@ -525,6 +525,73 @@ python tools/e2e-all.py --only e2e-grab   # 7 条断言（隔离实例，需配�
 > 10/10 变 4/10（收到张数 7→1，正是苏哥截图的样子）；关掉 `upgradeSinaimg` 的候选前置 →
 > 2 条红（`test-image-util` 也红 1 条）。确认断言真的会红，不是永远绿的摆设。
 
+## 4.17 图片管线 v2：批量下载 / 批量嗅探（2026-11-13 新增，B-82~B-86）
+
+> 背景：批量失败不是单点 bug（见 `deliverables/reviews/2026-11-13-图片批量失败审计.md`）。
+> 设计：`docs/IMAGE-PIPELINE-REDESIGN.md`；测试方案：`docs/TEST-PLAN-IMAGE-PIPELINE.md`。
+> 本节的命令在**阶段五接入门禁后**生效；接入前先按同样命令手工跑。
+
+**改动以下文件后必须跑**：
+
+```bash
+# 纯逻辑（无浏览器）
+node tools/test-image-pipeline.js      # 候选回退/命名/队列/去重快照/失败码
+node tools/test-image-util.js          # 扫描全属性/背景/门槛/占位
+node tools/test-download-scan.js       # 源码/JSON 通道
+
+# 隔离实例：扫描 + 批量落盘 + 面板 + 图集（可反复跑，不碰真实账号）
+python tools/build-dist.js
+python tools/e2e-all.py --isolated --only cdp-image-test,cdp-image-batch,cdp-image-panel,cdp-image-album,e2e-grab
+
+# 全量门禁
+python tools/health-check.py --full
+```
+
+**登录态真实页只做只读扫描**（不点批量、不刷新、不循环）：
+
+```bash
+python tools/vr-session.py status
+python tools/vr-session.py ensure --reason "图片扫描只读诊断"
+python tools/diag-weibo-images.py --url https://weibo.com/
+python tools/diag-weibo-sidebar.py --port 9480
+```
+
+**六条口径**：
+
+1. **采集门槛判原始像素，不判显示尺寸**。显示尺寸只用于默认不勾选 `tiny` 与排序；`LIST_MIN_SHORT=80` 不再在采集阶段丢图。
+2. **单张与批量共用候选解析**。禁止批量直接用 `bestCandidate`；必须按序校验 content-type/字节/图片头，失败自动下一个。
+3. **落盘判据是真实文件**。FSA 写后校验大小 > 0、图片头、扩展名；失败删除并计失败；批量必须落资源库目录（ADR-081）。
+4. **失败不写“已下载”**。失败/取消不记账；幽灵记录（0 字节/网页/权限失效）不拦下载。
+5. **四入口同口径**。侧栏/popup/面板/悬停/图集都走 `vrImg.scan` + `vrImg.batch`；数量差异只允许来自“默认隐藏小图”开关。
+6. **真实登录态不跑批量下载**。批量回归全部在隔离实例；真实站点只读扫描，批量真机验收由苏哥手动点一次。
+
+**反证记录（每条新断言必须能红）**：
+
+| 修复 | 反证方法 | 期望 |
+|---|---|---|
+| 候选回退 | `resolveCandidates` 改回只用 `item.url` | `test-image-pipeline` P-01 + 批量 A 组红 |
+| 内容校验 | 关闭图片头/大小校验 | `pipeline-auth` 的 403/HTML 夹具红 |
+| 幽灵记录校验 | 去掉 `vrEntryFileAlive` | 批量全部跳过，D 组红 |
+| 面板序号 | `itemsForUrls` 的 title 去掉序号 | 同名覆盖/数量不符，B 组红 |
+| FSA 强制 | 恢复静默回退 downloads | 落盘路径断言红（不在资源库目录） |
+| 网络缓存 | 关 `imgSniff` | `pipeline-network.html` 扫不到，F 组红 |
+| iframe | `allFrames:false` | iframe 夹具少 4 张，F 组红 |
+| 显示尺寸不丢图 | 恢复 `LIST_MIN_SHORT=80` 采集丢弃 | 40px 显示/1200px 原图夹具少 1 张，S-03 红 |
+
+**门禁接入（阶段五）**：
+
+- `tools/e2e-all.py` 的 `SUITES` 增加四个 `cdp-image-*` 套件；`run_suite` 注入 `VR_CDP` 与 `VR_DL_DIR`。
+- `tools/live-sites.json` 的 `local-image` 保持 `required:true`，断言扩到“有效图 + 无裂图 + 尺寸回填”；批量另用隔离夹具。
+- `tools/health-check.py --full` 必须包含批量套件；新失败不得用 `--update-baseline` 掩盖。
+
+**禁止**：
+
+- 在 9480 真实登录态上跑 `cdp-image-batch-test.py`（它默认 `clean_disk` 会删测试产物，且大批量请求有风控风险）。
+- 用 `taskkill /IM msedge.exe` 收工；按 profile 关键字精确回收，复核 `left=0`。
+- 把测试产物写进真实 Downloads / 真实库。
+
+---
+
 ## 5. 已知限制（提前认账）
 
 | 限制 | 说明 |
@@ -1841,3 +1908,78 @@ YouTube 的接口会按 IP/时段风控，把「能不能取到格式」写进�
 2. 清空 = 删物理副本 + 删缩略图（IDB `t:<relPath>` + 磁盘 webp）+ 删索引行，必须幂等；
 3. `_manifest.json` 只是跨浏览器备份，真源是索引；
 4. 任何扫描源（downloads / snapshot）都必须有磁盘证据才能新增条目，`d.exists` 不可信。
+
+---
+
+## 附 · 推特/微博「博主全部下载」（ADR-084，2026-11-13 新增，B-88~B-91）
+
+> 路线：推特「自动滚动 + 旁读 X 自身时间线响应」，**不抓 Authorization、不发私有请求**；
+> 微博走 `/ajax/statuses/mymblog?uid=&page=&feature=0` 页码分页。
+> 拆解：`docs/COMPETITOR-PLUCKER.md`；预研：`deliverables/test-runs/2026-11-13-x-weibo-preresearch.md`。
+
+**改以下文件必须跑**：
+
+```bash
+node tools/test-x-timeline.js         # 56/56  解析 + 滚动判定（含真机结构样本）
+node tools/test-x-timeline-hook.js    # 23/23  MAIN world 旁读：只认时间线/去重/重放/只读性
+node tools/test-x-bulk-profile.js     # 33/33  面板接线 + 微博分页（请求形态/终止/熔断）
+python tools/e2e-x-timeline.py --port 9480   # 11/11 拦截→解析→去重入队→停止（本地 fixture）
+```
+
+**真机验收（只读抓取，不下载）**：
+
+```bash
+# 星愿需带 --remote-debugging-port=9223
+python tools/x-bulk-e2e.py --url https://x.com/<user>/media     # 8/8 条断言
+python tools/weibo-bulk-e2e.py https://weibo.com/u/<uid>        # 5/5 条断言
+```
+
+**判据与坑**：
+
+| # | 判据 | 说明 |
+|---|---|---|
+| X1 | 时间线响应只认 GraphQL 时间线类端点 | `UserTweets`/`UserMedia`/`UserVideoTimeline` 等；`account/settings.json` 等一律不碰 |
+| X2 | 视频取 `video_info.variants` 中最高 bitrate 的 mp4 | 真机实测 6 档（256k–25.1M），**不需要 fxtwitter** |
+| X3 | 图片提档 `name=orig`，带 `format` 参数时必须保留 | 丢掉 `format` 会 404（`bulk-profile.js` 早有同款踩坑注释） |
+| X4 | 「未收到任何数据」≠「已到底」 | 2026-11-13 真机缺陷：`lastCursor` 初值导致点抓取 2 秒即停；现用 `sawEnd` 单独标记，`E2/E3` 断言钉死 |
+| X5 | 停止按钮必须立刻生效且按钮文案可辨 | 抓取中显示「抓取中… (N) 点击停止」，再点即停 |
+| W1 | 微博分页是 `page` 页码，不是 `since_id` | 与相册接口（`getImageWall`）不同，别照抄 |
+| W2 | 图片取 `pic_infos[pid].largest.url`，回退 `original`/`large`/`mw2000` | `pic_ids` 与 `pic_infos` 按 pid 对齐 |
+| W3 | 视频取 `page_info.media_info.mp4_720p_mp4` 回退 `mp4_hd_url`/`stream_url_hd`/`stream_url` | 实测同一视频各档可能指向同一 URL，属站点行为 |
+| W4 | 连续 2 页无新增即停；连续 3 次请求失败即熔断 | 防死循环与风控，`G7~G10` 断言钉死 |
+
+**站点噪音**：X 页首屏自带 `Error processing XMLHttpRequest response`（不滚动也有 10 条，
+已 A/B 对照），**不能**作为我们的回归判据；验收脚本只统计含扩展 ID / 我们文件名的异常。
+
+---
+
+## 附 · 媒体面板：视频封面 / 常驻入口 / 只看同博主（B-93，2026-11-13 新增）
+
+```bash
+# 媒体库「同作者 · 只看此人循环播放」（隔离/登录态均可，只读库）
+python tools/library-peers-e2e.py
+
+# 媒体面板：浮标常驻 + 视频封面（需真实站点，X /media 若空白见下）
+python tools/media-panel-cover-e2e.py --url https://x.com/<user>/media
+```
+
+**判据**
+
+| # | 判据 | 说明 |
+|---|---|---|
+| M1 | 浮标常驻 | `imgPanel` 开关打开时，图片 0 张也显示（原来 `!n` 直接隐藏 → 视频页无入口） |
+| M2 | 视频条目有真封面 | 取 `video[poster]` → `og:image` → 页面大图（跳头像/图标，`naturalWidth≥200`） |
+| M3 | pending 条目可见 | 有封面无直链也进清单，标题提示「先在页面点播放」；不能因 `!url` 丢弃 |
+| M4 | 同作者按 `authorId` 判定 | 只按昵称会把不同平台同名博主混进来 |
+| M5 | 「只看此人」不改库数据 | 只收窄预览队列 + 开连播，不写筛选状态 |
+
+**坑（真机踩到，务必记住）**
+
+1. `paintPeers(f)` **不能**放进 `hideEmptyFields(noSource)` —— 该函数无 `f` 参数，
+   会抛 `ReferenceError: f is not defined`，整个详情页渲染中断。
+2. **X `/media` 在后台/新建标签里可能恒为空白**（`bodyLen=0`、`articles=0`），
+   而 `x.com/home` 正常。验收视频封面时改用**微博**等能渲染的站点，别把站点行为当成功能坏了。
+3. 面板宿主 `[data-vr-img-panel]` 只在 `imgPanel` 开关为 true 时创建；
+   排障先读 `chrome.storage.local.vrLibSettings.imgPanel`。
+4. 内容脚本是否注入要用**隔离世界**判断（`chrome.scripting.executeScript`），
+   在 MAIN world 里读 `self.VRImgPanel` 永远是 undefined。

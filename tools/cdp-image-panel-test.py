@@ -74,15 +74,23 @@ def is_test_artifact(name):
     return TEST_MARK in name
 
 
-def clean_disk(dl_dir):
+def _test_files(dl_dir):
+    """递归找测试产物：当前目录规范是 video-rod/<站点>/<作者>/<标题>/。"""
+    out = []
     if not os.path.isdir(dl_dir):
-        return 0
+        return out
+    for root, _dirs, files in os.walk(dl_dir):
+        for name in files:
+            if is_test_artifact(name):
+                out.append(os.path.relpath(os.path.join(root, name), dl_dir))
+    return out
+
+
+def clean_disk(dl_dir):
     n = 0
-    for name in os.listdir(dl_dir):
-        if not is_test_artifact(name):
-            continue
+    for rel in _test_files(dl_dir):
         try:
-            os.remove(os.path.join(dl_dir, name))
+            os.remove(os.path.join(dl_dir, rel))
             n += 1
         except OSError:
             pass
@@ -91,9 +99,7 @@ def clean_disk(dl_dir):
 
 def disk_images(dl_dir):
     """只统计测试站产生的图片，避免把用户已有文件算进增量。"""
-    if not os.path.isdir(dl_dir):
-        return set()
-    return {n for n in os.listdir(dl_dir) if is_test_artifact(n)}
+    return set(_test_files(dl_dir))
 
 
 def wait_disk_growth(dl_dir, before, expect, timeout=25.0):
@@ -251,6 +257,12 @@ def key(cdp, sid, k, extra=""):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=0, help="CDP 调试端口（e2e-all 注入）")
+    a = ap.parse_args()
+    if a.port:
+        os.environ["VR_CDP"] = "http://127.0.0.1:%d" % a.port
     cdp = Cdp()
     ext_id, _ = find_ext_id(cdp)
     check("A1 扩展已加载", bool(ext_id), True)
@@ -259,8 +271,9 @@ def main():
 
     check("A2 夹具页存在", os.path.exists(os.path.join(SITE, "panel.html")), True)
 
+    from vr_testenv import work_root
     dl_dir = os.environ.get("VR_DL_DIR",
-                            r"D:\personal\Downloads\video-rod\其他网页\127.0.0.1\图片")
+                            os.path.join(work_root(), "dl", "isolated", "video-rod"))
     # 上一条默认路径曾硬编码成 D:\Users\liq21\...（另一台机器的用户名），
     # 本机不存在 → 落盘断言永远 0，而文件其实已经写进 D:\personal\Downloads。
     # 换机器/换授权目录时用 VR_DL_DIR 覆盖。
@@ -504,7 +517,7 @@ def main():
     new_files = after - files_before
     check("H2 落盘 2 个文件", len(new_files), 2)
     check("H3 文件名含日期前缀",
-          all(re.match(r"\d{8}_", n) for n in new_files), True)
+          all(re.match(r"\d{8}_", os.path.basename(n)) for n in new_files), True)
     created_ids.extend(d["id"] for d in downloads(cdp, osid) if d["id"] not in ids_before)
 
     # ---------------- I. Esc 关闭 ----------------

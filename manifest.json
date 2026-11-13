@@ -115,6 +115,18 @@
         "https://twitter.com/*"
       ],
       "js": [
+        "js/lib/twitter-timeline.js",
+        "js/lib/twitter-timeline-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
         "js/naming.js",
         "js/site-name.js",
         "js/library/path.js",
@@ -195,9 +207,25 @@
         "http://*/*"
       ],
       "js": [
+        "js/lib-image-util.js",
+        "js/lib-download-scan.js",
+        "js/image-pipeline-core.js",
+        "js/image-scan-service.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "js": [
         "js/vr-msg.js",
         "js/lib-image-util.js",
         "js/lib-download-scan.js",
+        "js/image-pipeline-core.js",
+        "js/image-scan-service.js",
         "js/site-name.js",
         "js/image-batch.js",
         "js/lib/floating-ui.core.umd.min.js",

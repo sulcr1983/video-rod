@@ -16,6 +16,7 @@ from cdp_client import Cdp, find_ext_id  # noqa: E402
 
 PAGE = os.environ.get("VR_BATCH_PAGE", "http://127.0.0.1:18080/batch.html")
 PAGE_MANY = os.environ.get("VR_BATCH_MANY_PAGE", "http://127.0.0.1:18080/batch-many.html")
+PAGE_FRESH = os.environ.get("VR_BATCH_FRESH_PAGE", "http://127.0.0.1:18080/batch-fresh.html")
 SITE = os.environ.get("VR_SITE_ROOT",
                       os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                    "test-site"))
@@ -76,6 +77,14 @@ def clear_seen(cdp, osid):
     return ev(cdp, osid, """new Promise(r => chrome.storage.local.remove('vrImgDownloaded', () => r(1)))""")
 
 
+def clear_library(cdp, osid):
+    """清隔离实例的资源库索引（vrLib.clear 只动 IndexedDB，不删磁盘/真实库）。
+    前一跑中断留下的幽灵条目会让「同 URL 已存在」把 D 组判成 0 新增。"""
+    return ev(cdp, osid, """new Promise(r => chrome.runtime.sendMessage(
+      {Message:'vrLib.clear', action:'vrLib.clear'},
+      x => r((x && x.ok) || false)))""")
+
+
 # 只清「测试站」自己产生的文件，不无差别删整个目录——
 # 一次删几十个会触发宿主的安全删除阈值，测试直接被拦掉（踩过）。
 # 文件名形如「20261025_测试站 E：xxx.jpg」——日期每天都会变，不能写死日期前缀。
@@ -88,19 +97,28 @@ def is_test_artifact(name):
     return TEST_MARK in name
 
 
+def _test_files(dl_dir):
+    """递归找测试产物：当前目录规范是 video-rod/<站点>/<作者>/<标题>/，
+    不再有固定的 图片/ 段，所以不能只 listdir 一层。"""
+    out = []
+    if not os.path.isdir(dl_dir):
+        return out
+    for root, _dirs, files in os.walk(dl_dir):
+        for name in files:
+            if is_test_artifact(name):
+                out.append(os.path.relpath(os.path.join(root, name), dl_dir))
+    return out
+
+
 def clean_disk(dl_dir):
     """清掉下载目录里的测试图片。
     必须清磁盘而不只是擦记录：残留文件会让 conflictAction=uniquify 生成 (1)(2)，
     于是「记录数」和「本次真正新增的文件」对不上，断言就假失败（踩过）。
     """
-    if not os.path.isdir(dl_dir):
-        return 0
     n = 0
-    for name in os.listdir(dl_dir):
-        if not is_test_artifact(name):
-            continue
+    for rel in _test_files(dl_dir):
         try:
-            os.remove(os.path.join(dl_dir, name))
+            os.remove(os.path.join(dl_dir, rel))
             n += 1
         except OSError:
             pass
@@ -108,11 +126,9 @@ def clean_disk(dl_dir):
 
 
 def disk_images(dl_dir):
-    """磁盘上测试产物的集合。
+    """磁盘上测试产物的集合（相对 dl_dir）。
     比 downloads.search 可靠：记录登记时机不受控，磁盘才是最终事实。"""
-    if not os.path.isdir(dl_dir):
-        return set()
-    return {n for n in os.listdir(dl_dir) if is_test_artifact(n)}
+    return set(_test_files(dl_dir))
 
 
 def wait_disk_growth(dl_dir, before, expect, timeout=20.0):
@@ -311,6 +327,12 @@ def wait_batch(cdp, sid, pred, timeout=45.0):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=0, help="CDP 调试端口（e2e-all 注入）")
+    a = ap.parse_args()
+    if a.port:
+        os.environ["VR_CDP"] = "http://127.0.0.1:%d" % a.port
     cdp = Cdp()
     ext_id, _ = find_ext_id(cdp)
     check("A1 扩展已加载", bool(ext_id), True)
@@ -333,16 +355,22 @@ def main():
     cdp.wait_js(osid, "typeof chrome !== 'undefined' && !!chrome.downloads", 8.0)
 
     # 清理上次残留：记录 + 磁盘都要清
+    from vr_testenv import work_root
     dl_dir = os.environ.get("VR_DL_DIR",
-                            r"D:\personal\Downloads\video-rod\其他网页\127.0.0.1\图片")
+                            os.path.join(work_root(), "dl", "isolated", "video-rod"))
     # 默认真实落盘目录（FSA 句柄决定，代码读不到）；旧的 liq21 路径是另一台机器的用户名。
     removed = clean_disk(dl_dir)
     if removed:
         print(f"      预清理磁盘残留 {removed} 个文件")
     clear_download_records(cdp, osid)
     clear_seen(cdp, osid)
+    clear_library(cdp, osid)
+    # 离线 CDP 实例无法自动授予 FSA 目录句柄：显式关闭「批量必须 FSA」。
+    # 真实登录态仍按 ADR-081 默认强制，不在这里改。
     set_settings(cdp, osid, {"imgHover": True, "imgBatch": True,
-                             "imgBatchLimit": 200, "imgConcurrency": 3})
+                             "imgBatchLimit": 200, "imgConcurrency": 2,
+                             "imgRequireFsa": False, "imgPipelineV2": True,
+                             "imgSniff": True})
 
     tid = cdp.send("Target.createTarget", {"url": "about:blank"})["targetId"]
     sid = cdp.attach(tid)
@@ -474,7 +502,8 @@ def main():
     created_ids.extend(d["id"] for d in downloads(cdp, osid) if d["id"] not in ids_before_d)
 
     paths = [os.path.join(dl_dir, n).replace("\\", "/") for n in new_files]
-    check("D7 路径都含 图片/", all("/图片/" in p for p in paths), True)
+    check("D7 路径在资源库目录（video-rod/<站点>/...）",
+          all("/video-rod/" in p for p in paths), True)
     check("D8 文件名格式正确",
           all(re.search(r"/\d{8}_[^/]+\.(?:png|jpg|jpeg|webp|gif)$", p) for p in paths), True)
     sizes = sorted(os.path.getsize(p) for p in paths if os.path.exists(p))
@@ -521,8 +550,12 @@ def main():
     # ---------------- F. 上限截断 ----------------
     # 去重表是异步写入的，上一批可能还在写；清完再确认一次为空，
     # 否则 F 组会误判「已下载过」而少下（踩过）。
+    # 同时清「扩展记录 + 磁盘残留」：K/F 组新增夹具后，上一轮中断留下的文件
+    # 会让 D6 只看到 2 个新增（去重并没有坏，是前置状态没复位）。
+    clear_download_records(cdp, osid)
+    clean_disk(dl_dir)
     clear_seen(cdp, osid)
-    time.sleep(0.6)
+    time.sleep(0.8)
     clear_seen(cdp, osid)
     time.sleep(0.4)
     seen_left = ev(cdp, osid, "new Promise(r=>chrome.storage.local.get('vrImgDownloaded',o=>r(Object.keys(o.vrImgDownloaded||{}).length)))")
@@ -533,15 +566,26 @@ def main():
     wait_setting(cdp, osid, "imgBatchLimit", 2)
     # 先让上一批的下载记录全部落定并登记进 downloads.search，再记基线；
     # 否则会漏计「基线之后才出现」的旧记录，F3 多数出 2 条（踩过）。
+    # 换到只有 2 张唯一图的新页：同页二次下载会被正确去重，F 组测的是上限截断。
+    cdp.navigate(sid, PAGE_FRESH)
+    cdp.wait_js(sid, "[...document.images].every(i => i.complete)", 8.0)
+    cdp.wait_js(sid, "!!document.getElementById('vr-img-batch-host')", 8.0)
     time.sleep(0.5)
     ids_before_f = {d["id"] for d in downloads(cdp, osid)}
     files_before_f = disk_images(dl_dir)
-    hover(cdp, sid, "#b1")
-    bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 6.0)
+    hover(cdp, sid, "#f1")
+    bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 8.0)
+    if not bar.get("all") or bar["all"].get("hidden"):
+        hover(cdp, sid, "#f1")
+        bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 8.0)
     click_at(cdp, sid, bar["all"]["cx"], bar["all"]["cy"])
-    cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn"))
+    cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn") and s.get("cfGo"), 15.0)
+    # 偶发：确认条还没渲染完，wait_batch 返回 {host:false}；再等一轮并保留失败证据。
+    if not cf.get("cfGo"):
+        cf, _ = wait_batch(cdp, sid, lambda s: s.get("cfOn") and s.get("cfGo"), 15.0)
+    cf_go = str(cf.get("cfGo") or "")
     # 确认条按钮文案是「全部下载 N 张」（比「下载 N 张」更明确是整页）；两种写法都接受
-    check("F1 上限 2 时按钮文案含「2 张」", ("2 张" in cf["cfGo"]), True)
+    check("F1 上限 2 时按钮文案含「2 张」", ("2 张" in cf_go), True)
     go = ev(cdp, sid, """(function(){
       const b = document.getElementById('vr-img-batch-host').shadowRoot.querySelector('.vr-cf .vr-btn2.primary');
       const r = b.getBoundingClientRect();
@@ -550,7 +594,7 @@ def main():
     click_at(cdp, sid, go["cx"], go["cy"])
     # 上一批的「已下载 5 张」会残留一会儿，必须等文案真的变成 2，不能见「已下载」就收工
     done3, _ = wait_batch(cdp, sid, lambda s: "已下载 2" in s.get("pgText", ""), 60.0)
-    check("F2 上限 2 时只下 2 张", done3["pgText"], "已下载 2 张")
+    check("F2 上限 2 时只下 2 张", ("已下载 2" in done3.get("pgText", "")), True)
     files_after_f = wait_disk_growth(dl_dir, files_before_f, 2)
     new_files_f = files_after_f - files_before_f
     check("F3 新增 2 个文件", len(new_files_f), 2)
@@ -651,6 +695,141 @@ def main():
     bar, _ = wait_bar(cdp, sid, lambda b: b.get("visible"), 8.0)
     h2_txt = (bar["all"]["text"] or bar["all"]["aria"]) if bar.get("all") else ""
     check("H2 imgBatch=true 恢复「全部 5」", ("5" in h2_txt), True)
+
+    # ---------------- K. 候选回退（阶段二） ----------------
+    # 首选 404、次选 i5-unique.png；vrImg.download 必须自动退下一个。
+    base = "http://127.0.0.1:18080"
+    ids_before_k = {d["id"] for d in downloads(cdp, osid)}
+    files_before_k = disk_images(dl_dir)
+    kr = ev(cdp, osid, """new Promise(res => chrome.runtime.sendMessage({
+      Message:'vrImg.download', action:'vrImg.download',
+      url:'%s/media/missing-404.png',
+      candidates:['%s/media/missing-404.png','%s/media/i5-unique.png'],
+      title:'测试站 候选回退',
+      pageUrl:'%s/batch.html'
+    }, r => res(r)))""" % (base, base, base, base))
+    check("K1 首选 404 仍成功", bool(kr and kr.get("ok")), True)
+    files_after_k = wait_disk_growth(dl_dir, files_before_k, 1)
+    new_k = files_after_k - files_before_k
+    check("K2 回退落盘 1 个文件", len(new_k), 1)
+    ksizes = sorted(os.path.getsize(os.path.join(dl_dir, n)) for n in new_k)
+    check("K3 回退文件字节=次选图", ksizes, [media_size("i5-unique.png")])
+    created_ids.extend(d["id"] for d in downloads(cdp, osid) if d["id"] not in ids_before_k)
+
+    # K4-K6 内容校验：200 HTML、0 字节 JPG 都必须跳过，落到真实 tall.png
+    ids_before_k4 = {d["id"] for d in downloads(cdp, osid)}
+    files_before_k4 = disk_images(dl_dir)
+    kr4 = ev(cdp, osid, """new Promise(res => chrome.runtime.sendMessage({
+      Message:'vrImg.download', action:'vrImg.download',
+      url:'%s/media/not-image.html',
+      candidates:['%s/media/not-image.html','%s/media/empty.jpg','%s/media/tall.png'],
+      title:'测试站 内容校验',
+      pageUrl:'%s/batch.html'
+    }, r => res(r)))""" % (base, base, base, base, base))
+    check("K4 非图片/空文件候选被跳过", bool(kr4 and kr4.get("ok")), True)
+    files_after_k4 = wait_disk_growth(dl_dir, files_before_k4, 1)
+    new_k4 = files_after_k4 - files_before_k4
+    check("K5 落到真实图 1 个文件", len(new_k4), 1)
+    k4sizes = sorted(os.path.getsize(os.path.join(dl_dir, n)) for n in new_k4)
+    check("K6 内容校验文件字节=tall.png", k4sizes, [media_size("tall.png")])
+    created_ids.extend(d["id"] for d in downloads(cdp, osid) if d["id"] not in ids_before_k4)
+
+    # ---------------- M. 落盘与归档一致性（阶段四，ADR-081 / 审计 O-01·O-02·D-02） ----------------
+    scan_root = os.path.dirname(dl_dir)          # work/dl/isolated（归档根段可能不是 video-rod）
+
+    def artifacts_in(root_dir, mark):
+        out = set()
+        if not os.path.isdir(root_dir):
+            return out
+        for base_dir, _dd, fs in os.walk(root_dir):
+            for n in fs:
+                if mark in n and n.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+                    out.add(os.path.relpath(os.path.join(base_dir, n), root_dir).replace("\\", "/"))
+        return out
+
+    # M1：imgRequireFsa=true 且实例没有 FSA 目录句柄 → 批量必须被阻止，一张都不能落盘。
+    # 反证：删掉补丁里 vrImgBatch 的 fsaReady 前置检查 → 会静默走下载器兜底，M1 红。
+    set_settings(cdp, osid, {"imgRequireFsa": True})
+    wait_setting(cdp, osid, "imgRequireFsa", True)
+    before_m1 = disk_images(dl_dir)
+    m1 = ev(cdp, osid, """new Promise(res => chrome.runtime.sendMessage({
+      Message:'vrImg.batch', action:'vrImg.batch',
+      items:[{url:'%s/media/i5-unique.png',candidates:['%s/media/i5-unique.png'],title:'测试站 M组未授权'},
+             {url:'%s/media/wide.png',candidates:['%s/media/wide.png'],title:'测试站 M组未授权'}],
+      pageUrl:'%s/batch.html', batchId:'m-require-fsa'
+    }, r => res(r)))""" % (base, base, base, base, base))
+    check("M1 未授权时批量被阻止", bool(m1 and m1.get("needGrant")
+                                      and m1.get("code") == "IMG_E_FSA_PERM"), True)
+    check("M2 未授权时回执算失败", (m1 or {}).get("ok", True), False)
+    time.sleep(2.0)
+    check("M3 未授权时没有落盘文件", len(disk_images(dl_dir) - before_m1), 0)
+    set_settings(cdp, osid, {"imgRequireFsa": False})
+    wait_setting(cdp, osid, "imgRequireFsa", False)
+
+    # M4：库里有幽灵条目（同 URL）时不能判「已下载」跳过，必须重下。
+    # 隔离实例只授权到 downloads 兜底、没有 FSA 目录句柄，因此本环境能验证的是
+    # 「写盘失败留下 size=0 条目」这一形态（B-75 / 审计 D-02 的历史主因）。
+    # 「size>0 但用户手动删了文件」要靠补丁的 fsaHasFile 探盘，只在真实授权环境判得出，
+    # 归入真机只读验收（docs/TEST-PLAN-IMAGE-PIPELINE.md §5.3），不在这里假称已测。
+    # 反证：把 vrImgDownload 里「命中就 skipped」那段删掉 → E3 会红（去重坏）；
+    #       把 vrEntryFileAlive 检查去掉（命中直接跳过、不判存活）→ M4 红。
+    # 地址必须用本套件没真下过的：canon 键会丢掉 query，
+    # 用 i5-unique 会撞上 K 组那条真实条目（文件在），被正确判重复 → 假红。
+    ghost_url = base + "/media/srcset-1200.png?vr-ghost=1"
+    ev(cdp, osid, """new Promise(r => chrome.runtime.sendMessage({
+      Message:'vrLib.ingest', action:'vrLib.ingest',
+      info:{relPath:'video-rod/127.0.0.1/测试站幽灵条目.jpg',
+            sourceUrl:'%s', mediaUrl:'%s', pageUrl:'%s/batch.html',
+            platform:'web', type:'image', size:0, mime:'image/png'}
+    }, x => r((x && x.ok) || false)))""" % (ghost_url, ghost_url, base))
+    time.sleep(0.6)
+    # M4/M6 共用这一条基线：收尾时按差集登记 downloadId，避免自比自身的恒假表达式。
+    ids_before_m4 = {d["id"] for d in downloads(cdp, osid)}
+    before_m4 = disk_images(dl_dir)
+    m4 = ev(cdp, osid, """new Promise(res => chrome.runtime.sendMessage({
+      Message:'vrImg.download', action:'vrImg.download',
+      url:'%s', candidates:['%s'],
+      title:'测试站 幽灵记录重下', pageUrl:'%s/batch.html'
+    }, r => res(r)))""" % (ghost_url, ghost_url, base))
+    check("M4 幽灵记录仍能重新下载", bool(m4 and m4.get("ok") and not m4.get("skipped")), True)
+    after_m4 = wait_disk_growth(dl_dir, before_m4, 1)
+    check("M5 重下真的落了盘", len(after_m4 - before_m4), 1)
+
+    # M6：归档根段跟随 subdir 设置（审计 O-02：defaultDir 以前完全不生效）。
+    # 反证：把补丁的 vrImgSubdir 改回恒返回 'video-rod' → M7 红。
+    # 注：M8 在隔离实例（无 FSA 句柄、走 downloads 兜底）下必然成立，
+    # 它是 FSA 分支的一致性守卫（prefixCache 重置），不作为本环境的有效反证。
+    set_settings(cdp, osid, {"subdir": "vr-test-root"})
+    wait_setting(cdp, osid, "subdir", "vr-test-root")
+    # 必须用本套件没真下过的地址：big-square/wide 已被 F 组下过（canon 键命中且
+    # 文件真实存在 → 被正确判重复、不落盘），那样 M7 会假红而不是抓出回归。
+    m6 = ev(cdp, osid, """new Promise(res => chrome.runtime.sendMessage({
+      Message:'vrImg.download', action:'vrImg.download',
+      url:'%s/media/data-300.png', candidates:['%s/media/data-300.png'],
+      title:'测试站 归档根段', pageUrl:'%s/batch.html'
+    }, r => res(r)))""" % (base, base, base))
+    check("M6 改 subdir 后下载成功", bool(m6 and m6.get("ok")), True)
+    got_m6 = set()
+    t_m6 = time.time()
+    while time.time() - t_m6 < 25:
+        got_m6 = artifacts_in(scan_root, "测试站 归档根段")
+        if got_m6:
+            break
+        time.sleep(0.5)
+    check("M7 落盘根段=subdir",
+          all(n.split("/")[0] == "vr-test-root" for n in got_m6) and bool(got_m6), True)
+    check("M8 没有多套一层旧根段（video-rod/vr-test-root）",
+          any(n.startswith("video-rod/") for n in got_m6), False)
+    created_ids.extend(d["id"] for d in downloads(cdp, osid)
+                       if d["id"] not in ids_before_m4)
+    set_settings(cdp, osid, {"subdir": "video-rod"})
+    wait_setting(cdp, osid, "subdir", "video-rod")
+    # M 组产物都落在隔离下载目录内，收尾直接删掉，不留给下一批复用
+    for _rel in artifacts_in(scan_root, "测试站 归档根段") | artifacts_in(scan_root, "测试站 M组未授权"):
+        try:
+            os.remove(os.path.join(scan_root, _rel))
+        except OSError:
+            pass
 
     return finish(cdp, osid)
 

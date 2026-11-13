@@ -510,6 +510,26 @@
             add(img.currentSrc || '');
             add(attr(img, 'src'));
             add(img.src || '');
+            /* ⑥a 全属性通扫（2026-11-13，ADR-080）：
+             * style 里的 url()、任意 data-* 里的图片地址。竞品 ImageAssistant
+             * 的 _o_digElement 就是遍历所有属性再用正则捞；只扫固定 DATA_ATTRS
+             * 会漏掉图墙/组件库自定义懒加载属性。 */
+            try {
+                var attrs = img.attributes || [];
+                for (var ai = 0; ai < attrs.length; ai++) {
+                    var an = String(attrs[ai].name || '').toLowerCase();
+                    if (an === 'src' || an === 'srcset' || an === 'currentsrc' || an === 'alt' || an === 'title') {
+                        continue;
+                    }
+                    var av = String(attrs[ai].value || '').trim();
+                    if (!av) { continue; }
+                    var re = /url\(\s*["']?([^"')]+)["']?\s*\)/gi;
+                    var mm;
+                    while ((mm = re.exec(av))) { add(mm[1]); }
+                    if (/^(?:https?:\/\/|data:image\/)/i.test(av) && av.length <= 2048) { add(av); }
+                }
+            } catch (eAttr) { /* 单属性失败不影响其它级 */ }
+
             // ⑥ 去掉 resize 参数拿原图（很多 CDN 用 ?w=300 降分辨率）
             //    放在最后，但整体顺序仍是「大图优先」：
             //    派生结果会插到对应原地址之后，校验时先试大图、失败再退回显示地址。
@@ -685,6 +705,85 @@
         });
     }
 
+    /**
+     * 尺寸预载 v2（2026-11-13，ADR-080）：并发 8、单张超时、失败重试、总预算。
+     *
+     * 与 fillSizes 的区别：旧版 60 张/2.5s 一次性 Promise，超时后未完成的永远未知；
+     * 新版按 URL 并发跑，单张失败重试 1 次，总预算到点返回已完成部分。
+     * 竞品 ImageAssistant 的图片页就是并发 8 预载 + 失败重试队列。
+     *
+     * @param {string[]} urls
+     * @param {object} opts {max, concurrency, timeout, retry, budget}
+     * @returns {Promise<Object>} { url: {w,h,fail} }
+     */
+    function fillSizesV2(urls, opts) {
+        var o = opts || {};
+        var list = (urls || []).filter(Boolean);
+        var max = Math.max(1, Math.min(500, Number(o.max) || 200));
+        list = list.slice(0, max);
+        var concurrency = Math.max(1, Math.min(16, Number(o.concurrency) || 8));
+        var timeout = Math.max(500, Number(o.timeout) || 8000);
+        var retry = o.retry == null ? 1 : Math.max(0, Number(o.retry) || 0);
+        var out = Object.create(null);
+        if (!list.length) { return Promise.resolve(out); }
+
+        return new Promise(function (resolve) {
+            var idx = 0, active = 0, done = 0, finished = false;
+            var budget = Math.max(1000, Number(o.budget) || (timeout * (retry + 1) + 2000));
+            var hardTimer = setTimeout(finish, budget);
+
+            function finish() {
+                if (finished) { return; }
+                finished = true;
+                clearTimeout(hardTimer);
+                resolve(out);
+            }
+
+            function step() {
+                if (finished) { return; }
+                while (active < concurrency && idx < list.length) {
+                    one(list[idx++], 0);
+                }
+                if (done >= list.length) { finish(); }
+            }
+
+            function one(u, attempt) {
+                if (finished) { return; }
+                active++;
+                var im = new Image();
+                var settled = false;
+                var timer = setTimeout(function () { doneOne(true); }, timeout);
+
+                function doneOne(isFail) {
+                    if (settled) { return; }
+                    settled = true;
+                    clearTimeout(timer);
+                    active--;
+                    if (isFail && attempt < retry) {
+                        one(u, attempt + 1);
+                        return;
+                    }
+                    if (isFail) { out[u] = { w: 0, h: 0, fail: true }; }
+                    done++;
+                    step();
+                }
+
+                im.onload = function () {
+                    if (im.naturalWidth > 0 && im.naturalHeight > 0) {
+                        out[u] = { w: im.naturalWidth, h: im.naturalHeight };
+                        doneOne(false);
+                    } else {
+                        doneOne(true);
+                    }
+                };
+                im.onerror = function () { doneOne(true); };
+                try { im.src = u; } catch (e) { doneOne(true); }
+            }
+
+            step();
+        });
+    }
+
     function scanBackgrounds(doc, opts) {
         if (!doc || !doc.querySelectorAll) { return []; }
         var o = opts || {};
@@ -698,7 +797,7 @@
 
         var SEL = 'div,section,article,a,span,figure,li,td,header';
         var nodes;
-        try { nodes = doc.querySelectorAll(SEL); } catch (e) { return []; }
+        try { nodes = deepQuery(doc, SEL); } catch (e) { return []; }
         if (!nodes) { return []; }
 
         var out = [];
@@ -715,7 +814,16 @@
                 if (ratio > maxAspect) { continue; }
 
                 var css = win.getComputedStyle(el).backgroundImage;
-                var url = parseBgImage(css, base);
+                /* 伪元素背景（ADR-080）：图墙/装饰卡常用 ::before/::after 放图，
+                 * 只读元素自身 background-image 会漏。content:url() 也一并看。 */
+                var pseudoCss = '';
+                try {
+                    var pb = win.getComputedStyle(el, '::before');
+                    var pa = win.getComputedStyle(el, '::after');
+                    pseudoCss = (pb.backgroundImage || '') + ' ' + (pb.content || '') +
+                                ' ' + (pa.backgroundImage || '') + ' ' + (pa.content || '');
+                } catch (ePseudo) { /* 不支持伪元素的环境忽略 */ }
+                var url = parseBgImage(css, base) || parseBgImage(pseudoCss, base);
                 if (!url) { continue; }
                 if (isDataUri(url) || isSvgUrl(url) || isPlaceholderUrl(url)) { continue; }
                 if (dedupe && seen[url]) { continue; }
@@ -754,6 +862,29 @@
         return url;
     }
 
+    /**
+     * 深度查询：主文档 + 所有 open Shadow Root。
+     * 现代组件库/图墙常把 <img> 放在 shadow root 里，只查主文档会整片漏掉。
+     * closed shadow root 无法从隔离世界访问，由网络层（net-sniff 的 Image.src 钩子）兜底。
+     */
+    function deepQuery(root, selector) {
+        var out = [];
+        function walk(node) {
+            if (!node || !node.querySelectorAll) { return; }
+            try {
+                var list = node.querySelectorAll(selector);
+                for (var i = 0; i < list.length; i++) { out.push(list[i]); }
+                var all = node.querySelectorAll('*');
+                for (var j = 0; j < all.length; j++) {
+                    var sr = all[j].shadowRoot;
+                    if (sr) { walk(sr); }
+                }
+            } catch (e) { /* 单个影子树失败不影响主文档 */ }
+        }
+        walk(root);
+        return out;
+    }
+
     function scanImages(doc, opts) {
         if (!doc || !doc.querySelectorAll) { return []; }
         var o = opts || {};
@@ -763,7 +894,7 @@
         var limit = Number(o.limit) || 0;
         var base = baseOf(doc);
         var list;
-        try { list = doc.querySelectorAll('img'); } catch (e) { return []; }
+        try { list = deepQuery(doc, 'img'); } catch (e) { return []; }
         if (!list) { return []; }
 
         var out = [];
@@ -827,6 +958,41 @@
                 if (limit > 0 && out.length >= limit) { break; }
             } catch (e) { /* 单张失败跳过 */ }
         }
+
+        /* 额外通道（ADR-080）：video poster / a[href] 图片链接 / SVG <image>。
+         * 它们没有 <img> 的 naturalWidth，先按 URL 收进来，尺寸交给 fillSizes。 */
+        function pushExtra(el, rawUrl, source) {
+            if (limit > 0 && out.length >= limit) { return; }
+            var u = absolutize(rawUrl, base);
+            if (!u || isDataUri(u) || isSvgUrl(u) || isPlaceholderUrl(u)) { return; }
+            if (u === base || u === String(doc.URL || '')) { return; }
+            if (dedupe && seen[u]) { return; }
+            seen[u] = 1;
+            out.push({
+                el: el, url: u, w: 0, h: 0, ok: true,
+                undecoded: true, source: source, candidates: [u]
+            });
+        }
+        try {
+            var posters = deepQuery(doc, 'video[poster]');
+            for (var pi = 0; pi < posters.length; pi++) {
+                pushExtra(posters[pi], posters[pi].getAttribute('poster'), 'poster');
+            }
+            var links = deepQuery(doc, 'a[href]');
+            for (var li = 0; li < links.length; li++) {
+                var href = links[li].getAttribute('href');
+                if (!href) { continue; }
+                var absHref = absolutize(href, base);
+                if (isProbablyImage(absHref)) { pushExtra(links[li], href, 'link'); }
+            }
+            var svgImgs = deepQuery(doc, 'image');
+            for (var si = 0; si < svgImgs.length; si++) {
+                var sEl = svgImgs[si];
+                var sUrl = sEl.getAttribute('href') || sEl.getAttribute('xlink:href') || '';
+                if (sUrl) { pushExtra(sEl, sUrl, 'svg'); }
+            }
+        } catch (eExtra) { /* 单通道失败不影响主结果 */ }
+
         return out;
     }
 
@@ -1110,6 +1276,7 @@
         collectCandidates: collectCandidates,
         upgradeSinaimg: upgradeSinaimg,
         scanImages: scanImages,
-        fillSizes: fillSizes
+        fillSizes: fillSizes,
+        fillSizesV2: fillSizesV2
     };
 });

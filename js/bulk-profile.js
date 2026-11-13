@@ -295,6 +295,318 @@
         });
     }
 
+    /* ================= X：全量抓取（ADR-084） =================
+     * 数据来自 js/lib/twitter-timeline-hook.js（MAIN world 旁读 X 自己的
+     * 时间线响应）。这里只负责：接收 → 入队 → 驱动滚动 → 停。
+     * 不抓 Authorization、不发私有请求。
+     */
+    const xFetch = {
+        on: false,
+        stopped: false,
+        state: { rounds: 0, idleRounds: 0, lastCount: 0, maxItems: 2000, maxRounds: 400, idleLimit: 3 },
+        gotAny: false,
+        /* 只有「确实收到过 nextCursor 为空」才算到底。
+         * 早先用 !lastCursor 判断，而 lastCursor 在每次开始抓取时都有值或为空，
+         * 于是第二次 step 就把「尚未拿到第一页」误判成「已到底」并立刻停了
+         * （2026-11-13 真机验证：点抓取后 2 秒即结束、条目 0）。 */
+        sawEnd: false,
+        timer: 0
+    };
+
+    function xAddItems(list) {
+        if (!Array.isArray(list)) { return 0; }
+        const before = items.length;
+        list.forEach(function (it) {
+            if (!it || !it.key) { return; }
+            add(Object.assign({}, it, {
+                site: 'x',
+                /* 面板的「忽略转载」是按 isRt 过滤的，hook 侧字段名是 isRetweet */
+                isRt: !!it.isRetweet,
+                title: it.title || '',
+                pageUrl: it.pageUrl || (it.authorId && it.statusId
+                    ? 'https://x.com/' + it.authorId + '/status/' + it.statusId : location.href)
+            }));
+        });
+        if (items.length > before) { xFetch.gotAny = true; }
+        return items.length - before;
+    }
+
+    function xDrainPull() {
+        try {
+            window.postMessage({ action: 'vrXTimelinePull' }, location.origin);
+        } catch (e) { /* 忽略 */ }
+    }
+
+    function xSync(msg) {
+        if (SITE !== 'x' || !msg || msg.action !== 'vrXTimeline') { return; }
+        const added = xAddItems(msg.items);
+        /* 只有明确的 `nextCursor === ''` 才算「到底」。
+         * 不能因为「本轮没收到 cursor」就推断到底 —— 首屏数据常常不带 cursor。 */
+        if (msg.nextCursor === '' || msg.nextCursor === undefined) {
+            xFetch.sawEnd = true;
+        } else {
+            xFetch.sawEnd = false;
+            xFetch.lastCursor = msg.nextCursor;
+        }
+        if (added || msg.nextCursor !== undefined) {
+            renderCount();
+            if (statusEl && xFetch.on) {
+                statusEl.textContent = '已抓取 ' + items.length + ' 项'
+                    + (msg.replay ? '（补齐）' : '');
+            }
+            if (open) { renderList(); }
+        }
+    }
+
+    /** 滚到底，等新数据落定；用 scrollStep 判定继续/停止 */
+    function xStep() {
+        xFetch.timer = 0;
+        if (!xFetch.on) { return; }
+        const T = self.VRTwitterTimeline;
+        const view = { count: items.length, atBottom: !!xFetch.sawEnd };
+        if (T && T.scrollStep) {
+            const o = T.scrollStep(xFetch.state, view);
+            xFetch.state = o.state;
+            if (o.action === 'stop') { xStop(o.reason); return; }
+        }
+        try {
+            window.scrollTo(0, document.body.scrollHeight);
+        } catch (e) { /* 忽略 */ }
+        xFetch.timer = setTimeout(xStep, 1800 + Math.floor(Math.random() * 900));
+    }
+
+    function xStart() {
+        if (SITE !== 'x' || xFetch.on) { return; }
+        xFetch.on = true;
+        xFetch.stopped = false;
+        xFetch.sawEnd = false;
+        xFetch.lastCursor = '';
+        xFetch.state = { rounds: 0, idleRounds: 0, lastCount: 0, maxItems: 2000, maxRounds: 400, idleLimit: 3 };
+        if (statusEl) { statusEl.textContent = '开始抓取：会自动往下滚动，可随时停止'; }
+        /* 按钮要立刻切成「抓取中」，否则用户看不出已经在跑、也不知道再点=停止 */
+        renderCount();
+        /* 先把 hook 已缓存的存量拉过来，再开始滚 */
+        xDrainPull();
+        setTimeout(function () {
+            if (xFetch.on) {
+                xFetch.state.lastCount = items.length;
+                xStep();
+            }
+        }, 800);
+    }
+
+    function xStop(reason) {
+        if (!xFetch.on) { return; }
+        xFetch.on = false;
+        xFetch.stopped = true;
+        if (xFetch.timer) { clearTimeout(xFetch.timer); xFetch.timer = 0; }
+        if (statusEl) {
+            const why = reason === 'idle' ? '没有更多数据'
+                : reason === 'bottom' ? '已到底'
+                : reason === 'max-items' ? '达到上限'
+                : reason === 'max-rounds' ? '达到轮数上限'
+                : reason === 'stopped' ? '已手动停止'
+                : '已停止';
+            statusEl.textContent = '抓取结束：' + items.length + ' 项（' + why + '）';
+        }
+        renderCount();
+        if (open) { renderList(); }
+    }
+
+    window.addEventListener('message', function (ev) {
+        if (ev.source !== window) { return; }
+        const d = ev.data;
+        if (!d || !d.action) { return; }
+        if (d.action === 'vrXTimeline') { xSync(d); }
+        /* hook 装好时也拉一次：覆盖「首屏时间线早于面板」的情况 */
+        if (d.action === 'vrXTimelineReady' && SITE === 'x') { xDrainPull(); }
+    });
+
+    /* ================= 微博：接口分页全量抓取（B-90） =================
+     * 实测（2026-11-13 真机）：博主主页时间线走
+     *   /ajax/statuses/mymblog?uid=<uid>&page=<n>&feature=0
+     * 同源带 cookie 可直接 fetch（200 / ok=1 / 每页 20 条）。
+     * 分页是 page 页码，不是 since_id。
+     *
+     * 字段（实读）：
+     *   图片 b.pic_ids + b.pic_infos[pid].largest.url / .original.url / .large.url
+     *   视频 b.page_info.media_info.mp4_720p_mp4 / .mp4_hd_url / .stream_url
+     *   正文 b.text_raw（HTML）/ b.text；作者 b.user.screen_name & b.user.id
+     *
+     * 终止：空列表 / 连续 2 页无新增 / 达 MAX_ITEMS / 达页数上限 / 用户停止 / 连败 3 次。
+     */
+    const wFetch = {
+        on: false,
+        timer: 0,
+        page: 1,
+        idlePages: 0,
+        failStreak: 0,
+        maxPages: 200,
+        seenPost: Object.create(null)
+    };
+
+    function wbText(b) {
+        var raw = String(b.text_raw || b.text || '');
+        var t = raw.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+        return t.length > 80 ? t.slice(0, 80) : t;
+    }
+
+    /** 图片候选链：优先生成片档，失败回退 large（与 weibo-album-core 口径一致） */
+    function wbImageUrls(pid, info) {
+        var out = [];
+        var push = function (u) { if (u && /^https?:/i.test(u) && out.indexOf(u) < 0) { out.push(u); } };
+        if (info) {
+            ['largest', 'original', 'large', 'mw2000', 'bmiddle'].forEach(function (k) {
+                if (info[k] && info[k].url) { push(info[k].url); }
+            });
+        }
+        if (!out.length && pid) { push('https://wx1.sinaimg.cn/large/' + pid + '.jpg'); }
+        return out;
+    }
+
+    /** 一批微博 → 条目入队，返回新增条数 */
+    function wAddPosts(list) {
+        if (!Array.isArray(list)) { return 0; }
+        var added = 0;
+        list.forEach(function (b) {
+            if (!b) { return; }
+            var postId = String(b.idstr || b.mid || b.id || '');
+            if (!postId) { return; }
+            var authorName = (b.user && b.user.screen_name) || '';
+            var authorId = (b.user && b.user.id != null) ? String(b.user.id) : '';
+            var title = wbText(b);
+            var pageUrl = 'https://weibo.com/' + (authorId || profileUser) + '/' +
+                (b.mblogid || postId);
+
+            /* 视频：一条微博最多一个视频 */
+            var mi = b.page_info && b.page_info.media_info;
+            if (mi) {
+                var vurl = mi.mp4_720p_mp4 || mi.mp4_hd_url || mi.stream_url_hd ||
+                    mi.stream_url || (b.page_info && b.page_info.page_url) || '';
+                if (vurl && /^https?:/i.test(vurl)) {
+                    var vkey = 'weibo:video:' + postId;
+                    if (!wFetch.seenPost[vkey]) {
+                        wFetch.seenPost[vkey] = 1;
+                        add({
+                            site: 'weibo', kind: 'video', url: vurl, ext: 'mp4',
+                            key: vkey, title: title, author: authorName, authorId: authorId,
+                            pageUrl: pageUrl, postId: postId
+                        });
+                        added++;
+                    }
+                }
+            }
+
+            /* 图片：pic_ids 与 pic_infos 对齐 */
+            var ids = Array.isArray(b.pic_ids) ? b.pic_ids : [];
+            ids.forEach(function (pid, idx) {
+                var info = b.pic_infos && b.pic_infos[pid];
+                var urls = wbImageUrls(pid, info);
+                if (!urls.length) { return; }
+                var key = 'weibo:image:' + postId + ':' + pid;
+                if (wFetch.seenPost[key]) { return; }
+                wFetch.seenPost[key] = 1;
+                add({
+                    site: 'weibo', kind: 'image', url: urls[0], urls: urls,
+                    ext: 'jpg', key: key, title: title, author: authorName,
+                    authorId: authorId, pageUrl: pageUrl, postId: postId,
+                    thumb: (info && info.large && info.large.url) || urls[0],
+                    index: idx
+                });
+                added++;
+            });
+        });
+        return added;
+    }
+
+    async function wFetchPage(page) {
+        var url = '/ajax/statuses/mymblog?uid=' + encodeURIComponent(profileUser) +
+            '&page=' + page + '&feature=0';
+        var r = await fetch(url, {
+            credentials: 'include',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        if (!r.ok) { throw new Error('HTTP ' + r.status); }
+        var j = await r.json();
+        if (!j || !j.ok) { throw new Error('not-ok'); }
+        return (j.data && Array.isArray(j.data.list)) ? j.data.list : [];
+    }
+
+    function wStatus(txt) {
+        if (statusEl) { statusEl.textContent = txt; }
+    }
+
+    async function wStep() {
+        wFetch.timer = 0;
+        if (!wFetch.on) { return; }
+        var list;
+        try {
+            list = await wFetchPage(wFetch.page);
+        } catch (e) {
+            wFetch.failStreak++;
+            if (wFetch.failStreak >= 3) {
+                wStop('fails');
+                return;
+            }
+            wStatus('第 ' + wFetch.page + ' 页请求失败（' + wFetch.failStreak + '/3），稍后重试');
+            wFetch.timer = setTimeout(wStep, 3000 + Math.floor(Math.random() * 1500));
+            return;
+        }
+        if (!wFetch.on) { return; }
+        wFetch.failStreak = 0;
+
+        if (!list.length) { wStop('bottom'); return; }
+
+        var added = wAddPosts(list);
+        wFetch.page++;
+        if (added > 0) { wFetch.idlePages = 0; } else { wFetch.idlePages++; }
+
+        renderCount();
+        if (open) { renderList(); }
+        wStatus('已抓取 ' + items.length + ' 项（第 ' + (wFetch.page - 1) + ' 页，本页新增 ' + added + '）');
+
+        if (wFetch.idlePages >= 2) { wStop('idle'); return; }
+        if (items.length >= MAX_ITEMS) { wStop('max-items'); return; }
+        if (wFetch.page > wFetch.maxPages) { wStop('max-pages'); return; }
+
+        var gap = 1400 + Math.floor(Math.random() * 1200);   // 与既有批量同款节奏
+        wFetch.timer = setTimeout(wStep, gap);
+    }
+
+    function wStart() {
+        if (SITE !== 'weibo' || wFetch.on) { return; }
+        if (!/^\d+$/.test(profileUser || '')) {
+            wStatus('需要从博主主页（weibo.com/u/<数字ID>）进入才能抓全量');
+            return;
+        }
+        wFetch.on = true;
+        wFetch.page = 1;
+        wFetch.idlePages = 0;
+        wFetch.failStreak = 0;
+        wFetch.seenPost = Object.create(null);
+        wStatus('开始抓取：按页拉取博主全部微博，可随时停止');
+        renderCount();
+        wStep();
+    }
+
+    function wStop(reason) {
+        if (!wFetch.on) { return; }
+        wFetch.on = false;
+        if (wFetch.timer) { clearTimeout(wFetch.timer); wFetch.timer = 0; }
+        var why = reason === 'bottom' ? '已到底'
+            : reason === 'idle' ? '连续 2 页无新增'
+            : reason === 'max-items' ? '达到 ' + MAX_ITEMS + ' 条上限'
+            : reason === 'max-pages' ? '达到页数上限'
+            : reason === 'fails' ? '连续 3 次请求失败（可能触发风控）'
+            : reason === 'stopped' ? '已手动停止'
+            : '已停止';
+        wStatus('抓取结束：' + items.length + ' 项（' + why + '）');
+        renderCount();
+        if (open) { renderList(); }
+    }
+
     /* ---------- 面板 ---------- */
     function ensureUI() {
         if (btn) { return; }
@@ -379,7 +691,11 @@
             if (open) { closeWeiboAlbumPanel(); }
             panel.classList.toggle('vr-open', open);
             btn.style.display = open ? 'none' : '';
-            if (open) { renderList(); }
+            if (open) {
+                renderList();
+                /* X：面板打开时拉一次 hook 已缓存的时间线（首屏可能在面板就绪前就返回） */
+                if (SITE === 'x') { xDrainPull(); }
+            }
         }
 
         /** 关掉微博相册备份面板（点它自己的关闭按钮，避免两处状态不同步） */
@@ -410,6 +726,9 @@
             '<button type="button" data-act="none">全不选</button>' +
             '<button type="button" data-act="invert">反选</button>' +
             '<button type="button" data-act="resetDone">清除已下载</button>' +
+            (SITE === 'x' || SITE === 'weibo'
+                ? '<button type="button" class="vr-primary" data-act="xFetchAll">抓取全部</button>'
+                : '') +
             '<button type="button" class="vr-primary" data-act="saveall">一键保存本页</button>' +
             '<button type="button" data-act="down">保存选中</button>' +
             '<button type="button" data-act="clear">清空</button>' +
@@ -473,6 +792,21 @@
             } else if (act === 'clear') {
                 items.length = 0; seen.clear(); offKeys.clear(); renderCount(); renderList();
                 statusEl.textContent = '已清空列表';
+            } else if (act === 'xFetchAll') {
+                /* 抓取全部（ADR-084）：X 走自动滚动 + 旁读，微博走接口分页。
+                 * 抓取中再点一次 = 停止，避免用户找不到出口。 */
+                if (SITE === 'weibo') {
+                    if (wFetch.on) {
+                        wStop('stopped');
+                    } else {
+                        wStart();
+                    }
+                } else if (xFetch.on) {
+                    xStop('stopped');
+                    statusEl.textContent = '已停止抓取（当前 ' + items.length + ' 项）';
+                } else {
+                    xStart();
+                }
             } else if (act === 'down' || act === 'saveall') {
                 if (act === 'saveall') {
                     /* 「一键保存本页」= 保存当前可见的全部，不受之前的手动取消影响 */
@@ -496,7 +830,16 @@
     }
 
     function renderCount() {
-        if (btn) { btn.textContent = '批量下载 (' + visibleItems().length + ')'; }
+        if (!btn) { return; }
+        if (SITE === 'x' && xFetch.on) {
+            btn.textContent = '抓取中… (' + visibleItems().length + ') 点击停止';
+            return;
+        }
+        if (SITE === 'weibo' && wFetch.on) {
+            btn.textContent = '抓取中… (' + visibleItems().length + ') 点击停止';
+            return;
+        }
+        btn.textContent = '批量下载 (' + visibleItems().length + ')';
     }
 
     /** 当前可见范围内被勾选的条数（用于状态栏文案） */

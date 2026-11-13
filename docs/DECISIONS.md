@@ -2185,6 +2185,54 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
 - **验收**：真机 9480 实跑两条用例——`qa-trash-conflict.py` 异内容 6/6（原文件未被覆盖、生成 `_restored`、内容大小一致、卡片数回原值）；`qa-trash-dedup.py` 同内容 5/5（不产生第二份、回收站副本删除、卡片回来），并确认批次目录被自动回收（`_回收站` 归零）。
 - **不做**：不改「迁移」侧的同名策略（那个是复制操作，跳过才是对的，见 LIBRARY-PLAN §5.4），也不自动清理库里的同名双记录——那是索引治理，另立项。
 
+---
+
+## ADR-080 图片管线收敛：发现层与执行层各一份，四入口只做 UI（2026-11-13）
+
+- **日期**：2026-11-13 ｜ **状态**：✅ 已批准，待实施（B-83~B-87） ｜ **触发**：苏哥反馈「图片下载（尤其是批量下载和批量嗅探）一直失败；除了单图，其他都不太行」。
+- **背景**：侧栏 `image.html`、popup 抓图、资源库面板、悬停「全部 N」、图集扫描各自实现扫描与下载。唯一做对的「候选逐个 fetch 校验」只在悬停单张（`js/image-hover.js:837-843`）；批量三入口把 `bestCandidate` 当唯一 URL，后台 `vrImgDownload` 不消费 `candidates`（`js/background.js:1110-1118`）。同一页面四个入口数量/门槛不一致；源码通道一处兜底、一处无条件；面板批量无序号；popup 批量无队列且先记已下载。
+- **决策**：
+  1. **发现层唯一**：扩展 `js/lib-image-util.js` 为唯一扫描核心；新增页面侧通道编排，但过滤/候选/占位判断必须调用它，禁止再写第二份扫描器。
+  2. **执行层唯一**：扩展 `vrImgDownload`/`vrImgBatch` 为唯一落盘执行器；单张与批量共用 `resolveCandidates`（按序校验 content-type/字节/图片头，失败自动下一个）；四个入口只发消息，不拼 URL、不标已下载。
+  3. **消息名保留**：`vrImg.resolve` / `vrImg.download` / `vrImg.batch` / `vrImg.batchProgress` 不变；新增 `vrImg.scan`（SW 逐 frame 编排）、`vrImg.batchRetry`。
+  4. **不复制 ImageAssistant 源码**：只做行为对标（网络缓存、全 frame、全属性、候选校验、轻量下载）；实现保持本项目模块边界。
+  5. **可灰度**：`imgPipelineV2` 开关；阶段一先并行只读对比新旧扫描，阶段二切执行器，阶段六删旧实现。
+- **影响**：`js/lib-image-util.js`、新增 `js/image-net-cache.js`、`js/net-sniff.js`、`js/background.js`、`js/image-page.js`、`js/image-batch.js`、`js/image-panel.js`、`js/popup-videorod.js`、`js/image-album.js`、`manifest.json`。
+- **验收**：四入口同页数量一致；候选 404 仍成功；批量全部落资源库目录；iframe/shadow/伪元素/网络缓存四类夹具能扫到；`health-check --full` 含批量套件。
+- **关联**：审计 `deliverables/reviews/2026-11-13-图片批量失败审计.md`；设计 `docs/IMAGE-PIPELINE-REDESIGN.md`；测试 `docs/TEST-PLAN-IMAGE-PIPELINE.md`；BACKLOG B-82~B-87。
+
+---
+
+## ADR-081 批量图片必须落资源库目录：FSA 未授权即阻止并引导（2026-11-13）
+
+- **日期**：2026-11-13 ｜ **状态**：✅ 已批准，待实施（B-85） ｜ **触发**：用户判据「批量下载完成后，必须落到资源库目录才算成功」。
+- **背景**：`js/library/save.js` 的 `decideMode` 在 FSA 未授权时静默回退 `chrome.downloads`（`:140-147`）。ADR-040 之后下载器不认 filename，文件落到浏览器下载目录、名字可能变成 UUID/URL 末段；用户打开资源库找不到，判「下载失败」。popup 的 `defaultDir` 后台完全不读。
+- **决策**：
+  1. **批量前置检查**：`vrImgBatch` 开始前 `VRSave.probeEnv()` / `queryPermission({mode:'readwrite'})`；未授权直接返回 `IMG_E_FSA_PERM` + `needGrant:true`，不逐张失败、不产生浏览器下载目录文件。
+  2. **授权引导**：UI 显示「批量保存需要先授权资源库目录」+ 一键去设置页/目录选择器；`requestPermission` 只在用户手势的页面上下文调用（SW 里调用必然失败，沿用 `save.js` 的既有注释）。
+  3. **单张可降级但必须明示**：单张下载在 FSA 不可用时仍可回退下载器，但返回值带 `fsaCode`/`mode:'downloads'`，UI 显示真实落点，不假装已归档。
+  4. **批量不静默降级**：批量场景禁止 `prefer:'auto'` 落到 downloads；要么 FSA，要么失败并提示。
+  5. **真实路径**：一律用 `saveFile` 返回的 `relPath`（`freeName` 可能改名）做入库/去重/UI，不用预测路径。
+- **影响**：`js/background.js`（`vrImgBatch`/`vrImgDownload`）、`js/library/save.js`（返回码与 `needGrant`）、侧栏/popup/面板的失败提示与授权入口；设置页目录卡片。
+- **风险**：未授权用户无法批量——这是有意取舍；用清晰引导降低困惑。
+- **验收**：未授权时批量被阻止且无 Downloads 产物；授权后批量全部落资源库目录；单张降级时 UI 明示真实落点。
+
+---
+
+## ADR-082 图片网络层缓存：per-tab 2000 条 / 24h / 仅当前会话（2026-11-13）
+
+- **日期**：2026-11-13 ｜ **状态**：✅ 已批准，待实施（B-83） ｜ **触发**：批量嗅探覆盖不足；ImageAssistant 1.70.7 的核心是网络层缓存，而我们 `G.Type` 不含 `image/*`。
+- **背景**：`js/init.js:63-73` 的媒体类型白名单没有图片；`js/net-sniff.js` 只抓视频/音频 + 小红书特例；`imgSniff` 无消费方。结果滚过去的图、JS 加载后移除的图、懒加载前请求过的图、外部 CSS 背景图都拿不到。ImageAssistant 用 `webRequest.onHeadersReceived` 按 tab 缓存所有 `image/*` 响应，并在 MAIN world 钩住 XHR/fetch/`Image.src` 补动态地址（`scripts/inspector.js`、`scripts/background.js` `_o_initHeadListener`）。
+- **决策**：
+  1. **收**：`webRequest.onHeadersReceived` 收 `type==='image'` 或 `content-type:image/*` 且 `content-length` 为空或 >0；写 per-tab 缓存，附 `url/tabId/frameId/referer/pageUrl/contentType/bytes/at`。
+  2. **补**：扩展现有 MAIN world `net-sniff.js`，增加图片扩展名正则、`data:image`、`image/*` 响应 URL、`Image.src` setter；每 512ms 批量回传。
+  3. **限**：每 tab 最多 2000 条，按 `at` 淘汰最旧；TTL 24 小时；存 `chrome.storage.session`，浏览器关闭即清；不落盘、不同步。
+  4. **开关**：`imgSniff` 从死开关改为「网络图片缓存」开关，默认开；关闭时只跑 DOM/源码通道。
+  5. **测试边界**：真实登录态只做只读扫描；批量下载回归全部在隔离实例（`e2e-all --isolated`），不在真实账号上反复触发请求（`TESTING.md §0.0`、`TEST-BROWSER.md` EL 系列）。
+- **影响**：新增 `js/image-net-cache.js`；改 `js/net-sniff.js`、`js/background.js`、`js/init.js`（图片类型判定不改白名单，走独立缓存，避免污染媒体列表）、设置项。
+- **风险**：内存/`storage.session` 占用；隐私（只存 URL/来源，不存内容）。用上限/过期/关闭开关控制。
+- **验收**：`pipeline-network.html` 只靠网络通道能扫到；同页四入口数量一致；关闭 `imgSniff` 后网络缓存通道为空、DOM 通道不受影响。
+
 ## ADR-083 媒体面板：类型与尺寸两级筛选，音视频复用 vrVideoOptions（2026-11-13）
 
 - **日期**：2026-11-13 ｜ **状态**：✅ 已实施 ｜ **触发**：苏哥要求「面板不能只出图片，要兼容图片/动图/视频/音频分类下载，媒体库与重新探測要显眼」。
@@ -2199,6 +2247,23 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
 - **风险**：音视频条目没有缩略图（m3u8 清单不是图片），用 ▶/♪ 占位块；`<img src="*.m3u8">` 只会留裂图框。
 - **验收**：真实 Edge 面板实测 —— 类型栏计数正确（全部6/图片4/动图1/视频1/音频0）；切「视频」只剩 1 条且底部显示 `HLS`；点「下载选中」显示「已保存 1 个音视频」并标记已下载。
 - **踩坑记录**：① `cellEl` 里 `img` 声明移入图片分支后，分支外仍有 `div.appendChild(img)` → 音视频条目抛 `img is not defined`，整个扫描失败（面板显示「扫描失败」）；② 上述第 4 条的 tabId 问题同时影响读和写两处，只修一处会表现为「能列出但下不了」。
+
+---
+
+## ADR-084 推特「博主全部下载」改「自动滚动 + 拦截响应」：不主动发私有请求（2026-11-13）
+
+- **日期**：2026-11-13 ｜ **状态**：🟡 预研完成，待施工 ｜ **触发**：苏哥要求移植 Plucker XBD 的「单博主内容全部下载」，微博同样，小红书/抖音后置。
+- **决策**：推特全量采集走**页面自动滚动 + 旁读 X 自身 GraphQL 响应**；**不**照抄 Plucker 的「抓 queryId + Authorization 后由扩展主动分页」。
+  1. **只旁读，不代发**：MAIN world hook `fetch`/`XHR`，仅在 X 自己发出 `UserTweets` / `UserMedia` / `UserPhotoTimeline` / `UserVideoTimeline` 时解析响应体。**不读取、不保存、不回放** `Authorization` / `X-Client-Transaction-Id` 等鉴权头，扩展不以用户身份发起任何私有请求。
+  2. **自动滚动由扩展驱动**：`scrollStep()` 以「连续 N 轮无新增 / 已到底 / 达上限」三条件终止；每轮步进带随机间隔，可与用户操作并存（用户滚动不打断）。
+  3. **放宽 ADR-010 的适用范围**：ADR-010「只抓已加载，不自动滚动」继续对**通用嗅探通道与图片面板**生效；仅本模块（X 博主主页、微博博主主页的全下载模式）在**用户显式点击「开始抓取」后**允许自动滚动，且必须可随时停止。默认不自动开跑。
+  4. **媒体直链优先取响应内字段**：`legacy.extended_entities.media` / `retweeted_status_result` / `quoted_status_result` / `card.binding_values` 四级回退，视频取 `video_info.variants` 中 `video/mp4` 最高 bitrate；响应不带时回退既有 `fetchXVideo`（fxtwitter）。
+  5. **落盘/命名/去重复用既有通道**：`vrBulkDownload` → `vrBulkSaveItem`/`vrDownloadWithName`（FSA 优先），命名走 `naming.js` + `VRPath`，目录 `video-rod/X/作者(@handle)/视频|图片/`；不引入 Plucker 的第二套模板引擎与本地任务库。
+- **理由**：主动 GraphQL 分页复用登录态、易触发风控与封号，且 queryId 随 X 发版失效；旁读路线的风控面仅等于「页面自己已经在做的请求」，代价是速度受页面加载限制（见 `docs/COMPETITOR-PLUCKER.md` §3.3、§六）。
+- **影响**：新增 `js/lib/twitter-timeline.js`（MAIN world 解析）、`js/x-bulk.js`（自动滚动 + 面板）、manifest 一条 X 域 MAIN world content script；后台只在 `vrBulkDownload` 上增加中转消息，不改队列语义。`js/bulk-profile.js` 微博分支增加全下载模式。
+- **风险**：① X 时间线响应是否直带 `video_info.variants`、`pbs.twimg.com` 是否需 Referer，两项待真机定性（预研 §六）；② 自动滚动会短暂占用页面，需提供停止按钮与「用户接管即暂停」；③ 大批量仍受 X 自身限流影响，沿用「连败 3 次暂停」熔断。
+- **验收**（施工阶段）：本地 fixture 端到端通过；真机单博主（≤200 条）抓取→批量落盘→资源库条目 platform/creator/type 正确；停止/续抓可用；连续失败熔断生效。
+
 
 ---
 
@@ -2232,3 +2297,23 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
 - **理由**：「打开一个网页目录列表」与「弹出资源管理器」是两种完全不同的结果，前者会让用户以为功能坏了；与其静默用一个看起来像成功的替代品，不如打开正确的目录并如实说明。
 - **影响**：`js/library/app.js`（`revealFile` / `revealWithoutDownload` / `offerCopyPath`）。
 - **验收**：`node --check js/library/app.js` 通过；`grep` 确认执行路径已无 `tabs.create` / `window.open` / `toFileUrl`（仅注释保留历史说明）。真机交互验证需在可加载扩展的浏览器上进行，本机正式版 Chrome/Edge 已不支持 `--load-extension`，改用 Playwright Chromium 158 headless 跑回收站套件作为回归基线。
+
+## ADR-087 目录授权必须在用户手势内「同步」发起；静默恢复拆成独立按钮（2026-11-13）
+
+- **日期**：2026-11-13 ｜ **状态**：✅ 已实施 ｜ **触发**：苏哥 Win11 报「授权失败：Failed to execute 'showDirectoryPicker' on 'Window': The request is not allowed by the user agent or the platform in the current context.」
+- **诊断（源码级，别凭感觉归因）**：这句英文是 DOMException 的**兜底文案**，不是专属提示：
+  1. `blink/core/dom/dom_exception.cc` 里 `kNotAllowedError` 的默认 message 就是它；
+  2. `blink/modules/file_system_access/file_system_access_error.cc` 把 `kPermissionDenied` 映射成 `NotAllowedError`，**只有没带自定义 message 才落到这句**；
+  3. `content/browser/file_system_access/file_system_access_manager_impl.cc` 里，`kPermissionDenied` 有两个来源：站点设置（fileEditing 非 ASK/ALLOW，注释 *"When site setting is block, it's better not to show file chooser."*）和**用户激活被消费**（`kConsumeTransientActivation`，较老内核不带 message）；
+  4. 渲染层缺手势抛的是 `SecurityError` + `"Must be handling a user gesture to show a file picker."`。
+  所以：**同一句文案对应两种完全不同的成因，必须先分清再动手。** 判别方法：同一 origin 下同步调用的「选择文件夹…」能弹框 → 不是权限被禁，而是本链路把激活期耗掉了。
+- **本仓库的真实缺陷**：`js/library/settings.js` 的 `authDefault()` 先 `await VRDB.getHandle` → `idbGet`（内含 `handle-store.migrateLegacy` 旧库迁移）→ 有句柄时再 `await requestPermission`，最后才弹选择器。而同仓库 `app.js` 的 `authorizeRoot()` 与同文件 `pickCustom()` 早就是「先弹选择器」，`app.js:2627` 还写着这条纪律——**只有这一处漏改**。
+- **决策**：
+  1. `authDefault()` 改为**同步**计算 sub/base/parent 后，第一处 `await` 就是 `showDirectoryPicker`；句柄返回后再做下钻、名称校验、`setRoot`、写库。函数内用注释禁止后续在上游插入 `await`。
+  2. 「已有句柄静默恢复」从这条链路剥离为独立按钮 `#vrLibAuthRestore`（`restoreAuth()`）：句柄在 `refreshAuthState()`（页面加载时执行、不要求手势）预读进内存 `savedRootHandle`，点击时**同步**调 `requestPermission`，不再有 `await` 前置。
+  3. 报错翻成人话：`describePickerError()` 按成因分流——手势类让用户刷新后立刻重试；`NotAllowedError` 先提示重试、再给 `chrome://`/`edge://settings/content/fileEditing` 路径与「增强安全性模式」检查；未知原始文案才原样透出。
+  4. 恢复按钮只在「句柄仍在但权限变 prompt」时显示；错句柄或无句柄时隐藏并给出重选提示。
+- **理由**：一个按钮同时承担「选新目录」和「恢复旧权限」两个目的时，前者的手势会被后者的异步读取代价吃掉，导致**两个功能一起坏**；拆开后各自只做一件事，且都不依赖前置异步。
+- **影响**：`js/library/settings.js`（`authDefault` / `restoreAuth` / `showRestore` / `describePickerError` / `fileEditingSettingsUrl` / `refreshAuthState` / `dropRootHandle`）、`options.html`（新增按钮）。
+- **验收**：`node tools/test-settings-auth.js` **16/16**（A1 选择器同步弹出 / A2 调用瞬间未进入任何异步 API / M1 变异反证：把旧 `await` 插回后断言必红）；`tools/health-check.py` 冒烟清单已登记该单测。
+- **未覆盖**：真机交互（原生目录框）无法在无头门禁验证，需在可加载扩展的浏览器上点一次。

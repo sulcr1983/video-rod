@@ -412,4 +412,40 @@ python $TMPDIR/list_ext.py
 ### 8.5 待续
 
 - **Video Download Helper** `jmkaglaafmhbcpleggkmaliipiilhldn` v10.6.7.2（老牌跨站，嗅探规则值得看）
-- **SnapHD** `gjnfclmmckeleebakeghdbhjfcbpaafn` v1.0.1
+- **SnapHD** `gjnfclcmckeleebakeghdbhjfcbpaafn` v1.0.1
+
+### 8.6 ImageAssistant 1.70.7 —— ✅ 抄 5 条，❌ 不抄 4 条（2026-11-13 实读）
+
+扩展 ID `odphnbhiddhdpoccbialllejaajemdio`，星愿里版本 **1.70.7**，代码未混淆。路径：
+`C:\Users\Administrator\AppData\Local\Twinkstar\User Data\Default\Extensions\odphnbhiddhdpoccbialllejaajemdio\1.70.7_0\`
+
+**它怎么做（源码证据）**
+
+| 能力 | 实现 | 落点 |
+|---|---|---|
+| 全 frame + document_start | `manifest.json:22-27` 的 `content_scripts`：`all_frames:true`、`matches:<all_urls>`；`inspector.js` 先注入 MAIN world | 我们的图片组 `all_frames:false` |
+| 三路网络嗅探 | `scripts/inspector.js`：劫持 `XMLHttpRequest.send`、`window.fetch`、`window.Image` 的 `src` setter；响应为 `image/*` 时收 `responseURL`；响应文本（`text/*`、JSON/XML）用图片扩展名正则提取；每 512ms 批量回传 | `js/net-sniff.js` 只抓视频 + 小红书 |
+| 响应头缓存 | `scripts/background.js` `_o_initHeadListener`：`webRequest.onHeadersReceived`，`type==='image'` 或 `content-type:image/*` 且 `content-length` 为空/大于 0 → 按 tab 收进 imageMap，附 pageURL/pageTitle/referer/serial | `js/init.js` 的 `G.Type` 不含 `image/*` |
+| 多来源合并 | `_o_pushExtractedImage`：同一 URL 合并 DOM/网络/Image 钩子，保留来源优先级与最早 serial；按域名记 referer | 我们只按 DOM 去重 |
+| 全属性提取 | `scripts/script.js` `_o_digElement`：遍历元素**所有属性**（含 `style` 内 `url()`），正则提取后用 `new Image()` 预载验证可达才收；`_o_extractImageFromLink` 扫 `<a href>` | `scanImages` 只扫固定 `DATA_ATTRS` |
+| iframe 递归 | `_o_zhuruJSYongHash`：`chrome.webNavigation.getAllFrames()` 后逐 frame 注入并提取 | `executeScript` 不传 `allFrames` |
+| 原图规则表 | `defaultRegexpUrlRule.properties`：60+ 条 `匹配正则${#^_^#}替换模板`，递归深度 4；微博 `/large/`、Pinterest `/originals/`、豆瓣 `/l/`、知乎、花瓣、堆糖、wallhaven 等 | 只有硬编码 `upgradeSinaimg` + 通用 query 剥离 |
+| 尺寸预载 | `scripts/imageExtractor.js`：`_o_max_loading=8` 并发、`_o_img_load_failed_set` 定时重试、`_o_dyLoadSize` 动态载入阈值（离屏用 1px 占位）、按尺寸排序；尺寸漏斗只隐藏不删除 | `fillSizes` 一次性 60 张/2.5s，面板没接 |
+| 下载 | `scripts/function.js` `_w_rebate`：逐张 `chrome.downloads.download({url, filename, saveAs:false, conflictAction:'uniquify'})`；防盗链特殊场景用页面上下文 `blobUtil.imgSrcToBlob` 兜底 | 我们把 fetch + FSA 写 + 哈希 + 入库全塞进单张链路 |
+
+**抄什么（落到 B-83/B-84）**
+
+1. **网络层图片缓存**：`onHeadersReceived` 按 tab+frame 收 `image/*`，`Image.src`/fetch/XHR 补动态地址。落 `js/image-net-cache.js` + 扩 `js/net-sniff.js`。
+2. **全 frame**：图片组 `all_frames:true`；`vrImg.scan` 用 `webNavigation.getAllFrames` 逐 frame 注入。落 `manifest.json` + `background.js`。
+3. **全属性通扫**：`data-*`、`style` 内 `url()`、`srcset`/`picture`、`video poster`、`a[href]`、SVG `<image>`。落 `lib-image-util.js`。
+4. **原图规则表**：把 `defaultRegexpUrlRule.properties` 的站点规则改为可配置表（不是硬编码）；递归生成候选，候选校验后再定案。落新 `image-url-rules.js` + `lib-image-util.collectCandidates`。
+5. **尺寸预载队列**：并发 8、失败重试、动态载入、只隐藏不删除。落 `fillSizesV2` + 侧栏/面板渲染。
+
+**不抄什么**
+
+1. **不抄 jQuery/Bootstrap/colorbox 的 UI 框架**：与现有设计系统冲突，且体积大。
+2. **不抄闭源代码**：只做行为对标，不复制 `inspector.js`/`function.js` 的实现文本。
+3. **不抄无上限抓取**：它没有 per-tab 缓存上限；我们按 ADR-082 限 2000 条/24h，避免内存与隐私问题。
+4. **不抄“所有下载都串行 + 只依赖 downloads 文件名”**：它放弃目录控制、依赖浏览器改名；我们要求落资源库目录（ADR-081），保留 FSA 主通道 + 并发 2。
+
+> 结论：ImageAssistant 的强项是「网络层缓存 + 全 frame/全属性 + 候选校验 + 轻量下载」；我们的差距在发现层覆盖与批量执行层的候选回退，不在 UI。

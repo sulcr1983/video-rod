@@ -350,11 +350,13 @@ def main():
     # extensionReload 会重载扩展把页面上下文打掉，vrLibMigRun 会真的搬文件。
     ALLOW = {"showTestTag", "AddExt", "AddType", "AddRegex", "vrLibSaveSubdir", "vrLibRefresh"}
     DANGER = {"ClearData", "ResetAllOption", "extensionReload", "importOptions", "exportOptions",
-              "vrLibPickDir", "vrLibAuthDefault", "vrLibIdxFull", "vrLibMigPickParent", "vrLibMigPickSrc",
-              "vrLibMigPickDst", "vrLibMigPickSrc2", "vrLibMigPlan", "vrLibMigRun",
-              "vrLibMigRollback", "vrLibVerify", "vrLibIdxBuild", "vrLibIdxSnap",
-              # 备份/恢复（阶段 4）：两者都会弹原生目录选择框，点下去会阻塞整个套件
-              "vrLibExport", "vrLibRestore"}
+               "vrLibPickDir", "vrLibAuthDefault", "vrLibIdxFull", "vrLibMigPickParent", "vrLibMigPickSrc",
+               "vrLibMigPickDst", "vrLibMigPickSrc2", "vrLibMigPlan", "vrLibMigRun",
+               "vrLibMigRollback", "vrLibVerify", "vrLibIdxBuild", "vrLibIdxSnap",
+               # 2026-11-13：恢复授权会向浏览器申请目录权限，同样可能弹原生确认框
+               "vrLibAuthRestore",
+               # 备份/恢复（阶段 4）：两者都会弹原生目录选择框，点下去会阻塞整个套件
+               "vrLibExport", "vrLibRestore"}
     ids2 = c.ev("""(()=>[...document.querySelectorAll('.options-page button[id]')].map(b=>b.id))()""", sid2) or []
     print("设置页按钮数:", len(ids2))
     ck("设置页按钮 >= 25", len(ids2) >= 25, True)

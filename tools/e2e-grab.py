@@ -20,6 +20,7 @@
 import argparse
 import json
 import os
+import re
 import struct
 import sys
 import threading
@@ -75,7 +76,39 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>抓图夹具 �
 <div style="width:420px;height:300px;background-image:url('/img/900x600.png')"></div>
 <!-- ④ 坏图：404，必须被剔除 -->
 <img src="/missing.jpg" style="width:500px" alt="404">
+<!-- ⑥ 混合通道（2026-11-13，ADR-080）：iframe / Shadow DOM / 伪元素 /
+     网络缓存 / video poster / a[href] / SVG image -->
+<h2>混合通道</h2>
+<iframe src="/inner" width="520" height="300"></iframe>
+<div id="shadowHost" style="width:380px;height:260px"></div>
+<style>.pseudo::before{content:url("/img/1050x680.png");display:block;width:420px;height:280px}</style>
+<div class="pseudo" style="width:420px;height:280px"></div>
+<video poster="/img/1250x700.png" width="420" height="240" muted></video>
+<a href="/img/1400x900.png">大图链接</a>
+<svg width="300" height="200"><image href="/img/1200x850.png" width="300" height="200"/></svg>
+<script>
+  // Shadow DOM（open）：组件库/图墙常见
+  (function () {
+    var host = document.getElementById('shadowHost');
+    var root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<img src="/img/1150x750.png" style="width:360px;height:240px">';
+  })();
+  // 网络缓存：只请求、不插入 DOM（模拟滚过去/被移除的图）。
+  // 必须给「绝对 URL」且延迟到 DOMContentLoaded 之后：
+  //   ① 绝对 URL —— 相对 URL 进 SW 缓存后和扫描器的绝对地址对不上，会漏抓；
+  //   ② DOMContentLoaded 之后 —— net-sniff 的 Image.src 钩子在 document_start，
+  //      若 IIFE 早于它运行，这条请求根本没被钩子拦到（2026-11-13 实测偶发 14/15）。
+  // 锚定到本页真实 host：location.origin 在隔离/本地/登录态下都正确。
+  document.addEventListener('DOMContentLoaded', function () {
+    var p = location.origin + '/img/1300x900.png';
+    var im = new Image();
+    im.src = p;
+  });
+</script>
 </body></html>"""
+
+INNER = """<!doctype html><html><head><meta charset="utf-8"><title>iframe 夹具</title></head>
+<body><img src="/img/1100x700.png" style="width:300px"><img src="/img/1000x800.png" style="width:300px"></body></html>"""
 
 IMG_RE = None
 
@@ -88,6 +121,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/":
             body, ctype, code = PAGE.encode("utf-8"), "text/html; charset=utf-8", 200
+        elif path == "/inner":
+            body, ctype, code = INNER.encode("utf-8"), "text/html; charset=utf-8", 200
         elif path.startswith("/img/") and path.endswith(".png"):
             dims = path[len("/img/"):-4].split("x")
             try:
@@ -214,18 +249,17 @@ def main():
     # 调试：清单原样打出来（断言失败时靠它定位是哪一条混进来了）
     for _i, _s in enumerate(got.get("srcs") or []):
         print("  [%d] %s" % (_i + 1, _s))
-
-    # 调试：清单原样打出来（断言失败时靠它定位是哪一条混进来了）
-    for _i, _s in enumerate(got.get("srcs") or []):
-        print("  [%d] %s" % (_i + 1, _s))
+    for _i, _m in enumerate(got.get("metas") or []):
+        print("  meta[%d] %s" % (_i + 1, _m))
 
     rows = got.get("rows") or 0
     metas = got.get("metas") or []
     srcs = got.get("srcs") or []
     cnt = got.get("cnt")
 
-    # ① 显示小/原图大的 5 张 + ③ 懒加载 1 张 + ② 背景图 1 张 = 7
-    check("收图数量（显示小原图大也收）", rows, 7)
+    # ① 5 + ③ 1 + ② 1 + ⑥ 混合 8（iframe2 / shadow1 / 伪元素1 /
+    # 网络缓存1 / poster1 / 链接1 / SVG1）= 15
+    check("收图数量（显示小原图大 + 混合通道）", rows, 15)
     check("计数文案与行数一致", str(cnt), str(rows))
 
     # ① 尺寸必须回填（不能一片「尺寸未知」）
@@ -241,6 +275,15 @@ def main():
 
     # ④ 404 坏图被剔除
     check("404 坏图未混入", any("missing" in s for s in srcs), False)
+
+    # ⑥ 混合通道：iframe / Shadow DOM / 伪元素 / 网络缓存 / poster / 链接 / SVG
+    check("iframe 图已收", any("/img/1100x700.png" in s for s in srcs), True)
+    check("Shadow DOM 图已收", any("/img/1150x750.png" in s for s in srcs), True)
+    check("伪元素背景已收", any("/img/1050x680.png" in s for s in srcs), True)
+    check("网络缓存图已收", any("/img/1300x900.png" in s for s in srcs), True)
+    check("video poster 已收", any("/img/1250x700.png" in s for s in srcs), True)
+    check("a[href] 图片已收", any("/img/1400x900.png" in s for s in srcs), True)
+    check("SVG image 已收", any("/img/1200x850.png" in s for s in srcs), True)
 
     # ⑤ 60×60 图标被挡
     check("图标 60×60 未混入", "60×60" in " ".join(metas), False)
@@ -258,6 +301,61 @@ def main():
     check("弹窗已打开", visible, True)
 
     shot(cdp, psid, os.path.join(ASSETS, "e2e-grab-modal.png"))
+
+    # ---------------- L. 保存选中 → 真实落盘（阶段三，审计 D-05/D-06） ----------------
+    # 旧实现是「逐张 sendMessage + 发送前就 markDownloaded」：
+    #   ① 没有并发池（几十张一起发，微博 CDN 直接拒）
+    #   ② 失败不回滚账本 → 第二次点「保存」被跳过，用户永远补不回来
+    #   ③ title 已带扩展名，后台又拼一次 → 落盘 xxx.jpg.jpg
+    # 现在走 vrImg.batch，这三条必须能被断言抓住。
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from vr_testenv import work_root  # noqa: E402
+    dl_root = os.path.join(work_root(), "dl", "isolated", "video-rod")
+
+    # 混合夹具清单是 15 行（5 显示小 + 1 data-src + 1 背景 + 8 新通道），全部默认勾选。
+    # 只统计「点击之后新增的图片文件」，不要求文件名含标题（标题取不到时会回退「图片」，
+    # 那是可接受的兜底，不能把它算成本用例的失败）。
+    def artifacts():
+        out = set()
+        if not os.path.isdir(dl_root):
+            return out
+        for base, _d, fs in os.walk(dl_root):
+            for n in fs:
+                if n.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+                    out.add(os.path.relpath(os.path.join(base, n), dl_root).replace("\\", "/"))
+        return out
+
+    # 前置复位：清「已下载」账本 + 隔离实例的库索引。
+    # 不清的话，同实例复跑会被去重判成「已存在，跳过」→ L1 数到 0，是假红不是回归。
+    # 两条都必须带超时兜底：SW 冷启动不回话时，awaitPromise 会挂满 ws 的 120s。
+    cdp.eval("new Promise(function(r){var d=0;"
+             "setTimeout(function(){if(!d){d=1;r(0);}},3000);"
+             "chrome.storage.local.remove('vrImgDownloaded',function(){if(!d){d=1;r(1);}});})",
+             psid)
+    cdp.eval("new Promise(function(r){var d=0;"
+             "setTimeout(function(){if(!d){d=1;r(0);}},3000);"
+             "chrome.runtime.sendMessage({Message:'vrLib.clear'},function(x){"
+             "void chrome.runtime.lastError;if(!d){d=1;r((x&&x.ok)||false);}});})", psid)
+    time.sleep(0.4)
+    before_l = artifacts()
+    # 结尾必须有 ()：漏了就只是「求出一个函数」，returnByValue 给 {}，等于没点按钮（踩过）
+    clicked = cdp.eval("(function(){var b=document.getElementById('vrImgDown');"
+                       "if(b){b.click();return 1;}return 0;})()", psid)
+    check("L0 「保存选中」按钮可点", clicked, 1)
+    new_l = set()
+    t0 = time.time()
+    while time.time() - t0 < 90:
+        new_l = artifacts() - before_l
+        if len(new_l) >= rows:
+            break
+        time.sleep(0.5)
+    check("L1 保存选中：按清行数落盘（统一批量队列）", len(new_l), rows)
+    check("L2 无双扩展名（xxx.jpg.jpg）",
+          any(re.search(r"\.(jpe?g|png|webp|gif)\.\1$", n, re.I) for n in new_l), False)
+    # 同名冲突时 downloads 会加 (1) 后缀，那是 uniquify 的正常行为，不影响序号判据
+    check("L3 文件名带序号（标题_01）",
+          bool(new_l) and all(re.search(r"_\d{2}(?: \(\d+\))?\.(?:jpe?g|png|webp|gif)$",
+                                        n, re.I) for n in new_l), True)
 
     errs = cdp.errors()
     if errs:

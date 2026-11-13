@@ -31,7 +31,11 @@ OUT_DIR = os.path.join(ROOT, 'deliverables', 'test-runs')
 SMOKE_UNITS = [
     'test-naming.js', 'test-path.js', 'test-save.js', 'test-video-quality.js',
     'test-dedupe-key.js', 'test-image-util.js', 'test-image-batch.js', 'test-live-pair.js',
-    'test-grab-scan.js',
+    'test-grab-scan.js', 'test-image-pipeline.js',
+    # 推特/微博「博主全部下载」（2026-11-13）：纯 Node、无浏览器依赖
+    'test-x-timeline.js', 'test-x-timeline-hook.js', 'test-x-bulk-profile.js',
+    # 授权链路（2026-11-13）：锁住 showDirectoryPicker 必须在任何 await 之前调用
+    'test-settings-auth.js',
 ]
 # 冒烟档的界面套件：只挑「坏了就一定不能发」的两条（最快）
 SMOKE_SUITES = 'e2e-sw,dedup'

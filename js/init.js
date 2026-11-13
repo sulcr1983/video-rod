@@ -474,3 +474,12 @@ function wildcardToRegex(urlPattern) {
     // 创建正则表达式，确保匹配整个URL
     return new RegExp(`^${regexPattern}$`, 'i'); // 忽略大小写
 }
+
+/* 图片管线 v2 的 SW 补丁（阶段二/四/六）：
+ * init.js 在 background.js 顶层通过 importScripts 同步加载，所以这里也同步加载补丁；
+ * 补丁自身用 setTimeout 等 vrImgBatch/vrImgNetAdd 就绪后再包装，避免改 background.js。
+ * 页面上下文（popup/options/sidepanel）没有 importScripts，直接跳过。 */
+if (typeof document === 'undefined' && typeof importScripts === 'function') {
+    try { importScripts('/js/image-pipeline-core.js'); } catch (e) { /* 纯逻辑模块缺失时保留补丁自带实现 */ }
+    try { importScripts('/js/image-pipeline-patch.js'); } catch (e) { /* 加载失败保留旧管线 */ }
+}

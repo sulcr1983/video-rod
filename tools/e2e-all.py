@@ -46,6 +46,10 @@ SUITES = [
     ("e2e-buttons",  [sys.executable, "tools/e2e-buttons.py"],              False, "资源库 60 按钮 + 设置页白名单"),
     ("e2e-popup",    [sys.executable, "tools/e2e-popup.py"],                False, "popup 列表/下载（内置本地站）"),
     ("e2e-grab",     [sys.executable, "tools/e2e-grab.py"],                 False, "抓图弹窗（显示小原图大/懒加载/背景/坏图）"),
+    ('cdp-image-test', [sys.executable, "tools/cdp-image-test.py"],         False, "图片单张/候选回退（隔离实例）"),
+    ("cdp-image-batch",[sys.executable, "tools/cdp-image-batch-test.py"],   False, "图片批量落盘/去重/取消（隔离实例）"),
+    ("cdp-image-panel",[sys.executable, "tools/cdp-image-panel-test.py"],   False, "图片面板/勾选/批量（隔离实例）"),
+    ("cdp-image-album",[sys.executable, "tools/cdp-image-album-test.py"],   False, "图集扫描/翻页（隔离实例）"),
     ("e2e-overlay",  [sys.executable, "tools/e2e-overlay.py"],              False, "页面悬浮按钮与视频页抑制"),
     ("qa-preview-page", [sys.executable, "tools/qa-preview-page.py"],       False, "preview 独立窗口页（script 加载/按需库，2026-11-09 补盲区）"),
 ]
@@ -341,6 +345,8 @@ def reset_ext_settings(port):
             "var s=Object.assign({},o.vrLibSettings||{});"
             "s.imgHover=true; s.imgBatch=true; s.imgTierMin=0;"
             "s.imgMinSize=100; s.imgBgScan=true;"
+            "s.imgPipelineV2=true; s.imgSniff=true; s.imgRequireFsa=false;"
+            "s.imgConcurrency=2;"
             "chrome.storage.local.set({vrLibSettings:s},function(){r(1)});});})", sid)
     except Exception:
         pass
@@ -380,6 +386,14 @@ def run_suite(name, cmd, is_live, desc, port, ext, timeout):
     # 统一要求 Python 子进程输出 UTF-8，报告和日志才可读。
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
+    # 套件超时被 kill 时，块缓冲会吞掉所有输出；无缓冲才能看到卡在哪条断言。
+    env["PYTHONUNBUFFERED"] = "1"
+    # 图片套件的 Cdp() 默认读 VR_CDP（tools/cdp_client.py）；e2e-all 以前只传 --port，
+    # 四个 cdp-image-* 会连到默认 9222 → 套件“没跑起来”。这里统一注入。
+    env["VR_CDP"] = "http://127.0.0.1:%d" % port
+    # 批量/面板套件会清理并断言落盘目录；隔离实例的下载目录在 work/dl/isolated，
+    # 绝不能默认指向真实 Downloads（脚本默认值已同步改到工作区）。
+    env["VR_DL_DIR"] = os.path.join(work_root(), "dl", "isolated", "video-rod")
     try:
         p = subprocess.run(full, cwd=ROOT, capture_output=True, text=True,
                            timeout=timeout, encoding="utf-8", errors="replace", env=env)

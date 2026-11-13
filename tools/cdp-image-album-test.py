@@ -181,6 +181,12 @@ def shot(cdp, sid, name):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=0, help="CDP 调试端口（e2e-all 注入）")
+    a = ap.parse_args()
+    if a.port:
+        os.environ["VR_CDP"] = "http://127.0.0.1:%d" % a.port
     cdp = Cdp()
     ext_id, _ = find_ext_id(cdp)
     check("A1 扩展已加载", bool(ext_id), True)
@@ -270,11 +276,15 @@ def main():
     print(f"      中途进度：第 {grow.get('page')}/{grow.get('maxPages')} 屏 · "
           f"{grow.get('collected')} 张")
 
-    # 递增而不是「一步到位」：取两次快照比较
+    # 前提变更（2026-11-13，阶段一统一发现层）：pickUrl 会把 data-src 的真地址
+    # 直接取到，懒加载夹具在第 1~2 屏就收齐 24 张 —— 「张数必须边滚边涨」不再成立。
+    # 保留的正向不变量：已收集数不掉、且仍在增长或已收齐到夹具上限。
+    # 反证：采集器坏（collected 停在 0 或回退）→ B7 红；去重坏（超过 24）→ 由 D3 拦。
     s1 = album_progress(cdp, osid, task1) or {}
     time.sleep(1.2)
     s2 = album_progress(cdp, osid, task1) or {}
-    check("B7 收集数单调递增", s2.get("collected", 0) > s1.get("collected", 0), True)
+    c1, c2 = int(s1.get("collected", 0) or 0), int(s2.get("collected", 0) or 0)
+    check("B7 收集数不回退且已累积（≥3）", (c2 >= c1) and c2 >= 3, True)
     check("B8 屏数单调递增", s2.get("page", 0) > s1.get("page", 0), True)
 
     st = album_stop(cdp, osid, task1)
@@ -326,25 +336,35 @@ def main():
         c = re.search(r"已收集\s*(\d+)\s*张", s.get("msg", ""))
         return (int(m.group(1)) if m else -1, int(c.group(1)) if c else -1)
 
+    # C6：UI 必须把张数与屏数都显示出来（与协议层同源）。
+    # 「张数递增」这个旧前提同样被统一发现层改掉，改成「显示得出 ≥3 张且页码在走」。
     t0 = time.time()
     first = None
-    last = None
-    while time.time() - t0 < 12:
+    seen_col = 0
+    seen_pg = 0
+    while time.time() - t0 < 20:
         cur = album_ui(cdp, sid)
         pg, col = nums(cur)
+        seen_col = max(seen_col, col)
+        seen_pg = max(seen_pg, pg)
         if first is None and col >= 1:
             first = (pg, col)
-        if first and col > first[1]:
-            last = (pg, col)
+        if seen_col >= 3 and seen_pg >= 1:
             break
         time.sleep(0.25)
-    check("C6 UI 进度数字递增", bool(first and last and last[1] > first[1]), True)
-    if first and last:
-        print(f"      UI 进度：{first} → {last}")
+    check("C6 UI 进度显示张数与屏数（≥3 张 / ≥1 屏）",
+          (seen_col >= 3) and (seen_pg >= 1), True)
+    print(f"      UI 进度：{first} → 累计 {seen_col} 张 / {seen_pg} 屏")
 
+    # C7：点停止后要进入终态。一次就收齐时扫描可能先自己跑完，
+    # 「扫描完成」同样是正确终态；真正要拦的是「点了停止却没停」。
     click_album_btn(cdp, sid, "stop")
-    st, _ = wait_album_ui(cdp, sid, lambda s: "已停止" in s.get("msg", ""), 10.0)
-    check("C7 点停止后文案「已停止」", "已停止" in st.get("msg", ""), True)
+    st, _ = wait_album_ui(
+        cdp, sid,
+        lambda s: ("已停止" in s.get("msg", "")) or ("扫描完成" in s.get("msg", "")), 10.0)
+    msg_c7 = st.get("msg", "")
+    check("C7 点停止后进入终态（已停止／扫描完成）",
+          ("已停止" in msg_c7) or ("扫描完成" in msg_c7), True)
     check("C8 停止后出现下载按钮", st.get("dlOn"), True)
     check("C9 下载按钮带张数", bool(re.match(r"下载这\s*\d+\s*张", st.get("dlText", ""))), True)
     check("C10 停止后扫描按钮恢复为「重新扫描」", st.get("againOn"), True)
@@ -372,6 +392,12 @@ def main():
 
     # 走一遍「交批量下载」：只验链路通（真下载由 cdp-image-batch-test.py 覆盖）。
     # 把单批上限压到 1，避免测试在真实下载目录里留 24 个文件。
+    # 前置必须清「已下载账本 + 库索引」：上一跑真下过那张图后，本次会被正确判重复
+    # 并跳过 → 没有新下载记录 → D6 假红（2026-11-13 实测第二轮复现）。
+    ev(cdp, osid, "new Promise(r=>chrome.storage.local.remove('vrImgDownloaded',()=>r(1)))")
+    ev(cdp, osid, """new Promise(r=>chrome.runtime.sendMessage(
+      {Message:'vrLib.clear', action:'vrLib.clear'}, x => r((x&&x.ok)||false)))""")
+    time.sleep(0.8)
     set_settings(cdp, osid, {"imgBatchLimit": 1})
     t0 = time.time()
     while time.time() - t0 < 5:

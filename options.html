@@ -117,7 +117,10 @@
 
         <div class="loc-auth" id="vrLibAuthBox">
           <button type="button" id="vrLibAuthDefault" class="button2">授权写入</button>
-          <span id="vrLibAuthMsg" class="explain">选过目录但浏览器收回权限时，点这里恢复，不用重选</span>
+          <!-- 2026-11-13：浏览器收回权限时走这里恢复，不弹目录选择器。
+               只在「句柄还在但权限变成 prompt」时由 refreshAuthState() 显示。 -->
+          <button type="button" id="vrLibAuthRestore" class="button2" hidden>恢复上次授权</button>
+          <span id="vrLibAuthMsg" class="explain">没授权过就点「授权写入」选文件夹；之前选过、权限被收回时点「恢复上次授权」</span>
         </div>
 
         <div class="loc-custom" id="vrLibCustomBox" hidden>

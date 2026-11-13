@@ -1,7 +1,7 @@
 # 文档索引与可信度分级
 
-> 更新：2026-11-08（晚间）｜ 共 **79 份**文档（新增 `LIBRARY-PERSISTENCE-SPEC.md`、
-> `LIBRARY-PERSISTENCE-REQUIREMENTS.md`、`LIBRARY-SELF-CONTAINED-PLAN.md`、`ARTIFACT-MANAGEMENT.md`）
+> 更新：2026-11-13 ｜ 共 **81 份**文档（本次新增 `IMAGE-PIPELINE-REDESIGN.md`、
+> `TEST-PLAN-IMAGE-PIPELINE.md`；审计报告在 `deliverables/reviews/2026-11-13-图片批量失败审计.md`）
 > 用途：接手时先看这份，知道**哪份能信、哪份只能当历史看**。
 
 ---
@@ -97,7 +97,11 @@
 | `STYLE-OPTIONS.md` | 界面风格四方向 |
 | `AUDIT-I5-WEIBO-PLAN.md` | 微博缺陷修复方案 |
 | `WEIBO-ALBUM-PLAN.md` | 微博相册备份方案（含「叫小微」源码拆解与平台实测；ADR-056） |
-| `COMPETITOR-EXTENSIONS.md` | **竞品扩展拆解总账**：Tubly/DownXVideo/Chrono/Video Downloader Plus/Pro/笃笃，逐条标注「抄/不抄」与落点 |
+| `COMPETITOR-EXTENSIONS.md` | **竞品扩展拆解总账**：Tubly/DownXVideo/Chrono/Video Downloader Plus/Pro/笃笃 + **ImageAssistant 1.70.7**（网络缓存/全 frame/规则表），逐条标注「抄/不抄」与落点 |
+| `COMPETITOR-PLUCKER.md` | **Plucker XBD 5.9 逐层拆解**：`XBD__*` 消息协议表、GraphQL 拦截点与时间线解析（四级媒体回退/最高码率）、右侧面板、命名模板与目录、下载队列；含复用矩阵、≈4 天工作量与真机定性结论（ADR-084） |
+| `HLS-SITE-DIAGNOSIS.md` | **HLS 站点下载诊断**：xx.knit.bid 实测（嗅探/取流/悬浮键三段分别验证），定位真实断点 |
+| `IMAGE-PIPELINE-REDESIGN.md` | **图片管线 v2 设计**：发现层/执行层各一份、统一 item/消息/失败码、FSA 强制、灰度与验收（ADR-080/081/082） |
+| `TEST-PLAN-IMAGE-PIPELINE.md` | **图片管线 v2 测试方案**：隔离实例批量、登录态只读、夹具/断言/反证/门禁接入 |
 | `VIDEO-XHS-ENHANCEMENT.md` | **视频清晰度 + 小红书增强技术实现**：排序规则、HLS/DASH 解析、SSR 快路径、Range 分段、实测数据 |
 | `IMAGE-AUTO-INDEX-RESEARCH.md` | 自动归类调研 |
 | `READINESS-20261104.md` | 就绪度评估 |

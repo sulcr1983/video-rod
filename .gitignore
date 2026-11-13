@@ -5,6 +5,11 @@ dist/
 *.zip
 *.pem
 /.workbuddy/memory
+# 2026-11-13：会话私有目录整体忽略。原来只写了 memory/，
+# 导致 audit-work/ 一直以未跟踪状态挂在 git status 里，容易被误提交。
+/.workbuddy/
+# 一次性探针脚本（probe-*.py 之类），属过程产物，见 ARTIFACT-MANAGEMENT.md §3.4
+/work-tmp/
 
 # 敏感文件（含 GitHub token 等凭据，严禁提交）
 .env

@@ -314,6 +314,20 @@
             }
             sendAddMedia(event.data);
         }
+        if (event.data.action == "vrNetImage") {
+            /* MAIN world 的 net-sniff 挖到的图片地址（ADR-082）：
+             * 滚过去/已从 DOM 移除/Image.src 动态创建的图只能从这一层补。
+             * 不交给 addMedia，避免把整页图片塞进媒体嗅探列表。 */
+            const urls = event.data.urls;
+            if (!urls || !urls.length) { return; }
+            safeSend({
+                Message: "vrImg.netSeen",
+                action: "vrImg.netSeen",
+                urls: urls.map(function (u) { return { url: String(u || "") }; }),
+                frameUrl: location.href
+            });
+            return;
+        }
         if (event.data.action == "vrNetMedia") {
             /* 页面侧（MAIN world 的 net-sniff.js）从接口 JSON 里挖到的媒体地址。
                抖音这类站的播放地址不在网络请求里，只在接口响应里，靠这一步才能拿到。

@@ -388,8 +388,73 @@
         }
     }
 
+    let sizeFillAt = 0;
+    let scanSeq = 0;
+
+    /** 只认最后一次扫描的结果：懒加载会反复触发重扫，慢的那次不能盖掉新的。
+     *  已勾选的不丢（只丢已消失的条目），否则用户勾到一半列表刷新就没了。 */
+    function applyScanResult(r, keep) {
+        const next = (r && Array.isArray(r.items)) ? r.items : [];
+        if (!next.length && r && !r.__noUtil) { return; }   // 异常空结果不覆盖已有清单
+        items = next.map(it => ({
+            url: it.url,
+            w: Number(it.w) || 0,
+            h: Number(it.h) || 0,
+            bg: !!it.bg,
+            source: it.source || 'dom',
+            candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url]
+        }));
+        const valid = new Set(items.map(it => it.url));
+        selected = new Set(Array.from(keep || []).filter(u => valid.has(u)));
+        applyCount(items.length);
+        if (open) { renderAll(); updateSel(); }
+    }
+
+    /** 面板清单改走统一发现层（阶段三，B-83/B-85）：与侧栏 / popup / 图集同一套通道。
+     *  原来面板只扫 <img> + 背景，同页面比侧栏少一大截，用户看到的就是「嗅探不准」。 */
+    function scanViaService() {
+        const S = self.VRImageScanService;
+        if (!S || typeof S.collect !== 'function') { return false; }
+        const seq = ++scanSeq;
+        const keep = selected;
+        Promise.resolve()
+            .then(() => S.collect({
+                minSize: settings.imgMinSize || U.MIN_SIZE,
+                bgScan: settings.imgBgScan !== false,
+                srcScan: true,
+                netScan: true,
+                max: 800
+            }))
+            .then(r => { if (seq === scanSeq) { applyScanResult(r, keep); } })
+            .catch(() => { /* 单次扫描失败保留旧清单 */ });
+        return true;
+    }
+
+    function applyCount(n) {
+        if (!floatBtn) { return; }
+        /* 2026-11-13 苏哥：「右边挂个悬浮的下载按钮，打开就是页面，里面可以下载图片、视频一起的」。
+         * 原逻辑 `if (!n || floatOff())` —— 页面上没有图时浮标整个消失，
+         * 于是「视频页根本看不到入口」。现在改成：只要面板开关没关就常驻，
+         * 数量为 0 时显示「媒体」而不是藏起来。 */
+        if (floatOff()) {
+            floatBtn.classList.remove('on');
+            return;
+        }
+        if (!n) {
+            if (floatNum) { floatNum.textContent = ''; }
+            floatBtn.classList.add('on');
+            floatBtn.setAttribute('aria-label', '打开本页媒体清单（图片 + 视频）');
+            floatBtn.title = '本页媒体清单（图片 + 视频）';
+            return;
+        }
+        floatNum.textContent = n > 99 ? '99+' : String(n);
+        floatBtn.classList.add('on');
+        floatBtn.setAttribute('aria-label', '本页 ' + n + ' 张图片，点击查看清单');
+    }
+
     function refreshCount() {
         if (!floatBtn || !enabled) { return; }
+        const hasService = scanViaService();
         let n = 0;
         try {
             const ms = settings.imgMinSize || U.MIN_SIZE;
@@ -403,6 +468,9 @@
             //   minShow            → 判**显示尺寸**，只用来挡图标/按钮，用固定的 48
             // 早先图省事把 minShow 也传成 ms，结果 imgMinSize=1200 时
             // 连「原图 1200 但显示 160px」的图都被挡掉，面板直接空（踩过）。
+            //
+            // 统一发现层可用时这段只作「浮标先别空」的同步快照，
+            // 真正的清单以 service 异步结果为准（通道更全：Shadow/源码/网络）。
             items = U.scanImages(document, {
                 minWidth: ms, minHeight: ms, minShow: U.PANEL_MIN_SHOW, dedupe: true
             });
@@ -424,14 +492,41 @@
             }
             n = items.length;
         } catch (e) { n = 0; }
-        if (!n || floatOff()) {
-            floatBtn.classList.remove('on');
-            return;
+        if (hasService) { n = Math.max(n, items.length); }
+        applyCount(n);
+        /* 统一发现层的异步结果马上会覆盖渲染，这里不抢跑；
+         * 只有回退到内联 scanImages 时才需要立即画。 */
+        if (open && !hasService) { renderAll(); }
+
+        /* 尺寸回填（ADR-080）：service 已在页面上下文并发回填过，可用时不再打
+         * 第二轮请求；只有回退路径才补这一次。5s 内不重复跑，
+         * 避免 MutationObserver 每次触发都打一轮请求。 */
+        if (!hasService) {
+            try {
+                const now = Date.now();
+                if (now - sizeFillAt > 5000) {
+                    const miss = items.filter(x => !(x.w > 0 && x.h > 0)).map(x => x.url);
+                    if (miss.length && U.fillSizesV2) {
+                        sizeFillAt = now;
+                        U.fillSizesV2(miss, {
+                            max: 120, concurrency: 8, timeout: 2500, retry: 1, budget: 5000
+                        }).then(got => {
+                            let changed = false;
+                            for (const it of items) {
+                                if (it.w > 0 && it.h > 0) { continue; }
+                                const sz = got[it.url];
+                                if (sz && sz.w > 0 && sz.h > 0) {
+                                    it.w = sz.w;
+                                    it.h = sz.h;
+                                    changed = true;
+                                }
+                            }
+                            if (changed && open) { renderAll(); }
+                        });
+                    }
+                }
+            } catch (eFill) { /* 回填失败保持未知 */ }
         }
-        floatNum.textContent = n > 99 ? '99+' : String(n);
-        floatBtn.classList.add('on');
-        floatBtn.setAttribute('aria-label', '本页 ' + n + ' 张图片，点击查看清单');
-        if (open) { renderAll(); }
     }
 
     function scheduleCount() {
@@ -615,15 +710,15 @@
     function itemsForUrls(urls) {
         const want = new Set(urls);
         const pageTitle = String(document.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        /* 序号用条目在清单里的位置：同页多张图共用页面标题，
+         * 不带序号会得到一堆同名文件（与侧栏/悬停同一口径，审计 D-06）。 */
         return items
-            .filter(it => want.has(it.url))
-            .map(it => ({
-                /* 取候选链里最像原图的那条，不是页面显示的预览版。
-                 * 2026-11-08 苏哥报「嗅探不准确」：单张下载走 orig、批量走 url，
-                 * 同一张图两条路径落盘尺寸不同。 */
-                url: U.bestCandidate(it.candidates, it.url),
-                candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url],
-                title: pageTitle
+            .map((it, i) => ({ it, i }))
+            .filter(x => want.has(x.it.url))
+            .map(x => ({
+                url: U.bestCandidate(x.it.candidates, x.it.url),
+                candidates: (x.it.candidates && x.it.candidates.length) ? x.it.candidates : [x.it.url],
+                title: pageTitle + '_' + String(x.i + 1).padStart(2, '0')
             }));
     }
 
@@ -631,17 +726,37 @@
         if (!selected.size) { return; }
         const B = self.VRImgBridge;
         if (!B || !B.download) { return; }
-        const payload = itemsForUrls(Array.from(selected));
+        const picked = Array.from(selected);
+        const payload = itemsForUrls(picked);
         if (!payload.length) { return; }
         dlBtn.disabled = true;
         dlBtn.textContent = '下载中…';
-        const urls = payload.map(p => p.url);
         B.download(payload).then(res => {
-            if (res && res.ok) {
-                for (const u of urls) {
-                    const cell = grid.querySelector('.vr-cell[data-url="' + cssEsc(u) + '"]');
-                    if (cell) { cell.classList.add('done'); }
+            /* cell 的 data-url 是页面显示地址，payload 里是候选链首选（可能是原图地址），
+             * 两者不相等 —— 早先拿 payload 的 url 去找 cell 永远找不到，
+             * 「下载完没有任何反馈」就是这么来的。现在按清单条目逐格判定。 */
+            const bad = Object.create(null);
+            const fails = (res && Array.isArray(res.failures)) ? res.failures : [];
+            for (const f of fails) { if (f && f.url) { bad[String(f.url)] = 1; } }
+            for (const it of items) {
+                if (!picked.includes(it.url)) { continue; }
+                const cell = grid.querySelector('.vr-cell[data-url="' + cssEsc(it.url) + '"]');
+                if (!cell) { continue; }
+                const cands = it.candidates || [];
+                const hitBad = !!bad[it.url] || cands.some(c => bad[c]);
+                if (hitBad) {
+                    cell.style.opacity = '.4';
+                    cell.title = '下载失败，可再次勾选重试';
+                    selected.delete(it.url);
+                } else {
+                    cell.style.opacity = '';
+                    cell.classList.add('done');
                 }
+            }
+            if (res && (res.needGrant || res.code === 'IMG_E_FSA_PERM')) {
+                selCountEl.innerHTML = '<b style="color:#f87171">需先授权资源库目录</b>';
+            } else if (res && Number(res.fail)) {
+                selCountEl.innerHTML = '失败 <b>' + Number(res.fail) + '</b> 张（已取消勾选，可重试）';
             }
             updateSel();
         });

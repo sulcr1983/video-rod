@@ -68,6 +68,22 @@
      */
     async function collectForSw(min) {
         const m = Math.max(16, Number(min) || U.MIN_SIZE);
+
+        /* 统一发现层（阶段三，B-83/B-85）：图集与侧栏 / popup 共用 VRImageScanService，
+         * 不再各写一套「img + 背景 + 源码」编排 —— 图集此前无条件把源码通道的
+         * 徽章/logo 收进来，就是「收集数超过页面有效图数」的根因。
+         * service 缺失（扩展更新前打开的老标签页）时才退回下面的内联实现。 */
+        const S = self.VRImageScanService;
+        if (S && typeof S.collect === 'function') {
+            const r = await S.collect({ minSize: m, bgScan: true, srcScan: true, max: 1000 });
+            const items = (r && Array.isArray(r.items)) ? r.items : [];
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (it && !(it.candidates && it.candidates.length)) { it.candidates = [it.url]; }
+            }
+            return items;
+        }
+
         const out = [];
         const have = Object.create(null);
         const push = (it) => {
@@ -116,7 +132,9 @@
         try {
             const miss = out.filter(x => !(x.w > 0 && x.h > 0)).map(x => x.url);
             if (miss.length && typeof U.fillSizes === 'function') {
-                const got = await U.fillSizes(miss.slice(0, 60), 2500);
+                const got = await U.fillSizesV2(miss, {
+                    max: 160, concurrency: 8, timeout: 2500, retry: 1, budget: 5000
+                });
                 out.forEach(x => {
                     if (x.w > 0 && x.h > 0) { return; }
                     const sz = got[x.url];
@@ -296,18 +314,27 @@
             limit = Math.max(1, Math.min(2000, Number(s.imgBatchLimit) || 200));
         } catch (e) { /* 读不到就用默认上限 */ }
         const pageTitle = String(document.title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-        const payload = list.slice(0, limit).map(it => ({
+        /* 序号必须带：图集收集到的图常常共用同一个页面标题，
+         * 不带序号会得到一堆同名文件（与侧栏/悬停同一命名口径）。 */
+        const payload = list.slice(0, limit).map((it, i) => ({
             url: it.url,
             candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url],
-            title: pageTitle
+            title: pageTitle + '_' + String(i + 1).padStart(2, '0')
         }));
         const B = self.VRImgBridge;
         if (!B || !B.download) { toast('批量下载模块未就绪'); return; }
         if (list.length > limit) { toast('本次只下前 ' + limit + ' 张（共收集 ' + list.length + ' 张）'); }
         const out = await B.download(payload);
-        if (out && out.ok) {
-            toast('已提交 ' + (out.succeeded || 0) + ' 张' + (out.fail ? '，失败 ' + out.fail : ''));
+        /* 真实回执（阶段二口径）：没有回执 ≠ 成功；FSA 未授权要单独说清楚。 */
+        if (!out) { toast('批量下载没有响应（扩展后台可能已休眠）'); return; }
+        if (out.needGrant || out.code === 'IMG_E_FSA_PERM') {
+            toast('批量保存需要先授权资源库目录');
+            return;
         }
+        const fresh = Math.max(0, (out.succeeded || 0) - (out.skipped || 0));
+        toast('已保存 ' + fresh + ' 张'
+            + (out.skipped ? '，已存在跳过 ' + out.skipped + ' 张' : '')
+            + (out.fail ? '，失败 ' + out.fail + ' 张' : ''));
     }
 
     function toast(text) {

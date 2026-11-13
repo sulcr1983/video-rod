@@ -276,7 +276,7 @@
                     hintUnknown = items.length;
                 }
             }
-            autoSelect();
+            pruneSelection();
             renderAll();
             if (tierResetTo) {
                 setFootNote('本页没有 ≥' + tierResetTo + ' 的图，已切回「全部」');
@@ -352,10 +352,15 @@
     async function fetchVideoItems() {
         const r = await send({ Message: 'vrVideoOptions', tabId: tabId, frameId: 0 });
         const opts = (r && r.ok && Array.isArray(r.options)) ? r.options : [];
+        /* 同一页所有档位共用一个封面（video.poster / og:image） */
+        const cover = String((r && r.cover) || '');
         const out = [];
         for (let i = 0; i < opts.length; i++) {
             const o = opts[i] || {};
-            if (!o.url) { continue; }
+            /* pending（只有封面、还没有直链）：也要进清单 —— X 这类站点
+             * 不点播放就没有可下地址，但用户至少应该看见「这里有个视频」。
+             * 完全没图没链的才跳过。 */
+            if (!o.url && !o.cover) { continue; }
             const ext = String(o.ext || '').toLowerCase();
             const isAudio = /^(mp3|m4a|aac|flac|wav|ogg|opus)$/i.test(ext);
             const k = 'v:' + (o.id != null ? o.id : keyOf(o.url));
@@ -373,7 +378,12 @@
                 vlabel: o.label || '',
                 vnote: o.note || '',
                 vsize: Number(o.size) || 0,
-                optionId: o.id
+                optionId: o.id,
+                /* 封面：优先用条目自带的（DOM 兜底收来的），否则用页面级封面
+                 * （2026-11-13 苏哥「连视频预览都做不到」）。没有仍走 ▶/♪ 占位。 */
+                poster: isAudio ? '' : String(o.cover || cover || ''),
+                /* 只有封面、暂无直链：面板标「先点播放」，点击时提示而不是静默失败 */
+                pending: !!o.pending
             });
         }
         return out;
@@ -506,16 +516,23 @@
         }).join('');
     }
 
-    function autoSelect() {
-        selected.clear();
+    /**
+     * 剔除失效的选中项：已被移除、或已经下载完成的图不再保留在选中集里。
+     *
+     * 历史坑（2026-11-13 苏哥截图）：这里原名 autoSelect()，会**把当前筛选下的
+     * 所有条目自动加入选中集** —— 打开侧栏/切档位/搜索一下，整屏就全被框起来
+     * （「已选 47/49」但用户从没点过全选）。勾选是用户的决定，程序不该替他做主，
+     * 所以现在只做「清理」，新增只能来自用户点格子 / 点全选。
+     */
+    function pruneSelection() {
+        const alive = new Set();
         for (const it of items) {
             if (it.done) { continue; }
-            /* 与 visibleItems 同口径：看不见的不该被勾上，否则「已选 10 张」里有 8 张
-             * 根本不在当前筛选结果里，用户会以为程序乱选。 */
-            if (!inType(it)) { continue; }
-            if (!inTierFor(it, tierMin)) { continue; }
-            if (!matchKeyword(it, keyword)) { continue; }
-            selected.add(it.key);
+            alive.add(it.key);
+        }
+        if (!selected.size) { return; }
+        for (const k of Array.from(selected)) {
+            if (!alive.has(k)) { selected.delete(k); }
         }
     }
 
@@ -598,13 +615,34 @@
          * 用户会以为「视频嗅探失败了」。 */
         const kindNow = typeOf(it);
         if (kindNow === TYPE_VIDEO || kindNow === TYPE_AUDIO) {
-            const ph = document.createElement('div');
-            ph.className = 'ip-media-ph' + (kindNow === TYPE_AUDIO ? ' audio' : '');
-            ph.textContent = kindNow === TYPE_AUDIO ? '♪' : '▶';
-            div.appendChild(ph);
+            /* 有封面就画真图（2026-11-13 苏哥：「连视频预览都做不到」）——
+             * 视频档位的 poster 由 background 的 vrVideoOptions 从页面 <video> 取。
+             * 取不到才退回 ▶/♪ 占位，绝不假装有图。 */
+            const poster = String(it.poster || '');
+            if (poster && kindNow === TYPE_VIDEO) {
+                const cov = document.createElement('img');
+                cov.className = 'ip-thumb';
+                cov.loading = 'lazy';
+                cov.referrerPolicy = 'no-referrer';
+                cov.src = poster;
+                cov.alt = '';
+                cov.addEventListener('error', () => { div.classList.add('loadfail'); });
+                div.appendChild(cov);
+                const play = document.createElement('span');
+                play.className = 'ip-play';
+                play.textContent = '▶';
+                div.appendChild(play);
+            } else {
+                const ph = document.createElement('div');
+                ph.className = 'ip-media-ph' + (kindNow === TYPE_AUDIO ? ' audio' : '');
+                ph.textContent = kindNow === TYPE_AUDIO ? '♪' : '▶';
+                div.appendChild(ph);
+            }
             /* 视频条目的「打开」没有意义（预览层只放图），改成直接下载这一条 */
             div.setAttribute('data-act', 'pick');
-            div.title = (it.vlabel || '') + (it.vnote ? ' · ' + it.vnote : '');
+            div.title = it.pending
+                ? '这个视频还没播放过，暂无可下地址 · 先在页面上点一下播放再「重新探测」'
+                : ((it.vlabel || '') + (it.vnote ? ' · ' + it.vnote : ''));
         } else {
             const img = document.createElement('img');
             img.className = 'ip-thumb';
@@ -806,7 +844,7 @@
             const t = b.getAttribute('data-type');
             if (!t) { return; }
             typeFilter = t;
-            autoSelect();
+            pruneSelection();
             renderAll();
         });
     }
@@ -824,7 +862,7 @@
         /* 「未知」档的说明写在档位行里（见 renderTiers 的 ip-tier-note），
          * 不能写 setFootNote —— 那会覆盖底部的「已选 N」。 */
         // 改档位等于改「什么算值得下」，重算默认勾选
-        autoSelect();
+        pruneSelection();
         renderAll();
     });
 
@@ -851,7 +889,7 @@
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
             keyword = el.search.value;
-            autoSelect();
+            pruneSelection();
             renderAll();
         }, 150);
     });
@@ -1100,7 +1138,7 @@
             if (!imgList.length) {
                 running = false;
                 el.prog.hidden = true;
-                autoSelect();
+                pruneSelection();
                 renderAll();
                 el.sum.innerHTML = '已保存 <b>' + mediaOk + '</b> 个音视频' +
                     (mediaFail ? '，失败 <b style="color:var(--danger)">' + mediaFail + '</b> 个' : '');
@@ -1160,14 +1198,14 @@
                 if (lastFailedItems.indexOf(it) >= 0) { continue; }
                 downloaded[it.key] = 1; it.done = true;
             }
-            autoSelect();
+            pruneSelection();
             renderAll();
             el.sum.innerHTML = '完成 <b>' + (fresh + mediaOk) + '</b> 个，失败 <b style="color:var(--danger)">' +
                 (out.fail + mediaFail) + '</b> 个' + (out.failures[0] ? '（' + escText(out.failures[0].message || out.failures[0].code) + '）' : '');
             setRetryUi(lastFailedItems.length > 0);
         } else {
             for (const it of imgList) { downloaded[it.key] = 1; it.done = true; }
-            autoSelect();
+            pruneSelection();
             renderAll();
             el.sum.innerHTML = '已保存 <b>' + (fresh + mediaOk) + '</b> 个' +
                 (out.skipped ? '，已存在跳过 <b>' + out.skipped + '</b> 张' : '');
@@ -1546,7 +1584,7 @@
                 done: !!(downloaded[key] || downloaded[url])
             });
         }
-        autoSelect();
+        pruneSelection();
         renderAll();
     }
 

@@ -30,6 +30,28 @@
     const DONE_HIDE_MS = 3000;
     const PROGRESS_TIMEOUT = 60000;   // 60s 无进度视为中断
 
+    /** 把后台批量回执归一成 UI 能直接用的真实结果（失败不假绿）。 */
+    function normalizeOut(res, total) {
+        const C = self.VRImgPipelineCore;
+        if (C && typeof C.normalizeBatchResult === 'function') {
+            return C.normalizeBatchResult(res, total);
+        }
+        const r = res || {};
+        const hard = r.ok === false || !!r.code || !!r.needGrant;
+        return {
+            ok: !hard && !Number(r.fail),
+            succeeded: Number(r.succeeded) || 0,
+            fail: Number(r.fail) || (hard ? total : 0),
+            skipped: Number(r.skipped) || 0,
+            failures: Array.isArray(r.failures) ? r.failures : [],
+            paths: Array.isArray(r.paths) ? r.paths : [],
+            canceled: !!r.canceled,
+            needGrant: !!r.needGrant,
+            code: String(r.code || ''),
+            message: String(r.message || '')
+        };
+    }
+
     let enabled = true;
     let host = null;
     let shadow = null;
@@ -248,7 +270,12 @@
             return countCache.n;
         }
         try {
-            const items = U.scanImages(document, { minWidth: U.MIN_SIZE, minHeight: U.MIN_SIZE });
+            const items = U.scanImages(document, {
+                minWidth: U.MIN_SIZE,
+                minHeight: U.MIN_SIZE,
+                minShow: U.PANEL_MIN_SHOW,
+                dedupe: true
+            });
             cachedCount = items.length;
             countCache = { n: cachedCount, at: now };
             return cachedCount;
@@ -453,30 +480,26 @@
                 }, res => {
                     const myBatch = batch;
                     const settle = out => {
+                        const realOk = !!out.ok && (out.fail === 0);
                         if (state === 'running' || state === 'canceling') {
                             batch.ok = out.succeeded;
                             batch.fail = out.fail;
                             batch.skipped = out.skipped || batch.skipped || 0;
                             batch.done = out.succeeded + out.fail;
-                            batch.failures = out.failures;
+                            batch.failures = out.failures || [];
                             state = out.canceled ? 'canceled' : 'done';
                             if (o.showBar !== false) { renderProgress(); hideProgressLater(); }
                         }
+                        out.ok = realOk;
                         if (typeof o.onDone === 'function') { o.onDone(out, myBatch); }
                         resolve(out);
                     };
-                    if (res && (typeof res.succeeded === 'number' || typeof res.ok === 'number')) {
-                        settle({
-                            ok: true,
-                            succeeded: typeof res.succeeded === 'number' ? res.succeeded : res.ok,
-                            fail: res.fail || 0,
-                            /* skipped 必须回传：调用方（抖音图文浮层）靠它区分
-                             * 「真下了 N 张」和「N 张早就存在」，漏了就会把全跳过
-                             * 显示成「已下载 15 张」——用户以为点了没反应（2026-11-09 实报）。 */
-                            skipped: res.skipped || 0,
-                            canceled: !!res.canceled,
-                            failures: res.failures || []
-                        });
+                    if (res && (typeof res.succeeded === 'number' || typeof res.ok === 'number'
+                        || res.code || res.needGrant)) {
+                        /* 用 normalizeOut 归一：FSA 未授权这类「没有 succeeded 字段的硬失败」
+                         * 也要被识别（否则掉进下面的 waitProgress，误判成「其实下完了」）。
+                         * skipped 仍带回：抖音图文浮层靠它区分「真下了 N 张」和「N 张早就存在」。 */
+                        settle(normalizeOut(res, list.length));
                         return;
                     }
                     // 长连接回执丢了 ≠ 下载失败。批量是长任务，SW 通道可能先断；
@@ -635,4 +658,37 @@
 
     // 数量变化时通知悬停条（图片懒加载会不断增加）
     if (countListener) { countListener(cachedCount); }
+
+    /* 页面变化观察（ADR-080）：懒加载/SPA 切内容后自动通知侧栏重扫。
+     * 只发信号、不扫描；侧栏节流后调用 vrImg.scan。
+     * 独立于 imgBatch 开关：即使批量关闭，清单也需要新鲜度。 */
+    try {
+        let watchTimer = 0;
+        const mo = new MutationObserver(muts => {
+            let hit = false;
+            for (const m of muts) {
+                if (m.type === 'attributes') {
+                    if (/^(?:src|srcset|style|data-)/i.test(m.attributeName || '')) { hit = true; break; }
+                } else if (m.type === 'childList' && (m.addedNodes || []).length) {
+                    hit = true; break;
+                }
+            }
+            if (!hit) { return; }
+            clearTimeout(watchTimer);
+            watchTimer = setTimeout(() => {
+                try {
+                    chrome.runtime.sendMessage({
+                        Message: 'vrImg.pageChanged',
+                        action: 'vrImg.pageChanged'
+                    }, () => { void chrome.runtime.lastError; });
+                } catch (e) { /* 扩展上下文失效时忽略 */ }
+            }, 1200);
+        });
+        mo.observe(document.documentElement, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ['src', 'srcset', 'style', 'data-src', 'data-original', 'data-original-src', 'data-lazy-src']
+        });
+    } catch (eWatch) { /* 无 DOM 时忽略 */ }
 })();

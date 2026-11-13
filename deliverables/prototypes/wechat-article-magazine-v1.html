@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>苏哥的钓鱼竿 · 公众号成稿（杂志编辑版 v1）</title>
+<style>
+  /* ===== 页面外壳样式：不进入公众号复制区 ===== */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #E4DED0;
+    color: #1C1915;
+    font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .toolbar {
+    position: sticky; top: 0; z-index: 30;
+    background: #171512;
+    border-bottom: 1px solid #3A3227;
+    padding: 12px 20px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  }
+  .brand { color: #E8B04B; font-size: 12px; letter-spacing: 3px; margin-right: 8px; font-family: Georgia, serif; }
+  .btn {
+    font: 13px/1 "Noto Sans SC", "PingFang SC", sans-serif;
+    padding: 9px 15px; border-radius: 2px; cursor: pointer;
+    border: 1px solid #4A4032; background: transparent; color: #EFEAE0;
+    transition: background .18s ease, color .18s ease, border-color .18s ease;
+  }
+  .btn:hover { background: #2B2620; border-color: #E8B04B; }
+  .btn.primary { background: #E8B04B; color: #141210; border-color: #E8B04B; font-weight: 700; }
+  .btn.primary:hover { background: #F0C878; }
+  .btn.active { border-color: #E8B04B; color: #E8B04B; }
+  .hint { color: #8C8478; font-size: 11px; line-height: 1.7; margin-left: auto; max-width: 330px; }
+  .notice {
+    max-width: 760px; margin: 18px auto 0; padding: 12px 16px;
+    background: #EFE8D9; border-left: 3px solid #B0842C;
+    font-size: 12px; line-height: 1.9; color: #4A433A;
+  }
+  .notice b { color: #1C1915; }
+  .paper {
+    max-width: 760px; margin: 22px auto 90px;
+    background: #F3EEE3;
+    box-shadow: 0 20px 60px rgba(28,25,21,.20), 0 2px 6px rgba(28,25,21,.10);
+    padding: 0 30px 44px;
+  }
+  #copy-stage { position: absolute; left: -99999px; top: 0; width: 700px; }
+  #toast {
+    position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%);
+    background: #171512; color: #E8B04B; border: 1px solid #B0842C;
+    padding: 11px 22px; font-size: 13px; letter-spacing: 1px;
+    opacity: 0; pointer-events: none; transition: opacity .25s ease; z-index: 50;
+  }
+  #toast.show { opacity: 1; }
+  @media print {
+    .toolbar, .notice, #toast { display: none !important; }
+    body { background: #fff; }
+    .paper { box-shadow: none; margin: 0; max-width: 100%; }
+  }
+  @media (max-width: 640px) {
+    .paper { padding: 0 16px 30px; margin: 14px 8px 50px; }
+    .hint { display: none; }
+    .toolbar { padding: 10px 12px; }
+    .btn { padding: 8px 11px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="brand">THE ROD / EDITORIAL</span>
+  <button class="btn primary" onclick="copyWechat()">一键复制到公众号</button>
+  <button class="btn" onclick="copyPlain()">复制纯文本</button>
+  <button class="btn active" id="btnMag" onclick="setView('mag')">杂志版（SVG）</button>
+  <button class="btn" id="btnWx" onclick="setView('wx')">公众号兼容预览</button>
+  <button class="btn" onclick="window.print()">打印 / 存 PDF</button>
+  <span class="hint">杂志版含内联 SVG 插画；点「一键复制」会自动转成纯内联样式版——公众号后台会过滤 SVG 与外链图片，这一步已替你处理好。</span>
+</div>
+
+<div class="notice">
+  <b>怎么用：</b>① 点「一键复制到公众号」→ 到公众号图文编辑器正文里 Ctrl+V，排版、配色、层级、图注全部保留；② 想先看看贴进去长什么样，点「公众号兼容预览」；③ 「复制纯文本」给不带任何格式的成稿文字；④ 本页不含任何外链图片，所以不会出现「图片上传失败」。
+</div>
+
+<div class="paper">
+<article id="article" style="display:block;margin:0;padding:0;background:#F3EEE3;color:#1C1915;font-family:'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;">
+
+<!-- ============ 刊头 MASTHEAD ============ -->
+<section style="padding:38px 0 24px;border-bottom:3px double #B0842C;">
+
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 190" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>刊头：THE ROD 工具志，钓鱼竿线稿插画</title>
+      <circle cx="566" cy="86" r="72" fill="#EDE4CE"/>
+      <circle cx="566" cy="86" r="72" fill="none" stroke="#D6CCB8" stroke-width="1"/>
+      <circle cx="566" cy="86" r="58" fill="none" stroke="#E0D3B6" stroke-width="1"/>
+      <!-- 鱼竿：斜置双线 -->
+      <line x1="452" y1="152" x2="610" y2="18" stroke="#1C1915" stroke-width="3" stroke-linecap="round"/>
+      <line x1="458" y1="154" x2="616" y2="20" stroke="#B0842C" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="498" y1="112" x2="503" y2="117" stroke="#1C1915" stroke-width="1"/>
+      <line x1="536" y1="78" x2="541" y2="83" stroke="#1C1915" stroke-width="1"/>
+      <!-- 鱼线弧 -->
+      <path d="M610 18 C 640 60, 630 118, 596 150" fill="none" stroke="#B0842C" stroke-width="1.1"/>
+      <path d="M596 150 a 9 9 0 1 0 6 -8" fill="none" stroke="#B0842C" stroke-width="1.6"/>
+      <!-- 水波 -->
+      <path d="M470 168 q 12 -7 24 0 t 24 0 t 24 0 t 24 0 t 24 0" fill="none" stroke="#8A8172" stroke-width="1"/>
+      <path d="M480 178 q 12 -7 24 0 t 24 0 t 24 0 t 24 0" fill="none" stroke="#C9BFA9" stroke-width="1"/>
+      <circle cx="608" cy="52" r="3.5" fill="#E8B04B"/>
+      <circle cx="472" cy="60" r="2" fill="#B0842C"/>
+      <!-- 刊名 -->
+      <text x="0" y="70" font-family="Georgia,'Times New Roman',serif" font-size="62" letter-spacing="6" fill="#1C1915">THE ROD</text>
+      <text x="4" y="98" font-family="'Songti SC','Noto Serif SC',serif" font-size="15" letter-spacing="8" fill="#B0842C">苏 哥 的 钓 鱼 竿</text>
+      <line x1="0" y1="116" x2="300" y2="116" stroke="#B0842C" stroke-width="1"/>
+      <text x="0" y="140" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#8A8172">FIELD NOTES &#183; TOOLS &amp; CRAFT</text>
+      <text x="0" y="160" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#8A8172">NO. 01 / 2026. 11 / 工具志</text>
+      <text x="0" y="182" font-family="'Songti SC',serif" font-size="11" letter-spacing="2" fill="#8A8172">一份关于「把素材存下来之后」的现场笔记</text>
+    </svg>
+  </div>
+
+  <div data-layer="wx" style="display:none;">
+    <section style="background:#171512;padding:24px 26px;border-left:5px solid #E8B04B;">
+      <p style="margin:0 0 6px;font-family:Georgia,serif;font-size:34px;letter-spacing:6px;color:#E8B04B;line-height:1.2;">THE ROD</p>
+      <p style="margin:0 0 14px;font-size:13px;letter-spacing:5px;color:#EFEAE0;font-family:'Songti SC',serif;">苏 哥 的 钓 鱼 竿</p>
+      <p style="margin:0;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#8C8478;">FIELD NOTES &#183; NO.01 / 2026.11 &#183; 工具志</p>
+    </section>
+  </div>
+
+  <p style="margin:28px 0 12px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#B0842C;">EDITORIAL / 效率工具 &#183; 全文约 6 分钟</p>
+
+  <h1 style="margin:0 0 18px;font-family:'Noto Serif SC','Songti SC',SimSun,serif;font-size:33px;line-height:1.55;font-weight:700;color:#1C1915;letter-spacing:.5px;">下载完不用再整理：我给浏览器装了根钓鱼竿，9 类站点的素材自己排队进库</h1>
+
+  <p style="margin:0 0 20px;font-family:'Noto Serif SC','Songti SC',serif;font-size:18px;line-height:1.9;color:#4A433A;">下载器不懂整理，素材库不会抓网页，抓图插件管不了视频——最后那一步「手动搬文件」，永远留给你自己。这个开源浏览器扩展，把嗅探到溯源接成了一条线。</p>
+
+  <table style="width:100%;border-collapse:collapse;border-top:1px solid #D6CCB8;padding-top:14px;">
+    <tr>
+      <td style="padding-top:13px;font-size:12px;color:#8A8172;letter-spacing:1px;">文 / 苏哥　&#183;　产品笔记</td>
+      <td style="padding-top:13px;font-size:12px;color:#8A8172;letter-spacing:1px;text-align:right;">GPL-3.0 &#183; 纯本地</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ============ 楔子 ============ -->
+<section style="padding:34px 0 0;">
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;"><span style="font-family:'Noto Serif SC','Songti SC',serif;font-size:46px;line-height:1;color:#B0842C;font-weight:700;">打</span>开下载文件夹的那一刻，我数了数，一百三十七个文件。</p>
+
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">其中九十多个叫 IMG_ 开头，二十来个是 video (1)、video (2)，还有几个干脆是一串看不懂的哈希。它们是我这半年从各种网页上存下来的参考图、教程视频、纪录片片段。当时每一条都觉得「以后一定用得上」，现在连哪张是哪张都对不上。</p>
+
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">更让人无力的不是找不到，是明明记得存过。翻遍收藏夹、相册、网盘、文件传输助手，最后在某个盘符深处看见它，文件名还是乱码。那一刻你会怀疑，自己到底是收藏了，还是只是把焦虑从一个文件夹搬到了另一个文件夹。</p>
+</section>
+
+<!-- 图 01 -->
+<section style="margin:32px 0 0;">
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 226" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 01：137 个乱码文件的下载文件夹</title>
+      <rect x="0" y="0" width="680" height="226" fill="#EDE6D7"/>
+      <line x1="0" y1="0" width="680" height="226" stroke="none"/>
+      <rect x="0" y="0" width="680" height="5" fill="#B0842C"/>
+      <text x="24" y="38" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#8A8172">FIG. 01 / THE DOWNLOADS FOLDER</text>
+      <text x="486" y="150" font-family="Georgia,serif" font-size="96" fill="#B0842C" opacity=".85">137</text>
+      <text x="492" y="176" font-family="Georgia,serif" font-size="11" letter-spacing="3" fill="#8A8172">FILES / NO ORDER</text>
+      <g font-family="Georgia,serif" font-size="12">
+        <rect x="24" y="58" width="330" height="27" fill="#F3EEE3" stroke="#D6CCB8"/>
+        <text x="36" y="76" fill="#4A433A">IMG_20260312_091744.jpg</text>
+        <rect x="24" y="89" width="330" height="27" fill="#F3EEE3" stroke="#D6CCB8"/>
+        <text x="36" y="107" fill="#4A433A">IMG_20260312_091745(1).jpg</text>
+        <rect x="24" y="120" width="330" height="27" fill="#F3EEE3" stroke="#D6CCB8"/>
+        <text x="36" y="138" fill="#4A433A">video (2).mp4</text>
+        <rect x="24" y="151" width="330" height="27" fill="#F3EEE3" stroke="#D6CCB8"/>
+        <text x="36" y="169" fill="#4A433A">8f3c9a1e...d41d.mp4</text>
+        <rect x="24" y="182" width="330" height="27" fill="#F3EEE3" stroke="#D6CCB8"/>
+        <text x="36" y="200" fill="#4A433A">未命名 副本 副本 3.png</text>
+      </g>
+      <circle cx="404" cy="112" r="30" fill="none" stroke="#B0842C" stroke-width="1.6"/>
+      <line x1="425" y1="133" x2="446" y2="154" stroke="#B0842C" stroke-width="3" stroke-linecap="round"/>
+      <text x="380" y="196" font-family="'Songti SC',serif" font-size="11" letter-spacing="2" fill="#8A8172">找不回的那一张</text>
+    </svg>
+  </div>
+  <div data-layer="wx" style="display:none;">
+    <section style="background:#EDE6D7;border-top:4px solid #B0842C;padding:20px 22px;">
+      <p style="margin:0 0 12px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#8A8172;">FIG. 01 / THE DOWNLOADS FOLDER</p>
+      <table style="width:100%;border-collapse:collapse;font-family:Georgia,serif;font-size:13px;color:#4A433A;">
+        <tr><td style="padding:5px 0;border-bottom:1px solid #D6CCB8;">IMG_20260312_091744.jpg</td><td style="padding:5px 0;border-bottom:1px solid #D6CCB8;text-align:right;color:#B0842C;font-size:22px;" rowspan="5">137</td></tr>
+        <tr><td style="padding:5px 0;border-bottom:1px solid #D6CCB8;">IMG_20260312_091745(1).jpg</td></tr>
+        <tr><td style="padding:5px 0;border-bottom:1px solid #D6CCB8;">video (2).mp4</td></tr>
+        <tr><td style="padding:5px 0;border-bottom:1px solid #D6CCB8;">8f3c9a1e...d41d.mp4</td></tr>
+        <tr><td style="padding:5px 0;">未命名 副本 副本 3.png</td></tr>
+      </table>
+    </section>
+  </div>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8172;letter-spacing:1px;">图 01 / 一百三十七个文件，和一个再也找不回的那一张。矢量示意重绘。</p>
+</section>
+
+<section style="padding:30px 0 0;">
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">我后来想明白了，问题从来不在「下不下来」。现在能把网页视频存下来的工具太多了，能批量抓图的也不少。真正的缺口在最后一步：下载器不懂素材管理，素材库不会抓网页，抓图插件又管不了视频。每一类工具都只管自己那一段，而「把文件搬进该去的文件夹、改成看得懂的名字、记下它是从谁那儿来的」这最后一步，永远留给你自己。</p>
+</section>
+
+<!-- 拉页引文 -->
+<section style="background:#171512;padding:32px 34px;margin:34px 0;border-left:5px solid #E8B04B;">
+  <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8C8478;">PULL QUOTE / 01</p>
+  <p style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.85;color:#EFEAE0;">最后那一步「手动搬文件」，<br>永远留给你自己。</p>
+  <p style="margin:16px 0 0;font-size:12px;letter-spacing:2px;color:#8C8478;">—— 一个被下载文件夹教育过的人</p>
+</section>
+
+<!-- ============ 产品出场 + 图 02 链路 ============ -->
+<section style="padding:6px 0 0;">
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">我是一个产品经理，不是工程师。去年我决定把这一步补上，做了个浏览器扩展，叫「苏哥的钓鱼竿」，代号 Video Rod。它基于开源项目猫抓（cat-catch）改的，遵循 GPL-3.0，现在整套代码和文档都公开。零构建、零框架、零运行时依赖，装上就能用，所有处理都在你自己电脑上跑，不上传、不追踪、不用注册账号。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">它做的事只有一句：<strong style="color:#B0842C;">下载完不用再整理</strong>。把嗅探、命名、归档、入库、检索、预览、溯源这一整条链路，接成一条线。下面按你实际会碰到的顺序说。</p>
+</section>
+
+<section style="margin:30px 0 0;">
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 232" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 02：三类工具各管一段 vs 钓鱼竿一条链走完</title>
+      <rect x="0" y="0" width="680" height="232" fill="#F3EEE3"/>
+      <text x="0" y="22" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#B0842C">FIG. 02 / THE MISSING LAST MILE</text>
+      <!-- 上排：断裂的三段 -->
+      <g font-family="'Songti SC',serif" font-size="12" fill="#4A433A">
+        <rect x="0" y="42" width="176" height="34" fill="#EDE6D7" stroke="#C9BFA9"/>
+        <text x="14" y="64">下载器 · 只管下</text>
+        <rect x="216" y="42" width="176" height="34" fill="#EDE6D7" stroke="#C9BFA9"/>
+        <text x="230" y="64">素材库 · 不会抓</text>
+        <rect x="432" y="42" width="176" height="34" fill="#EDE6D7" stroke="#C9BFA9"/>
+        <text x="446" y="64">抓图插件 · 不管视频</text>
+      </g>
+      <g stroke="#B0842C" stroke-width="2" stroke-dasharray="5 5">
+        <line x1="178" y1="59" x2="214" y2="59"/>
+        <line x1="394" y1="59" x2="430" y2="59"/>
+      </g>
+      <text x="248" y="98" font-family="'Songti SC',serif" font-size="11" fill="#8A8172">断裂处 = 手动搬文件、改名、记出处</text>
+      <line x1="0" y1="116" x2="680" y2="116" stroke="#D6CCB8" stroke-width="1"/>
+      <!-- 下排：完整链路 7 节点 -->
+      <text x="0" y="140" font-family="Georgia,serif" font-size="11" letter-spacing="3" fill="#8A8172">THE ROD / ONE CONTINUOUS LINE</text>
+      <line x1="26" y1="184" x2="654" y2="184" stroke="#B0842C" stroke-width="1.5"/>
+      <g fill="#F3EEE3" stroke="#B0842C" stroke-width="1.6">
+        <circle cx="26" cy="184" r="9"/><circle cx="130" cy="184" r="9"/><circle cx="234" cy="184" r="9"/>
+        <circle cx="338" cy="184" r="9"/><circle cx="442" cy="184" r="9"/><circle cx="546" cy="184" r="9"/><circle cx="650" cy="184" r="9"/>
+      </g>
+      <g fill="#B0842C">
+        <circle cx="26" cy="184" r="3"/><circle cx="130" cy="184" r="3"/><circle cx="234" cy="184" r="3"/>
+        <circle cx="338" cy="184" r="3"/><circle cx="442" cy="184" r="3"/><circle cx="546" cy="184" r="3"/><circle cx="650" cy="184" r="3"/>
+      </g>
+      <g font-family="'Songti SC',serif" font-size="12" fill="#1C1915" text-anchor="middle">
+        <text x="26" y="212">嗅探</text><text x="130" y="212">命名</text><text x="234" y="212">归档</text>
+        <text x="338" y="212">入库</text><text x="442" y="212">检索</text><text x="546" y="212">预览</text><text x="650" y="212">溯源</text>
+      </g>
+    </svg>
+  </div>
+  <div data-layer="wx" style="display:none;">
+    <section style="border-top:2px solid #B0842C;padding:18px 0 0;">
+      <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#B0842C;">FIG. 02 / THE MISSING LAST MILE</p>
+      <p style="margin:0 0 18px;font-size:14px;line-height:1.9;color:#4A433A;">下载器 · 只管下　｜　素材库 · 不会抓　｜　抓图插件 · 不管视频<br><span style="color:#8A8172;">断裂处 = 手动搬文件、改名、记出处</span></p>
+      <table style="width:100%;border-collapse:collapse;text-align:center;font-size:12px;color:#1C1915;background:#EDE6D7;">
+        <tr>
+          <td style="padding:12px 2px;border-right:1px solid #D6CCB8;">嗅探</td>
+          <td style="padding:12px 2px;border-right:1px solid #D6CCB8;">命名</td>
+          <td style="padding:12px 2px;border-right:1px solid #D6CCB8;">归档</td>
+          <td style="padding:12px 2px;border-right:1px solid #D6CCB8;">入库</td>
+          <td style="padding:12px 2px;border-right:1px solid #D6CCB8;">检索</td>
+          <td style="padding:12px 2px;border-right:1px solid #D6CCB8;">预览</td>
+          <td style="padding:12px 2px;color:#B0842C;font-weight:700;">溯源</td>
+        </tr>
+      </table>
+      <p style="margin:10px 0 0;font-size:12px;color:#8A8172;">钓鱼竿 / 一条链走完</p>
+    </section>
+  </div>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8172;letter-spacing:1px;">图 02 / 三类工具各管一段，钓鱼竿把中间断掉的那截接上了。</p>
+</section>
+
+<!-- ============ 章节 01 ============ -->
+<section style="padding:52px 0 0;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr>
+      <td style="width:74px;vertical-align:top;font-family:Georgia,serif;font-size:50px;line-height:1;color:#B0842C;">01</td>
+      <td style="vertical-align:bottom;border-left:2px solid #B0842C;padding-left:16px;">
+        <p style="margin:0 0 5px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8A8172;">CHAPTER ONE / ARCHIVE</p>
+        <h2 style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.5;color:#1C1915;">文件下好，就自己站队</h2>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">第一件事，文件下好就自己站队。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">普通下载器给你一个文件，它给你一个位置。点下批量下载那一刻，文件就直接按「站点／作者（@ID）／作品」落进 Downloads 下的 video-rod 目录，同时写进本地索引。比如 B 站一个分 P 纪录片，落进去是「video-rod／B站／影视飓风(@946974)／第1话 开场／01.mp4」。图片和视频放同一个作者目录，靠扩展名区分；同一个网页批量存的图，自动收进以网页标题命名的子文件夹。</p>
+</section>
+
+<!-- 图 03 目录树 -->
+<section style="margin:26px 0 0;">
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 250" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 03：下载即归档的目录树</title>
+      <rect x="0" y="0" width="680" height="250" fill="#171512"/>
+      <rect x="0" y="0" width="680" height="4" fill="#E8B04B"/>
+      <text x="24" y="32" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#8C8478">FIG. 03 / DOWNLOADS/video-rod/</text>
+      <g stroke="#4A433A" stroke-width="1" fill="none">
+        <path d="M40 60 v 150"/><path d="M40 84 h 24"/><path d="M64 84 v 68"/><path d="M64 108 h 24"/><path d="M88 108 v 44"/><path d="M88 132 h 24"/><path d="M112 132 v 20"/>
+      </g>
+      <g fill="#E8B04B">
+        <rect x="36" y="52" width="16" height="12" rx="1"/><rect x="60" y="76" width="16" height="12" rx="1"/>
+        <rect x="84" y="100" width="16" height="12" rx="1"/><rect x="108" y="124" width="16" height="12" rx="1"/>
+      </g>
+      <g font-family="Georgia,'Songti SC',serif" font-size="14" fill="#EFEAE0">
+        <text x="140" y="63">video-rod/</text>
+        <text x="140" y="87">B站/</text>
+        <text x="140" y="111">影视飓风(@946974)/</text>
+        <text x="140" y="135">第1话 开场/</text>
+        <text x="140" y="159" fill="#E8B04B">01.mp4</text>
+      </g>
+      <line x1="24" y1="184" x2="656" y2="184" stroke="#3A3227"/>
+      <text x="24" y="210" font-family="'Songti SC',serif" font-size="12" fill="#8C8478">同一网页批量存的图，自动收进以网页标题命名的子文件夹</text>
+      <text x="24" y="232" font-family="Georgia,serif" font-size="11" letter-spacing="2" fill="#8C8478">381 SITE PRESETS &#183; AUTO-LEARNED &#183; DOMAIN FALLBACK</text>
+    </svg>
+  </div>
+  <div data-layer="wx" style="display:none;">
+    <section style="background:#171512;padding:20px 24px;border-top:4px solid #E8B04B;">
+      <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#8C8478;">FIG. 03 / Downloads/video-rod/</p>
+      <p style="margin:0;font-family:Georgia,'Songti SC',serif;font-size:14px;line-height:2.1;color:#EFEAE0;border-left:2px solid #E8B04B;padding-left:16px;">
+        video-rod/<br>
+        &nbsp;&nbsp;└ B站/<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;└ 影视飓风(@946974)/<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└ 第1话 开场/<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└ <span style="color:#E8B04B;">01.mp4</span>
+      </p>
+    </section>
+  </div>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8172;letter-spacing:1px;">图 03 / 不是下完再搬，是下载那一刻就已经站好队。</p>
+</section>
+
+<section style="padding:26px 0 0;">
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">站名不是写死的一张清单。项目文档里记着，它内置了<strong style="color:#B0842C;">三百八十一条</strong>常见站点，优先用你手改的名字，其次从页面的 og:site_name、manifest、网页标题里现学，最后才拿域名兜底。换句话说，一个它没听过的新网站，照样能下，只是显示名朴素一点。这条在产品内部被当成铁律：任何页面，有图能单张或批量下，有视频能单张或批量下，做不到就是通道的毛病，而不是「这个站没适配」。</p>
+</section>
+
+<!-- ============ 章节 02 ============ -->
+<section style="padding:52px 0 0;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr>
+      <td style="width:74px;vertical-align:top;font-family:Georgia,serif;font-size:50px;line-height:1;color:#B0842C;">02</td>
+      <td style="vertical-align:bottom;border-left:2px solid #B0842C;padding-left:16px;">
+        <p style="margin:0 0 5px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8A8172;">CHAPTER TWO / NAMING</p>
+        <h2 style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.5;color:#1C1915;">名字按你自己的规矩来</h2>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">第二件事，名字按你自己的规矩来。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">它给了一套命名模板，七个变量：标题、正文、作者、站点、序号、日期、扩展名。默认是「作者_标题」，出来的文件名像「影视飓风(@946974)_第1话 开场.mp4」这种，看一眼就知道是谁的什么内容。有意思的是，模板里的斜杠直接就是文件夹分隔符，写成「站点／标题」，就等于按站点自动分文件夹，不用先建目录。</p>
+</section>
+
+<!-- 图 04 命名模板 -->
+<section style="margin:26px 0 0;">
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 186" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 04：七个命名变量与斜杠即文件夹</title>
+      <rect x="0" y="0" width="680" height="186" fill="#EDE6D7"/>
+      <text x="22" y="28" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#B0842C">FIG. 04 / SEVEN VARIABLES</text>
+      <g font-family="Georgia,serif" font-size="12" fill="#1C1915">
+        <rect x="22" y="46" width="84" height="30" rx="15" fill="#F3EEE3" stroke="#B0842C"/><text x="38" y="66">${title}</text>
+        <rect x="114" y="46" width="80" height="30" rx="15" fill="#F3EEE3" stroke="#B0842C"/><text x="130" y="66">${post}</text>
+        <rect x="202" y="46" width="94" height="30" rx="15" fill="#F3EEE3" stroke="#B0842C"/><text x="216" y="66">${author}</text>
+        <rect x="304" y="46" width="80" height="30" rx="15" fill="#F3EEE3" stroke="#B0842C"/><text x="320" y="66">${site}</text>
+        <rect x="392" y="46" width="86" height="30" rx="15" fill="#F3EEE3" stroke="#B0842C"/><text x="406" y="66">${index}</text>
+        <rect x="486" y="46" width="80" height="30" rx="15" fill="#F3EEE3" stroke="#B0842C"/><text x="502" y="66">${date}</text>
+        <rect x="574" y="46" width="76" height="30" rx="15" fill="#F3EEE3" stroke="#B0842C"/><text x="592" y="66">${ext}</text>
+      </g>
+      <text x="22" y="108" font-family="Georgia,serif" font-size="13" fill="#4A433A">${author}_${title}  →  影视飓风(@946974)_第1话 开场.mp4</text>
+      <line x1="22" y1="124" x2="658" y2="124" stroke="#C9BFA9"/>
+      <text x="22" y="150" font-family="Georgia,serif" font-size="13" fill="#4A433A">${site}/${title}  →  <tspan fill="#B0842C">按站点自动建文件夹</tspan>（斜杠 = 目录分隔符）</text>
+      <text x="22" y="174" font-family="'Songti SC',serif" font-size="11" fill="#8A8172">60 字截断 · 非法字符清洗 · 重名 _01 / _02 不覆盖 · 作者缺失不留空下划线</text>
+    </svg>
+  </div>
+  <div data-layer="wx" style="display:none;">
+    <section style="background:#EDE6D7;padding:20px 22px;">
+      <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#B0842C;">FIG. 04 / SEVEN VARIABLES</p>
+      <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:13px;line-height:2.2;color:#1C1915;">${title}　${post}　${author}　${site}　${index}　${date}　${ext}</p>
+      <p style="margin:0 0 10px;font-size:14px;line-height:1.9;color:#4A433A;">${author}_${title} → 影视飓风(@946974)_第1话 开场.mp4</p>
+      <p style="margin:0;font-size:14px;line-height:1.9;color:#4A433A;">${site}/${title} → <strong style="color:#B0842C;">按站点自动建文件夹</strong>（斜杠 = 目录分隔符）</p>
+    </section>
+  </div>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8172;letter-spacing:1px;">图 04 / 七个变量，斜杠就是文件夹；模板引擎来自上游猫抓，增量是作者、正文、序号与自动分目录。</p>
+</section>
+
+<section style="padding:26px 0 0;">
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">细节也替你想了：超六十个字自动截断，非法字符换成下划线，重名自动加 _01、_02 不覆盖，作者抓不到就跳过，不留一个孤零零的空下划线。这套模板引擎本身来自上游猫抓，支持截取、替换、正则、大小写转换这些管道处理；我这边加的，是作者、正文、序号这几个更贴近中文内容站的变量，以及按站点、作者自动分目录的策略。</p>
+</section>
+
+<!-- ============ 章节 03 ============ -->
+<section style="padding:52px 0 0;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr>
+      <td style="width:74px;vertical-align:top;font-family:Georgia,serif;font-size:50px;line-height:1;color:#B0842C;">03</td>
+      <td style="vertical-align:bottom;border-left:2px solid #B0842C;padding-left:16px;">
+        <p style="margin:0 0 5px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8A8172;">CHAPTER THREE / DEDUP</p>
+        <h2 style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.5;color:#1C1915;">同一个文件，只存一份</h2>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">第三件事，同一个文件只存一份。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">不是「文件名一样就跳过」这种粗活，而是给文件内容算 SHA-256 指纹，配引用计数，原理和网盘秒传差不多。不同网址、不同平台下的同一个文件，物理上只留一份，后面命中只记一条引用；删除时引用递减，最后一条引用消失，才真的删掉那个文件。库里还有两个统计口径，逻辑大小和物理占用，省了多少一眼能看见。据项目文档，超过 64MB 的文件会改用采样指纹，只报告、不自动合并，这点它写得很老实。</p>
+</section>
+
+<!-- 图 05 去重原理 -->
+<section style="margin:26px 0 0;">
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 168" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 05：SHA-256 内容寻址与引用计数</title>
+      <rect x="0" y="0" width="680" height="168" fill="#F3EEE3"/>
+      <text x="0" y="22" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#B0842C">FIG. 05 / CONTENT-ADDRESSED STORAGE</text>
+      <g font-family="Georgia,serif" font-size="11" fill="#8A8172">
+        <text x="8" y="62">URL A</text><text x="8" y="92">URL B</text><text x="8" y="122">URL C</text>
+      </g>
+      <g fill="#EDE6D7" stroke="#C9BFA9">
+        <rect x="60" y="46" width="112" height="22"/><rect x="60" y="76" width="112" height="22"/><rect x="60" y="106" width="112" height="22"/>
+      </g>
+      <g fill="#4A433A" font-family="Georgia,serif" font-size="10">
+        <text x="68" y="61">site-a/...mp4</text><text x="68" y="91">site-b/...mp4</text><text x="68" y="121">cdn-c/...mp4</text>
+      </g>
+      <g stroke="#B0842C" stroke-width="1.4" fill="none">
+        <path d="M172 57 C 205 57, 205 84, 238 84"/><path d="M172 87 H 238"/><path d="M172 117 C 205 117, 205 84, 238 84"/>
+      </g>
+      <rect x="238" y="60" width="150" height="48" fill="#171512"/>
+      <text x="258" y="82" font-family="Georgia,serif" font-size="15" letter-spacing="2" fill="#E8B04B">SHA-256</text>
+      <text x="258" y="99" font-family="'Songti SC',serif" font-size="10" fill="#8C8478">同内容 → 同指纹</text>
+      <path d="M388 84 H 440" stroke="#B0842C" stroke-width="1.6"/>
+      <path d="M434 79 l 8 5 l -8 5" fill="none" stroke="#B0842C" stroke-width="1.6"/>
+      <rect x="446" y="52" width="126" height="64" fill="#EDE6D7" stroke="#B0842C"/>
+      <text x="460" y="76" font-family="Georgia,serif" font-size="12" fill="#1C1915">01.mp4</text>
+      <text x="460" y="96" font-family="Georgia,serif" font-size="12" fill="#B0842C">物理文件 × 1</text>
+      <text x="460" y="110" font-family="'Songti SC',serif" font-size="10" fill="#8A8172">引用计数 = 3</text>
+      <circle cx="620" cy="84" r="30" fill="none" stroke="#B0842C" stroke-width="1"/>
+      <text x="620" y="80" font-family="Georgia,serif" font-size="20" fill="#B0842C" text-anchor="middle">1</text>
+      <text x="620" y="96" font-family="'Songti SC',serif" font-size="9" fill="#8A8172" text-anchor="middle">份实体</text>
+      <text x="0" y="154" font-family="'Songti SC',serif" font-size="11" fill="#8A8172">逻辑大小 vs 物理占用双口径 · 超过 64MB 用采样指纹，只报告、不自动合并</text>
+    </svg>
+  </div>
+  <div data-layer="wx" style="display:none;">
+    <section style="border:1px solid #D6CCB8;padding:20px 22px;">
+      <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#B0842C;">FIG. 05 / CONTENT-ADDRESSED STORAGE</p>
+      <table style="width:100%;border-collapse:collapse;text-align:center;font-size:13px;color:#1C1915;">
+        <tr>
+          <td style="padding:12px 4px;background:#EDE6D7;">URL A / B / C<br><span style="font-size:11px;color:#8A8172;">三个不同来源</span></td>
+          <td style="padding:12px 4px;color:#B0842C;font-family:Georgia,serif;">→ SHA-256 →</td>
+          <td style="padding:12px 4px;background:#171512;color:#EFEAE0;">01.mp4<br><span style="font-size:11px;color:#E8B04B;">物理 × 1 / 引用 3</span></td>
+        </tr>
+      </table>
+      <p style="margin:12px 0 0;font-size:12px;color:#8A8172;">逻辑大小 vs 物理占用双口径 · 超过 64MB 用采样指纹，只报告、不自动合并</p>
+    </section>
+  </div>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8172;letter-spacing:1px;">图 05 / 网盘秒传那个原理，搬到了本地硬盘上。</p>
+</section>
+
+<!-- ============ 章节 04 ============ -->
+<section style="padding:52px 0 0;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr>
+      <td style="width:74px;vertical-align:top;font-family:Georgia,serif;font-size:50px;line-height:1;color:#B0842C;">04</td>
+      <td style="vertical-align:bottom;border-left:2px solid #B0842C;padding-left:16px;">
+        <p style="margin:0 0 5px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8A8172;">CHAPTER FOUR / PROVENANCE</p>
+        <h2 style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.5;color:#1C1915;">以后，还找得回去</h2>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">第四件事，也是我最在意的：以后找得回去。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">每条素材都自动记下原帖地址、作者 ID、作品 ID 和直链。直链多半带签名，过一阵就失效，但原帖地址是长期有效的。半年后你想知道「这张图当初是谁发的、从哪篇笔记存的」，点开信息栏就有，重启、重建索引都不丢。</p>
+</section>
+
+<section style="background:#EDE6D7;border-left:3px solid #B0842C;padding:20px 24px;margin:6px 0 0;">
+  <p style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:19px;line-height:1.9;color:#1C1915;">我个人觉得，能回到出处，才叫真的「存下来了」；否则只是一堆躺在硬盘里的数据。</p>
+  <p style="margin:10px 0 0;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#8A8172;">MARGIN NOTE / 边注</p>
+</section>
+
+<!-- ============ 章节 05 + 图 06 界面示意 ============ -->
+<section style="padding:52px 0 0;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr>
+      <td style="width:74px;vertical-align:top;font-family:Georgia,serif;font-size:50px;line-height:1;color:#B0842C;">05</td>
+      <td style="vertical-align:bottom;border-left:2px solid #B0842C;padding-left:16px;">
+        <p style="margin:0 0 5px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8A8172;">CHAPTER FIVE / CAPTURE</p>
+        <h2 style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.5;color:#1C1915;">抓的时候，别打断我</h2>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">第五件事，抓的时候别打断我。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">打开有视频的网页，等它开始播放，点一下工具栏图标，或者按 Alt+Shift+V，面板里就列出这一页抓到的全部媒体：改名字、换目录、取消勾选，然后批量下载。懒得开面板也行，鼠标移到视频画面上，右上角浮出一个下载按钮，大图标一键当前最高清，旁边小箭头展开清晰度列表自己挑，全屏时自动隐藏。图片上右键「保存这张图片」，视频上右键「下载这个视频」，都是一次点击的事。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">存图还有一整套：悬停取原图、右下角浮标点开本页图片清单、拖拽到接收区、Alt 框选、图集自动翻页。图片清单里按尺寸分档，还专门留了「尺寸未知」一档，因为有些懒加载的图一开始量不到尺寸，早期版本直接把它们吞了，后来补上，默认全选，不再漏图。</p>
+</section>
+
+<section style="margin:26px 0 0;">
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 262" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 06：悬停下载按钮与批量面板示意</title>
+      <rect x="0" y="0" width="680" height="262" fill="#EDE6D7"/>
+      <text x="20" y="26" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#B0842C">FIG. 06 / TWO WAYS TO CATCH</text>
+      <!-- 左：视频画面 + 悬停按钮 -->
+      <rect x="20" y="44" width="300" height="188" fill="#171512"/>
+      <rect x="20" y="44" width="300" height="188" fill="none" stroke="#3A3227"/>
+      <circle cx="170" cy="138" r="26" fill="none" stroke="#4A433A" stroke-width="1.4"/>
+      <path d="M164 128 l 16 10 l -16 10 z" fill="#4A433A"/>
+      <rect x="266" y="56" width="42" height="30" rx="3" fill="#E8B04B"/>
+      <path d="M283 62 v 12 m -5 -5 l 5 5 l 5 -5" stroke="#141210" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path d="M308 66 h 10 v 10 h -10 z" fill="#141210" opacity=".25"/>
+      <text x="20" y="252" font-family="'Songti SC',serif" font-size="11" fill="#8A8172">① 悬停视频 · 右上角一键最高清 / 箭头选档</text>
+      <!-- 右：popup 面板线框 -->
+      <rect x="352" y="44" width="308" height="188" fill="#F3EEE3" stroke="#C9BFA9"/>
+      <rect x="352" y="44" width="308" height="26" fill="#171512"/>
+      <text x="364" y="62" font-family="'Songti SC',serif" font-size="11" fill="#E8B04B">本页媒体　·　3 项</text>
+      <g font-family="Georgia,serif" font-size="10" fill="#4A433A">
+        <rect x="364" y="80" width="284" height="30" fill="#EDE6D7" stroke="#D6CCB8"/>
+        <rect x="370" y="86" width="12" height="12" fill="#B0842C"/>
+        <text x="390" y="97">1920×1080 · video.mp4</text>
+        <rect x="364" y="116" width="284" height="30" fill="#EDE6D7" stroke="#D6CCB8"/>
+        <rect x="370" y="122" width="12" height="12" fill="#B0842C"/>
+        <text x="390" y="133">原图 · image_01.webp</text>
+        <rect x="364" y="152" width="284" height="30" fill="#EDE6D7" stroke="#D6CCB8"/>
+        <rect x="370" y="158" width="12" height="12" fill="#B0842C"/>
+        <text x="390" y="169">尺寸未知 · image_02.webp</text>
+      </g>
+      <rect x="364" y="192" width="284" height="28" fill="#E8B04B"/>
+      <text x="470" y="211" font-family="'Songti SC',serif" font-size="12" fill="#141210" text-anchor="middle">批量下载（3）</text>
+      <text x="352" y="252" font-family="'Songti SC',serif" font-size="11" fill="#8A8172">② 面板清单 · 改名 / 换目录 / 勾选 / 批量</text>
+    </svg>
+  </div>
+  <div data-layer="wx" style="display:none;">
+    <section style="background:#EDE6D7;padding:20px 22px;">
+      <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#B0842C;">FIG. 06 / TWO WAYS TO CATCH</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;color:#1C1915;">
+        <tr>
+          <td style="width:50%;padding:14px;background:#171512;color:#EFEAE0;vertical-align:top;">① 悬停视频<br><span style="font-size:12px;color:#8C8478;">右上角一键最高清<br>小箭头展开清晰度列表<br>全屏自动隐藏</span></td>
+          <td style="width:50%;padding:14px;background:#F3EEE3;vertical-align:top;border:1px solid #D6CCB8;">② 面板清单<br><span style="font-size:12px;color:#4A433A;">改名 / 换目录 / 勾选<br>尺寸档含「尺寸未知」<br>批量下载</span></td>
+        </tr>
+      </table>
+    </section>
+  </div>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8172;letter-spacing:1px;">图 06 / 两种抓法：不开面板的悬停按钮，和一次收干净的图片清单。界面为矢量示意重绘。</p>
+</section>
+
+<!-- ============ 章节 06 + 图 07 数据条 ============ -->
+<section style="padding:52px 0 0;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr>
+      <td style="width:74px;vertical-align:top;font-family:Georgia,serif;font-size:50px;line-height:1;color:#B0842C;">06</td>
+      <td style="vertical-align:bottom;border-left:2px solid #B0842C;padding-left:16px;">
+        <p style="margin:0 0 5px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8A8172;">CHAPTER SIX / NO TRANSCODE</p>
+        <h2 style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.5;color:#1C1915;">不靠云端转码，画质不打折</h2>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">视频这块有个我坚持的原则：不靠云端转码，画质不打折。HLS 流是本地直连拉分片、本地解密、本地合成 MP4，视频不出本机；B 站和 YouTube 的视频轨、音频轨在本地做容器级合并，不重编码；长连接被掐断还能按 Range 从断点续，不用整条重下。项目文档列了九类站点，其中一类是「其他网页」这个通用通道，另外几类只是体验增强：B 站分 P 与合集、小红书无扩展名 CDN 地址、X 推文里的内联按钮、微博防盗链页面内取流、抖音详情接口取最高档、Instagram Reel。</p>
+</section>
+
+<section style="margin:26px 0 0;">
+  <div data-layer="mag" style="display:block;">
+    <svg viewBox="0 0 680 148" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>图 07：关键数字</title>
+      <rect x="0" y="0" width="680" height="148" fill="#171512"/>
+      <rect x="0" y="0" width="680" height="4" fill="#E8B04B"/>
+      <text x="22" y="28" font-family="Georgia,serif" font-size="11" letter-spacing="4" fill="#8C8478">FIG. 07 / BY THE NUMBERS</text>
+      <g font-family="Georgia,serif" text-anchor="middle">
+        <text x="90" y="88" font-size="38" fill="#E8B04B">9</text><text x="90" y="112" font-size="11" fill="#EFEAE0" letter-spacing="1">类站点（含通用）</text>
+        <text x="255" y="88" font-size="38" fill="#E8B04B">381</text><text x="255" y="112" font-size="11" fill="#EFEAE0" letter-spacing="1">条站名预置</text>
+        <text x="420" y="88" font-size="38" fill="#E8B04B">1080p</text><text x="420" y="112" font-size="11" fill="#EFEAE0" letter-spacing="1">YouTube 上限</text>
+        <text x="585" y="88" font-size="38" fill="#E8B04B">10</text><text x="585" y="112" font-size="11" fill="#EFEAE0" letter-spacing="1">档预览倍速</text>
+      </g>
+      <g stroke="#3A3227"><line x1="170" y1="50" x2="170" y2="120"/><line x1="335" y1="50" x2="335" y2="120"/><line x1="500" y1="50" x2="500" y2="120"/></g>
+      <text x="22" y="138" font-family="'Songti SC',serif" font-size="10" fill="#8C8478">数据来源：项目 README 与工程文档；性能数字为项目自述，未做独立基准测试</text>
+    </svg>
+  </div>
+  <div data-layer="wx" style="display:none;">
+    <section style="background:#171512;border-top:4px solid #E8B04B;padding:20px 22px;">
+      <p style="margin:0 0 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#8C8478;">FIG. 07 / BY THE NUMBERS</p>
+      <table style="width:100%;border-collapse:collapse;text-align:center;color:#EFEAE0;">
+        <tr>
+          <td style="padding:8px 2px;border-right:1px solid #3A3227;"><span style="font-family:Georgia,serif;font-size:26px;color:#E8B04B;">9</span><br><span style="font-size:11px;">类站点（含通用）</span></td>
+          <td style="padding:8px 2px;border-right:1px solid #3A3227;"><span style="font-family:Georgia,serif;font-size:26px;color:#E8B04B;">381</span><br><span style="font-size:11px;">条站名预置</span></td>
+          <td style="padding:8px 2px;border-right:1px solid #3A3227;"><span style="font-family:Georgia,serif;font-size:26px;color:#E8B04B;">1080p</span><br><span style="font-size:11px;">YouTube 上限</span></td>
+          <td style="padding:8px 2px;"><span style="font-family:Georgia,serif;font-size:26px;color:#E8B04B;">10</span><br><span style="font-size:11px;">档预览倍速</span></td>
+        </tr>
+      </table>
+      <p style="margin:12px 0 0;font-size:11px;color:#8C8478;">数据来源：项目 README 与工程文档；性能数字为项目自述</p>
+    </section>
+  </div>
+  <p style="margin:10px 0 0;font-size:11px;line-height:1.8;color:#8A8172;letter-spacing:1px;">图 07 / 四个可以核对的数字。数字均有出处，不写没验证过的排名。</p>
+</section>
+
+<!-- ============ 章节 07 ============ -->
+<section style="padding:52px 0 0;">
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <tr>
+      <td style="width:74px;vertical-align:top;font-family:Georgia,serif;font-size:50px;line-height:1;color:#B0842C;">07</td>
+      <td style="vertical-align:bottom;border-left:2px solid #B0842C;padding-left:16px;">
+        <p style="margin:0 0 5px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8A8172;">CHAPTER SEVEN / THE LIBRARY</p>
+        <h2 style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:26px;line-height:1.5;color:#1C1915;">存完，还能管</h2>
+      </td>
+    </tr>
+  </table>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">存完的东西，落在一个本地素材库里。左边是按平台和作者分组的资源树，带计数；搜索是 booru 式，空格分隔多个词取交集，前面加减号就是排除；收藏夹支持把「已加星标」自动归成一个智能夹；还有回收站，误删能捞回来。预览器能连播、十档倍速、GIF 逐帧暂停、缩放旋转，右键还能直接 Google 识图。</p>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">界面是一套暖黑配舞台金的深色皮肤，只有一套，没做主题切换，一个自用工具，把一套做透比给一堆选项更实在。据项目文档，超过三百条就只渲染可视区域，五万条的库首屏约一百毫秒。</p>
+</section>
+
+<!-- ============ 诚实边界 ============ -->
+<section style="padding:50px 0 0;">
+  <p style="margin:0 0 6px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#B0842C;">THE FINE PRINT / 诚实边界</p>
+  <h2 style="margin:0 0 18px;font-family:'Noto Serif SC','Songti SC',serif;font-size:25px;line-height:1.5;color:#1C1915;">也得说说它不做什么</h2>
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">YouTube 超过 1080p 的档位主动隐藏了，不硬撑；TikTok 页面只给 blob／MSE 流，站点侧拿不到可用直链；爱奇艺、腾讯视频、Netflix 这类有 DRM 保护的，明确不做。实在拿不到地址时还有录制兜底，但那要等播完，且是重编码，不算无损。站点改版也可能让某些作者、标题抓取短暂失效，文档里对此有一串踩坑记录。另外，它安装时会申请全站读写权限，这是全站嗅探的前提，但所有数据都在本地，不上传任何服务器。</p>
+
+  <table style="width:100%;border-collapse:collapse;margin:0 0 8px;font-size:14px;line-height:1.9;color:#4A433A;">
+    <tr style="background:#EDE6D7;">
+      <td style="padding:10px 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#8A8172;border-bottom:1px solid #D6CCB8;">LIMIT</td>
+      <td style="padding:10px 14px;font-family:Georgia,serif;font-size:11px;letter-spacing:3px;color:#8A8172;border-bottom:1px solid #D6CCB8;">WHY</td>
+    </tr>
+    <tr><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">YouTube &gt; 1080p</td><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">更高档位主动隐藏，不硬撑</td></tr>
+    <tr><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">TikTok</td><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">站点只给 blob／MSE 流</td></tr>
+    <tr><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">爱奇艺 / 腾讯视频 / Netflix</td><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">有 DRM 保护，明确不做</td></tr>
+    <tr><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">录制兜底</td><td style="padding:10px 14px;border-bottom:1px solid #D6CCB8;">要等播完、是重编码，不算无损</td></tr>
+    <tr><td style="padding:10px 14px;">站点改版</td><td style="padding:10px 14px;">作者 / 标题抓取可能短暂失效</td></tr>
+  </table>
+  <p style="margin:0;font-size:11px;line-height:1.8;color:#8A8172;">表 01 / 限制清单据项目 README「已知限制」与工程文档整理。</p>
+</section>
+
+<!-- ============ 版权声明 + 印章 ============ -->
+<section style="margin:44px 0 0;">
+  <table style="width:100%;border-collapse:collapse;background:#171512;">
+    <tr>
+      <td style="padding:26px 28px;vertical-align:middle;">
+        <p style="margin:0 0 10px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#8C8478;">A NOTE ON COPYRIGHT</p>
+        <p style="margin:0;font-family:'Noto Serif SC','Songti SC',serif;font-size:19px;line-height:1.9;color:#EFEAE0;">还有一句必须放在前面：它只适合保存你自己拥有版权、或者已经获得授权的内容。别拿它去搬别人的付费内容，尊重创作者是底线。</p>
+        <p style="margin:14px 0 0;font-size:12px;line-height:1.9;color:#8C8478;">安装页上这段免责声明，我一个字没删。</p>
+      </td>
+      <td style="width:130px;padding:20px 20px 20px 0;vertical-align:middle;text-align:center;">
+        <div data-layer="mag" style="display:block;">
+          <svg viewBox="0 0 120 120" width="110" style="display:inline-block;width:110px;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+            <title>印章：纯本地 · 不上传</title>
+            <defs><path id="sealArc" d="M60 60 m -45 0 a 45 45 0 1 1 90 0 a 45 45 0 1 1 -90 0"/></defs>
+            <circle cx="60" cy="60" r="55" fill="none" stroke="#E8B04B" stroke-width="2"/>
+            <circle cx="60" cy="60" r="48" fill="none" stroke="#8C6A24" stroke-width="1"/>
+            <text font-family="'Songti SC',serif" font-size="12" letter-spacing="5" fill="#E8B04B"><textPath href="#sealArc" startOffset="6%">纯本地 · 不上传 · 不追踪 ·</textPath></text>
+            <path d="M42 44 q 18 -14 36 0" fill="none" stroke="#E8B04B" stroke-width="1.6"/>
+            <path d="M60 44 v 30" stroke="#E8B04B" stroke-width="1.6"/>
+            <path d="M60 74 a 8 8 0 1 0 5 -7" fill="none" stroke="#E8B04B" stroke-width="2"/>
+            <text x="60" y="96" font-family="Georgia,serif" font-size="9" letter-spacing="2" fill="#8C6A24" text-anchor="middle">LOCAL ONLY</text>
+          </svg>
+        </div>
+        <div data-layer="wx" style="display:none;">
+          <p style="margin:0;padding:16px 8px;border:2px solid #E8B04B;color:#E8B04B;font-family:'Songti SC',serif;font-size:15px;line-height:1.9;">纯本地<br>不上传<br>不追踪</p>
+        </div>
+      </td>
+    </tr>
+  </table>
+</section>
+
+<!-- ============ 安装三步 ============ -->
+<section style="padding:48px 0 0;">
+  <p style="margin:0 0 6px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#B0842C;">GET STARTED / 三步</p>
+  <h2 style="margin:0 0 20px;font-family:'Noto Serif SC','Songti SC',serif;font-size:25px;line-height:1.5;color:#1C1915;">装起来，不复杂</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:15px;line-height:1.9;color:#1C1915;">
+    <tr><td style="width:44px;padding:10px 0;border-bottom:1px solid #D6CCB8;font-family:Georgia,serif;font-size:22px;color:#B0842C;">1</td><td style="padding:10px 0;border-bottom:1px solid #D6CCB8;">打开 chrome://extensions（Edge 是 edge://extensions）</td></tr>
+    <tr><td style="padding:10px 0;border-bottom:1px solid #D6CCB8;font-family:Georgia,serif;font-size:22px;color:#B0842C;">2</td><td style="padding:10px 0;border-bottom:1px solid #D6CCB8;">右上角打开「开发者模式」，点「加载已解压的扩展程序」</td></tr>
+    <tr><td style="padding:10px 0;border-bottom:1px solid #D6CCB8;font-family:Georgia,serif;font-size:22px;color:#B0842C;">3</td><td style="padding:10px 0;border-bottom:1px solid #D6CCB8;">选中构建好的 dist 目录，钉住图标，就行</td></tr>
+  </table>
+  <p style="margin:18px 0 0;font-size:14px;line-height:1.9;color:#4A433A;">项目是开源的，遵循 GPL-3.0，仓库里连「为什么这么决定」都一条条留了档。</p>
+</section>
+
+<!-- ============ 结尾 ============ -->
+<section style="padding:48px 0 0;">
+  <p style="margin:0 0 20px;font-size:17px;line-height:2;color:#1C1915;text-align:justify;letter-spacing:.3px;">回到开头那一百三十七个文件。工具解决不了「我到底为什么存了这么多」，但至少能让下一次打开文件夹时，每样东西都在它该在的位置，名字看得懂，出处找得回。收藏的意义不是占有，是还能再遇见。</p>
+</section>
+
+<section style="background:#EDE6D7;padding:28px 26px;margin:34px 0 0;text-align:center;border-top:3px double #B0842C;">
+  <p style="margin:0 0 12px;font-family:Georgia,serif;font-size:11px;letter-spacing:4px;color:#B0842C;">YOUR TURN</p>
+  <p style="margin:0 0 14px;font-family:'Noto Serif SC','Songti SC',serif;font-size:22px;line-height:1.8;color:#1C1915;">你的下载文件夹里，现在躺着多少个文件？</p>
+  <p style="margin:0;font-size:14px;line-height:1.9;color:#4A433A;">评论区报个数，我看看谁最该装这根竿。<br>觉得有用，点个在看，或者转给那个总说「我明明存过」的朋友。</p>
+</section>
+
+<!-- ============ 页脚 COLOPHON ============ -->
+<section style="border-top:3px double #B0842C;margin-top:52px;padding-top:20px;">
+  <div data-layer="mag" style="display:block;margin-bottom:18px;">
+    <svg viewBox="0 0 680 26" width="100%" style="display:block;width:100%;height:auto;" role="img" xmlns="http://www.w3.org/2000/svg">
+      <title>页脚纹样</title>
+      <g fill="none" stroke="#C9BFA9" stroke-width="1">
+        <path d="M0 13 h 240"/><path d="M440 13 h 240"/>
+        <path d="M320 3 l 10 10 l -10 10 l -10 -10 z"/>
+        <circle cx="280" cy="13" r="2.5" fill="#B0842C" stroke="none"/>
+        <circle cx="360" cy="13" r="2.5" fill="#B0842C" stroke="none"/>
+      </g>
+    </svg>
+  </div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px;line-height:1.9;color:#8A8172;">
+    <tr>
+      <td style="width:33%;vertical-align:top;padding-right:14px;"><span style="font-family:Georgia,serif;letter-spacing:2px;color:#B0842C;">THE TOOL</span><br>苏哥的钓鱼竿 / Video Rod<br>基于 cat-catch v2.7.2 · GPL-3.0<br>Chrome MV3 · 零构建原生 JS</td>
+      <td style="width:34%;vertical-align:top;padding-right:14px;"><span style="font-family:Georgia,serif;letter-spacing:2px;color:#B0842C;">SOURCES</span><br>功能与数字据项目 README、<br>工程文档与决策记录整理；<br>未引用未经核实的热搜排名。</td>
+      <td style="width:33%;vertical-align:top;"><span style="font-family:Georgia,serif;letter-spacing:2px;color:#B0842C;">COLOPHON</span><br>版面：杂志编辑风 / 舞台金<br>插图：内联 SVG 矢量重绘<br>NO. 01 · 2026.11 · 工具志</td>
+    </tr>
+  </table>
+  <p style="margin:18px 0 0;font-size:10px;line-height:1.8;color:#A29887;letter-spacing:1px;">本文为工具使用笔记，不构成对任何站点服务条款的规避建议；请遵守内容版权与平台规则。</p>
+</section>
+
+</article>
+</div>
+
+<div id="copy-stage"></div>
+<div id="toast"></div>
+
+<script>
+/* ===== 视图切换：杂志版（SVG） / 公众号兼容预览 ===== */
+function setView(v) {
+  var layers = document.querySelectorAll('#article [data-layer]');
+  for (var i = 0; i < layers.length; i++) {
+    var el = layers[i];
+    el.style.display = (el.getAttribute('data-layer') === v) ? 'block' : 'none';
+  }
+  document.getElementById('btnMag').className = (v === 'mag') ? 'btn active' : 'btn';
+  document.getElementById('btnWx').className  = (v === 'wx')  ? 'btn active' : 'btn';
+  document.body.setAttribute('data-view', v);
+}
+
+/* ===== 构造公众号兼容版：删除 SVG 层、启用内联样式层 ===== */
+function buildWechatClone() {
+  var src = document.getElementById('article');
+  var c = src.cloneNode(true);
+  var mag = c.querySelectorAll('[data-layer="mag"]');
+  for (var i = 0; i < mag.length; i++) { mag[i].parentNode.removeChild(mag[i]); }
+  var wx = c.querySelectorAll('[data-layer="wx"]');
+  for (var j = 0; j < wx.length; j++) { wx[j].style.display = 'block'; }
+  return c;
+}
+
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show';
+  setTimeout(function () { t.className = ''; }, 2200);
+}
+
+/* ===== 一键复制：把富文本（含内联样式）写进剪贴板 ===== */
+function copyWechat() {
+  var stage = document.getElementById('copy-stage');
+  var c = buildWechatClone();
+  stage.innerHTML = '';
+  stage.appendChild(c);
+  stage.style.display = 'block';
+  var range = document.createRange();
+  range.selectNodeContents(c);
+  var sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  sel.removeAllRanges();
+  stage.innerHTML = '';
+  stage.style.display = 'none';
+  if (ok) { toast('已复制 · 去公众号后台正文 Ctrl+V 即可'); }
+  else { toast('复制失败，请改用「公众号兼容预览」后手动全选复制'); }
+}
+
+/* ===== 复制纯文本成稿 ===== */
+var PLAIN = [
+'下载完不用再整理：我给浏览器装了根钓鱼竿，9 类站点的素材自己排队进库',
+'',
+'打开下载文件夹的那一刻，我数了数，一百三十七个文件。',
+'其中九十多个叫 IMG_ 开头，二十来个是 video (1)、video (2)，还有几个干脆是一串看不懂的哈希。它们是我这半年从各种网页上存下来的参考图、教程视频、纪录片片段。当时每一条都觉得「以后一定用得上」，现在连哪张是哪张都对不上。',
+'更让人无力的不是找不到，是明明记得存过。翻遍收藏夹、相册、网盘、文件传输助手，最后在某个盘符深处看见它，文件名还是乱码。那一刻你会怀疑，自己到底是收藏了，还是只是把焦虑从一个文件夹搬到了另一个文件夹。',
+'我后来想明白了，问题从来不在「下不下来」。现在能把网页视频存下来的工具太多了，能批量抓图的也不少。真正的缺口在最后一步：下载器不懂素材管理，素材库不会抓网页，抓图插件又管不了视频。每一类工具都只管自己那一段，而「把文件搬进该去的文件夹、改成看得懂的名字、记下它是从谁那儿来的」这最后一步，永远留给你自己。',
+'我是一个产品经理，不是工程师。去年我决定把这一步补上，做了个浏览器扩展，叫「苏哥的钓鱼竿」，代号 Video Rod。它基于开源项目猫抓（cat-catch）改的，遵循 GPL-3.0，现在整套代码和文档都公开。零构建、零框架、零运行时依赖，装上就能用，所有处理都在你自己电脑上跑，不上传、不追踪、不用注册账号。',
+'它做的事只有一句：下载完不用再整理。把嗅探、命名、归档、入库、检索、预览、溯源这一整条链路，接成一条线。下面按你实际会碰到的顺序说。',
+'',
+'01 文件下好，就自己站队',
+'普通下载器给你一个文件，它给你一个位置。点下批量下载那一刻，文件就直接按「站点／作者（@ID）／作品」落进 Downloads 下的 video-rod 目录，同时写进本地索引。比如 B 站一个分 P 纪录片，落进去是「video-rod／B站／影视飓风(@946974)／第1话 开场／01.mp4」。图片和视频放同一个作者目录，靠扩展名区分；同一个网页批量存的图，自动收进以网页标题命名的子文件夹。',
+'站名不是写死的一张清单。项目文档里记着，它内置了三百八十一条常见站点，优先用你手改的名字，其次从页面的 og:site_name、manifest、网页标题里现学，最后才拿域名兜底。换句话说，一个它没听过的新网站，照样能下，只是显示名朴素一点。这条在产品内部被当成铁律：任何页面，有图能单张或批量下，有视频能单张或批量下，做不到就是通道的毛病，而不是「这个站没适配」。',
+'',
+'02 名字按你自己的规矩来',
+'它给了一套命名模板，七个变量：标题、正文、作者、站点、序号、日期、扩展名。默认是「作者_标题」，出来的文件名像「影视飓风(@946974)_第1话 开场.mp4」这种，看一眼就知道是谁的什么内容。有意思的是，模板里的斜杠直接就是文件夹分隔符，写成「站点／标题」，就等于按站点自动分文件夹，不用先建目录。',
+'细节也替你想了：超六十个字自动截断，非法字符换成下划线，重名自动加 _01、_02 不覆盖，作者抓不到就跳过，不留一个孤零零的空下划线。这套模板引擎本身来自上游猫抓，支持截取、替换、正则、大小写转换这些管道处理；我这边加的，是作者、正文、序号这几个更贴近中文内容站的变量，以及按站点、作者自动分目录的策略。',
+'',
+'03 同一个文件，只存一份',
+'不是「文件名一样就跳过」这种粗活，而是给文件内容算 SHA-256 指纹，配引用计数，原理和网盘秒传差不多。不同网址、不同平台下的同一个文件，物理上只留一份，后面命中只记一条引用；删除时引用递减，最后一条引用消失，才真的删掉那个文件。库里还有两个统计口径，逻辑大小和物理占用，省了多少一眼能看见。据项目文档，超过 64MB 的文件会改用采样指纹，只报告、不自动合并，这点它写得很老实。',
+'',
+'04 以后，还找得回去',
+'每条素材都自动记下原帖地址、作者 ID、作品 ID 和直链。直链多半带签名，过一阵就失效，但原帖地址是长期有效的。半年后你想知道「这张图当初是谁发的、从哪篇笔记存的」，点开信息栏就有，重启、重建索引都不丢。我个人觉得，能回到出处，才叫真的「存下来了」；否则只是一堆躺在硬盘里的数据。',
+'',
+'05 抓的时候，别打断我',
+'打开有视频的网页，等它开始播放，点一下工具栏图标，或者按 Alt+Shift+V，面板里就列出这一页抓到的全部媒体：改名字、换目录、取消勾选，然后批量下载。懒得开面板也行，鼠标移到视频画面上，右上角浮出一个下载按钮，大图标一键当前最高清，旁边小箭头展开清晰度列表自己挑，全屏时自动隐藏。图片上右键「保存这张图片」，视频上右键「下载这个视频」，都是一次点击的事。',
+'存图还有一整套：悬停取原图、右下角浮标点开本页图片清单、拖拽到接收区、Alt 框选、图集自动翻页。图片清单里按尺寸分档，还专门留了「尺寸未知」一档，因为有些懒加载的图一开始量不到尺寸，早期版本直接把它们吞了，后来补上，默认全选，不再漏图。',
+'',
+'06 不靠云端转码，画质不打折',
+'视频这块有个我坚持的原则：不靠云端转码，画质不打折。HLS 流是本地直连拉分片、本地解密、本地合成 MP4，视频不出本机；B 站和 YouTube 的视频轨、音频轨在本地做容器级合并，不重编码；长连接被掐断还能按 Range 从断点续，不用整条重下。项目文档列了九类站点，其中一类是「其他网页」这个通用通道，另外几类只是体验增强：B 站分 P 与合集、小红书无扩展名 CDN 地址、X 推文里的内联按钮、微博防盗链页面内取流、抖音详情接口取最高档、Instagram Reel。',
+'',
+'07 存完，还能管',
+'存完的东西，落在一个本地素材库里。左边是按平台和作者分组的资源树，带计数；搜索是 booru 式，空格分隔多个词取交集，前面加减号就是排除；收藏夹支持把「已加星标」自动归成一个智能夹；还有回收站，误删能捞回来。预览器能连播、十档倍速、GIF 逐帧暂停、缩放旋转，右键还能直接 Google 识图。',
+'界面是一套暖黑配舞台金的深色皮肤，只有一套，没做主题切换，一个自用工具，把一套做透比给一堆选项更实在。据项目文档，超过三百条就只渲染可视区域，五万条的库首屏约一百毫秒。',
+'',
+'也得说说它不做什么',
+'YouTube 超过 1080p 的档位主动隐藏了，不硬撑；TikTok 页面只给 blob／MSE 流，站点侧拿不到可用直链；爱奇艺、腾讯视频、Netflix 这类有 DRM 保护的，明确不做。实在拿不到地址时还有录制兜底，但那要等播完，且是重编码，不算无损。站点改版也可能让某些作者、标题抓取短暂失效，文档里对此有一串踩坑记录。另外，它安装时会申请全站读写权限，这是全站嗅探的前提，但所有数据都在本地，不上传任何服务器。',
+'还有一句必须放在前面：它只适合保存你自己拥有版权、或者已经获得授权的内容。别拿它去搬别人的付费内容，尊重创作者是底线。安装页上这段免责声明，我一个字没删。',
+'',
+'装起来，不复杂',
+'打开 chrome://extensions（Edge 是 edge://extensions），右上角打开「开发者模式」，点「加载已解压的扩展程序」，选中构建好的 dist 目录，钉住图标就行。项目是开源的，遵循 GPL-3.0，仓库里连「为什么这么决定」都一条条留了档。',
+'',
+'回到开头那一百三十七个文件。工具解决不了「我到底为什么存了这么多」，但至少能让下一次打开文件夹时，每样东西都在它该在的位置，名字看得懂，出处找得回。收藏的意义不是占有，是还能再遇见。',
+'你的下载文件夹里现在躺着多少个文件？评论区报个数，我看看谁最该装这根竿。如果这篇对你有用，点个在看，或者转给那个总说「我明明存过」的朋友。'
+].join('\n');
+
+function copyPlain() {
+  var ta = document.createElement('textarea');
+  ta.value = PLAIN;
+  ta.style.position = 'fixed';
+  ta.style.left = '-99999px';
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  toast(ok ? '纯文本成稿已复制' : '复制失败，请手动选择文本');
+}
+
+/* 初始：杂志版 */
+setView('mag');
+</script>
+</body>
+</html>
