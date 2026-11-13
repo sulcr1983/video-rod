@@ -10,6 +10,8 @@ dist/
 /.workbuddy/
 # 一次性探针脚本（probe-*.py 之类），属过程产物，见 ARTIFACT-MANAGEMENT.md §3.4
 /work-tmp/
+# 根目录的过程截图（1.5MB，未被任何文档引用），按 §4.2 不入库
+/preview.png
 
 # 敏感文件（含 GitHub token 等凭据，严禁提交）
 .env
