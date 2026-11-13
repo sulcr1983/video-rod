@@ -62,6 +62,7 @@ SUITES = {
         ("cdp", "tools/cdp-viewer-test.py"),
         ("cdp", "tools/cdp-trash-empty-repro.py"),
         ("cdp", "tools/cdp-trash-dup-index-test.py"),
+        ("cdp", "tools/cdp-trash-full-rescan-test.py"),
         ("cdp", "tools/cdp-image-test.py"),
         ("cdp", "tools/cdp-image-batch-test.py"),
         ("cdp", "tools/cdp-image-panel-test.py"),
@@ -80,6 +81,7 @@ SUITES = {
         ("cdp", "tools/cdp-viewer-test.py"),
         ("cdp", "tools/cdp-trash-empty-repro.py"),
         ("cdp", "tools/cdp-trash-dup-index-test.py"),
+        ("cdp", "tools/cdp-trash-full-rescan-test.py"),
     ],
     "image": [
         ("node", "tools/test-image-util.js"),

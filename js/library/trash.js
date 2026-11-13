@@ -526,7 +526,16 @@
 
                 /* 同指纹还有别的**活跃**引用时，物理文件留在原地，只把这条移进回收站。
                  * 注意 countBy 要排除 trashed：否则回收站里的条目也会被算成「还有人用」，
-                 * 最后一条活跃引用被删时文件永远删不掉。 */
+                 * 最后一条活跃引用被删时文件永远删不掉。
+                 *
+                 * 【语义铁律，2026-11-13】refOnly 的判据是**索引层**的「同 sha256 还有别的
+                 * 活跃条目」，不是磁盘层的「文件还在原位」。文件留在原处只是因为另一个
+                 * 条目还在用它，跟「这一条没被删」完全是两回事。
+                 * 所以：trashNoFile=1 是「本条无独立实体」的唯一判据；
+                 * 任何「文件在原位 → 说明没删」的推断都是错的（sweep 曾据此把条目打回 ok）；
+                 * 扫描侧则一律跳过 trashed 行，不看磁盘。
+                 * 反例（苏哥 2026-11-13 报「删了全量刷新又出现」）：删掉同图 A 条、
+                 * B 条仍活跃 → 文件留在原位 → 全量扫描扫到 → A 复活。 */
                 var refOnly = false;
                 if (entry && entry.sha256 && root.VRDedup) {
                     try {
@@ -535,6 +544,9 @@
                     } catch (e) {
                         console.warn('[trash] 引用计数失败，按普通删除处理：', rel, e && e.message);
                     }
+                }
+                if (refOnly) {
+                    console.info('[trash] 只减引用：同内容仍有活跃条目，物理文件保留在原位', rel);
                 }
 
                 /* ② 先给索引打标（这一步失败就不动文件，避免死状态） */
@@ -1112,11 +1124,13 @@
      *   b) state='trashed' 但文件还在原位置（上次搬失败回滚没做干净）→ 打回 ok；
      *   c) 同一文件两条索引（有/无 subdir 前缀）→ 保留带前缀的那条，合并星标/标签；
      *   d) 被搬空的空壳目录 → 从下往上删掉（对齐资源管理器行为）；
-     *   e) 「活死卡」：state=ok 但文件确实不在磁盘、回收站清单里也没有 → 删行+缩略图。
-     * @returns {Promise<{revived:number, dropped:number, merged:number, thumbs:number, pruned:number, dead:number}>}
+     *   e) 「活死卡」：state=ok 但文件确实不在磁盘、回收站清单里也没有 → 删行+缩略图；
+     *   f) 「被扫描复活」的存量条目：回收站清单里有、批次目录还在、mtime 也吻合，
+     *      但索引行是活跃态 → 打回 trashed（ADR-085，用清单当删除的权威记录）。
+     * @returns {Promise<{revived:number, dropped:number, merged:number, thumbs:number, pruned:number, dead:number, requarantined:number}>}
      */
     async function sweep() {
-        var out = { revived: 0, dropped: 0, merged: 0, thumbs: 0, pruned: 0, dead: 0 };
+        var out = { revived: 0, dropped: 0, merged: 0, thumbs: 0, pruned: 0, dead: 0, requarantined: 0 };
         var rr = await resolveRoot();
         if (!rr.handle || !dbReady()) { return out; }
 
@@ -1136,17 +1150,26 @@
              * 卡片却留在主页 —— 自己造出一个死卡（2026-11-09 压测复现）。 */
             if (r.trashPending) { continue; }
             if (Number(r.trashedAt) && Date.now() - Number(r.trashedAt) < FRESH_MS) { continue; }
+            /* 只减引用（refOnly）：文件**本来**就留在原位，因为同内容的活跃条目还在用它。
+             * 这不是「没搬走」，不能据此打回 ok。
+             * 2026-11-13 修复：原来这一行写在 exists() 之后，于是 refOnly 条目每次启动
+             * 自愈都被判成「文件还在原位」→ 打回 ok → 苏哥看到「删了又出现」。
+             * 判据只看索引层，不看磁盘。 */
+            if (r.trashNoFile) { continue; }
             var fsRel = stripPrefix(r.relPath, rr.prefix);
-            if (await exists(rr.handle, fsRel)) {
-                /* 文件其实没搬走：打回 ok（比留在回收站里强，否则用户以为删了） */
+            var batchId = r.trashBatch || NO_BATCH;
+            var copyRel = TRASH + '/' + batchId + '/' + fsRel;
+            /* 回滚只有一个合法条件：**搬运真的没完成**（回收站里没有副本）+ 文件还在原位。
+             * 副本已经存在 = 删除已经生效，无论原位又出现了什么（别的条目重新落盘、
+             * 用户手工拷回），都不能替用户撤销删除 —— 要恢复请走 restore()。 */
+            var copyHere = await exists(rr.handle, copyRel);
+            if (!copyHere && await exists(rr.handle, fsRel)) {
                 await patchRow(r.relPath, { state: 'ok', trashBatch: '', trashedAt: 0, trashNoFile: 0 });
                 out.revived++;
                 continue;
             }
-            if (r.trashNoFile) { continue; }        /* 只减引用，本就没有实体 */
-            var batch = r.trashBatch || NO_BATCH;
-            var copyRel = TRASH + '/' + batch + '/' + fsRel;
-            if (await exists(rr.handle, copyRel)) { continue; }
+            if (copyHere) { continue; }
+            var batch = batchId;
             /* 文件不见了，但批次目录还在 → 可能只是路径口径不同（老版本/手工整理过），
              * 不动它，留给用户在回收站里自己判断；只有「连批次目录都没了」
              * 才是确定无可恢复内容的死条目。 */
@@ -1208,12 +1231,59 @@
             }
         }
 
+        /* f：用回收站清单修「被扫描复活」的存量条目（2026-11-13，ADR-085）。
+         * 判据全部来自**独立证据**，不靠猜：
+         *   ① 磁盘上还有这个批次目录（目录没了就没法恢复，清单也不再可信）；
+         *   ② 清单里记着该 relPath（跨浏览器备份，等价于「删除确实发生过」）；
+         *   ③ 索引行现在是活跃态（ok / missing），说明它被某次扫描放回了主页；
+         *   ④ 磁盘上那份文件与清单记录的是同一份（mtime 一致，容差 1s）。
+         * ④ 是关键反例保护：删掉后又重新下载了同名文件，mtime 必然变，那是新文件，
+         * 不能因为清单里有旧记录就把它打进回收站。
+         * 对已经因此复活的存量库，下一次开库就能自动回到正确状态。 */
+        var requarantined = 0;
+        try {
+            var disks2 = await diskBatches(rr);
+            for (var di = 0; di < disks2.length; di++) {
+                var dk = disks2[di];
+                var mItems = dk.items || [];
+                for (var mi = 0; mi < mItems.length; mi++) {
+                    var m = mItems[mi] || {};
+                    var mRel = String(m.relPath || '');
+                    if (!mRel) { continue; }
+                    var row = byRel[mRel];
+                    if (!row || isTrashed(row)) { continue; }
+                    /* 引用卡与待归档条目本来就没有独立实体，不适用这条规则 */
+                    if (row.isRef || row.pendingArchive) { continue; }
+                    var mTime = Number(m.mtime) || 0;
+                    var rTime = Number(row.mtime) || 0;
+                    if (mTime && rTime && Math.abs(mTime - rTime) > 1000) { continue; }
+                    /* ⑤ 回收站里那份副本必须还在。
+                     * restore() 是「把副本搬回原位」，搬完副本就没了；清单收缩万一
+                     * 没写成功（那里是 catch 静默），这条判据能防止把用户刚恢复的
+                     * 条目再打回回收站。refOnly 条目本来就没有副本，同样不命中。 */
+                    var fsRel0 = stripPrefix(mRel, rr.prefix);
+                    if (!(await exists(rr.handle, TRASH + '/' + dk.batch + '/' + fsRel0))) { continue; }
+                    var patched = await patchRow(mRel, {
+                        state: ST_TRASHED,
+                        trashBatch: dk.batch,
+                        trashedAt: Number(m.trashedAt) || Number(dk.at) || Date.now(),
+                        trashNoFile: m.trashNoFile ? 1 : 0,
+                        trashPending: 0
+                    });
+                    if (!patched) { continue; }   /* 索引不可写：下一轮再修 */
+                    row.state = ST_TRASHED;
+                    requarantined++;
+                }
+            }
+        } catch (eF) { /* 清单读不到就跳过，不阻断其它自愈 */ }
+        out.requarantined = requarantined;
+
         /* e：活死卡自愈，保守口径 —— 只清 state=ok 且文件确实不存在的行，
          * 绝不碰 missing（ADR-030 铁律：自动对账不许删用户已知缺失的条目）。
          * 这样就算上次清空时删行静默失败 / 状态被改回，下次开库也能自愈。 */
         out.dead = await dropDeadCards(rr, { includeMissing: false });
 
-        if (out.revived || out.dropped || out.merged || out.pruned || out.dead) {
+        if (out.revived || out.dropped || out.merged || out.pruned || out.dead || out.requarantined) {
             try { await root.VRDB.log('trash.sweep', {}, out); } catch (e4) { /* 忽略 */ }
         }
 

@@ -2452,112 +2452,178 @@
         }, 1200);
     }
 
-    /** 「定位」统一入口。
-     *  有绝对路径：交给系统打开所在文件夹（downloads.show 优先，其次 file://）。
-     *  没有绝对路径：先尝试**路径自恢复**（用库设置里的根路径 + 条目的相对路径拼），
-     *  仍然拼不出来才给可操作的出路（复制相对路径）。
-     *
-     *  为什么要自恢复（B-48，苏哥 2026-11-09 报「详情页打开文件夹无效」）：
-     *  跨浏览器/全量扫描进来的条目，absPath 可能是空的 —— 下载记录里没有它，
-     *  而自选文件夹模式下 FSA 只给句柄不给路径。但库里其实存着两条线索：
-     *    settings.customRoot（用户填的预览路径）或 settings.detectedRoot + subdir，
-     *    以及条目自己的 relPath（相对库根）。
-     *  两者一拼就是绝对路径，不该直接告诉用户「没记录路径」。 */
+    /** 「定位」统一入口（ADR-086）。
+     *  只有 `chrome.downloads.show(downloadId)` 能「在文件管理器中显示该文件」，
+     *  且它只接受下载 id；没有再传路径的接口，也没有别的 API 能做到。
+     *  没有可用 id 时的降级链见 revealWithoutDownload()（不再用 file:// 开标签页）。 */
     function revealFile(f) {
         if (!f) { return; }
 
         /* ① 有 downloadId：先确认记录还在再 show。
          *    浏览器重启后旧 downloadId 会失效，而 downloads.show 对无效 id
          *    不抛错也不弹窗（静默无操作）——直接 toast 成功会变成「点了没反应」。
-         *    苏哥 2026-11-10 实测正是这个表现。 */
+         *    苏哥 2026-11-10 实测正是这个表现。
+         *    2026-11-13（ADR-086）：show() 也接受回调，失败只能从 lastError 看出来；
+         *    必须据此回退，否则「提示已定位、其实什么都没发生」会原样复发。 */
         if (f.downloadId != null && chrome.downloads && chrome.downloads.search) {
             chrome.downloads.search({ id: f.downloadId }, function (items) {
-                if (items && items.length && chrome.downloads.show) {
-                    try { chrome.downloads.show(f.downloadId); toast('已在文件夹中定位'); return; } catch (e) { /* 回退 */ }
+                var le = chrome.runtime && chrome.runtime.lastError;
+                if (le || !items || !items.length || !chrome.downloads.show) {
+                    revealWithoutDownload(f);
+                    return;
                 }
-                revealWithoutDownload(f);
+                try {
+                    chrome.downloads.show(f.downloadId, function () {
+                        if (chrome.runtime && chrome.runtime.lastError) {
+                            revealWithoutDownload(f);
+                            return;
+                        }
+                        toast('已在资源管理器中定位');
+                    });
+                } catch (e) {
+                    revealWithoutDownload(f);
+                }
             });
             return;
         }
         revealWithoutDownload(f);
     }
 
-    /** ②③ 无有效 downloadId 时的定位链：绝对路径 → 路径自恢复 → 复制路径 */
+    /** ②③ 无有效 downloadId 时的定位链。
+     *
+     * 2026-11-13 重写（ADR-086）：原来这里用 `chrome.tabs.create({url:'file:///…/'})`
+     * 兜底，结果是在浏览器里开了一个目录索引网页 —— 用户看到「文件夹出现在网页里」，
+     * 完全不是「弹出资源管理器」。Chrome / MDN 文档都写明：能唤起文件管理器的只有
+     * `chrome.downloads.show(downloadId)`（"Show the downloaded file in its folder
+     * in a file manager"），而它只接受**下载 id**，不接受路径；
+     * `showDefaultFolder()` 只能开默认下载目录。所以：
+     *
+     *   ⓐ 先算候选目录（absPath 所在目录，或 settings 根 + relPath 拼出来）；
+     *   ⓑ 在下载记录里找**同目录**的任意一条 → 用它的 id 调 show()，目录准确打开；
+     *   ⓒ 找不到任何同目录记录 → showDefaultFolder()（库就在下载目录的 subdir 下）
+     *      + 复制路径；
+     *   ⓓ 连默认目录都不可用 → 只给复制路径，并说清为什么。
+     *
+     * 上限（写在这里免得后人再踩）：没有 native messaging 宿主就无法「精确选中」
+     * 任意路径的文件，ⓑ 只能保证目录对、选中项可能是同目录的别的素材。
+     * 调研见 docs/RESEARCH-TRASH-RESCAN-AND-REVEAL.md §3。 */
     function revealWithoutDownload(f) {
-        var tryOpen = function (absPath) {
-            var folder = String(absPath || '').replace(/\\/g, '/');
-            if (!folder) { return false; }
-            /* 去掉最后一段（文件名），得到所在目录 */
-            folder = folder.replace(/\/[^/]+$/, '');
-            if (!folder) { return false; }
-            var url = '';
+        /* 打开「某个目录」的唯一合法手段：找一条落在该目录下的下载记录，用它的 id。
+         * 返回值：true 已调用 show；false 这个目录没有可用记录。 */
+        var showFolderByDownload = function (folderAbs, done) {
+            var folder = String(folderAbs || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+            if (!folder) { done(false); return; }
+            if (!chrome.downloads || !chrome.downloads.search || !chrome.downloads.show) {
+                done(false); return;
+            }
             try {
-                url = root.VRPath && root.VRPath.toFileUrl
-                    ? root.VRPath.toFileUrl(folder)
-                    : ('file:///' + folder.replace(/^\//, ''));
-                if (url.charAt(url.length - 1) !== '/') { url += '/'; }
-            } catch (e) { return false; }
-            try {
-                if (chrome.tabs && chrome.tabs.create) {
-                    chrome.tabs.create({ url: url }, function () {
-                        if (chrome.runtime.lastError) { window.open(url, '_blank'); }
+                chrome.downloads.search({ limit: 2000, orderBy: ['-startTime'] }, function (list) {
+                    void chrome.runtime.lastError;
+                    var hit = null;
+                    (list || []).some(function (d) {
+                        if (!d || !d.filename) { return false; }
+                        var p = String(d.filename).replace(/\\/g, '/');
+                        var dir = p.replace(/\/[^/]+$/, '').toLowerCase();
+                        if (dir !== folder) { return false; }
+                        hit = d;
+                        return true;
                     });
-                } else { window.open(url, '_blank'); }
-                toast('已打开所在文件夹');
-                return true;
+                    if (!hit) { done(false); return; }
+                    try {
+                        chrome.downloads.show(hit.id);
+                        toast('已在资源管理器中打开所在文件夹');
+                        done(true);
+                    } catch (e) { done(false); }
+                });
+            } catch (e) { done(false); }
+        };
+
+        /* 兜底 1：打开系统默认下载目录（库就在其 subdir 下） */
+        var openDefaultFolder = function () {
+            try {
+                if (chrome.downloads && chrome.downloads.showDefaultFolder) {
+                    chrome.downloads.showDefaultFolder();
+                    toast('已打开下载文件夹；库里素材在其下的子目录中');
+                    return true;
+                }
+            } catch (e) { /* 落到下面的复制路径 */ }
+            return false;
+        };
+
+        var fallback = function (st, rel, rootGuessed) {
+            if (openDefaultFolder()) {
+                offerCopyPath(f, st, rel, rootGuessed, true);
+                return;
+            }
+            offerCopyPath(f, st, rel, rootGuessed);
+        };
+
+        var proceedToSettings = function () {
+            /* ③ 路径自恢复：settings 里的根 + 条目的相对路径 */
+            try {
+                chrome.storage.local.get('vrLibSettings', function (o) {
+                    var st = (o && o.vrLibSettings) || {};
+                    var rel = String(f.relPath || '').replace(/\\/g, '/');
+                    var subdir = String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
+                    /* 条目 relPath 形如 video-rod/抖音/作者/视频/x.mp4；
+                     * 根路径只需要前面那段（去掉 subdir 前缀）之后再拼。 */
+                    var relFromRoot = rel;
+                    if (subdir && relFromRoot.indexOf(subdir + '/') === 0) {
+                        relFromRoot = relFromRoot.slice(subdir.length + 1);
+                    }
+                    var dirOf = function (base) {
+                        if (!base) { return ''; }
+                        var full = String(base).replace(/\/+$/, '') + '/' + relFromRoot;
+                        return full.replace(/\/[^/]+$/, '');
+                    };
+
+                    /* ③a 设置里已经有根：直接按目录找下载记录 */
+                    var guessed = '';
+                    if (String(st.mode || 'system') === 'custom') {
+                        guessed = dirOf(String(st.customRoot || '').trim());
+                    } else {
+                        var dr = String(st.detectedRoot || '').trim();
+                        if (dr) { guessed = dirOf(dr + '/' + subdir); }
+                    }
+                    if (guessed) {
+                        showFolderByDownload(guessed, function (ok) {
+                            if (!ok) { fallback(st, rel, !!guessed); }
+                        });
+                        return;
+                    }
+
+                    /* ③b 设置里没有根 —— 从下载记录反推库根后再按目录找。
+                     * 跨浏览器最实用的一条：新浏览器没有旧浏览器的下载历史，
+                     * 但只要它自己下过任意一个落进 <根>/ 的文件，就能截出「…/video-rod」。 */
+                    if (!chrome.downloads || !chrome.downloads.search) {
+                        fallback(st, rel, false);
+                        return;
+                    }
+                    chrome.downloads.search({ limit: 2000 }, function (list) {
+                        var root = deriveRootFromDownloads(list || [], subdir);
+                        if (!root) { fallback(st, rel, false); return; }
+                        showFolderByDownload(dirOf(root), function (ok) {
+                            if (!ok) { fallback(st, rel, !!root); }
+                        });
+                    });
+                });
             } catch (e) {
-                try { window.open(url, '_blank'); toast('已打开所在文件夹'); return true; } catch (e2) { return false; }
+                fallback(null, String(f.relPath || ''), false);
             }
         };
 
-        /* ② 有绝对路径：直接开 */
+        /* ② 有绝对路径：按它所在目录找下载记录（不再 file:// 开标签页） */
         var abs = String(f.absPath || '').trim();
-        if (abs && tryOpen(abs)) { return; }
-
-        /* ③ 路径自恢复：settings 里的根 + 条目的相对路径 */
-        try {
-            chrome.storage.local.get('vrLibSettings', function (o) {
-                var st = (o && o.vrLibSettings) || {};
-                var rel = String(f.relPath || '').replace(/\\/g, '/');
-                var subdir = String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
-                /* 条目 relPath 形如 video-rod/抖音/作者/视频/x.mp4；
-                 * 根路径只需要前面那段（去掉 subdir 前缀）之后再拼。 */
-                var relFromRoot = rel;
-                if (subdir && relFromRoot.indexOf(subdir + '/') === 0) {
-                    relFromRoot = relFromRoot.slice(subdir.length + 1);
-                }
-                var withBase = function (base) {
-                    if (!base) { return false; }
-                    return tryOpen(String(base).replace(/\/+$/, '') + '/' + relFromRoot);
-                };
-
-                /* ③a 设置里已经有根：直接用 */
-                if (String(st.mode || 'system') === 'custom') {
-                    if (withBase(String(st.customRoot || '').trim())) { return; }
-                } else {
-                    var dr = String(st.detectedRoot || '').trim();
-                    if (dr && withBase(dr + '/' + subdir)) { return; }
-                }
-
-                /* ③b 设置里没有根 —— 从 chrome.downloads 反推。
-                 * 这是跨浏览器最实用的一条：新浏览器没有旧浏览器的下载历史，
-                 * 但只要它自己下过任意一个落进 <根>/ 的文件，就能从那条记录里
-                 * 截出「…/video-rod」这段当库根的绝对路径。
-                 * 苏哥 2026-11-09 报的「详情页打开文件夹无效」正是缺这一步。 */
-                if (!chrome.downloads || !chrome.downloads.search) {
-                    offerCopyPath(f, st, rel);
-                    return;
-                }
-                chrome.downloads.search({ limit: 2000 }, function (list) {
-                    var root = deriveRootFromDownloads(list || [], subdir);
-                    if (root && withBase(root)) { return; }
-                    offerCopyPath(f, st, rel, !!root);
+        if (abs) {
+            var folder = abs.replace(/\\/g, '/').replace(/\/[^/]+$/, '');
+            if (folder) {
+                showFolderByDownload(folder, function (ok) {
+                    if (!ok) { proceedToSettings(); }
                 });
-            });
-            return;
-        } catch (e) { /* 读设置失败 → 走兜底提示 */ }
-
-        offerCopyPath(f, null, String(f.relPath || ''));
+                return;
+            }
+        }
+        proceedToSettings();
     }
 
     /** 从下载记录里反推「库根」的绝对路径。
@@ -2581,13 +2647,17 @@
         return keys[0];
     }
 
-    /** 「定位」失败时的出路：复制相对路径 + 告诉用户为什么 */
-    function offerCopyPath(f, st, rel, rootGuessed) {
+    /** 「定位」失败时的出路：复制路径 + 告诉用户为什么。
+     *  @param {boolean} [folderOpened] 已经替用户打开了下载目录 ——
+     *         这时文案不该再讲「打不开」，而要讲「目录已打开，路径在这里」。 */
+    function offerCopyPath(f, st, rel, rootGuessed, folderOpened) {
         var r = String(rel || f.relPath || '');
         if (!r) { toast('这条素材没有可用的路径信息'); return; }
         var why;
-        if (rootGuessed) {
-            why = '按文件夹根路径拼了一下没打开，可能文件夹被移动或改名了。';
+        if (folderOpened) {
+            why = '没能精确定位到这条素材；已打开下载文件夹，可复制路径去粘贴查找。';
+        } else if (rootGuessed) {
+            why = '按文件夹根路径拼了一下没找到可用的下载记录，可能文件夹被移动或改名了。';
         } else if (st && String(st.mode || 'system') === 'custom' && !String(st.customRoot || '').trim()) {
             why = '当前是自选文件夹模式，浏览器不提供绝对路径。可在「设置 → 媒体库位置」里填一次预览路径。';
         } else {

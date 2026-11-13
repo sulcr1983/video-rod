@@ -642,15 +642,20 @@
             if (!out[k] && old[k]) { out[k] = old[k]; }
         });
         if (out.downloadId === null && old.downloadId !== undefined) { out.downloadId = old.downloadId; }
-        out.state = 'ok';
-        /* 2026-11-09：回收站条目（state='trashed'）在索引里**保留行**，
-         * 只有文件重新出现在磁盘上（full/reconcile 真的扫到了）才算恢复。
-         * 这里负责把 trashed 标记清掉，否则恢复出来的条目会一直藏在回收站里。 */
+        /* 删除态（state='trashed'）只能由 VRTrash.restore() 清除 —— 扫描只做字段合并，
+         * 绝不撤销用户的删除动作（ADR-074 第 4 条 / ADR-085）。
+         * 原来这里写「扫到就清掉 trashed 标记」，等于让扫描替用户做恢复：
+         * refOnly 删除（同内容还有活跃引用）文件本来就留在原位，全量扫描必然扫到，
+         * 于是一次「全量刷新」就把刚删的条目改回 ok —— 苏哥报的「删了又出现」。
+         * 上游 build() 已跳过 trashed 行，这里再兜一层，防止任何调用方送进来时被改写。 */
         if (old.state === 'trashed') {
+            out.state = 'trashed';
+            out.trashBatch = old.trashBatch || '';
+            out.trashedAt = Number(old.trashedAt) || 0;
+            out.trashNoFile = old.trashNoFile || 0;
+            out.trashPending = old.trashPending || 0;
+        } else {
             out.state = 'ok';
-            out.trashBatch = '';
-            out.trashedAt = 0;
-            out.trashNoFile = 0;
         }
         /* 未整理状态每次扫描重新计算：下载/快照源带平台，文件系统源认不出才置 1。
          * 置 1 时清掉旧平台，避免旧值把未整理条目又塞回某个平台。 */
@@ -925,12 +930,15 @@
             var it = scanned[si];
             if (!it || !it.relPath) { continue; }
             var old = oldMap[it.relPath];
-            /* 2026-11-09：回收站条目不许被「没有磁盘证据」的源复活。
-             * downloads（chrome.downloads 历史）与 snapshot（_library/index.json）
-             * 都不校验文件是否还在，Edge 实测 d.exists 在文件已删时仍返回 true，
-             * 一旦掺进来，用户清空回收站后一开库页素材就"自己回来了"。
-             * full / reconcile 是遍历磁盘得到的，扫到即文件存在，走 mergeEntry 正常恢复。 */
-            if (old && old.state === 'trashed' && (mode === 'downloads' || mode === 'snapshot')) {
+            /* 回收站条目（state='trashed'）**任何**扫描源都不许复活（ADR-074 第 4 条 / ADR-085）。
+             * 原实现只拦 downloads / snapshot，理由是「full / reconcile 遍历磁盘，扫到即文件存在」。
+             * 这条理由不成立：引用式删除（refOnly，同内容还有活跃条目）的物理文件本来就留在原位，
+             * 全量扫描必然扫到它 —— 于是「删一条 → 点全量扫描 → 又回来了」。
+             *
+             * 删除态是权威：只有 VRTrash.restore()（用户显式恢复）能清掉它。
+             * 用户确实把文件拷回原位想救回来时，走「回收站 → 恢复」这条明路，
+             * 那里还有「同名同内容自动消重」的分支（ADR-079），体验一致。 */
+            if (old && old.state === 'trashed') {
                 skippedTrashed++;
                 continue;
             }

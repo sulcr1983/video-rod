@@ -1416,6 +1416,7 @@ Chrome for Testing 147（profile `.work/profiles/ext-test6`，端口 9346），�
 | `tools/cdp-trash-empty-repro.py` | 删除标 trashed（行保留）→ 主页 0 卡 → 恢复一条 → 二次删除 → 搬空目录收尾 → UI 清空 → file 表 0 / IDB 缩略图 0 / 回收站目录空 / 再清空幂等 → snapshot·reconcile·full 三种扫描不复活 → **清空核验 verified/leftover、注入死卡兜底、重复删除无孤儿批次** | **23/23** |
 | `tools/cdp-trash-dup-index-test.py` | 同一物理文件两条索引（有/无 `video-rod` 前缀）：启动自愈归并、清空清「幽灵行」、搬运窗口内不误判复活 | **9/9** |
 | `tools/cdp-trash-stale-state-test.py` | 2026-11-10 新增：FSA `InvalidStateError`(code 11) 状态抖动 → 重解析句柄+重试后删除成功；持续抖动如实 failed+回滚+不留脏批次；`exists()` 严格化；**真实 UI** Delete→确认框→失败 toast 说「删除失败」并给「重试」→重试成功才报「已移入回收站」 | **17/17** |
+| `tools/cdp-trash-full-rescan-test.py` | 2026-11-13 新增（ADR-085）：**A** 同 sha256 两条删一条（refOnly）→ full / reconcile / sweep 均不复活、`skippedTrashed=1`、主页 0 卡；**B** 普通删除（文件搬走）→ full 结果为磁盘现存 1 项、条目仍 trashed、sweep 不误删；**C** 注入「已被旧版扫描复活」的脏数据 → sweep 按清单+副本+mtime 回打 `trashed`（`requarantined=1`），且同名新文件（mtime 变化）不被误伤 | **18/18** |
 
 > **已知过期套件（2026-11-10 收尾实测）**：`tools/cdp-batch-test.py` 是 S5b 旧 UI（`#libGrid` / `.lib-card` / `#libBatch`）用例。页面换成 `#grid` / `.card` 后，A4 起 40+ 条断言全部失效（实测 A1-A3 PASS、A4/A5 FAIL、随后 `#libBatch` 为 null 抛 `TypeError`）——**不是产品回归**。现加「旧 UI 守卫」：检测到旧 DOM 不存在即打印 SKIP、退出码 3；同时从 `tools/cdp-run.py` 的 `full` / `library` 默认套件摘除，杜绝假绿/假失败。按当前 UI 重写需单独立项，本次不做无关重构。
 >

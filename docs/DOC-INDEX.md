@@ -65,6 +65,7 @@
 | `DEPENDENCY-EVAL-FLOATING-UI.md` | 浮层定位依赖评估 | — |
 | `REF-YTB-TUBLY.md` | Tubly 拆包分析 | — |
 | `RESEARCH-COMPETITOR-IMAGE.md` | 竞品逆向 | — |
+| `RESEARCH-TRASH-RESCAN-AND-REVEAL.md` | 回收站重扫复活 / 定位唤起资源管理器的外部调研（ADR-085/086） | — |
 | `IMAGE-SIDEBAR-AIX-ADOPT.md` | **图片侧边栏 + AIX/Fatkun 能力采纳清单**（ADR-058 配套：逆向对象、落地项、实测数字、踩坑） | S（2026-11-06 实测） |
 | `IMAGE-*-RESEARCH/PLAN/IMPL.md` | 图片下载系列（调研→方案→实现） | I1–I5 已实现 |
 | `INCIDENT-20261019-LIBRARY-DIR.md` | 媒体库目录限制复盘 | 教训仍有效 |

@@ -2199,3 +2199,36 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
 - **风险**：音视频条目没有缩略图（m3u8 清单不是图片），用 ▶/♪ 占位块；`<img src="*.m3u8">` 只会留裂图框。
 - **验收**：真实 Edge 面板实测 —— 类型栏计数正确（全部6/图片4/动图1/视频1/音频0）；切「视频」只剩 1 条且底部显示 `HLS`；点「下载选中」显示「已保存 1 个音视频」并标记已下载。
 - **踩坑记录**：① `cellEl` 里 `img` 声明移入图片分支后，分支外仍有 `div.appendChild(img)` → 音视频条目抛 `img is not defined`，整个扫描失败（面板显示「扫描失败」）；② 上述第 4 条的 tabId 问题同时影响读和写两处，只修一处会表现为「能列出但下不了」。
+
+---
+
+## ADR-085 删除态是权威：任何扫描源都不许把 trashed 改回 ok（2026-11-13）
+
+- **日期**：2026-11-13 ｜ **状态**：✅ 已实施 ｜ **触发**：苏哥报「删除了之后，点击全量刷新，就又出现了」。
+- **诊断**（三条通道，可叠加）：
+  1. `indexer.js` 的 `build()` 只对 `downloads` / `snapshot` 跳过 `state='trashed'` 的行，`full` / `reconcile` 没跳过；注释里写的理由是「遍历磁盘扫到即文件存在，走 mergeEntry 正常恢复」。
+  2. `mergeEntry()` 结尾无条件 `out.state='ok'`，并对 `old.state==='trashed'` 主动清掉 `trashBatch/trashedAt/trashNoFile` —— 等于让扫描替用户做恢复。
+  3. `trash.js` 的 `refOnly`（同 sha256 还有活跃条目）删除不搬文件，只打 `trashNoFile=1`；`sweep()` 里 `exists(fsRel)` 的判定排在 `trashNoFile` 之前，于是每次启动自愈都把这些条目打回 `ok`。文件留在原位 → 全量扫描必然扫到 → 复活。
+  历史记录 `deliverables/reviews/2026-11-10-回收站清空后死卡复发诊断.md` 曾断言「四种扫描都不会复活」，其前提是「扫描前该条已被清空」，漏掉了 refOnly 这一形态。
+- **决策**：
+  1. **删除优先（tombstone 优先）**：`state='trashed'` 是权威记录，只有 `VRTrash.restore()`（用户显式恢复）能清除。任何扫描源（downloads / snapshot / full / reconcile）遇到 `trashed` 行一律跳过并计入 `skippedTrashed`。
+  2. **`mergeEntry()` 变成纯字段合并**：`trashed` 时原样保留 `trashBatch/trashedAt/trashNoFile/trashPending`，不再置 `ok`。这是 `build()` 之外的第二道防线，防止其它调用方绕过去。
+  3. **`sweep()` 的回滚条件收窄**：`trashNoFile` 先判（refOnly 不是「没搬走」）；普通条目只有「回收站里没有副本 + 原位仍有文件」才回滚为 `ok`；副本存在即视为删除已生效，不替用户撤销。
+  4. **存量脏数据用清单修**：`sweep()` 新增 f 段，`state='ok'` 但回收站清单里有、批次目录还在、回收站副本仍在、且 `mtime` 与清单一致（±1s）→ 打回 `trashed`，计入 `requarantined`。`mtime` 比对专门用于排除「删掉后又重新下载了同名文件」。
+  5. **恢复路径不变**：`restore()` 的同内容消重（`deduped`）+ 异内容改名 `_restored` 仍然有效，是内容回到原位的唯一正向通道（ADR-079）。
+- **理由**：引用式删除的设计目标就是「同内容跨平台只占一份盘」，它必然让文件留在原位；把「文件在原位」当「没删」的证据，与这条设计直接矛盾。删除是用户意图，扫描是发现机制，两者不能互相覆盖。
+- **影响**：`js/library/indexer.js`（`build` / `mergeEntry`）、`js/library/trash.js`（`sweep` / `remove` 注释与日志）、`tools/cdp-trash-full-rescan-test.py`（新增）。
+- **验收**：新增 `tools/cdp-trash-full-rescan-test.py` **18/18**（A 组 refOnly 删除后 full/reconcile/sweep 均不复活、`skippedTrashed=1`；B 组普通删除不复活；C 组存量脏数据 `requarantined=1`，且同名新文件不被误伤）；独立 Node 探针直接驱动 `VRIndex.build({mode:'full'})` 得到 `skippedTrashed=1`、条目保持 `trashed`。
+
+## ADR-086 「定位」只能走系统文件管理器：禁止用 file:// 标签页假装打开文件夹（2026-11-13）
+
+- **日期**：2026-11-13 ｜ **状态**：✅ 已实施 ｜ **触发**：苏哥报「详情页的定位为啥又错了？不弹出文件夹，而是在网页出现文件夹？这不合理」。
+- **诊断**：`app.js` 的 `revealWithoutDownload()` 在没有可用 `downloadId` 时，把目录拼成 `file:///…/` 再用 `chrome.tabs.create` 打开 —— 这只会生成浏览器内的目录索引页。而官方文档（`chrome.downloads.show` / MDN `downloads.show`）写明：能唤起文件管理器的是 `show(downloadId)`，**只接受下载 id**；`showDefaultFolder()` 只能打开默认下载目录。没有任何扩展 API 支持「按任意路径唤起资源管理器」。
+- **决策**：
+  1. **删除 `file://` + `chrome.tabs.create` / `window.open` 兜底**，执行路径中不再出现。
+  2. **三级降级**：① 有效 `downloadId` → `downloads.show(id)`（先 `search({id})` 验证，并在 `show` 回调检查 `lastError`，失败降级）；② 按条目所在目录在 `downloads.search({limit:2000})` 里找任意同目录记录 → 用它的 id `show()`（目录准确，选中项可能不是本条）；③ 找不到 → `showDefaultFolder()` + 复制路径。
+  3. **文案如实**：成功才说「已在资源管理器中定位」；只打开目录时说「已打开下载文件夹，可复制路径」；都不行时说清原因并可一键复制。
+  4. **明确上限**：要「按任意路径精确定位并选中文件」必须引入 native messaging 宿主（Windows 上 `explorer /select,<path>`），本轮不做，理由与注册表要求见 `docs/RESEARCH-TRASH-RESCAN-AND-REVEAL.md` §3.2。
+- **理由**：「打开一个网页目录列表」与「弹出资源管理器」是两种完全不同的结果，前者会让用户以为功能坏了；与其静默用一个看起来像成功的替代品，不如打开正确的目录并如实说明。
+- **影响**：`js/library/app.js`（`revealFile` / `revealWithoutDownload` / `offerCopyPath`）。
+- **验收**：`node --check js/library/app.js` 通过；`grep` 确认执行路径已无 `tabs.create` / `window.open` / `toFileUrl`（仅注释保留历史说明）。真机交互验证需在可加载扩展的浏览器上进行，本机正式版 Chrome/Edge 已不支持 `--load-extension`，改用 Playwright Chromium 158 headless 跑回收站套件作为回归基线。
