@@ -36,6 +36,9 @@ SMOKE_UNITS = [
     'test-x-timeline.js', 'test-x-timeline-hook.js', 'test-x-bulk-profile.js',
     # 授权链路（2026-11-13）：锁住 showDirectoryPicker 必须在任何 await 之前调用
     'test-settings-auth.js',
+    # 库根层级（2026-11-14）：锁住「只收自己与下属」—— 上级目录的素材不进库、
+    # 下载根与库根不再混用、越界条目不粘成正常卡片
+    'test-root-guard.js',
 ]
 # 冒烟档的界面套件：只挑「坏了就一定不能发」的两条（最快）
 SMOKE_SUITES = 'e2e-sw,dedup'

@@ -93,12 +93,43 @@
 
     /* ---------- 相对路径换算 ---------- */
 
+    /**
+     * 库根（不是「下载根」）——2026-11-14 越界根因。
+     *
+     * 原实现取 `vrLibSettings.detectedRoot`，那是**下载目录**；而库根是
+     * `<下载目录>/<subdir>`（system）或 customRoot（自选）。用下载根去裁切
+     * `d.filename`，任何落在下载根下的文件都会被当成库内条目：
+     *   D:\personal\下载\星空皇冠小队成就界面.png → rel = 「星空皇冠…png」
+     * 首段被当成 subdir → 平台为空 → 界面显示「网页」，而文件其实在上级目录。
+     * 这正是苏哥报的「上级下载文件夹的图也进库」。
+     *
+     * 现在统一走 VRRootGuard.contextFromSettings：拿不到库根就返回空，
+     * 由调用方如实拒绝入库，而不是退化成「下载根」继续收。
+     */
     function getRoot() {
         if (rootCache) { return Promise.resolve(rootCache); }
         return new Promise(function (resolve) {
             chrome.storage.local.get('vrLibSettings', function (o) {
                 var s = (o && o.vrLibSettings) || {};
-                rootCache = String(s.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
+                var ctx = null;
+                try {
+                    if (root.VRRootGuard && typeof root.VRRootGuard.contextFromSettings === 'function') {
+                        ctx = root.VRRootGuard.contextFromSettings(s);
+                    }
+                } catch (e) { ctx = null; }
+                if (ctx) {
+                    rootCache = {
+                        absRoot: String(ctx.absRoot || '').replace(/\\/g, '/').replace(/\/+$/, ''),
+                        prefix: String(ctx.prefix || '').replace(/^\/+|\/+$/g, '')
+                    };
+                } else {
+                    /* 守卫未加载：退回旧口径，但 prefix 留空，
+                     * 让 relFromAbs 至少不会把上级目录的文件认成库内条目。 */
+                    rootCache = {
+                        absRoot: String(s.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, ''),
+                        prefix: ''
+                    };
+                }
                 resolve(rootCache);
             });
         });
@@ -106,8 +137,32 @@
 
     function relFromAbs(abs, rootDir) {
         var a = String(abs || '').replace(/\\/g, '/');
-        if (rootDir && a.indexOf(rootDir + '/') === 0) { return a.slice(rootDir.length + 1); }
+        var r = String(rootDir || '').replace(/\\/g, '/').replace(/\/+$/, '');
+        if (!r) { return ''; }
+        /* 按段边界裁切：`D:/下载/video-rod-old/a` 不能因为前缀相似被误吃 */
+        if (a.toLowerCase().indexOf(r.toLowerCase() + '/') === 0) {
+            return a.slice(r.length + 1);
+        }
         return '';
+    }
+
+    /** 条目是否算「库内」——与 indexer/save 共用同一判据 */
+    function isInLibraryRel(rel, prefix) {
+        var G = root.VRRootGuard;
+        if (G && typeof G.classifyRel === 'function') {
+            return G.classifyRel(rel, prefix || '') === 'ok';
+        }
+        /* 守卫未加载：只做最基本的越级检查，不放行 `..` */
+        var s = String(rel || '').replace(/\\/g, '/');
+        return !!s && s.split('/').indexOf('..') === -1;
+    }
+
+    /** 列表/统计口径：回收站与「落在库根外」都不算库里的素材 */
+    function isActive(x) {
+        /* 唯一真源在 VRRootGuard（2026-11-14 收敛） */
+        var G = root.VRRootGuard;
+        if (G && typeof G.isActiveEntry === 'function') { return G.isActiveEntry(x); }
+        return !!x && x.state !== 'trashed' && x.state !== 'outOfRoot' && !x.outOfRoot;
     }
 
     /* ---------- 入库 ---------- */
@@ -135,7 +190,21 @@
         var m = info || {};
         var rel = String(m.relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
         if (!rel || skippedRel(rel)) { return Promise.resolve(null); }
+        /* 2026-11-14：与 indexer / save 同一判据 —— 入库路径必须属于本库。
+         * FSA 直写方（YouTube / 图片管线）的 relPath 由 save.js 算，本应已带
+         * subdir 前缀；这里再判一次，任何「首段不是 prefix」的路径都不许落库。
+         * 这是「上级目录的素材变成库里一条『网页』卡片」的最后一道闸。 */
+        return getRoot().then(function (rc) {
+            if (!isInLibraryRel(rel, (rc && rc.prefix) || '')) {
+                console.info('[vrLib] 入库路径不属于本库，已忽略：', rel);
+                return null;
+            }
+            return ingestResolved(rel, m);
+        });
+    }
 
+    /** ingestDirect 第二段：此时 relPath 已确认属于本库 */
+    function ingestResolved(rel, m) {
         var parsed = {};
         if (root.VRPath && root.VRPath.parseRelPath) {
             try { parsed = root.VRPath.parseRelPath(rel) || {}; } catch (e) { parsed = {}; }
@@ -202,26 +271,41 @@
     }
 
     function writeOne(meta, d, key) {
-        return getRoot().then(function (rootDir) {
-            var rel = relFromAbs(d.filename, rootDir);
+        return getRoot().then(function (rc) {
+            var absRoot = (rc && rc.absRoot) || '';
+            var prefix = (rc && rc.prefix) || '';
+            var drop = function () {
+                if (key) { delete pending[key]; scheduleSave(); }
+                return null;
+            };
+
+            /* 2026-11-14：**只收扩展自己发起的下载**。
+             * 没有预登记 meta 的下载与资源库无关（用户日常存图/存视频），
+             * 原实现照样调 writeOne(null, d, null) 跑一遍：
+             *   用「下载根」裁 d.filename → rel 只剩文件名 → 入库
+             *   → 首段被当成 subdir → 平台空 → 界面显示「网页」。
+             * 文件头注释写的就是「用户日常下载不会被吸进资源库」，
+             * 这里把承诺落到代码里。 */
+            if (!meta || !meta.relPath) { return drop(); }
+
+            var relInRoot = relFromAbs(d.filename, absRoot);
             var pendingArchive = 0;
-            if (!rel && meta && meta.relPath) {
-                /* ADR-070：真实落点不在库根下（下载器兜底丢目录前缀）时，relPath
-                 * 只能记真实文件名，并标 pendingArchive —— 不许伪造归档目录。
-                 * 2026-11-08 实测：Chrome 147+ 兜底下载丢目录，旧逻辑仍按预登记
-                 * 目录记账，导致 37/50 条「文件缺失」。 */
+            var rel = '';
+            if (relInRoot) {
+                /* 真实落点在库根内：relPath 必须补回 subdir 首段，
+                 * 否则 parseRelPath 会把站点段当成 subdir（见 save.js 同款注释）。 */
+                rel = prefix ? (prefix + '/' + relInRoot) : relInRoot;
+            } else {
+                /* ADR-070：真实落点不在库根下（下载器兜底丢目录前缀，落在下载根）。
+                 * 保留它并不许伪造归档目录，但**不再当成正常条目**：
+                 * 文件确实在库根外面，主页不该出现这张卡（苏哥 2026-11-14 报的正是这个）。
+                 * 标 state='outOfRoot' 与索引侧同一语义：首页隐藏、快照不写、单独计数。 */
                 var absFile = String(d.filename || '').split(/[\\\/]/).pop();
-                if (rootDir && absFile) {
-                    rel = absFile;
-                    pendingArchive = 1;
-                } else {
-                    // 探测不到下载根目录：沿用预登记目录（行为不变），但如实标待归档
-                    var mDir = String(meta.relPath).split('/').slice(0, -1).join('/');
-                    rel = mDir ? (mDir + '/' + absFile) : absFile;
-                    pendingArchive = 1;
-                }
+                if (!absFile) { return drop(); }
+                rel = absFile;
+                pendingArchive = 1;
             }
-            if (!rel || skippedRel(rel)) { return null; }
+            if (!rel || skippedRel(rel)) { return drop(); }
 
             var m = meta || {};
             var parsed = {};
@@ -251,7 +335,15 @@
                 tags: [],
                 state: 'ok'
             };
-            if (pendingArchive) { item.pendingArchive = 1; }
+            if (pendingArchive) {
+                /* ADR-070 保留「待归档」语义，但同时标出「落在库根外」（2026-11-14）：
+                 * 文件确实不在库里，主页不该出现这张卡 —— 这正是苏哥报的现象。
+                 * 两个标记并存：pendingArchive 说明「为什么它在外面」，
+                 * outOfRoot 说明「它不该算库内条目」。 */
+                item.pendingArchive = 1;
+                item.outOfRoot = 1;
+                item.state = 'outOfRoot';
+            }
             // F5 内容去重：先算指纹；命中已有条目就只写引用，不重复占盘。
             // 判重异常一律按普通文件处理（不影响下载与入库）。
             return Promise.resolve()
@@ -350,7 +442,13 @@
                     enqueue(copy, d, null);
                     return;
                 }
-                enqueue(null, d, null);
+                /* 2026-11-14：没有预登记记录 = 不是本扩展发起的下载
+                 * （用户日常在浏览器里存图/存视频、别的扩展下的、手动另存为）。
+                 * 原实现在这里 enqueue(null, d, null)，照样按「下载根」裁路径入库 ——
+                 * 结果上级「下载」目录里的素材（截图里的那两张图）全被吸进资源库，
+                 * 且因为少了一层站点目录而显示成「网页」。
+                 * 文件头注释承诺的「用户日常下载不会被吸进资源库」必须在代码里成立。 */
+                console.info('[vrLib] 跳过非本扩展发起的下载：', d.filename || d.url);
             });
         });
     }
@@ -392,10 +490,12 @@
         }
         if (t === 'vrLib.list') {
             root.VRDB.getAllFiles().then(function (list) {
-                /* 回收站条目不算「库里的素材」，调用方（弹窗/命名/判重）只该看到活跃条目 */
+                /* 回收站条目不算「库里的素材」，调用方（弹窗/命名/判重）只该看到活跃条目。
+                 * 2026-11-14：落在库根外的条目（outOfRoot）同样不算 ——
+                 * 否则查重会拿一条库外文件去「命中」，用户就永远下不下来。 */
                 sendResponse({
                     ok: true,
-                    list: (list || []).filter(function (x) { return x && x.state !== 'trashed'; })
+                    list: (list || []).filter(isActive)
                 });
             }).catch(function (e) {
                 sendResponse({ ok: false, code: 'LIB_E_DB', message: String(e) });
@@ -405,7 +505,7 @@
         if (t === 'vrLib.stats') {
             root.VRDB.getAllFiles().then(function (list) {
                 /* 只算活跃条目：回收站条目不删行，直接 count() 会虚高 */
-                var n = (list || []).filter(function (x) { return x && x.state !== 'trashed'; }).length;
+                var n = (list || []).filter(isActive).length;
                 sendResponse({ ok: true, count: n });
             }).catch(function (e) {
                 sendResponse({ ok: false, code: 'LIB_E_DB', message: String(e) });
@@ -459,6 +559,14 @@
         ingestDirect: ingestDirect,
         handleMessage: handleMessage,
         // 测试用：清空 pending 缓存（不影响磁盘索引）
-        _resetRootCache: function () { rootCache = null; }
+        _resetRootCache: function () { rootCache = null; },
+        /* 测试用：直接跑一次「下载完成 → 入库」的判定（不经过 chrome.downloads）。
+         * tools/test-root-guard.js 用它钉住「落在库根外的下载不算库内素材」——
+         * 这正是苏哥 2026-11-14 报的「上级下载文件夹的图也进了库」。 */
+        _writeOne: function (meta, d, key) {
+            return writeOne(meta || null, d || {}, key || null);
+        },
+        _isActive: isActive,
+        _isInLibraryRel: isInLibraryRel
     };
 })(typeof self !== 'undefined' ? self : this);

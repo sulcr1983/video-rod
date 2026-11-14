@@ -2317,3 +2317,23 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
 - **影响**：`js/library/settings.js`（`authDefault` / `restoreAuth` / `showRestore` / `describePickerError` / `fileEditingSettingsUrl` / `refreshAuthState` / `dropRootHandle`）、`options.html`（新增按钮）。
 - **验收**：`node tools/test-settings-auth.js` **16/16**（A1 选择器同步弹出 / A2 调用瞬间未进入任何异步 API / M1 变异反证：把旧 `await` 插回后断言必红）；`tools/health-check.py` 冒烟清单已登记该单测。
 - **未覆盖**：真机交互（原生目录框）无法在无头门禁验证，需在可加载扩展的浏览器上点一次。
+
+## ADR-088 库根是「某一层目录」而不是「某个名字」：三条入库通道统一交守卫判定（2026-11-14）
+
+- **日期**：2026-11-14 ｜ **状态**：✅ 已实施 ｜ **触发**：苏哥报「不是说限制只扫描自己和下属文件夹吗？为啥连上级下载文件夹都扫描了」——截图里 `D:\personal\下载\` 根上那两张星空女孩图，在资源库里显示成「网页」。
+- **诊断（按数据流定位，不猜）**：
+  1. **越界不是遍历造成的**。`indexer.collectTree` 从传入句柄递归 `entries()`，没有任何 `..` 或父级解析；`scanDownloads` 用 `relFromAbs` 严格裁切到 `absRoot` 之下。所以「只扫自己和下属」在算法层面一直成立。
+  2. **越界的是「自己」是谁**。库根由存进 IDB 的那个目录句柄决定。`switchRootInteractive()` 在用户选到上级「下载」时，`getDirectoryHandle('video-rod')` 失败 → `child=null` → **静默把上级当库根**继续，且仍写 `subdir:'video-rod'`。这一刻「自己和下属」就等于整个下载目录。
+  3. **三条通道各算各的根**：`indexer` 用 `absRoot`（下载根/subdir）；`save.js` 直接拿 IDB 句柄、`stripPrefix` 假设「句柄已到库根」，于是把 `video-rod` 当已到达层剥掉，文件直接写进下载根；`sw-library.getRoot()` 取的竟是 `detectedRoot`（**下载根**，不是库根），于是下载根下的任何文件都会被裁成「只剩文件名」的 rel 并入库。
+  4. **为什么界面显示成「网页」**：relPath 只剩两段时 `parseRelPath` 的站点段循环 `for (i = 1; i < segs.length - 1; i++)` 一次都不执行 → `platform=''` → `app.js` 的 `plat: e.platform || parsed.platform || 'web'` 兜底成 `web`，`platLabel` 再显示「网页」。**「网页」分组本身就是越界条目的指纹**：正常条目都带站点目录段。
+  5. `sw-library.handleComplete` 在命中不了预登记记录时仍调 `enqueue(null, d, null)`，把用户自己的日常下载也写进库 —— 与文件头「用户日常下载不会被吸进资源库」的承诺相反，这是那两张图的直接来源。
+- **决策**：
+  1. **新增 `js/library/root-guard.js`**：把「库根该是哪一层」收敛成一处判据（纯逻辑 `expectedName` / `plan` / `classifyRel` / `relFromRoot` / `contextFromSettings` + FSA 的 `resolveDir` / `resolveHandle` / `resolveContext`）。**只允许向下钻一层，绝不向上找父目录** —— 浏览器不提供父句柄，任何「猜上级」都会把错误层合法化。
+  2. **三条通道统一改用它**：`indexer.setRoot` 在入口校验层级（`LIB_E_ROOT_LAYER`）；`build()` 合并循环丢弃不属于本库的 relPath；`save.probeEnv` 先把句柄定位到库根层再 `stripPrefix`，写盘后按 `classifyRel` 复核入库路径，不一致就删掉刚写的文件并报错；`sw-library.getRoot` 改取库根（`contextFromSettings`），无预登记记录的下载不再入库。
+  3. **新增状态 `outOfRoot`**：落在库根之外的条目不再冒充正常卡片。主页/`RAW` 过滤、快照不写、对账跳过、回收站自愈保护、去重与引用计数排除，并在标题下如实告知「另有 N 条素材在素材库文件夹之外」。
+  4. **`outOfRoot` 印记不粘住**（与 `trashed` 不同）：它表达的是「位置判定」，用户把文件移进库根或换回原库根后重扫，`mergeEntry` 必须让它变回 `ok`；而 `trashed` 是用户的显式删除动作，扫描无权撤销（ADR-074/085 继续有效）。
+  5. **区分 `setRoot` 的两种语义**：`authorize`（给已有库根补授权，选到上级要拒绝）与 `rebase`（用户显式换库，选谁就是谁，但范围要如实回报 `layer='parent'`）。混用的两种翻车方式已写入单测。
+- **理由**：把「根」当成名字（`handle.name === 'video-rod'`）就会在名字对不上时放过任意目录；把它当成**层级关系**（期望层 + 只向下钻）才与「只收自己与下属」的承诺一致。凡是需要判断「这条路径属不属于本库」的地方，都必须用同一份判据，否则修好一处、另一处继续漏。
+- **影响**：新增 `js/library/root-guard.js`、`tools/test-root-guard.js`；改 `js/library/{indexer,save,sw-library,app,settings,trash,dedup,db}.js`、`library.html`、`options.html`、`js/background.js`、`css/library.css`；测试注册进 `tools/health-check.py`、`tools/cdp-run.py`。
+- **验收**：`node --test tools/test-root-guard.js` **40/40**（含 4 条真实入库链路：日常下载不入库 / 库根内正常入库且带 subdir 首段 / 库根外标 `outOfRoot` / `ingestDirect` 拒收越界路径；6 条 `setRoot` 与 `mergeEntry` 语义回归）；冒烟清单 16 个 Node 单测全绿（path 100、save 55、persistence 81、naming 61、image-util 127…），`node --check` 覆盖全部改动文件。
+- **未覆盖**：真机交互（选目录后是否弹「范围放大」确认框）需在可加载扩展的浏览器上点一次；历史脏条目要等用户点一次「全量扫描」才会被标成 `outOfRoot`（不静默删除，符合 ADR-030）。

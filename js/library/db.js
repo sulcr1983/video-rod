@@ -250,14 +250,25 @@
      *   查重每次下载都跑，上万条时反复把整表拉进内存。
      *   这里用 IDB 游标逐条比对，命中即回调，内存占用 O(1)。
      *
+     * excludeState 支持字符串或数组（2026-11-14）：
+     *   越界条目（state='outOfRoot'）不参与查重 —— 它指向库外的文件，
+     *   拿它当「库里已有」会让用户重新下载时被误判成重复而跳过。
+     *
      * @param {string} field 比较的字段名（如 'sha256'）
      * @param {*} value 期望值
-     * @param {object} opts { limit, excludeRelPath, excludeState }
+     * @param {object} opts { limit, excludeRelPath, excludeState: string|string[] }
      * @returns {Promise<Array>} 命中的条目（最多 limit 条）
      */
+    function excludeStates(opts) {
+        var v = opts && opts.excludeState;
+        if (!v) { return null; }
+        return Array.isArray(v) ? v : [v];
+    }
+
     function findBy(field, value, opts) {
         var o = opts || {};
         var limit = Number(o.limit) || 1;
+        var skip = excludeStates(o);
         if (!field) { return Promise.resolve([]); }
         return open().then(function (db) {
             return new Promise(function (resolve, reject) {
@@ -270,7 +281,7 @@
                     if (!cur || out.length >= limit) { resolve(out); return; }
                     var v = cur.value;
                     if (v && v[field] === value && v.relPath !== o.excludeRelPath &&
-                        !(o.excludeState && v.state === o.excludeState)) {
+                        !(skip && skip.indexOf(v.state) !== -1)) {
                         out.push(v);
                     }
                     cur.continue();
@@ -283,14 +294,17 @@
     /**
      * 统计某字段等于 value 的条目数（引用计数用，恒定内存）
      *
-     * @param {object} [opts] { excludeState: 'trashed' } —— 引用计数只算「活跃」条目。
+     * @param {object} [opts] { excludeState: 'trashed' | ['trashed','outOfRoot'] }
+     *   引用计数只算「活跃」条目。
      *   回收站条目在 2026-11-09 之后不再删行、只把 state 打成 'trashed'，
      *   若计数时把它算进去，最后一条活跃引用被删时会误判「还有人在用」，
      *   物理文件就永远留在原地，回收站里那条也永远删不掉。
+     *   2026-11-14：越界条目（outOfRoot）同理 —— 它不是库内实体，
+     *   算进引用计数会让真正的最后一份永远删不掉。
      */
     function countBy(field, value, opts) {
         if (!field) { return Promise.resolve(0); }
-        var skip = (opts && opts.excludeState) || '';
+        var skip = excludeStates(opts) || [];
         return open().then(function (db) {
             return new Promise(function (resolve, reject) {
                 var t = db.transaction(['file'], 'readonly');
@@ -300,7 +314,7 @@
                     var cur = req.result;
                     if (!cur) { resolve(n); return; }
                     var v = cur.value;
-                    if (v && v[field] === value && !(skip && v.state === skip)) { n++; }
+                    if (v && v[field] === value && skip.indexOf(v.state) === -1) { n++; }
                     cur.continue();
                 };
                 req.onerror = function () { reject(req.error); };

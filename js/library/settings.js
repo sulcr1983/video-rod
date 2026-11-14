@@ -127,6 +127,10 @@
             root.VRIndex.status().then(function (s) {
                 var msg = '已入库 ' + s.count + ' 条';
                 if (s.missing) { msg += ' · 缺失 ' + s.missing; }
+                /* 2026-11-14：越界条目单独报，不能混进「缺失」（那是两件事）。
+                 * 用户需要知道「有 N 条素材不在素材库文件夹里，所以没被算进来」，
+                 * 否则他会以为这些文件凭空消失了。 */
+                if (s.outOfRoot) { msg += ' · 库外 ' + s.outOfRoot + ' 条（不计入）'; }
                 if (s.snapshotAt) {
                     var d = new Date(s.snapshotAt);
                     msg += ' · 快照 ' + (d.getMonth() + 1) + '-' + d.getDate() + ' ' +
@@ -729,7 +733,11 @@
             try { await idbPut('root', handle); } catch (e) { /* 忽略 */ }
             try {
                 if (root.VRIndex && root.VRIndex.setRoot) {
-                    await root.VRIndex.setRoot(handle, abs, sub);
+                    /* 2026-11-14：这是**用户显式换库**（设置页「选择文件夹…」），
+                     * 必须走 rebase —— 否则「旧 customRoot 还留着、这次选了另一个目录」
+                     * 会被当成层级错误拒绝，用户明明选对了却存不进去。
+                     * rebase 不做名字校验，但会带回 layer，扫描范围因此如实可见。 */
+                    await root.VRIndex.setRoot(handle, abs, sub, { mode: 'rebase' });
                 }
             } catch (e) { /* 内存态失败不影响本次扫描，下面会报错 */ }
 
@@ -901,7 +909,9 @@
                     return;
                 }
                 root.showDirectoryPicker({ mode: 'read' }).then(function (h) {
-                    return root.VRIndex.setRoot(h, abs).then(function () {
+                    /* 2026-11-14：补上 prefix —— 不传的话 setRoot 拿不到「期望层名」，
+                     * 校验会被跳过，选到上级目录也能直接开始扫（正是越界入口之一）。 */
+                    return root.VRIndex.setRoot(h, abs, state.subdir || 'video-rod').then(function () {
                         return root.VRIndex.build({ mode: 'full' });
                     });
                 }).then(function (r) {
@@ -998,7 +1008,9 @@
                 }
                 text('vrLibIdxMsg', '请选择资源库根目录（含 _library 的那一层）…', '#666');
                 root.showDirectoryPicker({ mode: 'read' }).then(function (h) {
-                    return root.VRIndex.setRoot(h, absRootNow()).then(function () {
+                    /* 同上：恢复快照也必须确认句柄落在库根层，
+                     * 否则会从上级目录读快照 / 把上级当成库根。 */
+                    return root.VRIndex.setRoot(h, absRootNow(), state.subdir || 'video-rod').then(function () {
                         return root.VRIndex.build({ mode: 'snapshot' });
                     });
                 }).then(function (r) {

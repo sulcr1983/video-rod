@@ -107,6 +107,21 @@ eq('decideMode prefer=downloads → downloads',
 eq('decideMode prefer=downloads 无下载器 → none',
     S.decideMode({ prefer: 'downloads', fsa: true, hasHandle: true, downloads: false }).mode, 'none');
 
+/* ---------------- 2026-11-14：句柄不在库根层时必须失败 ---------------- */
+/* 背景：句柄指到上级「下载」时，stripPrefix 会把 video-rod 剥掉，
+ * 文件直接写进下载根。这种「层级不对」不能降级到下载器 ——
+ * 下载器落点就是那个上级目录，等于换个通道继续越界。 */
+eq('decideMode 层级错误 → none（不降级下载器）',
+    S.decideMode({ prefer: 'auto', fsa: true, hasHandle: false, downloads: true, layerError: true }).mode,
+    'none');
+eq('decideMode 层级错误带 ROOT_LAYER 码',
+    S.decideMode({ prefer: 'auto', fsa: true, hasHandle: false, downloads: true, layerError: true }).code,
+    S.CODES.ROOT_LAYER);
+ok('CODES 里确实有 ROOT_LAYER', !!S.CODES.ROOT_LAYER);
+/* 回归：普通「没有句柄」（用户从没授权）仍应降级下载器，不能被上面这条误伤 */
+eq('decideMode 仅无句柄时仍降级下载器',
+    S.decideMode({ prefer: 'auto', fsa: true, hasHandle: false, downloads: true }).mode, 'downloads');
+
 /* ---------------- mapError：DOMException → 业务码 ---------------- */
 eq('mapError 权限拒绝', S.mapError({ name: 'NotAllowedError' }), S.CODES.PERM);
 eq('mapError 安全错误', S.mapError({ name: 'SecurityError' }), S.CODES.PERM);

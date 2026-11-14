@@ -37,7 +37,10 @@
         FSA: 'SAVE_E_FSA',                 // 其它 FSA 写入异常
         DL: 'SAVE_E_DL',                   // downloads 通道发起失败
         CANCEL: 'SAVE_E_CANCEL',           // 用户在另存为对话框里取消
-        NO_CHANNEL: 'SAVE_E_NO_CHANNEL'    // FSA 与 downloads 都不可用
+        NO_CHANNEL: 'SAVE_E_NO_CHANNEL',   // FSA 与 downloads 都不可用
+        /* 2026-11-14：句柄定位不到库根层（选到了上级、或上级下没有 subdir）。
+         * 这时**不许**按旧逻辑剥前缀继续写 —— 那会把文件直接倒进上级目录。 */
+        ROOT_LAYER: 'SAVE_E_ROOT_LAYER'
     };
 
     var CHUNK = 4 * 1024 * 1024;           // 分片写盘大小
@@ -124,6 +127,14 @@
         var e = env || {};
         var prefer = e.prefer || 'auto';
 
+        /* 2026-11-14：句柄在，但不在库根层（选到了上级「下载」）。
+         * 这种情况**不许**降级到下载器：下载器会落到浏览器默认下载目录，
+         * 而那个目录正是「上级」，等于换个通道继续越界。
+         * 必须如实失败，让调用方提示用户重新选一次目录。 */
+        if (e.layerError) {
+            return { mode: 'none', code: CODES.ROOT_LAYER, reason: 'root-layer' };
+        }
+
         if (prefer === 'downloads') {
             return e.downloads
                 ? { mode: 'downloads', reason: 'forced' }
@@ -193,6 +204,31 @@
 
     var prefixCache = null;
 
+    /**
+     * 把「库根句柄」定位到**它应该在的那一层**（2026-11-14）。
+     *
+     * 为什么必须在这里做：save.js 的 stripPrefix 假设「根句柄已经到库根」，
+     * 于是把 relPath 首段（video-rod）剥掉。一旦句柄其实指向上级「下载」，
+     * 剥完就直接写进下载根 —— 苏哥报的「上级目录里的图也进库」正是这条链。
+     * 定位到库根后再剥，落盘与入库才对得上。
+     *
+     * create=true：首次下载允许按需创建 video-rod（与「首次下载时自动创建」
+     * 的既有承诺一致），但**只向下建**，绝不在上级目录里放文件。
+     */
+    function locateRoot(h) {
+        var G = root.VRRootGuard;
+        if (!h) { return Promise.resolve({ handle: null, layer: 'none', reason: 'NO_HANDLE' }); }
+        if (!G || typeof G.resolveHandle !== 'function') {
+            /* 守卫未加载：退回旧行为，但不静默假装成功（layer=unknown 会记在返回值里） */
+            return Promise.resolve({ handle: h, layer: 'unknown', reason: '' });
+        }
+        return Promise.resolve().then(function () {
+            return G.resolveHandle(h, { create: true });
+        }).catch(function (e) {
+            return { handle: null, layer: 'none', reason: 'ERR', detail: String((e && e.message) || e) };
+        });
+    }
+
     /** 资源库根已经到达的那一层（subdir / rootPrefix）；拿不到就用默认 */
     function resolvePrefix() {
         if (prefixCache != null) { return Promise.resolve(prefixCache); }
@@ -237,6 +273,10 @@
      * custom 模式 = customRoot（自选文件夹可能拿不到绝对路径，此时返回空，
      * 由调用方退化为「无指纹」，绝不伪造路径）。
      *
+     * 2026-11-14：`rootAbs` 是上一次落定的值，可能已经过期（用户换了目录）。
+     * 直接拿它拼出的绝对路径会指向旧的库根 —— 指纹读错文件，比「没有指纹」更糟。
+     * 所以只有在「末段名与当前句柄层名一致」时才采信，否则按设置重推。
+     *
      * @param {string} prefix 句柄所在层的名字（rootPrefix / subdir）
      * @returns {Promise<string>} 不带尾斜杠；拿不到为空串
      */
@@ -251,17 +291,24 @@
                 absRootCache = { prefix: pfx, path: path };
                 resolve(path);
             };
+            /* 末段校验：pfx 为空时无从校验，直接接受 */
+            var lastSeg = function (p) {
+                var segs = String(p || '').replace(/\\/g, '/').split('/').filter(Boolean);
+                return segs.length ? segs[segs.length - 1] : '';
+            };
             var fromSettings = function (st) {
                 st = st || {};
                 if ((st.mode || 'system') === 'custom') { return finish(st.customRoot || ''); }
                 var base = String(st.detectedRoot || '').replace(/\\/g, '/').replace(/\/+$/, '');
                 if (!base) { return finish(''); }
-                /* 与 app.js/indexer.js 同口径：拒绝浏览器 profile 内部目录与
-                 * 受管默认名（Webstore Downloads），避免把用户文件指到错位置。 */
-                if (/\/(User Data|\.edge-[^/]+|Default)\//i.test(base + '/') ||
-                    /Webstore Downloads/i.test(base)) {
-                    return finish('');
-                }
+                /* 判据唯一真源在 VRRootGuard（2026-11-14 收敛，此前本文件与
+                 * app.js / indexer.js 各写一份）。守卫未加载时退回内联判据。 */
+                var G2 = root.VRRootGuard;
+                var plausible = (G2 && typeof G2.isPlausibleDownloadRoot === 'function')
+                    ? G2.isPlausibleDownloadRoot(base)
+                    : !(/\/(User Data|\.edge-[^/]+|Default)\//i.test(base + '/') ||
+                        /Webstore Downloads/i.test(base));
+                if (!plausible) { return finish(''); }
                 var sub = pfx || String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '') || 'video-rod';
                 finish(base + '/' + sub);
             };
@@ -278,7 +325,12 @@
             var db = root.VRDB;
             if (db && typeof db.getSetting === 'function') {
                 db.getSetting('rootAbs', '').then(function (v) {
-                    if (v) { finish(v); return; }
+                    /* 过期判定：末段与当前句柄层不同 → 丢弃，按设置重算。
+                     * 陈旧值比空值危险：它会拼出一条「看起来合理」的错误绝对路径。 */
+                    if (v && (!pfx || lastSeg(v).toLowerCase() === pfx.toLowerCase())) {
+                        finish(v);
+                        return;
+                    }
                     readSettings();
                 }).catch(readSettings);
                 return;
@@ -308,14 +360,30 @@
             if (!h || typeof h.getDirectoryHandle !== 'function') {
                 return { fsa: !!h, root: null, downloads: dl };
             }
-            if (typeof h.queryPermission !== 'function') {
-                return { fsa: true, root: h, downloads: dl };
-            }
-            return h.queryPermission({ mode: 'readwrite' }).then(function (st) {
-                if (st === 'granted') { return { fsa: true, root: h, downloads: dl }; }
-                return { fsa: true, root: null, perm: st, downloads: dl };
-            }).catch(function () {
-                return { fsa: true, root: null, downloads: dl };
+            return locateRoot(h).then(function (loc) {
+                /* 2026-11-14：句柄定位失败 = 拿到的不是库根（多半是上级「下载」）。
+                 * 原实现直接把它当 root 用，stripPrefix 于是把 video-rod 剥掉，
+                 * 文件就写进了上级目录。这里必须当「没有可用句柄」处理，
+                 * 由 decideMode 降级到 downloads（并带上 ROOT_LAYER 原因）。 */
+                if (!loc || !loc.handle) {
+                    return {
+                        fsa: true, root: null, downloads: dl,
+                        layer: (loc && loc.layer) || 'none',
+                        layerReason: (loc && loc.reason) || 'ROOT_LAYER',
+                        layerDetail: (loc && loc.detail) || ''
+                    };
+                }
+                if (typeof loc.handle.queryPermission !== 'function') {
+                    return { fsa: true, root: loc.handle, downloads: dl, layer: loc.layer };
+                }
+                return loc.handle.queryPermission({ mode: 'readwrite' }).then(function (st) {
+                    if (st === 'granted') {
+                        return { fsa: true, root: loc.handle, downloads: dl, layer: loc.layer };
+                    }
+                    return { fsa: true, root: null, perm: st, downloads: dl, layer: loc.layer };
+                }).catch(function () {
+                    return { fsa: true, root: null, downloads: dl };
+                });
             });
         }).catch(function () {
             return { fsa: false, root: null, downloads: dl };
@@ -635,14 +703,21 @@
         }
 
         return probeEnv().then(function (env) {
+            var layerError = !!(env && env.fsa && !env.root && env.layerReason &&
+                env.layerReason !== 'NO_HANDLE');
             var d = decideMode({
                 prefer: o.prefer,
                 fsa: env.fsa,
                 hasHandle: !!env.root,
-                downloads: env.downloads
+                downloads: env.downloads,
+                layerError: layerError
             });
             if (d.mode === 'none') {
-                return { ok: false, mode: 'none', path: parts.relPath, code: d.code || CODES.NO_CHANNEL };
+                return {
+                    ok: false, mode: 'none', path: parts.relPath,
+                    code: d.code || CODES.NO_CHANNEL,
+                    layerDetail: (env && env.layerDetail) || ''
+                };
             }
             if (d.mode === 'downloads') {
                 return saveDownloads(parts.relPath, src, mime, o).then(function (r) {
@@ -667,6 +742,24 @@
                          * （资源库不分组、查重也按 platform 预筛而失效）。
                          * 注意：这里**只影响入库元数据**，落盘路径仍用 relOut，不会多建目录。 */
                         var relForDb = (prefix ? prefix + '/' : '') + relOut;
+                        /* 2026-11-14 写盘后自检（越界最后一道闸）。
+                         * relForDb 必须是「prefix + 库根内相对路径」：首段就是 prefix，
+                         * 且 prefix 之后还有文件名段。不满足说明调用方给的 relPath
+                         * 与库根层不一致 —— 正是「上级目录的图出现在库里」的成因。
+                         * 这时宁可把刚写的文件删掉并如实报错，也不能留下一条
+                         * 打不开、又指向库外的条目。 */
+                        var G0 = root.VRRootGuard;
+                        if (G0 && typeof G0.classifyRel === 'function' &&
+                            G0.classifyRel(relForDb, prefix) !== 'ok') {
+                            return removeFile(relForDb).catch(function () { /* 删不掉也要报错 */ })
+                                .then(function () {
+                                    return {
+                                        ok: false, mode: 'fsa', path: relOut, relPath: relForDb,
+                                        code: CODES.BAD_PATH,
+                                        detail: '入库路径与库根层不一致，已撤销写入：' + relForDb
+                                    };
+                                });
+                        }
                         /* ⚠️ relPath 必须原样交给调用方（2026-11-09 B-67）。
                          * freeName 会把同名文件改成 xxx_01.jpg —— 调用方在下载**前**
                          * 预测的路径因此不等于真实落盘路径。拿着预测路径去查重/删文件，

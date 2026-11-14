@@ -105,8 +105,13 @@
         return base + '/' + String(st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
     }
 
-    /** 判据与 app.js 的 isPlausibleRoot 同口径：只拦明显不该是下载根的值 */
+    /** 判据唯一真源在 VRRootGuard（2026-11-14 收敛，此前 app/indexer/save 各写一份）。
+     * 守卫未加载时退回内联判据，保证老环境仍能工作。 */
     function isPlausibleDownloadRoot(p) {
+        var G = root.VRRootGuard;
+        if (G && typeof G.isPlausibleDownloadRoot === 'function') {
+            return G.isPlausibleDownloadRoot(p);
+        }
         var s = String(p || '').replace(/\\/g, '/');
         if (!s) { return false; }
         if (!/^([A-Za-z]:\/|\/\/|\/)/.test(s)) { return false; }
@@ -210,20 +215,50 @@
         }
         /* 句柄必须真的指向当前库根。历史上出现过句柄名是 download、
          * absRoot 却是 …/video-rod 的情况：恢复权限后所有写操作都会落到错目录。
-         * 名字不符就丢弃并清掉 DB 句柄，让用户重新授权，而不是「恢复」一个错句柄。 */
+         * 名字不符就丢弃并清掉 DB 句柄，让用户重新授权，而不是「恢复」一个错句柄。
+         *
+         * 2026-11-14 两处修正：
+         *   ① 期望名改由 VRRootGuard.expectedName 统一计算 —— 原来 custom 模式下
+         *      absRoot 为空（换目录时只记了 customName）就直接不校验，
+         *      任何错层句柄都能被当成「已授权的库根」用下去，正是越界的上游；
+         *   ② 名字不符但**是上级、且下面确有该子目录**时，先下钻一层再判。
+         *      历史脏句柄（名字是 download、内容其实是 video-rod）靠这条自动修好，
+         *      而不是把用户逼去重新授权一次。 */
+        var guard = root.VRRootGuard;
         var expectedHandleName = '';
-        if (String(st.mode || 'system') === 'custom') {
-            if (absRoot) { expectedHandleName = absRoot.split('/').pop(); }
-        } else {
-            expectedHandleName = String(prefix || st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
+        if (guard && typeof guard.expectedName === 'function') {
+            expectedHandleName = guard.expectedName(st, absRoot);
         }
-        if (handle && expectedHandleName && handle.name !== expectedHandleName) {
-            if (source === 'db' && dbReady() && typeof root.VRDB.setHandle === 'function') {
-                try { await root.VRDB.setHandle('root', null); } catch (e) { /* 忽略 */ }
+        if (!expectedHandleName) {
+            if (String(st.mode || 'system') === 'custom') {
+                expectedHandleName = absRoot ? absRoot.split('/').pop() : '';
+            } else {
+                expectedHandleName = String(prefix || st.subdir || 'video-rod').replace(/^\/+|\/+$/g, '');
             }
-            if (source === 'memory') { memHandle = null; }
-            handle = null;
-            source = '';
+        }
+        if (handle && expectedHandleName && !sameDirName(handle.name, expectedHandleName)) {
+            var drilled = null;
+            if (guard && typeof guard.resolveDir === 'function') {
+                var hitR = null;
+                try { hitR = await guard.resolveDir(handle, expectedHandleName, { create: false }); }
+                catch (eR) { hitR = null; }
+                if (hitR && hitR.handle) { drilled = hitR.handle; }
+            }
+            if (drilled) {
+                /* 上级目录 + 下方确有正确子目录：下钻后用，不清句柄 */
+                handle = drilled;
+                if (source === 'db' && dbReady() && typeof root.VRDB.setHandle === 'function') {
+                    try { await root.VRDB.setHandle('root', handle); } catch (eS) { /* 忽略 */ }
+                }
+                if (source === 'memory') { memHandle = handle; }
+            } else {
+                if (source === 'db' && dbReady() && typeof root.VRDB.setHandle === 'function') {
+                    try { await root.VRDB.setHandle('root', null); } catch (e) { /* 忽略 */ }
+                }
+                if (source === 'memory') { memHandle = null; }
+                handle = null;
+                source = '';
+            }
         }
         /* 旧授权库（vr-lib-handle）也复用：
          * 之前「选择文件夹并授权」只写这里，system 模式完全读不到 → 用户明明选过目录，
@@ -232,7 +267,7 @@
             var lh = await legacyHandle();
             if (lh) {
                 var expected = String(expectedHandleName || prefix || '').replace(/^\/+|\/+$/g, '');
-                if (!expected || lh.name === expected) {
+                if (!expected || sameDirName(lh.name, expected)) {
                     handle = lh;
                     source = 'legacy';
                 }
@@ -241,8 +276,97 @@
         return { handle: handle, absRoot: absRoot, prefix: prefix, source: source };
     }
 
-    /** 存根句柄 + 绝对路径 + 索引首段；handle 传 null 表示只记路径 */
-    async function setRoot(handle, absRoot, prefix) {
+    /** 目录名比较（Windows 磁盘不区分大小写；忽略尾斜杠） */
+    function sameDirName(a, b) {
+        var x = String(a == null ? '' : a).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').toLowerCase();
+        var y = String(b == null ? '' : b).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').toLowerCase();
+        if (!x || !y) { return false; }
+        return x === y;
+    }
+
+    /** 存根句柄 + 绝对路径 + 索引首段；handle 传 null 表示只记路径。
+     *
+     *  opts.mode  —— 2026-11-14 区分两种语义，否则会把「用户换库」误判成越界：
+     *   'authorize'（默认）：「给已有库根补授权」或「恢复旧句柄」。
+     *       句柄必须落在库根那一层；名字不符只允许向下钻一层，再不行就报错。
+     *   'rebase'：用户**显式**换一个素材文件夹。此时他选中的目录就是新库根，
+     *       任何名字都合法；但返回 layer='parent' 时调用方必须告知扫描范围，
+     *       让「这会把整个文件夹都收进来」变成一句人话，而不是静默扩大范围。 */
+    async function setRoot(handle, absRoot, prefix, opts) {
+        var rebase = !!(opts && opts.mode === 'rebase');
+        /* 2026-11-14 越界根因（苏哥报「上级下载文件夹的图也进库」）：
+         * 句柄一旦指到上级目录，整个上级目录就成了「自己和下属」——
+         * 遍历算法没变，变的是「自己」是谁。所以这里必须在入口就拦住，
+         * 而不是等扫描完再筛条目。
+         *
+         * 校验用 guard，口径与 save / sw-library 完全一致；
+         * 名字对不上时允许**向下钻一层**（历史脏句柄的常见形态），
+         * 但绝不接受上级 —— 那正是要修的东西。 */
+        var guard = root.VRRootGuard;
+        /* 期望层名必须取「库根路径的末段」，不能用 prefix ——
+         * custom 模式下 prefix 是**虚拟前缀**（索引 key 首段，与磁盘层无关），
+         * 句柄名本来就不会等于它。system 模式下 absRoot 是 <下载根>/<subdir>，
+         * 末段恰好就是 subdir，两种模式因此统一。
+         * absRoot 为空（自选目录拿不到绝对路径）时退回 prefix 只在 system 模式成立，
+         * 所以这里显式判一次模式，避免把自选目录误拒。 */
+        var st0 = null;
+        try { st0 = await getSettings(); } catch (e0) { st0 = {}; }
+        var absForExpect = (absRoot !== undefined && absRoot !== null) ? normAbs(absRoot) : normAbs(memRoot);
+        /* 期望层名交给守卫统一计算（2026-11-14）：
+         *   system → <下载根>/<subdir> 的末段（= subdir）
+         *   custom → customRoot 末段；路径为空时退 customName
+         * 这里**不能**用 prefix：custom 模式下 prefix 是虚拟前缀，句柄名本来就不等于它；
+         * 也不能在算不出名字时当成「不需要校验」—— 那正是历史漏洞
+         * （自选目录路径没填时，任意目录都能被当库根）。 */
+        var expect = '';
+        if (guard && typeof guard.expectedName === 'function') {
+            expect = guard.expectedName(st0, absForExpect);
+        } else {
+            expect = absForExpect ? absForExpect.split('/').pop() : '';
+        }
+        /* rebase（用户显式换库）保留期望名，但**只用于判定范围**，绝不据此下钻。
+         * 因为用户选哪一层就是哪一层；此时若再下钻到 video-rod，
+         * 等于把「我要整个下载目录」悄悄改成「我只要 video-rod」，与他的操作相反。
+         * 清空期望名则是另一个极端：什么都不知道，就无法告诉他「范围被放大了」。 */
+        var layer = 'self';
+        if (handle && guard && typeof guard.resolveDir === 'function' && expect) {
+            if (rebase) {
+                /* 只判定，不下钻（resolveDir 的 drilled 结果在这里只当探测用） */
+                if (guard.sameName(handle.name, expect)) {
+                    layer = 'self';
+                } else {
+                    var probe = null;
+                    try { probe = await guard.resolveDir(handle, expect, { create: false }); }
+                    catch (eP) { probe = null; }
+                    if (probe && probe.handle) {
+                        /* 下级确有该子目录 → 用户选的是「上级」，扫描范围被放大。
+                         * 这不是错误（他有权这么选），但调用方必须把范围说清楚。 */
+                        layer = 'parent';
+                    } else {
+                        /* 名字只是与旧配置不同：这就是他新选的库根，合法。
+                         * 不能报 unknown —— app.js 会据此弹「范围放大」的确认框，
+                         * 而用户其实只是换了个叫法不同的文件夹。 */
+                        layer = 'self';
+                    }
+                }
+            } else {
+                var hit = await guard.resolveDir(handle, expect, { create: false });
+                if (hit.handle) {
+                    handle = hit.handle;
+                    layer = hit.layer;
+                } else {
+                    if (hit.reason === 'NOT_FOUND') {
+                        throw makeErr('LIB_E_ROOT_LAYER',
+                            '选择的目录是「' + (handle.name || '') + '」的上级，里面没有「' + expect + '」文件夹；' +
+                            '请选「' + expect + '」本身');
+                    }
+                    if (hit.reason === 'NO_PERM') {
+                        throw makeErr('LIB_E_NO_PERM', '无法读取「' + expect + '」（' + hit.detail + '）');
+                    }
+                    throw makeErr('LIB_E_ROOT_LAYER', '目录层级不对：' + (hit.detail || hit.reason));
+                }
+            }
+        }
         memHandle = handle || null;
         if (absRoot !== undefined) { memRoot = normAbs(absRoot); }
         if (prefix !== undefined) { memPrefix = String(prefix || '').replace(/^\/+|\/+$/g, ''); }
@@ -262,7 +386,7 @@
                 }
             } catch (e) { /* 内存可用即可，落库失败不阻断本次 */ }
         }
-        return { absRoot: memRoot, prefix: memPrefix };
+        return { absRoot: memRoot, prefix: memPrefix, layer: layer };
     }
 
     async function ensureRead(handle) {
@@ -310,9 +434,15 @@
         /* 2026-11-09：回收站条目（state='trashed'）不写进快照。
          * 快照的用途是「换浏览器/重装后凭它把库恢复出来」，
          * 而 trashed 条目的文件已经搬进 _回收站，写进去只会让新浏览器里
-         * 凭空多出一批点开就空的卡片（跨浏览器也没有回收站 UI 去处理它们）。 */
+         * 凭空多出一批点开就空的卡片（跨浏览器也没有回收站 UI 去处理它们）。
+         * 2026-11-14：越界条目（state='outOfRoot'）同理不得写进快照 ——
+         * 它们本身就在库根外面，带到新浏览器只会把脏数据复制一份。 */
         var list = (Array.isArray(files) ? files : []).filter(function (f) {
-            return f && f.relPath && f.state !== 'trashed';
+            if (!f || !f.relPath) { return false; }
+            /* 回收站与越界条目都不进快照（判据见 VRRootGuard） */
+            var G = root.VRRootGuard;
+            return (G && typeof G.isActiveEntry === 'function')
+                ? G.isActiveEntry(f) : (f.state !== 'trashed' && f.state !== 'outOfRoot');
         });
         var out = {
             schema: 2,
@@ -654,6 +784,17 @@
             out.trashedAt = Number(old.trashedAt) || 0;
             out.trashNoFile = old.trashNoFile || 0;
             out.trashPending = old.trashPending || 0;
+        } else if (old.state === 'outOfRoot') {
+            /* 越界标记**不粘住**（2026-11-14 修正）。
+             * 走到 mergeEntry 说明这条 relPath 已经通过 classifyRel：
+             * 它属于当前库根，且是扫描源真的看到的条目 —— 磁盘是真相。
+             * 于是两种情况都要放行成 ok：
+             *   ① 用户把文件挪进库根后重新扫描；
+             *   ② 用户换了库根又切回来（旧条目本来就在原库根里，只是当时被判越界）。
+             * 这与 trashed 不同：trashed 是用户的显式删除动作，扫描无权撤销；
+             * outOfRoot 是「位置判定」，位置一改，判定就该重算。 */
+            out.state = 'ok';
+            delete out.outOfRoot;
         } else {
             out.state = 'ok';
         }
@@ -926,9 +1067,26 @@
         var out = [];
         var skippedTrashed = 0;
         var skippedGhost = 0;
+        var skippedOutOfRoot = 0;
+        var guard = root.VRRootGuard;
         for (var si = 0; si < scanned.length; si++) {
             var it = scanned[si];
             if (!it || !it.relPath) { continue; }
+            /* 2026-11-14 越界拦截（苏哥报「上级下载文件夹的图也进库」）。
+             * 走到这里说明已经过一次扫描源，但「源」本身并不可靠：
+             * downloads 源按「下载根」裁切（relFromAbs），历史建议里也出现过
+             * 直接把下载根当库根的落盘。所以入库前再用**库内相对路径**判一次：
+             * 首段必须是 prefix，且 prefix 之后还有文件名段。
+             * 判据与 save / sw-library 共用 VRRootGuard.classifyRel，
+             * 三处不再各写一套「什么算库内」。
+             *
+             * 例外：pendingArchive（ADR-070 下载器兜底丢目录）本来就只有裸文件名，
+             * 它是「待归档」的显式标记，不是越界脏数据 —— 不能在这里判掉。 */
+            if (!it.pendingArchive && guard && typeof guard.classifyRel === 'function' &&
+                guard.classifyRel(it.relPath, rr.prefix) !== 'ok') {
+                skippedOutOfRoot++;
+                continue;
+            }
             var old = oldMap[it.relPath];
             /* 回收站条目（state='trashed'）**任何**扫描源都不许复活（ADR-074 第 4 条 / ADR-085）。
              * 原实现只拦 downloads / snapshot，理由是「full / reconcile 遍历磁盘，扫到即文件存在」。
@@ -966,10 +1124,25 @@
         // 2026-11-09：回收站条目（state='trashed'）既不参与 missing 判定，也不许被覆盖，
         // 它已经搬去 _回收站 了，磁盘上本来就扫不到。
         var missing = 0;
+        /* 库根之外的旧条目（越界入库的脏数据）：单独计数，不混进 missing。
+         * 两者对用户是两件事：missing = 文件被删/被移走；outOfRoot = 这条本来就不该在库里。 */
+        var outOfRoot = 0;
         if (mode !== 'downloads' && opts.markMissing !== false) {
             oldFiles.forEach(function (f) {
                 if (!f || !f.relPath || seen[f.relPath]) { return; }
                 if (f.state === 'trashed') { return; }
+                /* 2026-11-14：库根之外的旧条目（平铺在上级目录、或首段不是 prefix）。
+                 * 它们不是「文件缺失」——文件好好地在库根外面躺着，这是**越界入库**的脏数据。
+                 * 标成 missing 会让用户去原位置找而找不到（那个位置本来就不该有它），
+                 * 标成 ok 又会在库里留一张永远打不开的正确性谎言。
+                 * 所以单独给一个状态：outOfRoot，UI 隐藏、索引状态里如实计数。
+                 * 不删元数据：用户改回正确 relPath（或重新下载）就能恢复星标/标签。 */
+                if (guard && typeof guard.classifyRel === 'function' && !f.pendingArchive &&
+                    guard.classifyRel(f.relPath, rr.prefix) !== 'ok') {
+                    outOfRoot++;
+                    out.push(Object.assign({}, f, { state: 'outOfRoot', outOfRoot: 1 }));
+                    return;
+                }
                 /* 引用条目（isRef）本来就没有自己的物理文件：它的 relPath 是虚拟路径，
                  * 实体在 refOf 指向的原件上。扫不到是正常的，标 missing 会让用户
                  * 看到一条「文件缺失」的死卡 —— 保持原样放回。 */
@@ -992,6 +1165,15 @@
              * downloads 源「没看到」不等于「文件没了」，照 ADR-030 一律保留原样。 */
             oldFiles.forEach(function (f) {
                 if (!f || !f.relPath || seen[f.relPath]) { return; }
+                /* 同上：库根之外的旧条目在这个分支里同样要被标出来。
+                 * 否则一次「快速扫描」又会把它们当普通条目放回去，
+                 * 越界数据就这样在两种扫描模式之间反复横跳。 */
+                if (guard && typeof guard.classifyRel === 'function' && !f.pendingArchive &&
+                    guard.classifyRel(f.relPath, rr.prefix) !== 'ok') {
+                    outOfRoot++;
+                    out.push(Object.assign({}, f, { state: 'outOfRoot', outOfRoot: 1 }));
+                    return;
+                }
                 out.push(Object.assign({}, f));
             });
         }
@@ -1021,6 +1203,11 @@
             ok: scanned.length,
             missing: missing,
             skippedTrashed: skippedTrashed,
+            /* 2026-11-14：本次丢弃 / 标注的越界条目。
+             * 「丢弃」= 扫描源刚扫到的、不属于本库的路径（绝不会写进库）；
+             * 「标注」= 库里已有的历史脏条目（state='outOfRoot'，UI 不显示）。 */
+            skippedOutOfRoot: skippedOutOfRoot,
+            outOfRoot: outOfRoot,
             mode: mode,
             truncated: !!scanned.truncated,
             /* 超限/超深必须上报（红队 c-1/c-2）：
@@ -1076,9 +1263,14 @@
         if (!dbReady()) { throw makeErr('LIB_E_DB', 'VRDB 未加载'); }
         /* 回收站条目（state='trashed'）不参与存在性对账：
          * 它们的文件已经搬进 _回收站，按「磁盘上找不到」处理会被标成 missing，
-         * 于是又变回主页上的一张卡片（2026-11-09）。 */
+         * 于是又变回主页上的一张卡片（2026-11-09）。
+         * 越界条目（state='outOfRoot'）同理：它本来就不在库根里，
+         * 拿它去对账只会得到「找不到」，然后被标成 missing —— 语义完全错误。 */
         var files = (await root.VRDB.getAllFiles()).filter(function (f) {
-            return f && f.state !== 'trashed';
+            if (!f) { return false; }
+            var G = root.VRRootGuard;
+            return (G && typeof G.isActiveEntry === 'function')
+                ? G.isActiveEntry(f) : (f.state !== 'trashed' && f.state !== 'outOfRoot');
         });
         var rr = await resolveRoot();
 
@@ -1253,8 +1445,17 @@
 
     async function status() {
         var all = dbReady() ? await root.VRDB.getAllFiles() : [];
-        /* 「库里有几项」只算活跃条目：回收站条目不删行，算进来会让计数虚高 */
-        var files = all.filter(function (f) { return f && f.state !== 'trashed'; });
+        /* 「库里有几项」只算活跃条目：回收站条目不删行，算进来会让计数虚高。
+         * 越界条目（outOfRoot）同理不计入「已索引」，但单独上报给 UI ——
+         * 用户需要知道「有 N 条本来不该在库里」，而不是它们悄悄消失。
+         * 两个判定都走 VRRootGuard（2026-11-14 收敛），不在各文件里写字面量。 */
+        var G0 = root.VRRootGuard;
+        var files = all.filter(function (f) {
+            if (!f) { return false; }
+            return (G0 && typeof G0.isActiveEntry === 'function')
+                ? G0.isActiveEntry(f)
+                : (f.state !== 'trashed' && f.state !== 'outOfRoot');
+        });
         var rr = await resolveRoot();
         var snapAt = 0;
         if (dbReady()) {
@@ -1262,7 +1463,15 @@
         }
         return {
             count: files.length,
-            trashed: all.length - files.length,
+            /* 原实现用 all.length - files.length 反推回收站条数：
+             * 一旦 files 也排除了 outOfRoot，这个减法就会把越界条目算成
+             * 「回收站里有 N 项」—— 必须显式分开计数（2026-11-14）。 */
+            trashed: all.filter(function (f) { return f && f.state === 'trashed'; }).length,
+            outOfRoot: all.filter(function (f) {
+                var G = root.VRRootGuard;
+                return !!(f && G && typeof G.isOutOfRoot === 'function'
+                    ? G.isOutOfRoot(f) : f.state === 'outOfRoot');
+            }).length,
             missing: files.filter(function (f) { return f && f.state === 'missing'; }).length,
             hasRoot: !!rr.handle,
             absRoot: rr.absRoot,
@@ -1295,6 +1504,9 @@
          * 生产代码不调用这两个。 */
         _entryFromRel: entryFromRel,
         _platformNameOf: platformNameOf,
-        _resolveSite: resolveSite
+        _resolveSite: resolveSite,
+        /* 测试用：字段合并（决定「越界标记会不会被扫描洗回 ok」等语义）。
+         * 生产代码不直接调用。 */
+        _mergeEntry: mergeEntry
     };
 })(typeof self !== 'undefined' ? self : this);

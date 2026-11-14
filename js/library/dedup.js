@@ -36,6 +36,21 @@
     var FULL_LIMIT = 64 * 1024 * 1024;
     var SAMPLE_BYTES = 4 * 1024 * 1024;
 
+    /* 2026-11-14：什么算「库里的活跃条目」。
+     * 越界条目（state='outOfRoot'）指向库根外面的文件，它既不是可用的素材，
+     * 也不能当作「库里已有」的证据 —— 否则用户重新下载同一张图会被判重复直接跳过，
+     * 而且「删掉最后一份」永远删不掉（引用计数把它算成还在用）。
+     * 三处过滤统一走这里，别再各写一套 state 判断。 */
+    var INACTIVE_STATE = { trashed: 1, outOfRoot: 1 };
+    function isActiveEntry(e) {
+        /* 唯一真源在 VRRootGuard（2026-11-14 收敛）：回收站与越界条目都不算活跃。
+         * 守卫未加载时退回本地实现。 */
+        var G = root.VRRootGuard;
+        if (G && typeof G.isActiveEntry === 'function') { return G.isActiveEntry(e); }
+        return !!e && !INACTIVE_STATE[e.state] && !e.outOfRoot;
+    }
+    var EXCLUDE_STATES = ['trashed', 'outOfRoot'];
+
     /** ArrayBuffer → 64 位小写 hex */
     async function hexDigest(buf) {
         var digest = await crypto.subtle.digest('SHA-256', buf);
@@ -171,10 +186,11 @@
             if (!hash) { return null; }
             /* 游标查询（c-3）：只取命中的 1 条，不再把整表读进内存 */
             if (root.VRDB && root.VRDB.findBy) {
-                /* 排除回收站条目：删进回收站的东西重新下载时必须能下下来，
-                 * 否则会被判成「库里已有」直接跳过（2026-11-09）。 */
+                /* 排除回收站与越界条目：删进回收站的东西重新下载时必须能下下来，
+                 * 否则会被判成「库里已有」直接跳过（2026-11-09）。
+                 * 越界条目同理（2026-11-14）：它指向库外的文件，拿它当「已有」是错的。 */
                 var hit = await root.VRDB.findBy(HASH_FIELD, hash, {
-                    limit: 1, excludeRelPath: excludeRelPath, excludeState: 'trashed'
+                    limit: 1, excludeRelPath: excludeRelPath, excludeState: EXCLUDE_STATES
                 });
                 if (hit && hit.length) { return hit[0]; }
             } else if (root.VRDB && root.VRDB.getAllFiles) {
@@ -183,7 +199,7 @@
                     var e = all[i];
                     if (!e || e[HASH_FIELD] !== hash) { continue; }
                     if (excludeRelPath && e.relPath === excludeRelPath) { continue; }
-                    if (e.state === 'trashed') { continue; }
+                    if (!isActiveEntry(e)) { continue; }
                     return e;
                 }
             }
@@ -213,13 +229,13 @@
             if (!hash || !root.VRDB) { return 0; }
             /* 游标计数（c-3）：恒定内存，避免整表读入 */
             if (root.VRDB.countBy) {
-                return await root.VRDB.countBy(HASH_FIELD, hash, { excludeState: 'trashed' });
+                return await root.VRDB.countBy(HASH_FIELD, hash, { excludeState: EXCLUDE_STATES });
             }
             if (!root.VRDB.getAllFiles) { return 0; }
             var all = await root.VRDB.getAllFiles();
             var n = 0;
             for (var i = 0; i < all.length; i++) {
-                if (all[i] && all[i][HASH_FIELD] === hash && all[i].state !== 'trashed') { n++; }
+                if (all[i] && all[i][HASH_FIELD] === hash && isActiveEntry(all[i])) { n++; }
             }
             return n;
         } catch (e) {
@@ -301,14 +317,14 @@
             /* 用游标计数（c-3）：原来 getAllFiles() 把整表拉进内存，
              * 而查重/删除每次下载都会跑一遍，上万条时是明显的浪费。 */
             if (root.VRDB.countBy) {
-                /* 排除回收站条目：它们不再删行，算进来会误判「还有人在用」 */
-                remaining = await root.VRDB.countBy(HASH_FIELD, hash, { excludeState: 'trashed' });
+                /* 排除回收站与越界条目：它们不再删行，算进来会误判「还有人在用」 */
+                remaining = await root.VRDB.countBy(HASH_FIELD, hash, { excludeState: EXCLUDE_STATES });
                 if (remaining > 0) { remaining--; }   /* 减去自己 */
             } else {
                 var all0 = await root.VRDB.getAllFiles();
                 for (var i0 = 0; i0 < all0.length; i0++) {
                     if (all0[i0] && all0[i0][HASH_FIELD] === hash && all0[i0].relPath !== entry.relPath &&
-                        all0[i0].state !== 'trashed') { remaining++; }
+                        isActiveEntry(all0[i0])) { remaining++; }
                 }
             }
             out.refCount = remaining;
@@ -437,7 +453,9 @@
             if (!root.VRDB || !root.VRDB.getAllFiles || !root.VRDB.patchFile) { return out; }
             var all = await root.VRDB.getAllFiles();
             var todo = (all || []).filter(function (e) {
-                return e && !e[HASH_FIELD] && !e[REF_FIELD] && e.state !== 'trashed' &&
+                /* 越界条目（outOfRoot）不算库内素材：给它补指纹只会让它参与判重，
+                 * 反而把「库外文件」洗成「库内已有证据」（2026-11-14）。 */
+                return isActiveEntry(e) && !e[HASH_FIELD] && !e[REF_FIELD] &&
                     e.absPath && (Number(e.size) || 0) < FULL_LIMIT;
             }).slice(0, opt.maxHash || 500);
             out.total = todo.length;
@@ -487,7 +505,7 @@
 
             var by = {};
             (all || []).forEach(function (e) {
-                if (!e || !e[HASH_FIELD] || e.state === 'trashed' || e[REF_FIELD]) { return; }
+                if (!e || !e[HASH_FIELD] || !isActiveEntry(e) || e[REF_FIELD]) { return; }
                 (by[e[HASH_FIELD]] = by[e[HASH_FIELD]] || []).push(e);
             });
             var hashes = Object.keys(by);

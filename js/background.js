@@ -7,7 +7,13 @@ if (typeof G === 'undefined') {
     importScripts("/js/polyfill.js", "/js/function.js", "/js/templates.js", "/js/init.js",
         "/js/bili-whole.js", "/js/douyin.js",
         "/js/site-name.js", "/js/site-name-store.js", "/js/library/site-names-preset.js",
-        "/js/library/path.js", "/js/library/db.js", "/js/library/dedup.js", "/js/library/sw-library.js",
+        "/js/library/path.js",
+        /* 库根层级守卫（2026-11-14）：save / sw-library / indexer 都靠它判断
+         * 「库根句柄落在哪一层」。必须排在它们之前，否则会退化成旧行为
+         * （用「下载根」当库根 → 上级目录的素材也会被收进库）。
+         * 零 DOM 依赖，SW 可加载。 */
+        "/js/library/root-guard.js",
+        "/js/library/db.js", "/js/library/dedup.js", "/js/library/sw-library.js",
         /* indexer 必须在 sw-library 之后：它依赖 VRDB + VRPath；
          * sw-library 的 ingest 回调会调 VRIndex.scheduleSnapshot()。 */
         "/js/library/indexer.js",
@@ -38,6 +44,10 @@ if (typeof self.VRSiteNamesPreset === 'undefined') {
 }
 if (typeof self.VRPath === 'undefined') {
     try { importScripts("/js/library/path.js"); } catch (e) { /* 已加载或环境不支持 */ }
+}
+/* 守卫必须早于 db/dedup/sw-library/save/indexer：它们都会在运行时找 VRRootGuard */
+if (typeof self.VRRootGuard === 'undefined') {
+    try { importScripts("/js/library/root-guard.js"); } catch (e) { /* 已加载或环境不支持 */ }
 }
 if (typeof self.VRDB === 'undefined') {
     try { importScripts("/js/library/db.js"); } catch (e) { /* 已加载或环境不支持 */ }

@@ -388,6 +388,17 @@
         var candidates = rows.filter(function (r) {
             if (!r || !r.relPath || isTrashed(r)) { return false; }
             if (r.pendingArchive || r.isRef) { return false; }
+            /* 2026-11-14：越界条目（outOfRoot）也跳过。
+             * 它的文件在库根**外面**，按库根拼路径去探盘必然 NotFound，
+             * 于是会被当成「活死卡」静默删掉 —— 那份星标 / 标签就丢了。
+             * 它不是要清理的垃圾，而是「位置判定」的产物：用户把文件移进来
+             * 或换回原库根，它自己会变回 ok（见 indexer.mergeEntry）。
+             * 按 ADR-030 的铁律：自动自愈不许替用户做不可逆的删除。 */
+            var Gj = root.VRRootGuard;
+            var isOut = (Gj && typeof Gj.isOutOfRoot === 'function')
+                ? Gj.isOutOfRoot(r)
+                : !!(r.state === 'outOfRoot' || r.outOfRoot);
+            if (isOut) { return false; }
             if (!o.includeMissing && r.state === 'missing') { return false; }
             if (protectedRels[r.relPath]) { return false; }
             return true;

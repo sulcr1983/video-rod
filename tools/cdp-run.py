@@ -50,6 +50,8 @@ SUITES = {
     "full": [
         ("node", "tools/test-path.js"),
         ("node", "tools/test-save.js"),
+        # 库根层级（2026-11-14）：上级目录素材不进库 / 下载根与库根不再混用
+        ("node", "tools/test-root-guard.js"),
         ("node", "tools/test-image-util.js"),
         ("node", "tools/test-image-batch.js"),
         ("node", "tools/test-image-tier.js"),

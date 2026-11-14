@@ -997,6 +997,58 @@
                 ? ('上次扫描：' + new Date(LAST_SCAN).toLocaleString() + (pending ? ('\n未整理素材：' + pending + ' 项') : ''))
                 : '还没有完成过一次完整扫描';
         }
+        /* 2026-11-14：越界条目必须让用户看得见（苏哥报的「上级目录的图也进了库」）。
+         * 它们已经不在主页显示，但如果静默消失，用户会以为「东西丢了」；
+         * 而它们确实不是库内素材。所以单独一行说明：有几条、怎么处理。
+         *
+         * 数据来自 VRIndex.status().outOfRoot，但**不能**在这里拉：
+         * 本函数挂在 render() 里，每次搜索/筛选/切平台都会跑一次，
+         * 而 status() 要 getAllFiles() 全表（万级条目时是明显的卡顿源）。
+         * 所以改成：renderSyncStatus 只渲染缓存值，由 refreshRootScope() 在
+         * 「加载完 / 扫描完」这类低频时机刷新一次。 */
+        renderRootScopeWarn();
+    }
+
+    /** 越界条数缓存（只在页面生命周期内有效；扫描后由 refreshRootScope 刷新） */
+    var ROOT_SCOPE_OUT = 0;
+
+    /** 按缓存值渲染越界提示条（纯 DOM，不读库） */
+    function renderRootScopeWarn() {
+        var el = $('#syncText');
+        if (!el) { return; }
+        var warn = $('#rootScopeWarn');
+        if (!warn) {
+            var hostRow = el.closest ? el.closest('.ph-title-row') : null;
+            if (!hostRow || !hostRow.parentNode) { return; }
+            warn = document.createElement('div');
+            warn.id = 'rootScopeWarn';
+            warn.className = 'root-scope-warn hidden';
+            /* 挂在标题行**之后**，不能塞进 .scan-note：
+             * 那是 inline-flex 小字条，塞块级元素会把「已索引 N 项」挤成两行。 */
+            hostRow.parentNode.insertBefore(warn, hostRow.nextSibling);
+        }
+        var n = Number(ROOT_SCOPE_OUT) || 0;
+        if (!n) {
+            warn.classList.add('hidden');
+            warn.textContent = '';
+            return;
+        }
+        warn.textContent = '另有 ' + n + ' 条素材在素材库文件夹之外，未计入资源库。' +
+            '把文件移进素材库文件夹后再点「全量扫描」，它们就会收进来。';
+        warn.classList.remove('hidden');
+    }
+
+    /** 刷新越界条数（低频，只在 load() 收尾时调用一次）。
+     * 扫描/删除/移动最后都会走 load()，所以不必在每处重复调 ——
+     * 放在一起既能覆盖这些场景，又不会在筛选热路径上全表扫描。 */
+    function refreshRootScope() {
+        try {
+            if (!root.VRIndex || typeof root.VRIndex.status !== 'function') { return; }
+            root.VRIndex.status().then(function (s) {
+                ROOT_SCOPE_OUT = Number(s && s.outOfRoot) || 0;
+                renderRootScopeWarn();
+            }).catch(function () { /* 状态读不到就维持原值 */ });
+        } catch (e) { /* 忽略 */ }
     }
 
     function readLastScan() {
@@ -1239,6 +1291,16 @@
         }
         /* 磁盘已去掉历史假 ID，库里的旧 relPath 在这里一次性迁到新路径 */
         try { await migrateLegacyCreatorPaths(list); } catch (eMig) { /* 忽略 */ }
+        /* 2026-11-14：落在库根之外的条目（state='outOfRoot'）不进主页。
+         * 它们是「上级目录的素材被误收进库」留下的脏数据（苏哥报的那两张图）。
+         * RAW 一并排除：否则收藏夹、灯箱相邻浏览、详情页还会从 RAW 里把它捞出来，
+         * 表现成「主页看不见、收藏夹里点得到一张打不开的卡」。 */
+        var isOutOfRoot = function (e) {
+            var G = root.VRRootGuard;
+            if (G && typeof G.isOutOfRoot === 'function') { return G.isOutOfRoot(e); }
+            return !!(e && (e.state === 'outOfRoot' || e.outOfRoot));
+        };
+        list = list.filter(function (e) { return !isOutOfRoot(e); });
         RAW = {};
         list.forEach(function (e) { RAW[e.relPath] = e; });
         /* 2026-11-09：回收站条目在索引里保留行（state='trashed'），
@@ -1259,6 +1321,9 @@
         renderTree();
         render();
         renderRoot();
+        /* 2026-11-14：越界条数只在「加载完」这种低频时机拉一次。
+         * 不能放进 renderSyncStatus（那里随每次筛选跑），否则每次搜索都全表扫描。 */
+        refreshRootScope();
     }
 
     function renderRoot() {
@@ -1403,12 +1468,19 @@
      *   · 不能是 Webstore Downloads 这类受管默认名（上次踩过的坑）
      */
     function isPlausibleRoot(p, subdir) {
-        var s = String(p || '').replace(/\\/g, '/');
-        if (!s) { return false; }
-        if (!/^([A-Za-z]:\/|\/\/|\/)/.test(s)) { return false; }
-        if (/\/(User Data|\.edge-[^/]+|Default)\//i.test(s + '/')) { return false; }
-        if (/Webstore Downloads/i.test(s)) { return false; }
-        return !!subdir;
+        var G = root.VRRootGuard;
+        var ok = (G && typeof G.isPlausibleDownloadRoot === 'function')
+            ? G.isPlausibleDownloadRoot(p)
+            : (function (v) {
+                var s = String(v || '').replace(/\\/g, '/');
+                if (!s) { return false; }
+                if (!/^([A-Za-z]:\/|\/\/|\/)/.test(s)) { return false; }
+                if (/\/(User Data|\.edge-[^/]+|Default)\//i.test(s + '/')) { return false; }
+                if (/Webstore Downloads/i.test(s)) { return false; }
+                return true;
+            })(p);
+        /* subdir 是这条判据的额外前提（app 侧要求「必须知道子目录名」） */
+        return !!ok && !!subdir;
     }
 
     /**
@@ -1617,6 +1689,9 @@
         if (code === 'LIB_E_NO_PERM') { return '没有文件夹读取权限'; }
         if (code === 'LIB_E_NO_SNAPSHOT') { return '还没有可用索引快照'; }
         if (code === 'LIB_E_ENOSPC') { return '磁盘空间不足'; }
+        /* 2026-11-14：选到了上级目录 —— 必须说清「该选哪一层」，
+         * 否则用户只会看到「目录层级不对」却不知道下一步怎么做。 */
+        if (code === 'LIB_E_ROOT_LAYER') { return raw || '选择的文件夹不是素材库那一层'; }
         if (/LIB_E_NO_PERM|需要一次目录授权/.test(raw)) { return '没有文件夹读取权限'; }
         return raw || code || '未知原因';
     }
@@ -2414,8 +2489,25 @@
             try { child = await h.getDirectoryHandle(sub); } catch (e2) { child = null; }
             if (child) { picked = child; }
         }
+        /* 2026-11-14：下钻失败时**不再静默把上级目录当库根**（苏哥报的越界）。
+         * 用户显式换库是允许选任意目录的，但必须让他知道「这一选会收进多少东西」：
+         * 名称与 subdir 不符、且下面没有 subdir 时，说明他把范围放大到了上级。 */
+        var widened = false;
+        if (sub && picked === h && h.name !== sub) {
+            widened = true;
+        }
         var n = 0;
         try { n = await countMediaQuick(picked, 200); } catch (e3) { n = 0; }
+        if (widened) {
+            var goWide = root.confirm(
+                '你选的是「' + picked.name + '」，不是素材库那一层（' + sub + '）。\n\n' +
+                '继续的话，这个文件夹里的**所有内容**都会成为素材库（当前识别到 ' + n + ' 个媒体文件' +
+                (n >= 200 ? '以上' : '') + '），包括上级目录里原本跟资源库无关的文件。\n\n' +
+                '想只收「' + sub + '」里的素材，请重新选择并点进 ' + sub + ' 文件夹。\n\n' +
+                '确定要把它整个当作素材库吗？'
+            );
+            if (!goWide) { return; }
+        }
         if (n === 0) {
             var cur = FILES.length;
             var okEmpty = root.confirm(
@@ -2426,7 +2518,13 @@
             if (!okEmpty) { return; }
         }
         try {
-            await root.VRIndex.setRoot(picked, '', sub);
+            /* 2026-11-14：索引首段必须是**句柄层真实名**，不能固定用 subdir。
+             * 原来无论选到哪一层都写 prefix=video-rod，等于给上级目录的文件
+             * 伪造了一个「video-rod/」身份 —— 它们于是被判成库内条目，
+             * 库里显示成「网页」（首段不是站点、更不是真实目录）。
+             * rebase 模式允许选任意目录，但首段要如实反映它是哪一层。 */
+            var libPrefix = widened ? (picked.name || sub) : sub;
+            await root.VRIndex.setRoot(picked, '', libPrefix, { mode: 'rebase' });
         } catch (e4) {
             toast('切换失败：' + ((e4 && e4.message) || e4));
             return;
@@ -2436,7 +2534,9 @@
             mode: 'custom',
             customRoot: '',
             customName: picked.name || '',
-            subdir: sub
+            /* subdir 同时用于「下次下载的落盘首段」，必须与索引首段一致，
+             * 否则 save.js 剥前缀时会对不上，多套一层目录。 */
+            subdir: widened ? (picked.name || sub) : sub
         });
         try {
             await new Promise(function (res) {
@@ -2706,9 +2806,20 @@
         }
         var rr = null;
         try { rr = await root.VRIndex.resolveRoot(); } catch (e) { rr = null; }
-        var expected = rr && rr.absRoot ? rootBaseName(rr.absRoot) : '';
+        /* 期望层名与守卫同口径（2026-11-14）。原来这里只看 absRoot 末段：
+         * 自选目录拿不到绝对路径时 expected 为空 → 整段校验被跳过，
+         * 用户选到上级目录也会被当成合法授权（越界入口之一）。
+         * 现在退到 customName / subdir，保证「永远有一个期望值」。 */
+        var expected = '';
+        try {
+            if (root.VRRootGuard && typeof root.VRRootGuard.expectedName === 'function') {
+                var stAuth = await readLibSettings();
+                expected = root.VRRootGuard.expectedName(stAuth, rr && rr.absRoot);
+            }
+        } catch (eExp) { expected = ''; }
+        if (!expected && rr && rr.absRoot) { expected = rootBaseName(rr.absRoot); }
         var parent = rr && rr.absRoot ? rootParentName(rr.absRoot) : '';
-        if (expected && h.name !== expected) {
+        if (expected && String(h.name || '').toLowerCase() !== String(expected).toLowerCase()) {
             var child = null;
             try { child = await h.getDirectoryHandle(expected); } catch (e2) { child = null; }
             if (!child && parent && h.name === parent) {
@@ -2782,8 +2893,27 @@
         var rr = null;
         try { if (root.VRIndex && root.VRIndex.resolveRoot) { rr = await root.VRIndex.resolveRoot(); } } catch (e) { rr = null; }
         var handle = rr && rr.handle ? rr.handle : null;
-        var expectedName = rr && rr.absRoot ? rootBaseName(rr.absRoot) : '';
-        var rootInvalid = !!(handle && expectedName && handle.name !== expectedName);
+        /* 期望层名与守卫同口径（2026-11-14）：原来只看 absRoot 末段，
+         * 自选目录拿不到绝对路径时 expectedName 为空 → rootInvalid 恒 false，
+         * 于是一个错层的句柄会被当成「有效授权」，横幅不提示、写操作照发。
+         * 现在退到 customName / subdir，保证「永远有一个期望值」。 */
+        var expectedName = '';
+        try {
+            if (root.VRRootGuard && typeof root.VRRootGuard.expectedName === 'function') {
+                var stPerm = null;
+                try {
+                    stPerm = await new Promise(function (res) {
+                        chrome.storage.local.get('vrLibSettings', function (o) { res((o && o.vrLibSettings) || {}); });
+                    });
+                } catch (eSt) { stPerm = {}; }
+                expectedName = root.VRRootGuard.expectedName(stPerm, rr && rr.absRoot);
+            }
+        } catch (eExp) { expectedName = ''; }
+        if (!expectedName) { expectedName = rr && rr.absRoot ? rootBaseName(rr.absRoot) : ''; }
+        /* 句柄在上一级、但下面有正确的子目录 → 不算失效：resolveRoot 已经下钻过了。
+         * 这里只把「真的对不上」判成失效。 */
+        var rootInvalid = !!(handle && expectedName &&
+            String(handle.name || '').toLowerCase() !== String(expectedName).toLowerCase());
         var writable = false;
         var permState = '';
         if (handle && !rootInvalid) {
