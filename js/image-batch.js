@@ -418,14 +418,32 @@
          * 底层按 `<日期>_<标题>.<ext>` 命名，5 张同标题 → Chrome 只能加 (1)(2) 后缀，
          * 用户在文件夹里根本分不清哪张是哪张，去重表也会因为文件名相同而互相覆盖。
          * 与侧边栏 image-page.js 保持同一口径：`标题_01`、`标题_02`… */
-        const out = items.map((it, i) => ({
-            /* 取候选链里最像原图的那条，不是页面显示的预览版。
-             * 2026-11-08 苏哥报「嗅探不准确」：单张下载走 orig、批量走 url，
-             * 同一张图两条路径落盘尺寸不同（小红书实测全是 640 预览档）。 */
-            url: U.bestCandidate(it.candidates, it.url),
-            candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url],
-            title: pageTitle + '_' + String(i + 1).padStart(2, '0')
-        }));
+        const groupSeen = Object.create(null);   // cardKey → 该卡片已编号到几（B-46）
+        const out = items.map((it, i) => {
+            /* B-46 图片版（2026-11-15）：首页 feed 里每张图属于**不同**笔记，
+             * 单一页面标题 + 全局序号会让一批下载全叫「微博_01..微博_09」，
+             * 用户看不出哪张属于哪条。发现层已给 DOM 来源的图带上 cardKey
+             * （所属卡片的可见文本前 40 字），这里按 cardKey 分组各自编号：
+             *   同卡片 → `<卡片文本>_01`、`_02`
+             *   无卡片 → 退回 `<页面标题>_<全局序号>`（行为与原来完全一致）
+             * 卡片文本可能含路径非法字符，交给底层命名层统一清洗。 */
+            const ck = String(it.cardKey || '').replace(/\s+/g, ' ').trim();
+            let title;
+            if (ck) {
+                groupSeen[ck] = (groupSeen[ck] || 0) + 1;
+                title = ck + '_' + String(groupSeen[ck]).padStart(2, '0');
+            } else {
+                title = pageTitle + '_' + String(i + 1).padStart(2, '0');
+            }
+            return {
+                /* 取候选链里最像原图的那条，不是页面显示的预览版。
+                 * 2026-11-08 苏哥报「嗅探不准确」：单张下载走 orig、批量走 url，
+                 * 同一张图两条路径落盘尺寸不同（小红书实测全是 640 预览档）。 */
+                url: U.bestCandidate(it.candidates, it.url),
+                candidates: (it.candidates && it.candidates.length) ? it.candidates : [it.url],
+                title
+            };
+        });
         const truncated = out.length > max;
         return { items: out.slice(0, max), total: Math.min(out.length, max), truncated, max };
     }

@@ -1,7 +1,8 @@
 # 文档索引与可信度分级
 
-> 更新：2026-11-13 ｜ 共 **81 份**文档（本次新增 `IMAGE-PIPELINE-REDESIGN.md`、
-> `TEST-PLAN-IMAGE-PIPELINE.md`；审计报告在 `deliverables/reviews/2026-11-13-图片批量失败审计.md`）
+> 更新：2026-11-15 ｜ 共 **89 份**文档（2026-11-13 新增 `IMAGE-PIPELINE-REDESIGN.md`、
+> `TEST-PLAN-IMAGE-PIPELINE.md`；2026-11-15 新增 `RESEARCH-TRASH-RESCAN-AND-REVEAL.md`；
+> 审计报告在 `deliverables/reviews/2026-11-13-图片批量失败审计.md`）
 > 用途：接手时先看这份，知道**哪份能信、哪份只能当历史看**。
 
 ---

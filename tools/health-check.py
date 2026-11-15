@@ -39,6 +39,34 @@ SMOKE_UNITS = [
     # 库根层级（2026-11-14）：锁住「只收自己与下属」—— 上级目录的素材不进库、
     # 下载根与库根不再混用、越界条目不粘成正常卡片
     'test-root-guard.js',
+    # 2026-11-15（B-42 测试体系补齐）：以下单测一直存在于 tools/ 却从未进过任何门禁，
+    # 等于「写了没人跑」。逐个实跑确认 rc=0 后纳入；断言数见括号。
+    # 站点识别 / 命名
+    'test-site-name.js',            # 93 断言：站名归一、预置表、域名兜底
+    'test-site-name-fill.js',       # 补齐链路
+    'test-album-sites.js',          # 52：图集站点规则
+    'test-legacy-path.js',          # 26：老路径兼容
+    # 下载 / 扫描 / 落盘
+    'test-download-scan.js',        # 69：下载记录扫描
+    'test-media-ext.js',            # 41：媒体扩展名判定
+    'test-img-filter.js',           # 47：图片过滤门槛
+    'test-range-split.js',          # 18：Range 分段
+    'test-thumbs-queue.js',         # 17：缩略图队列
+    'test-yt-options.js',           # 50：YouTube 档位
+    'test-yt-queue.js',             # 26：YouTube 队列
+    # 平台适配
+    'test-xhs-media.js',            # 25：小红书媒体
+    'test-xhs-ssr.js',              # 26：小红书 SSR
+    'test-weibo-album.js',          # 133：微博相册
+    # 导出 / 持久化
+    'test-album-export.js',         # 50：图集导出
+    'test-export-kit.js',           # 14：导出工具包
+    'test-zip.js',                  # zip 打包
+    'test-persistence.js',          # 快照字段完整性
+    'test-backup-restore.js',       # 备份恢复
+    # 样式契约（防 CSS 腐烂）
+    'test-panel-css.js',            # 11
+    'test-tiers-css.js',            # 7
 ]
 # 冒烟档的界面套件：只挑「坏了就一定不能发」的两条（最快）
 SMOKE_SUITES = 'e2e-sw,dedup'

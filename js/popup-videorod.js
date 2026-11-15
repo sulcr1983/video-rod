@@ -480,6 +480,40 @@
         return 'other';
     }
 
+    /* 「图片」计数：媒体嗅探列表里永远不会出现图片条目（ADR-082 边界——
+     * 图片网络缓存只供图片清单合并，不进 G.Type 媒体列表），所以 chip 上的
+     * 「图片 N」若只数 panel 就恒为 0，用户会以为页面没图。
+     * 这里改为按**图片清单**的真实条数回填（与点「抓图」看到的数量一致）。
+     * 2026-11-15（B-80）：之前没有任何代码写这个数，纯摆设。 */
+    var imgChipCount = 0;
+
+    function refreshImageCount() {
+        var b = document.querySelector('#vrFilters .fchip[data-f="img"] b');
+        if (!b) { return; }
+        var tid = (window.G && G.tabId) || -1;
+        if (tid <= 0) { return; }
+        try {
+            chrome.runtime.sendMessage({
+                Message: 'vrImg.scan',
+                action: 'vrImg.scan',
+                tabId: tid,
+                /* 参数与 collectImagesInPage() 同形（平铺，不是嵌套 opts）。
+                 * 这里关掉 bgScan/srcScan/netScan：只要个数字，别为开 popup 付全量扫描的代价。 */
+                bgScan: false,
+                srcScan: false,
+                netScan: false,
+                max: 400
+            }, function (r) {
+                void chrome.runtime.lastError;
+                /* SW 的 scanTab 返回 { ok, items, noUtil }（字段是 items，不是 list）。
+                 * 用 list 会永远拿到 undefined → 计数恒 0，等于没修。 */
+                if (!r || !Array.isArray(r.items)) { return; }
+                imgChipCount = r.items.length;
+                b.textContent = imgChipCount;
+            });
+        } catch (e) { /* 扫描不可用就保持原值，不影响其它计数 */ }
+    }
+
     function applyTypeFilter() {
         document.querySelectorAll('.panel').forEach(function (p) {
             var match = vrFilter === 'all' || panelType(p) === vrFilter;
@@ -501,7 +535,11 @@
         chips.forEach(function (c) {
             var f = c.getAttribute('data-f');
             var b = c.querySelector('b');
-            if (b) { b.textContent = counts[f] !== undefined ? counts[f] : 0; }
+            if (!b) { return; }
+            /* 图片 chip 的数由 refreshImageCount() 单独维护（见该函数注释）：
+             * 媒体列表里永远没有图片条目，这里再写会把刚回填的真数冲回 0。 */
+            if (f === 'img') { b.textContent = imgChipCount; return; }
+            b.textContent = counts[f] !== undefined ? counts[f] : 0;
         });
 
         var cnt = el('vrCount');
@@ -2650,6 +2688,9 @@
                 if (id < 0) { return; }
                 fillPageInfo();
                 detectSite();
+                /* 「图片」chip 的真数（B-80）：异步扫一次本页图片清单。
+                 * 放在 tabId 之后 —— 扫描要 tabId 才能定位到页面。 */
+                refreshImageCount();
                 vrMarkGroupBadges();   // tabId 落地后数据可能才到齐，再归组一遍
                 if (!settings.smartName) { return; }
                 fetchPageInfo().then(function (info) {

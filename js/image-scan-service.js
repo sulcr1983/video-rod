@@ -94,6 +94,40 @@
         return out;
     }
 
+    /**
+     * 图片所属「卡片/笔记」的文本指纹（B-46 图片版，2026-11-15）。
+     *
+     * 问题：首页 feed（微博/小红书/Twitter）里每张图属于**不同**笔记，
+     * 而批量命名用的是单一 `document.title` + 序号 → 一批下载下来全同名，
+     * 用户分不清哪张属于哪条。视频侧早已用 vrExtractCardMeta 解决（按卡片锚定）。
+     *
+     * 做法：从 <img> 往上找最近的「像卡片」的祖先，取它的可见文本前 40 字
+     * 当分组键。找不到就返回空串（调用方退回原命名，行为不变）。
+     *
+     * 为什么用文本而不是选择器：各站 DOM 结构完全不同，硬编码 article/[data-*]
+     * 只能覆盖少数站；「最近的、包含足够文本的祖先」是跨站通用且零配置的近似。
+     */
+    function cardKeyOf(el) {
+        try {
+            if (!el || !el.closest) { return ''; }
+            var node = el;
+            for (var depth = 0; depth < 6 && node; depth++) {
+                node = node.parentElement;
+                if (!node || node === document.body || node === document.documentElement) { break; }
+                var tag = String(node.tagName || '').toLowerCase();
+                /* 明显的卡片容器语义（各站常见）：article / li / [data-*卡片] */
+                var looksCard = tag === 'article' || tag === 'li' ||
+                    node.hasAttribute('data-testid') || node.hasAttribute('data-id') ||
+                    node.hasAttribute('data-note-id') || node.hasAttribute('data-mid');
+                var txt = String(node.innerText || node.textContent || '').trim();
+                if (looksCard && txt.length >= 8) {
+                    return txt.replace(/\s+/g, ' ').slice(0, 40);
+                }
+            }
+        } catch (e) { /* 跨域/结构异常就当作没有卡片信息 */ }
+        return '';
+    }
+
     function makePush(U, MIN, cap, have, out) {
         /* 视频/音频扩展名一律不进图片清单（2026-11-15 修 local-image 回归）。
          * 起因：夹具里 `<img id="broken" src="media/test.mp4">`（模拟坏图），
@@ -103,7 +137,7 @@
          * `<img>` / 背景图 / 源码通道全都没做。这里统一兜住：
          * 图片标签指向音视频文件本身就是坏图，不该占一格。 */
         var AV_RE = /[.](?:mp4|m4v|mov|webm|mkv|avi|flv|ts|m3u8|mpd|mp3|m4a|aac|wav|ogg|flac)(?:[?#]|$)/i;
-        return function push(url, w, h, cands, bg, srcOnly, source) {
+        return function push(url, w, h, cands, bg, srcOnly, source, el) {
             var u = U.absolutize(url, location.href);
             if (!u || /^data:/i.test(u)) { return; }
             if (AV_RE.test(u)) { return; }
@@ -113,7 +147,7 @@
             if (!k || have[k]) { return; }
             if (out.length >= cap) { return; }
             have[k] = 1;
-            out.push({
+            var item = {
                 url: u,
                 w: Number(w) || 0,
                 h: Number(h) || 0,
@@ -121,7 +155,14 @@
                 srcOnly: !!srcOnly,
                 source: source || (bg ? 'bg' : 'dom'),
                 candidates: (cands && cands.length) ? cands.slice() : [u]
-            });
+            };
+            /* B-46 图片版：带上「这张图属于哪条笔记/卡片」的分组键。
+             * 只有 DOM 来源能定位到元素；网络缓存/源码通道没有元素，留空即可。 */
+            if (el) {
+                var ck = cardKeyOf(el);
+                if (ck) { item.cardKey = ck; }
+            }
+            out.push(item);
         };
     }
 
@@ -165,12 +206,12 @@
         try {
             U.scanImages(document, {
                 minWidth: MIN, minHeight: MIN, minShow: U.PANEL_MIN_SHOW, dedupe: true
-            }).forEach(function (it) { push(it.url, it.w, it.h, it.candidates, false, false, 'dom'); });
+            }).forEach(function (it) { push(it.url, it.w, it.h, it.candidates, false, false, 'dom', it.el); });
         } catch (e) { /* 忽略 */ }
         if (o.bgScan !== false) {
             try {
                 U.scanBackgrounds(document, { minShow: U.PANEL_MIN_SHOW, dedupe: true })
-                    .forEach(function (it) { push(it.url, it.w, it.h, it.candidates, true, false, 'bg'); });
+                    .forEach(function (it) { push(it.url, it.w, it.h, it.candidates, true, false, 'bg', it.el); });
             } catch (e) { /* 忽略 */ }
         }
         return finishSizes(U, out, MIN, cap);
@@ -195,14 +236,14 @@
                 minWidth: MIN, minHeight: MIN,
                 minShow: U.PANEL_MIN_SHOW, dedupe: true
             }).forEach(function (it) {
-                push(it.url, it.w, it.h, it.candidates, false, false, it.source || 'dom');
+                push(it.url, it.w, it.h, it.candidates, false, false, it.source || 'dom', it.el);
             });
         } catch (e) { /* 单通道失败不影响其它 */ }
 
         if (o.bgScan !== false) {
             try {
                 U.scanBackgrounds(document, { minShow: U.PANEL_MIN_SHOW, dedupe: true })
-                    .forEach(function (it) { push(it.url, it.w, it.h, it.candidates, true, false, 'bg'); });
+                    .forEach(function (it) { push(it.url, it.w, it.h, it.candidates, true, false, 'bg', it.el); });
             } catch (e) { /* 同上 */ }
         }
 
