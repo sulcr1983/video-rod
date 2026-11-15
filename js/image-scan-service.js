@@ -95,9 +95,18 @@
     }
 
     function makePush(U, MIN, cap, have, out) {
+        /* 视频/音频扩展名一律不进图片清单（2026-11-15 修 local-image 回归）。
+         * 起因：夹具里 `<img id="broken" src="media/test.mp4">`（模拟坏图），
+         * 采集时只看标签不看目标类型，于是这条 mp4 被当成图片收进清单 ——
+         * 侧栏多出一张「MP4 · 0.0MB」且无尺寸，local-image 的 maxUnknown=0 直接破。
+         * 原来只有 `<a href>` 分支（collectDomAllUrls）做了扩展名白名单，
+         * `<img>` / 背景图 / 源码通道全都没做。这里统一兜住：
+         * 图片标签指向音视频文件本身就是坏图，不该占一格。 */
+        var AV_RE = /[.](?:mp4|m4v|mov|webm|mkv|avi|flv|ts|m3u8|mpd|mp3|m4a|aac|wav|ogg|flac)(?:[?#]|$)/i;
         return function push(url, w, h, cands, bg, srcOnly, source) {
             var u = U.absolutize(url, location.href);
             if (!u || /^data:/i.test(u)) { return; }
+            if (AV_RE.test(u)) { return; }
             if (U.isSvgUrl(u) || U.isPlaceholderUrl(u)) { return; }
             if (u === location.href || u === document.URL) { return; }
             var k = keyOf(U, u);

@@ -140,10 +140,18 @@ def check_image(cdp, ext, case, tab):
         broken = int(cdp.eval("document.querySelectorAll('.ip-cell.loadfail').length", ps) or 0)
         if exp.get('maxBroken') is not None and broken > int(exp['maxBroken']):
             return False, '%d 张裂图（允许 ≤%s）；共 %d 张' % (broken, exp['maxBroken'], n)
-        # 尺寸回填：ip-dim 里没有「×」的就是未知（含「尺寸未知」「背景图」两种文案）
+        # 尺寸回填：ip-dim 里没有「×」的就是未知（含「尺寸未知」「背景图」两种文案）。
+        # 2026-11-15 修口径：面板自 t2b 起会把嗅探到的音视频并进同一个列表，
+        # 它们的 ip-dim 显示「MP4 · 0.0MB」（清晰度 · 体积），本来就没有像素尺寸。
+        # 原断言按「不含 × 即未知」统计，把视频条目误判成「尺寸未知的图片」——
+        # local-image 夹具里那条 `<img id="broken" src="media/test.mp4">` 正好被
+        # 网络嗅探收成视频条目，于是 maxUnknown=0 稳定破。只统计图片 cell。
         unknown = int(cdp.eval(
-            "Array.from(document.querySelectorAll('.ip-dim'))"
-            ".filter(e => (e.textContent || '').indexOf('\\u00d7') < 0).length", ps) or 0)
+            "Array.from(document.querySelectorAll('.ip-cell'))"
+            ".filter(function(c){ return c.getAttribute('data-act') !== 'pick'; })"
+            ".map(function(c){ return c.querySelector('.ip-dim'); })"
+            ".filter(function(e){ return e && (e.textContent || '').indexOf('\\u00d7') < 0; })"
+            ".length", ps) or 0)
         if exp.get('maxUnknown') is not None and unknown > int(exp['maxUnknown']):
             return False, '%d 张尺寸未知（允许 ≤%s）；共 %d 张' % (unknown, exp['maxUnknown'], n)
         return True, '侧栏列出 %d 张（裂图 %d，尺寸未知 %d）' % (n, broken, unknown)

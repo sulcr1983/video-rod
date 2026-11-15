@@ -90,6 +90,11 @@
     if (parseFloat(cs.opacity) < 0.15) continue;
     const fg0 = parseRGB(cs.color);
     if (!fg0) continue;
+    /* 文字完全透明（color: transparent）＝ 用户看不见，不属于 WCAG 1.4.3 的对象。
+     * 典型是自定义勾选框：`.ip-ck` 用 color:transparent 藏起字符、靠 border 画圈，
+     * 不跳过就会被算成 1.00:1 的「不达标」，逼着人去改一个本来就没有文字的元素。
+     * 半透明（0 < a < 1）仍按合成色计算，那才是真的可能看不清。 */
+    if (fg0.a != null && fg0.a <= 0.02) continue;
     const bg = bgOf(el);
     const fg = blend(fg0, bg);   // 处理 color 带 alpha
     const cr = ratio(fg, bg);

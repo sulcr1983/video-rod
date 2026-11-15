@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -97,6 +98,43 @@ def edge_exe():
         if os.path.exists(p):
             return p
     return None
+
+
+def ensure_test_site(port=18080):
+    """本地测试站（test-site/），图片/图集/媒体面板套件都靠它。
+
+    为什么必须由 e2e-all 自己起（2026-11-15 修）：cdp-run.py 有 ensure_site()，
+    但 e2e-all 一直没有 —— 于是同一批图片套件：
+      · `python tools/cdp-run.py tools/cdp-image-test.py` → 34/34
+      · `python tools/e2e-all.py --isolated`            → 2.3s 就 FAIL
+    差别只在 18080 有没有起：页面加载不出夹具图，B1 断言拿到 1 张（期望 7 张）。
+    返回 Popen（本次由我们启动、收尾要关）或 None（已在跑，不碰别人的进程）。
+    """
+    def alive():
+        try:
+            urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
+                "http://127.0.0.1:%d/images.html" % port, timeout=2).read()
+            return True
+        except Exception:
+            return False
+
+    if alive():
+        log("[测试站] 127.0.0.1:%d 已在运行，直接复用" % port)
+        return None
+    site_dir = os.path.join(ROOT, "test-site")
+    if not os.path.isdir(site_dir):
+        log("[测试站] ⚠️ 缺 test-site/，图片套件会失败")
+        return None
+    log("[测试站] 启动 127.0.0.1:%d（cwd=test-site）" % port)
+    p = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        cwd=site_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for _ in range(40):
+        time.sleep(0.25)
+        if alive():
+            return p
+    log("[测试站] ⚠️ 起不来（端口被占？），图片套件可能失败")
+    return p
 
 
 def stop_isolated(port, proc=None):
@@ -478,6 +516,7 @@ def main():
     log("套件 %d 个：%s" % (len(suites), ", ".join(s[0] for s in suites)))
     log("=" * 72)
     proc = None
+    site_proc = None
     if a.isolated:
         if a.live:
             log("[中止] --isolated 与 --live 不能同时使用：真实站点需要当前登录态。")
@@ -502,6 +541,12 @@ def main():
         if rc != 0:
             log("\n[中止] 会话闸门拒绝启动（rc=%d）。见上方提示，不要绕过。" % rc)
             return rc
+
+    # 1.5) 本地测试站：图片/图集套件要打开 http://127.0.0.1:18080/<夹具页>，
+    # 站没起时页面只加载出 1~2 个 img，套件会以「页面加载失败」假红
+    # （2026-11-15 实测：cdp-image-test 2.3s 就 FAIL，单跑却 34/34）。
+    # 原来只有 cdp-run.py 会 ensure_site()，e2e-all 完全没有起站逻辑。
+    site_proc = ensure_test_site()
 
     # 2) 串行执行
     results, t_all = [], time.time()
@@ -537,6 +582,18 @@ def main():
     total_dur = time.time() - t_all
     passed = sum(1 for r in results if r["ok"])
     summary = "%d/%d 套件通过，用时 %.1fs" % (passed, len(results), total_dur)
+
+    # 收掉本次由我们启动的测试站（复用别人起的不动）
+    if site_proc is not None:
+        try:
+            site_proc.terminate()
+            site_proc.wait(timeout=5)
+            log("[测试站] 已关闭（本次由脚本启动）")
+        except Exception:
+            try:
+                site_proc.kill()
+            except Exception:
+                pass
 
     log("\n" + "=" * 72)
     log("批次汇总：" + summary)
