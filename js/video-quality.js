@@ -436,6 +436,34 @@
     }
 
     /**
+     * 从一批候选 URL 里收集**所有**唯一的微博 mid（2026-11-16）。
+     *
+     * 为什么需要这个函数：补高清要走 `ajax/statuses/show?id=<正文id>`，
+     * 一次只能问一条微博。旧实现只取 `list[0]` 的 mid，
+     * 于是「一页 5 条视频」只有第一条能补到高清，其余 4 条永远停在 720p
+     * （苏哥实测：微博信息流 5 条视频全是 720p）。
+     *
+     * 这里把「收集去重」做成纯函数，好处：
+     *   1) 可单测（tools/test-video-quality.js 里有对应用例）；
+     *   2) 后台与页面侧共用同一套提取规则，不会两边口径不一致。
+     *
+     * @param {string[]} urls 候选 URL 列表
+     * @returns {string[]} 去重后的 mid 列表，顺序与首次出现顺序一致
+     */
+    function weiboMidsFromUrls(urls) {
+        var out = [];
+        var seen = Object.create(null);
+        var arr = Array.isArray(urls) ? urls : [];
+        for (var i = 0; i < arr.length; i++) {
+            var mid = weiboMidFromUrl(arr[i]);
+            if (!mid || seen[mid]) { continue; }
+            seen[mid] = 1;
+            out.push(mid);
+        }
+        return out;
+    }
+
+    /**
      * 从微博 detail 接口的返回体里列出**全部**码率档位（2026-11-12 苏哥报「微博最高只给 1080」）。
      *
      * 为什么以前拿不到 4K：老实现只按固定字段名挑一条
@@ -668,6 +696,7 @@
         assetKey: assetKey,
         labelOf: labelOf,
         weiboMidFromUrl: weiboMidFromUrl,
+        weiboMidsFromUrls: weiboMidsFromUrls,
         weiboVariants: weiboVariants,
         pickWeiboHdUrl: pickWeiboHdUrl,
         unsegmentUrl: unsegmentUrl,

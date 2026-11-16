@@ -132,6 +132,29 @@ eq('D9 普通 mp4 行为不变', Q.labelOf({ url: 'https://x/a.mp4', size: 4 * 1
     eq('E4 空串', Q.weiboMidFromUrl(''), '');
     eq('E5 无 media_id 参数', Q.weiboMidFromUrl('https://f.video.weibocdn.com/o0/a.mp4'), '');
 }
+/* ---------- E8. 一批 URL 收集所有唯一 mid（2026-11-16）---------- */
+{
+    /* 场景：微博信息流一页 5 条视频，旧实现只取 list[0] 的 mid，
+     * 于是只有第一条能补到高清，其余永远停在 720p（苏哥实测）。 */
+    const u = (mid, tag) => 'https://f.video.weibocdn.com/o0/' + tag + '.mp4' +
+        '?label=mp4_720p&media_id=' + mid;
+    const urls = [
+        u('5362210344468552', 'a'),   // 第 1 条
+        u('5362210344468552', 'b'),   // 同一条视频的另一档（media_id 相同）
+        u('5362288048144419', 'c'),   // 第 2 条
+        u('5362288048144419', 'd'),   // 同上，重复
+        u('5369999999999999', 'e')    // 第 3 条
+    ];
+    const mids = Q.weiboMidsFromUrls(urls);
+    eq('E8 一批 URL 收集出所有唯一 mid', mids.length, 3);
+    eq('E9 去重后顺序保持首次出现', mids.join(','), '5362210344468552,5362288048144419,5369999999999999');
+    eq('E10 空数组', Q.weiboMidsFromUrls([]).length, 0);
+    eq('E11 非数组入参', Q.weiboMidsFromUrls(null).length, 0);
+    eq('E12 非微博 URL 不计入', Q.weiboMidsFromUrls(['https://x.com/a.mp4?media_id=12345678901']).length, 0);
+    /* 关键回归：旧实现只取第一条 —— 现在必须能拿到第 2、3 条 */
+    eq('E13 不再只取第一条（旧实现只返回 1 个）', mids[1], '5362288048144419');
+    eq('E14 第三条也在', mids[2], '5369999999999999');
+}
 {
     /* 字段优先级抄笃笃 v0.16.14 的 I()：mp4_hd_url > stream_url_hd > mp4_sd_url > stream_url */
     const d1 = { page_info: { media_info: {

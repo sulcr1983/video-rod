@@ -45,6 +45,8 @@
     let batchId = '';
     let running = false;
     let autoScanTimer = 0;
+    let videoRefreshTimer = 0;   // 滚动停止后增量刷新视频清单的节流定时器
+    let videoRefreshing = false; // 防重入：避免连滚时多次并发拉 vrVideoOptions
 
     const $ = id => document.getElementById(id);
     const el = {
@@ -240,16 +242,7 @@
              * 去重、命名都天然一致。
              * 失败不影响图片列表：拿不到就只显示图片，绝不让整个面板空白。 */
             try {
-                const vids = await fetchVideoItems();
-                if (vids && vids.length) {
-                    const seenK = Object.create(null);
-                    for (const it of items) { seenK[it.key] = 1; }
-                    for (const v of vids) {
-                        if (seenK[v.key]) { continue; }
-                        seenK[v.key] = 1;
-                        items.push(v);
-                    }
-                }
+                await mergeVideoItems(await fetchVideoItems());
             } catch (eV) { /* 视频嗅探失败不影响图片 */ }
             /* 小红书 live 图（实况照片）补链（2026-11-11）：侧栏扫到的只是静态首帧，
              * 实况的那段 2~3 秒 mp4 在 SSR state 里。拿到后按「素材 id」把
@@ -387,6 +380,49 @@
             });
         }
         return out;
+    }
+
+    /* 把音视频条目增量并入 items。
+     * 2026-11-16 苏哥报「嗅探不随页面翻动持续，结果也不对」：
+     * 旧实现只在打开面板时调一次 vrVideoOptions，用户往下滚动加载出新视频，
+     * 面板里的视频清单不会变 —— 要手动点「重新探测」才更新。
+     * 现在这个函数被 scan() 和滚动后的增量刷新共用：
+     * 按 key 去重，只追加新出现的条目，已存在的不覆盖（保留下载标记、封面等状态）。 */
+    function mergeVideoItems(vids) {
+        const arr = Array.isArray(vids) ? vids : [];
+        if (!arr.length) { return 0; }
+        const seenK = Object.create(null);
+        for (const it of items) { seenK[it.key] = 1; }
+        let added = 0;
+        for (const v of arr) {
+            if (!v || seenK[v.key]) { continue; }
+            seenK[v.key] = 1;
+            items.push(v);
+            added++;
+        }
+        return added;
+    }
+
+    /* 滚动后增量刷新视频清单：节流 + 防重入。
+     * 2026-11-16 苏哥报「嗅探不随页面翻动持续」：滚动加载出新视频后，
+     * 这里隔 1.2s 拉一次 vrVideoOptions，只把**新出现的**视频条目并进 items
+     * （mergeVideoItems 按 key 去重，已有的保留下载标记/封面等状态不动）。
+     * 有新增才重渲染，没有就不碰列表，避免无谓重绘。 */
+    function scheduleVideoRefresh() {
+        clearTimeout(videoRefreshTimer);
+        videoRefreshTimer = setTimeout(async () => {
+            if (running || videoRefreshing || tabId < 0) { return; }
+            videoRefreshing = true;
+            try {
+                const vids = await fetchVideoItems();
+                const added = mergeVideoItems(vids);
+                if (added > 0) {
+                    pruneSelection();
+                    renderAll();
+                }
+            } catch (e) { /* 增量刷新失败不影响已显示的列表 */ }
+            finally { videoRefreshing = false; }
+        }, 1200);
     }
 
     /* ---------------- 小红书实况（live 图） ---------------- */
@@ -615,6 +651,12 @@
          * 用户会以为「视频嗅探失败了」。 */
         const kindNow = typeOf(it);
         if (kindNow === TYPE_VIDEO || kindNow === TYPE_AUDIO) {
+            /* 音视频单元格统一加 .ip-media 标记（2026-11-16）：
+             * 有 poster 时渲染成 <img>、无 poster 时渲染成 .ip-media-ph 占位块，
+             * 单看任一个都认不全「这是个视频条目」—— 外部检测（含自动化测试）
+             * 需要一个稳定的选择器，就用这个类。 */
+            div.classList.add('ip-media');
+            div.setAttribute('data-kind', kindNow);
             /* 有封面就画真图（2026-11-13 苏哥：「连视频预览都做不到」）——
              * 视频档位的 poster 由 background 的 vrVideoOptions 从页面 <video> 取。
              * 取不到才退回 ▶/♪ 占位，绝不假装有图。 */
@@ -905,12 +947,15 @@
         renderFoot();
     });
 
-    /* 滚动到底再追加（IntersectionObserver 比 scroll 事件省） */
+    /* 滚动到底再追加（IntersectionObserver 比 scroll 事件省）。
+     * 2026-11-16 苏哥报「嗅探不随页面翻动持续」：滚动加载出新视频后，
+     * 增量拉一次视频清单，面板自然跟上页面，不必手动点「重新探测」。 */
     el.body.addEventListener('scroll', () => {
         if (rendered >= visibleItems().length) { return; }
         if (el.body.scrollTop + el.body.clientHeight >= el.body.scrollHeight - 200) {
             appendMore(visibleItems());
         }
+        scheduleVideoRefresh();
     }, { passive: true });
 
     /* ---------------- 预览层 ---------------- */
@@ -1643,6 +1688,13 @@
             chrome.runtime.onMessage.addListener((msg, sender) => {
                 if (!msg || (msg.Message !== 'vrImg.pageChanged' && msg.action !== 'vrImg.pageChanged')) { return; }
                 if (sender && sender.tab && sender.tab.id !== tabId) { return; }
+                /* 页面内容变了（懒加载 / SPA 切内容）→ 视频清单也跟着更新。
+                 * 2026-11-16 苏哥报「嗅探不随页面翻动持续」：
+                 * 之前只监听**面板自身**的滚动（el.body），而用户滚的是**网页**，
+                 * 两者不是同一个滚动容器 → 增量刷新实际永远不触发。
+                 * 页面侧的 MutationObserver（js/image-batch.js）本来就会发这个信号，
+                 * 这里借它触发一次视频清单增量刷新。 */
+                scheduleVideoRefresh();
                 if (running) { return; }
                 clearTimeout(autoScanTimer);
                 autoScanTimer = setTimeout(async () => {

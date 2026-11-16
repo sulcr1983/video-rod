@@ -180,10 +180,34 @@
     /* ---------- 注入 ---------- */
     function inject(article) {
         if (article.querySelector('.vr-xbtn')) { return; }
-        const group = article.querySelector('[role="group"]');
-        if (!group) { return; }
         // 只给带视频的推文注入；图片推文走右键秒存/抓图
         if (!article.querySelector('video')) { return; }
+
+        /* 操作栏定位（2026-11-16 修「推特按钮不见了」）：
+         * 原来直接 `article.querySelector('[role="group"]')` 取**第一个**匹配 ——
+         * 实测 X 的播放器内部也会带 role="group"（控件组），于是按钮被插进那个
+         * 隐藏容器里，用户在推文下方根本看不到按钮。
+         * Playwright 复现：操作栏本应是第 2 个 group，按钮却插进了第 1 个
+         * （播放器内的 player-group）。
+         *
+         * 现在：从后往前找，跳过播放器容器内的 group（X 的操作栏在最下方）。
+         * 找不到就兜底自建一个容器插到推文末尾 —— 宁可位置略偏，也不能让按钮消失。 */
+        let group = null;
+        const groups = article.querySelectorAll('[role="group"]');
+        for (let i = groups.length - 1; i >= 0; i--) {
+            const g = groups[i];
+            if (!g) { continue; }
+            if (g.closest('[data-testid="videoPlayer"]')) { continue; }
+            if (g.querySelector('video')) { continue; }
+            group = g;
+            break;
+        }
+        if (!group) {
+            group = document.createElement('div');
+            group.className = 'vr-xbtn-fallback';
+            group.setAttribute('role', 'group');
+            (article.lastElementChild || article).appendChild(group);
+        }
         group.appendChild(makeButton(article));
     }
 

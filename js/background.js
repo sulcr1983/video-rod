@@ -3945,10 +3945,38 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
 // 不碰登录态，只发公开推文 ID；比下载分片再合成、比送在线 FFmpeg 都省事，业界通行做法）。
 async function fetchXVideo(user, statusId, mediaId, wantBest) {
     if (!user || !statusId) { return null; }
+    /* 2026-11-16 加固（苏哥报「推特坏了」）：
+     * 这个函数原来没有任何保护，三处会静默失败或卡死：
+     *   ① **无超时**：fxtwitter 实测响应可达 7 秒以上，网络差时会一直挂着，
+     *      而调用方（vrQuickDownX / vrBulkDownload）没有兜底超时 → 按钮永远「下载中…」，
+     *      或整批下载卡在某一条上。现在每次请求给 12 秒硬上限。
+     *   ② **r.json() 无异常保护**：推文不存在时 fxtwitter 返回的是 **HTML**
+     *      （实测 api.fxtwitter.com/<不存在的 id> → Cloudflare 页 + "that post doesn't exist"），
+     *      json() 会抛 SyntaxError，被外层 catch 成 api-fail，用户只看到「失败」。
+     *   ③ **不校验业务状态码**：fxtwitter 用 body 里的 code 表达结果（200=OK），
+     *      HTTP 200 不代表成功。现在两种都判。 */
+    const FX_TIMEOUT = 12000;
+    const fetchOnce = async function () {
+        const ac = new AbortController();
+        const tm = setTimeout(function () { try { ac.abort(); } catch (e) { /* ignore */ } }, FX_TIMEOUT);
+        try {
+            const resp = await fetch("https://api.fxtwitter.com/" + user + "/status/" + statusId,
+                { signal: ac.signal });
+            /* 读 body 也要在超时窗口内：慢速滴流同样会卡住调用方 */
+            const text = await resp.text();
+            return { resp: resp, text: text };
+        } finally {
+            clearTimeout(tm);
+        }
+    };
+
     let r = null;
+    let bodyText = '';
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
-            r = await fetch("https://api.fxtwitter.com/" + user + "/status/" + statusId);
+            const got = await fetchOnce();
+            r = got.resp;
+            bodyText = got.text;
         } catch (e) {
             if (attempt === 0) {
                 await new Promise(function (res) { setTimeout(res, 2500); });
@@ -3964,7 +3992,19 @@ async function fetchXVideo(user, statusId, mediaId, wantBest) {
         return null;
     }
     if (!r || !r.ok) { return null; }
-    const d = await r.json();
+
+    /* 不是 JSON 就直接放弃（推文不存在/被删时 fxtwitter 返回 HTML 页面）。
+     * 用 try/catch 而不是抛出去 —— 上层只需要 null，不该被 SyntaxError 打断。 */
+    let d = null;
+    try {
+        d = JSON.parse(bodyText);
+    } catch (e) {
+        return null;
+    }
+    if (!d || typeof d !== 'object') { return null; }
+    /* fxtwitter 的业务状态：code 存在且不是 200 → 这条推文拿不到 */
+    if (d.code != null && Number(d.code) !== 200) { return null; }
+
     const vids = (((d.tweet || {}).media || {}).videos) || [];
     if (!vids.length) { return null; }
     // 多视频推文：用 mediaId（与 video.poster 同源）定位是哪一条
@@ -6704,44 +6744,68 @@ async function vrVideoOptions(tabId, frameId) {
                 .replace(/^https?:\/\//i, '').split('/')[0]);
         } catch (e0) { isWeibo = false; }
 
-        /* media_id 只是兜底种子：接口要的是**正文 id**，media_id 会返回 20101。
-         * 真正的 id 由探针在页面里自己找（DOM 上的发布时间链接 / mid 属性）。 */
-        const mid = self.VRVideoQuality.weiboMidFromUrl(
-            (list[0] && list[0].url) || playing || '');
+        /* 主动补高清档（通用思路，微博先落地）。
+         *
+         * 2026-11-16 苏哥报「嗅探结果不对：一页 5 条视频全是 720p」。
+         * 旧实现只取 `list[0]` 的 mid 去补高清 —— 结果只有第一条视频能补到高清，
+         * 其余 4 条永远停在 720p。
+         *
+         * 现在遍历列表，为每条候选取**各自的** mid，按 mid 去重后逐条补高清：
+         * 同一视频的不同码率档位（media_id 相同）归为一组，每组只调一次接口。
+         * 串行执行，避免对微博同时打多个站内请求触发风控。 */
         if (isWeibo) {
-            const hd = await vrWeiboHdProbe(tabId, mid ? [mid] : []);
-            const vs = (hd && Array.isArray(hd.variants)) ? hd.variants : [];
-            if (vs.length) {
-                /* 全部档位入池（4K/2K/1080p/720p…），不是只取最高一条：
-                 * 苏哥 2026-11-12 明确「默认最高清，需要低的自己选」。
-                 * 只塞一条最高清 = 面板里没有低档可选；只塞一条 1080p = 4K 永远拿不到。 */
-                vs.forEach(function (v) {
-                    if (!v || !v.url) { return; }
-                    if (list.some(function (m) { return m.url === v.url; })) { return; }
-                    const vh = Number(v.height) || self.VRVideoQuality.heightFromUrl(v.url) || 0;
-                    /* 同档位已经有一条（嗅探来的，地址不同但同一个文件）就不再插，
-                     * 否则面板里会出现两个「1080p」，用户以为选错了。
-                     * 比较时必须用「有效高度」：嗅探条目的 height 字段经常是空的
-                     * （只在渲染时才从 URL 猜），直接读 m.height 会恒为 0、去重失效
-                     * —— 苏哥那条 4K 微博就多出了两个重复的 720p/480p（实测）。
-                     * 保留先到的嗅探条：它是页面真实在播的那条，下载最稳。 */
-                    if (vh && list.some(function (m) {
-                        const mh = Number(m.height) ||
-                            self.VRVideoQuality.heightFromUrl(m.url) || 0;
-                        return mh === vh;
-                    })) { return; }
-                    list.push({
-                        url: v.url,
-                        ext: 'mp4',
-                        size: Number(v.size) || 0,
-                        height: vh,
-                        bitrate: Number(v.bitrate) || 0
-                    });
-                });
-                /* 重排：微博各档位的 CDN 文件名不同，靠 familyKey 按 media_id 归族，
-                 * 才能让「正在播放」锁到同一个作品、再在族内取到 4K。 */
-                list = self.VRVideoQuality.prioritizePlaying(list, playing);
+            /* 收集列表里所有唯一的 mid（按 URL 里的 media_id / 数字段提取）。
+             * media_id 只是兜底种子：接口要的是**正文 id**，media_id 会返回 20101。
+             * 真正的 id 由探针在页面里自己找（DOM 上的发布时间链接 / mid 属性）。
+             * 提取规则抽成纯函数 weiboMidsFromUrls（tools/test-video-quality.js 有单测），
+             * 后台与其它调用方共用同一套口径，不会两边不一致。 */
+            const mids = self.VRVideoQuality.weiboMidsFromUrls
+                ? self.VRVideoQuality.weiboMidsFromUrls(list.map(function (m) {
+                    return (m && m.url) || '';
+                }))
+                : [];
+            /* 嗅探列表为空但有正在播放的地址时，也补它的 mid（兜底） */
+            if (!mids.length && playing) {
+                const pm = self.VRVideoQuality.weiboMidFromUrl(playing);
+                if (pm) { mids.push(pm); }
             }
+
+            for (let k = 0; k < mids.length; k++) {
+                try {
+                    const hd = await vrWeiboHdProbe(tabId, [mids[k]]);
+                    const vs = (hd && Array.isArray(hd.variants)) ? hd.variants : [];
+                    if (!vs.length) { continue; }
+                    /* 全部档位入池（4K/2K/1080p/720p…），不是只取最高一条：
+                     * 苏哥 2026-11-12 明确「默认最高清，需要低的自己选」。
+                     * 只塞一条最高清 = 面板里没有低档可选；只塞一条 1080p = 4K 永远拿不到。 */
+                    vs.forEach(function (v) {
+                        if (!v || !v.url) { return; }
+                        if (list.some(function (m) { return m.url === v.url; })) { return; }
+                        const vh = Number(v.height) || self.VRVideoQuality.heightFromUrl(v.url) || 0;
+                        /* 同档位已经有一条（嗅探来的，地址不同但同一个文件）就不再插，
+                         * 否则面板里会出现两个「1080p」，用户以为选错了。
+                         * 比较时必须用「有效高度」：嗅探条目的 height 字段经常是空的
+                         * （只在渲染时才从 URL 猜），直接读 m.height 会恒为 0、去重失效
+                         * —— 苏哥那条 4K 微博就多出了两个重复的 720p/480p（实测）。
+                         * 保留先到的嗅探条：它是页面真实在播的那条，下载最稳。 */
+                        if (vh && list.some(function (m) {
+                            const mh = Number(m.height) ||
+                                self.VRVideoQuality.heightFromUrl(m.url) || 0;
+                            return mh === vh;
+                        })) { return; }
+                        list.push({
+                            url: v.url,
+                            ext: 'mp4',
+                            size: Number(v.size) || 0,
+                            height: vh,
+                            bitrate: Number(v.bitrate) || 0
+                        });
+                    });
+                } catch (e) { /* 这一条补高清失败，继续补下一条 */ }
+            }
+            /* 重排：微博各档位的 CDN 文件名不同，靠 familyKey 按 media_id 归族，
+             * 才能让「正在播放」锁到同一个作品、再在族内取到 4K。 */
+            list = self.VRVideoQuality.prioritizePlaying(list, playing);
         }
     } catch (e) { /* 补高清失败不影响已有候选 */ }
 
@@ -6797,39 +6861,52 @@ async function vrVideoOptions(tabId, frameId) {
         }
     } catch (e) { /* MPD 探测失败不影响已有候选 */ }
 
-    /* 封面（2026-11-13 苏哥：「连视频预览都做不到」）：
+    /* 封面（2026-11-13 苏哥：「连视频预览都做不到」），2026-11-16 苏哥再报「嗅探结果不对」：
      * 面板网格里音视频条目此前只有 ▶/♪ 占位，因为 vrVideoOptions 只回 url/label/size。
-     * 这里用一次页面注入取 poster（微博/X/抖音/B站 的 <video> 都有），
-     * 失败回退 og:image；都拿不到就保持空串，面板仍显示占位，不假装有封面。 */
-    let cover = '';
+     * 旧实现只取「页面级一张」封面（第一个 video[poster] → og:image → 第一张大图），
+     * 结果一页多条视频时**全部共用同一封面** —— 实测信息流一页 5 条视频，封面全是同一张
+     * 《答应我美国》。
+     *
+     * 现在改成：收集页面里**所有** <video> 的 poster，按 DOM 顺序分给各条候选；
+     * 没有 poster 的条目才回退到页面级兜底（og:image / 第一张大图）。
+     * 封面数量不够时，多出来的共用兜底，但绝不会再出现「全页一张」。 */
+    let coverFallback = '';       // 页面级兜底：og:image / 第一张大图，只给完全没封面的条目
+    let coverPosters = [];        // 页面各 <video> 的 poster，按 DOM 顺序
     try {
         const cr = await vrWithTimeout(chrome.scripting.executeScript({
             target: { tabId: tabId }, world: 'MAIN',
             func: function () {
-                var v = document.querySelector('video[poster]');
-                var p = v ? String(v.poster || '') : '';
-                if (p && !/^data:/i.test(p)) { return p; }
+                /* 优先按视频各自取 poster：逐条收集，最多 12 条。
+                 * video.poster 是 data: 时（页面没加载出真实封面）要跳过，
+                 * 否则会把无意义的 data 串发给面板。 */
+                var posters = [];
+                var vs = document.querySelectorAll('video');
+                for (var i = 0; i < vs.length && i < 12; i++) {
+                    var p = String(vs[i].poster || '');
+                    if (p && !/^data:/i.test(p)) { posters.push(p); }
+                }
+                if (posters.length) { return { posters: posters, fallback: '' }; }
+                /* 页面没有 poster 才退到 og:image / 第一张大图做兜底 */
                 var og = document.querySelector('meta[property="og:image"], meta[name="og:image"]');
                 var ogv = og ? String(og.getAttribute ? og.getAttribute('content') || '' : '') : '';
-                if (ogv) { return ogv; }
-                /* 微博/抖音这类站：video 没有 poster，封面是页面上的大图。
-                 * 取一张「不是头像/小图标」的图顶上，宁可近似也不要空白。
-                 * 判据：自然宽度 ≥ 200，且路径不像头像。 */
+                if (ogv) { return { posters: [], fallback: ogv }; }
                 var imgs = document.querySelectorAll('img');
-                for (var i = 0; i < imgs.length && i < 40; i++) {
-                    var im = imgs[i];
+                for (var j = 0; j < imgs.length && j < 40; j++) {
+                    var im = imgs[j];
                     var src = String(im.currentSrc || im.src || '');
                     if (!/^https?:/i.test(src)) { continue; }
                     if (/avatar|profile_images|crop\.0\.0\.|face\.|icon|logo/i.test(src)) { continue; }
-                    if (Number(im.naturalWidth) >= 200) { return src; }
+                    if (Number(im.naturalWidth) >= 200) { return { posters: [], fallback: src }; }
                 }
-                return '';
+                return { posters: [], fallback: '' };
             }
         }), 2500, 'video-cover');
-        cover = String((cr && cr[0] && cr[0].result) || '');
-        if (cover && !/^https?:/i.test(cover)) { cover = ''; }
-    } catch (e) { cover = ''; }
-    if (cover) { out.cover = cover; }
+        const crRes = (cr && cr[0] && cr[0].result) || {};
+        coverPosters = Array.isArray(crRes.posters) ? crRes.posters.slice(0, 12) : [];
+        coverFallback = String(crRes.fallback || '');
+        if (coverFallback && !/^https?:/i.test(coverFallback)) { coverFallback = ''; }
+    } catch (e) { coverFallback = ''; }
+    if (coverFallback) { out.cover = coverFallback; }
 
     out.options = list.slice(0, 8).map(function (m, i) {
         /* 标签带上分辨率，用户才能一眼看出哪档更高。
@@ -6842,8 +6919,13 @@ async function vrVideoOptions(tabId, frameId) {
             srcUrl: m.srcUrl || '',
             segmented: !!m.segmented,
             height: h,
-            /* 该条目自带的封面（DOM 兜底收来的那批有，嗅探来的没有） */
-            cover: m.domCover || cover || '',
+            /* 该条目自带的封面（DOM 兜底收来的那批有，嗅探来的没有）。
+             * 2026-11-16 苏哥报「嗅探结果不对：一页 5 条视频封面全是同一张」。
+             * 旧实现是 `m.domCover || cover`，其中 cover 是页面级**一张**封面，
+             * 于是多条视频全部共用它。现在按索引从 coverPosters 里取各自的 poster：
+             * 页面里有 5 个 video 且都带 poster，就 5 条各拿一张，不再糊成一张。
+             * 索引越界（封面数少于候选数）或没取到时，才回退到页面级兜底。 */
+            cover: m.domCover || coverPosters[i] || coverFallback || '',
             /* pending：只有封面、还没拿到直链（页面视频没播放）——
              * 面板据此提示「先点播放」，而不是把它当成可下载条目。 */
             pending: !!m.pending,
