@@ -4070,10 +4070,29 @@ async function vrNameInTab(tabId, ext, override) {
                 if (!N) { return ''; }
                 try {
                     const i = N.extractPageInfo(document, location.href);
-                    // 调用方已知作者/标题时覆盖页面提取（抖音详情接口、B站 UP 主等），
-                    // 否则页面 DOM 常常拿不到作者，文件名就少一段前缀。
+                    /* 调用方传来的 override 不能无条件覆盖页面提取结果（2026-11-16）。
+                     *
+                     * 踩的坑（苏哥真机）：面板下载时传 meta:{title: 标签页标题}，
+                     * 而标签页标题是「一只泡泡机的微博视频 - @一只泡泡机 的视频 - 视频 - 微博」
+                     * 这种站点模板串。它覆盖了 extractWeibo 刚抽出来的干净标题，
+                     * 落盘又变成一串模板词 —— 明明 naming 单独跑是对的。
+                     *
+                     * 规则：override 只在「页面提取为空」或「override 明显更干净」时才用。
+                     * 判据 = override 是否含站点模板词 / 是否比页面结果更长更啰嗦。
+                     * 这样既保留抖音详情接口/B站 UP 主这类「页面拿不到、必须靠 override」的场景，
+                     * 又不会让标签页标题回退覆盖正确结果。 */
                     if (ov) {
-                        if (ov.title) { i.title = ov.title; i.post = ov.post || ov.title; }
+                        const JUNK = /的微博视频|的视频\s*[-–—]|[-–—]\s*视频\s*[-–—]|[-–—]\s*微博$/;
+                        const ovTitle = String(ov.title || '').trim();
+                        const ovUseless = !ovTitle || JUNK.test(ovTitle);
+                        /* 判据只看 override 本身干不干净（2026-11-16 二次修正）：
+                         * 上一版写成 `(!pageHas || !ovUseless)`，逻辑错——当页面提取为空
+                         * （tv/show 这类模板标题会被清空）时 `!pageHas` 为真，
+                         * 垃圾 override 照样被采纳。override 要么干净、要么别用。 */
+                        if (ovTitle && !ovUseless) {
+                            i.title = ovTitle;
+                            i.post = ov.post || ovTitle;
+                        }
                         if (ov.author) { i.author = ov.author; }
                         if (ov.authorId) { i.authorId = ov.authorId; }
                         if (ov.site) { i.site = ov.site; }
@@ -6856,6 +6875,19 @@ async function vrVideoOptions(tabId, frameId) {
              * 真正的 id 由探针在页面里自己找（DOM 上的发布时间链接 / mid 属性）。
              * 提取规则抽成纯函数 weiboMidsFromUrls（tools/test-video-quality.js 有单测），
              * 后台与其它调用方共用同一套口径，不会两边不一致。 */
+            /* 时间预算（2026-11-16 修「微博下载不了、探测失败」）：
+             * 单次 vrWeiboHdProbe 实测就要 6.2 秒（它要在页面里最多试 4 个 id，
+             * 每个都发一次 ajax/statuses/show），而整条 vrVideoOptions 有 8 秒硬超时。
+             * 我上一版按 mid 逐个循环，3 个 mid 就是 10.6 秒 —— 必然超时，
+             * 用户看到的就是「探测失败、视频下不了」。
+             *
+             * 按 docs/COMPETITOR-EXTENSIONS.md §3.3 的既有结论修：
+             *   ① 「tv/show 的 id 无效」，补高清只对信息流卡片有意义，
+             *      拿不到就**静默回落嗅探结果**，绝不能拖住整个探测；
+             *   ② 只调**一次**探针，把该作品的全部 mid 一起交给它
+             *      （探针内部本来就会按顺序试，命中即返回）；
+             *   ③ 再加 4 秒总预算，超了就带着现有候选返回 —— 宁可少几个档，
+             *      也不能让面板转圈到超时。 */
             const mids = self.VRVideoQuality.weiboMidsFromUrls
                 ? self.VRVideoQuality.weiboMidsFromUrls(list.map(function (m) {
                     return (m && m.url) || '';
@@ -6867,24 +6899,31 @@ async function vrVideoOptions(tabId, frameId) {
                 if (pm) { mids.push(pm); }
             }
 
-            for (let k = 0; k < mids.length; k++) {
+            /* 已经拿到 ≥1080p 就不必再探：微博补高清是为了突破 720p，
+             * 页面本身已经给了高清档时这次请求纯属浪费（还占掉 6 秒预算）。 */
+            const bestH = list.reduce(function (mx, m) {
+                const h = Number(m && m.height) ||
+                    self.VRVideoQuality.heightFromUrl((m && m.url) || '') || 0;
+                return h > mx ? h : mx;
+            }, 0);
+
+            if (mids.length && bestH < 1080) {
                 try {
-                    const hd = await vrWeiboHdProbe(tabId, [mids[k]]);
+                    /* 一次性把 mid 全交出去（探针内部最多试 4 个，命中即返回） */
+                    const hd = await Promise.race([
+                        vrWeiboHdProbe(tabId, mids.slice(0, 4)),
+                        new Promise(function (resolve) {
+                            setTimeout(function () { resolve(null); }, 4000);
+                        })
+                    ]);
                     const vs = (hd && Array.isArray(hd.variants)) ? hd.variants : [];
-                    if (!vs.length) { continue; }
-                    /* 全部档位入池（4K/2K/1080p/720p…），不是只取最高一条：
-                     * 苏哥 2026-11-12 明确「默认最高清，需要低的自己选」。
-                     * 只塞一条最高清 = 面板里没有低档可选；只塞一条 1080p = 4K 永远拿不到。 */
                     vs.forEach(function (v) {
                         if (!v || !v.url) { return; }
                         if (list.some(function (m) { return m.url === v.url; })) { return; }
                         const vh = Number(v.height) || self.VRVideoQuality.heightFromUrl(v.url) || 0;
-                        /* 同档位已经有一条（嗅探来的，地址不同但同一个文件）就不再插，
-                         * 否则面板里会出现两个「1080p」，用户以为选错了。
-                         * 比较时必须用「有效高度」：嗅探条目的 height 字段经常是空的
-                         * （只在渲染时才从 URL 猜），直接读 m.height 会恒为 0、去重失效
-                         * —— 苏哥那条 4K 微博就多出了两个重复的 720p/480p（实测）。
-                         * 保留先到的嗅探条：它是页面真实在播的那条，下载最稳。 */
+                        /* 同档位已经有一条就不再插，否则面板出现两个「1080p」。
+                         * 比较时用「有效高度」：嗅探条目 height 常为空，
+                         * 直接读 m.height 会恒为 0、去重失效。 */
                         if (vh && list.some(function (m) {
                             const mh = Number(m.height) ||
                                 self.VRVideoQuality.heightFromUrl(m.url) || 0;
@@ -6898,7 +6937,7 @@ async function vrVideoOptions(tabId, frameId) {
                             bitrate: Number(v.bitrate) || 0
                         });
                     });
-                } catch (e) { /* 这一条补高清失败，继续补下一条 */ }
+                } catch (e) { /* 补高清失败：沿用嗅探结果，不报错 */ }
             }
             /* 重排：微博各档位的 CDN 文件名不同，靠 familyKey 按 media_id 归族，
              * 才能让「正在播放」锁到同一个作品、再在族内取到 4K。 */
