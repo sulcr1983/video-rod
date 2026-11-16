@@ -137,12 +137,34 @@
          * `<img>` / 背景图 / 源码通道全都没做。这里统一兜住：
          * 图片标签指向音视频文件本身就是坏图，不该占一格。 */
         var AV_RE = /[.](?:mp4|m4v|mov|webm|mkv|avi|flv|ts|m3u8|mpd|mp3|m4a|aac|wav|ogg|flac)(?:[?#]|$)/i;
+        /* 图片扩展名白名单：用于「同域 + 无扩展名」的排除判定 */
+        var IMG_EXT_RE = /[.](?:jpe?g|png|gif|webp|avif|bmp|heic|heif|tiff?|ico)(?:[?#]|$)/i;
         return function push(url, w, h, cands, bg, srcOnly, source, el) {
             var u = U.absolutize(url, location.href);
             if (!u || /^data:/i.test(u)) { return; }
             if (AV_RE.test(u)) { return; }
             if (U.isSvgUrl(u) || U.isPlaceholderUrl(u)) { return; }
             if (u === location.href || u === document.URL) { return; }
+            /* 同域 + 无图片扩展名 → 几乎一定是页面/接口，不是图（2026-11-16）。
+             *
+             * 真机证据（微博首页 39 张图 / 17 张缩略图裂）：坏格子里混着
+             *   https://weibo.com/5751412092/RrEaA1x4k       ← 微博详情页
+             *   https://weibo.cn/sinaurl?u=http%3A%2F%2F...   ← 跳转链接
+             *   https://s.weibo.com/weibo?q=%23...            ← 搜索页
+             * 它们来自 DOM 通道（<img>/背景图等），而锚点通道与源码通道都要求
+             * 带图片扩展名，唯独 makePush 这一层没有这层保护。
+             *
+             * 判据取舍：真实图片绝大多数放在独立 CDN 域（sinaimg.cn / xhscdn.com /
+             * pbs.twimg.com…），与页面同域又没扩展名的地址是页面/接口的概率极高。
+             * 代价是可能漏掉极少数「同域动态图床」（如 /img?id=1）——
+             * 但这类地址在扩展页里同样会因缺扩展名/Content-Type 而难辨，
+             * 留着只会变成裂图格子，不如让位给能确认的图。 */
+            if (!IMG_EXT_RE.test(u)) {
+                var sameHost = false;
+                try { sameHost = new URL(u).hostname === location.hostname; } catch (e) { sameHost = false; }
+                if (sameHost) { return; }
+                if (U.looksLikePage && U.looksLikePage(u)) { return; }
+            }
             var k = keyOf(U, u);
             if (!k || have[k]) { return; }
             if (out.length >= cap) { return; }

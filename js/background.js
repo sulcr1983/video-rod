@@ -4164,17 +4164,87 @@ const VR_STATIC_ASSET = /(web_login_static|\/static\/|\/assets\/|\/images?\/|\/i
 /* 规则 ID 池：以前只有一条 91001，批量下载时「图片 → 视频」交替设置会互相覆盖，
  * 后面那条一覆盖，前面的域名就再也拿不到 Referer。
  * 小红书实测：图片在 sns-webpic-qc、视频在 sns-video-v6，两个域名必须同时生效，
- * 否则视频落到下载器就是 NETWORK_FAILED（2026-11-06 用户反馈）。 */
+ * 否则视频落到下载器就是 NETWORK_FAILED（2026-11-06 用户反馈）。
+ *
+ * 2026-11-16 扩到 48（原 12）：
+ * 真机实测微博一页 39 张图，缩略图 17 张加载失败 —— 规则池 12 条被占满，
+ * 里面还塞着 help.x.com / business.x.com 这类根本不出图的域名，
+ * 而微博图床有 wx1~wx4 / tvax3 / ww2 / a.sinaimg.cn 等多个域名，装不下。
+ * Chrome 的 session rules 上限是 5000，48 条远低于限制，内存开销可忽略。 */
 const VR_MEDIA_HEADER_RULE_BASE = 91001;
-const VR_MEDIA_HEADER_RULE_MAX = 12;
+const VR_MEDIA_HEADER_RULE_MAX = 48;
 const VR_MEDIA_HEADER_ALARM = 'vrClearMediaHeaders';
 
 /** 域名 → 规则 ID（会话内稳定分配，同域名重复设置只覆盖自己那条） */
 const vrHeaderRuleByDomain = new Map();
+/** 域名 → { at, hits }：LRU 淘汰依据。at=最近使用时间，hits=累计命中次数 */
+const vrHeaderRuleStats = new Map();
+
+/** 记录一次域名使用（供 LRU 淘汰判断谁该出局） */
+function vrTouchHeaderDomain(domain) {
+    if (!domain) { return; }
+    const prev = vrHeaderRuleStats.get(domain);
+    vrHeaderRuleStats.set(domain, {
+        at: Date.now(),
+        hits: (prev ? (Number(prev.hits) || 0) : 0) + 1
+    });
+}
+
+/** 把当前规则池整理成 pickEvictByLru 需要的形状 */
+function vrHeaderStatsList() {
+    const out = [];
+    for (const [domain] of vrHeaderRuleByDomain) {
+        const s = vrHeaderRuleStats.get(domain) || {};
+        out.push({ domain: domain, at: Number(s.at) || 0, hits: Number(s.hits) || 0 });
+    }
+    return out;
+}
+
+/* 启动时从浏览器把已有规则恢复进 Map（2026-11-16 修「扩容不生效」）。
+ *
+ * 踩的坑：session rules 存在**浏览器**里，会跨 Service Worker 重载保留，
+ * 但 vrHeaderRuleByDomain 这个 Map 是 JS 变量，SW 一重载就空了。
+ * 于是新进程以为 ID 全空闲 → 从 91001 重新分配 → 把浏览器里还活着的旧规则**覆盖**掉，
+ * 越加越挤、永远停在 12 条（实测：喂 20 个域名，规则数仍卡在 12）。
+ * 分配 ID 前必须先知道「哪些已被占、分别属于谁」。
+ */
+let vrHeaderRulesSynced = false;
+function vrSyncHeaderRulesOnce() {
+    if (vrHeaderRulesSynced) { return Promise.resolve(); }
+    vrHeaderRulesSynced = true;   // 先置位，防并发重复同步
+    return new Promise(function (resolve) {
+        try {
+            chrome.declarativeNetRequest.getSessionRules(function (rules) {
+                void chrome.runtime.lastError;
+                try {
+                    const arr = Array.isArray(rules) ? rules : [];
+                    for (let i = 0; i < arr.length; i++) {
+                        const r = arr[i];
+                        const id = r && r.id;
+                        /* 只认本模块规则池范围内的 ID，别把手机模拟/预览等别的规则算进来 */
+                        if (typeof id !== 'number') { continue; }
+                        if (id < VR_MEDIA_HEADER_RULE_BASE) { continue; }
+                        if (id >= VR_MEDIA_HEADER_RULE_BASE + VR_MEDIA_HEADER_RULE_MAX) { continue; }
+                        const f = String((r.condition && r.condition.urlFilter) || '');
+                        const m = f.match(/^\|\|(.+)$/);
+                        const domain = m ? m[1].trim() : '';
+                        if (!domain) { continue; }
+                        vrHeaderRuleByDomain.set(domain, id);
+                        vrTouchHeaderDomain(domain);
+                    }
+                } catch (e) { /* 恢复失败就按空池处理，最差是覆盖旧规则 */ }
+                resolve();
+            });
+        } catch (e) { resolve(); }
+    });
+}
 
 async function vrSetMediaHeaders(domain, referer) {
     try {
         if (!chrome.declarativeNetRequest || !domain || !referer) { return; }
+        /* 先确保 Map 与浏览器里已有的 session rules 对齐（跨 SW 重载必须做一次），
+         * 否则会以为 ID 全空闲、把旧规则覆盖掉 —— 这正是扩容后仍卡在 12 条的原因。 */
+        try { await vrSyncHeaderRulesOnce(); } catch (e) { /* 同步失败按老路径继续 */ }
         let origin = '';
         try { origin = new URL(referer).origin; } catch (e) { /* ignore */ }
         // origin 必须 **remove** 而不是 set（2026-11-05 实测）：
@@ -4185,7 +4255,13 @@ async function vrSetMediaHeaders(domain, referer) {
             { header: 'referer', operation: 'set', value: referer },
             { header: 'origin', operation: 'remove' }
         ];
-        /* 同域名复用同一个 ID；新域名顺延分配，超出上限就淘汰最早的一个 */
+        /* 同域名复用同一个 ID；新域名顺延分配，超出上限就淘汰「最久没用过」的那个。
+         *
+         * 2026-11-16 改：淘汰依据从 FIFO 换成 LRU（见 pickEvictByLru 的注释）。
+         * 原因：图床域名（wx1~wx4.sinaimg.cn）会随每张图反复命中，
+         * 而导航域名（help.x.com / business.x.com）可能只出现一两次。
+         * FIFO 会把先加入、其实一直在用的图床挤掉，留下一堆没用的域名 ——
+         * 真机表现就是「微博缩略图 39 张里 17 张裂」。 */
         let id = vrHeaderRuleByDomain.get(domain);
         if (!id) {
             const used = new Set(vrHeaderRuleByDomain.values());
@@ -4194,16 +4270,31 @@ async function vrSetMediaHeaders(domain, referer) {
                 if (!used.has(cand)) { id = cand; break; }
             }
             if (!id) {
-                /* 池满：淘汰最早的一条 */
-                const oldest = vrHeaderRuleByDomain.keys().next().value;
-                id = vrHeaderRuleByDomain.get(oldest);
-                vrHeaderRuleByDomain.delete(oldest);
+                /* 池满：按 LRU 淘汰（最久未使用 → 命中次数最少） */
+                let victim = '';
                 try {
-                    await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [id] });
-                } catch (e) { /* ignore */ }
+                    if (self.VRVideoQuality &&
+                        typeof self.VRVideoQuality.pickEvictByLru === 'function') {
+                        victim = self.VRVideoQuality.pickEvictByLru(vrHeaderStatsList());
+                    }
+                } catch (e) { victim = ''; }
+                if (!victim) {
+                    /* 纯函数不可用时的兜底：仍按 Map 插入顺序取最早的 */
+                    victim = vrHeaderRuleByDomain.keys().next().value;
+                }
+                id = vrHeaderRuleByDomain.get(victim);
+                vrHeaderRuleByDomain.delete(victim);
+                vrHeaderRuleStats.delete(victim);
+                if (id) {
+                    try {
+                        await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [id] });
+                    } catch (e) { /* ignore */ }
+                }
             }
             vrHeaderRuleByDomain.set(domain, id);
         }
+        /* 每次设置都刷新使用时间/次数，LRU 靠它判断谁该出局 */
+        vrTouchHeaderDomain(domain);
         await chrome.declarativeNetRequest.updateSessionRules({
             removeRuleIds: [id],
             addRules: [{
@@ -4238,7 +4329,13 @@ async function vrSetMediaHeaders(domain, referer) {
 async function vrSetHeadersForUrls(urls, referer) {
     const hosts = new Set();
     const arr = Array.isArray(urls) ? urls : [];
-    for (let i = 0; i < arr.length && hosts.size < 6; i++) {
+    /* 域名上限从 6 提到 24（2026-11-16）。
+     * 真机实测微博一页 39 张图，涉及的图床域名有 wx1~wx4.sinaimg.cn、
+     * tvax3.sinaimg.cn、ww2.sinaimg.cn、a.sinaimg.cn 等 7 个以上，
+     * 卡在 6 个必然漏掉一部分 → 漏掉的那些图 403、缩略图裂。
+     * 24 远低于规则池上限（48），给视频/下载链路留足余量。 */
+    const HOST_LIMIT = 24;
+    for (let i = 0; i < arr.length && hosts.size < HOST_LIMIT; i++) {
         try {
             const h = new URL(arr[i]).hostname;
             if (h && !/\.(mp4|m3u8)$/i.test(h)) { hosts.add(h); }
@@ -6871,22 +6968,74 @@ async function vrVideoOptions(tabId, frameId) {
      * 没有 poster 的条目才回退到页面级兜底（og:image / 第一张大图）。
      * 封面数量不够时，多出来的共用兜底，但绝不会再出现「全页一张」。 */
     let coverFallback = '';       // 页面级兜底：og:image / 第一张大图，只给完全没封面的条目
-    let coverPosters = [];        // 页面各 <video> 的 poster，按 DOM 顺序
+    let coverPosters = [];        // 页面各 <video> 的封面（poster 或卡片图），按 DOM 顺序
     try {
         const cr = await vrWithTimeout(chrome.scripting.executeScript({
             target: { tabId: tabId }, world: 'MAIN',
             func: function () {
-                /* 优先按视频各自取 poster：逐条收集，最多 12 条。
+                /* 优先按视频各自取封面：逐条收集，最多 12 条。
                  * video.poster 是 data: 时（页面没加载出真实封面）要跳过，
-                 * 否则会把无意义的 data 串发给面板。 */
+                 * 否则会把无意义的 data 串发给面板。
+                 *
+                 * 2026-11-16 补（苏哥真机：微博信息流 3 条不同视频封面共用一张）：
+                 * 微博的 <video> **没有 poster 属性**，旧实现只认 poster，
+                 * 于是 posters 为空 → 全部回退到页面级「第一张大图」→ 三条视频同图。
+                 * 现在对没有 poster 的视频，往上找它所在的卡片容器，
+                 * 取卡片里那张「够大的图」当封面 —— 每条视频各自对应各自的卡片。 */
+                var BIG_ENOUGH = 120;
+                var SKIP_IMG = /avatar|profile_images|crop\.0\.0\.|face\.|icon|logo|emoji|sprite|placeholder/i;
+
+                function pickFromCard(v) {
+                    /* 往上找最近的「像卡片」的祖先：包含足够文本或本身就是 feed item。
+                     * 不能走太远（>8 层）—— 再往上就是整个信息流容器，
+                     * 取到的必然是第一条的图，又回到「全页一张」的老问题。 */
+                    var el = v.parentElement;
+                    for (var depth = 0; depth < 8 && el; depth++, el = el.parentElement) {
+                        var hasText = false;
+                        try {
+                            hasText = String(el.innerText || '').trim().length >= 12;
+                        } catch (e) { hasText = false; }
+                        var looksCard = false;
+                        try {
+                            looksCard = !!(el.matches && el.matches(
+                                'article, .wb-item, [class*="card"], [class*="feed"], [class*="note"], [action-type]'));
+                        } catch (e) { looksCard = false; }
+                        if (!hasText && !looksCard) { continue; }
+                        /* 在这个卡片里找一张够大的图；按 DOM 顺序取第一张合格的 */
+                        var imgs = el.querySelectorAll('img');
+                        for (var i = 0; i < imgs.length && i < 12; i++) {
+                            var im = imgs[i];
+                            var src = String(im.currentSrc || im.src || '');
+                            if (!/^https?:/i.test(src)) { continue; }
+                            if (SKIP_IMG.test(src)) { continue; }
+                            var w = Number(im.naturalWidth) || 0;
+                            var h = Number(im.naturalHeight) || 0;
+                            /* naturalWidth 为 0 说明还没解码完，按布局尺寸兜底判断 */
+                            if (!w) {
+                                var r = im.getBoundingClientRect();
+                                w = Math.round(r.width);
+                                h = Math.round(r.height);
+                            }
+                            if (w < BIG_ENOUGH && h < BIG_ENOUGH) { continue; }
+                            return src;
+                        }
+                        /* 这个「卡片」里没图，继续往上找一层更大的容器 */
+                    }
+                    return '';
+                }
+
                 var posters = [];
                 var vs = document.querySelectorAll('video');
-                for (var i = 0; i < vs.length && i < 12; i++) {
-                    var p = String(vs[i].poster || '');
-                    if (p && !/^data:/i.test(p)) { posters.push(p); }
+                for (var k = 0; k < vs.length && k < 12; k++) {
+                    var vEl = vs[k];
+                    var p = String(vEl.poster || '');
+                    if (p && !/^data:/i.test(p)) { posters.push(p); continue; }
+                    /* 没有 poster：从它自己的卡片里找封面 */
+                    var cardCover = pickFromCard(vEl);
+                    if (cardCover) { posters.push(cardCover); }
                 }
                 if (posters.length) { return { posters: posters, fallback: '' }; }
-                /* 页面没有 poster 才退到 og:image / 第一张大图做兜底 */
+                /* 页面完全没有可用封面，才退到 og:image / 第一张大图做兜底 */
                 var og = document.querySelector('meta[property="og:image"], meta[name="og:image"]');
                 var ogv = og ? String(og.getAttribute ? og.getAttribute('content') || '' : '') : '';
                 if (ogv) { return { posters: [], fallback: ogv }; }
@@ -6895,7 +7044,7 @@ async function vrVideoOptions(tabId, frameId) {
                     var im = imgs[j];
                     var src = String(im.currentSrc || im.src || '');
                     if (!/^https?:/i.test(src)) { continue; }
-                    if (/avatar|profile_images|crop\.0\.0\.|face\.|icon|logo/i.test(src)) { continue; }
+                    if (SKIP_IMG.test(src)) { continue; }
                     if (Number(im.naturalWidth) >= 200) { return { posters: [], fallback: src }; }
                 }
                 return { posters: [], fallback: '' };
@@ -6907,6 +7056,47 @@ async function vrVideoOptions(tabId, frameId) {
         if (coverFallback && !/^https?:/i.test(coverFallback)) { coverFallback = ''; }
     } catch (e) { coverFallback = ''; }
     if (coverFallback) { out.cover = coverFallback; }
+
+    /* 按「文件身份」去重（2026-11-16 苏哥真机实测）：
+     * 微博 tv/show 页嗅探出 5 个档位、实际只有 3 个唯一文件 ——
+     *   m1(960p) 与 m3(480p) 指向同一个 mp4；m2(720p) 与 m4(720p) 只差 http/https。
+     * 面板把它们列成 5 条，用户以为有 5 种清晰度可选，实际只有 3 种；
+     * 多出来的还会被分别下载，落成两个同名文件。
+     *
+     * 放在这里（所有候选收集完成、生成 options 之前）而不是更早：
+     * 前面几步会陆续补微博高清档、展开 HLS、探测 DASH，重复可能在任一步产生，
+     * 只有全部加完再统一去重，才能覆盖所有来源。 */
+    try {
+        if (self.VRVideoQuality && typeof self.VRVideoQuality.dedupeByFile === 'function') {
+            const before = list.length;
+            list = self.VRVideoQuality.dedupeByFile(list, playing);
+            if (list.length < before) {
+                /* 去重后再排一次，保证「最高清」仍是第一条 */
+                list = self.VRVideoQuality.sortCandidates(list, playing);
+            }
+        }
+    } catch (e) { /* 去重失败不影响已有候选 */ }
+
+    /* 唯一作品数：用 familyKey 归族后计数（2026-11-16）。
+     *
+     * 为什么不用 list.length：tv/show 这类页是**一个视频的多个码率**，
+     * list 有 3 条但只有 1 个作品 —— 它应该能拿到页面级封面。
+     * 而信息流页是**多个不同作品**，各自没有自己的封面图，
+     * 这时绝不能把同一张页面级图糊给每一条。familyKey 对微博按 media_id
+     * 归族，正好是「作品身份」的准确判据。 */
+    let coverWorks = 0;
+    try {
+        const seenFam = Object.create(null);
+        const fam = (self.VRVideoQuality && typeof self.VRVideoQuality.familyKey === 'function')
+            ? self.VRVideoQuality.familyKey
+            : function (u) { return String(u || '').split('#')[0].split('?')[0]; };
+        for (let ci = 0; ci < list.length; ci++) {
+            const cu = list[ci] && list[ci].url;
+            if (!cu) { continue; }
+            const cf = fam(cu);
+            if (!seenFam[cf]) { seenFam[cf] = 1; coverWorks++; }
+        }
+    } catch (e) { coverWorks = list.length; }
 
     out.options = list.slice(0, 8).map(function (m, i) {
         /* 标签带上分辨率，用户才能一眼看出哪档更高。
@@ -6920,12 +7110,22 @@ async function vrVideoOptions(tabId, frameId) {
             segmented: !!m.segmented,
             height: h,
             /* 该条目自带的封面（DOM 兜底收来的那批有，嗅探来的没有）。
-             * 2026-11-16 苏哥报「嗅探结果不对：一页 5 条视频封面全是同一张」。
-             * 旧实现是 `m.domCover || cover`，其中 cover 是页面级**一张**封面，
-             * 于是多条视频全部共用它。现在按索引从 coverPosters 里取各自的 poster：
-             * 页面里有 5 个 video 且都带 poster，就 5 条各拿一张，不再糊成一张。
-             * 索引越界（封面数少于候选数）或没取到时，才回退到页面级兜底。 */
-            cover: m.domCover || coverPosters[i] || coverFallback || '',
+             * 2026-11-16 苏哥报「一页多条视频封面全是同一张」。
+             *
+             * 真机诊断结论（微博信息流实测）：这类站点的视频条目**来自网络嗅探**，
+             * DOM 里根本没有对应的 <video>（整页只有 1 个 0×0 的空 video 占位），
+             * 卡片里也没有视频封面图（img 全是头像/徽章）。所以「按卡片位置取各自封面」
+             * 在这类站点上做不到 —— 硬按索引分只会把某一张图错配给别的视频。
+             *
+             * 因此策略改为「宁缺勿错」：
+             *   · 条目自带封面（domCover，DOM 兜底收的那批）→ 用它，天然精确；
+             *   · 页面有**多个不同作品**时（coverWorks > 1）→ **不给页面级兜底图**，
+             *     面板显示 ▶ 占位块。贴一张属于别人的封面比空白更误导用户；
+             *   · 整页只有**一个作品**时 → 页面级兜底可用，它就是这条视频的封面
+             *     （同一视频的多个码率共用封面是正确的）。 */
+            cover: m.domCover
+                || (coverWorks > 1 ? '' : (coverFallback || coverPosters[i]))
+                || '',
             /* pending：只有封面、还没拿到直链（页面视频没播放）——
              * 面板据此提示「先点播放」，而不是把它当成可下载条目。 */
             pending: !!m.pending,

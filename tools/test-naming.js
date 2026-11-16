@@ -395,6 +395,30 @@ console.log('\n===== N9 AIX 占位符（{NO001}/{PAGETITLE}/{DATE}） =====');
     eq(Naming.extractPageInfo(mock('我的主页设计分享'), 'https://example.com/p/2').title,
         '我的主页设计分享', '含「主页」的内容标题不被误杀');
 
+    /* ---------- 微博视频页（tv/show）标题反解（2026-11-16） ----------
+     * 真机实测：页面 title 是「寻花部落的微博视频 - @寻花部落 的视频 - 视频 - 微博」，
+     * 但 og:title / h1 / meta[author] / .author 全部为空，
+     * 旧实现落盘成「寻花部落的微博视频 _@寻花部落 的视频 _视频 _微博.mp4」。 */
+    const TV = 'https://weibo.com/tv/show/1034:5365822898503700';
+    const tvInfo = Naming.extractPageInfo(mock('寻花部落的微博视频 - @寻花部落 的视频 - 视频 - 微博'), TV);
+    eq(tvInfo.author, '寻花部落', 'W1 微博视频页抽出作者');
+    eq(tvInfo.title, '', 'W2 站点模板词不进标题');
+    eq(tvInfo.pageType, 'weibo', 'W3 页面类型标为 weibo');
+    {
+        const tvName = Naming.buildNameFromInfo(tvInfo, TV, { tpl: '${author}_${title}', ext: 'mp4' });
+        eq(tvName, '寻花部落.mp4', 'W4 文件名只用作者，不再是一串模板词');
+    }
+    /* 带正文的视频页：「作者 的微博视频 - 正文 - 视频 - 微博」 */
+    {
+        const info2 = Naming.extractPageInfo(mock('张三的微博视频 - 今天的日落真好看 - 视频 - 微博'), TV);
+        eq(info2.author, '张三', 'W5 抽出作者');
+        eq(info2.title, '今天的日落真好看', 'W6 保留正文当标题');
+    }
+    /* 非视频页形态（普通文章/主页）：必须原样返回，不能被新规则改动 */
+    eq(Naming.extractPageInfo(mock('某个新闻标题 - 微博'), TV).author, '', 'W7 普通微博页作者仍为空');
+    eq(Naming.extractPageInfo(mock('某个新闻标题'), TV).title, '某个新闻标题', 'W8 普通微博页标题不变');
+    eq(Naming.extractPageInfo(mock('@地球知识局 的个人主页'), 'https://weibo.com/u/5750600479').title, '', 'W9 主页形态仍被清空');
+
     /* 标题/作者都空时不能落成 "mp4" 这种只有扩展名的文件 */
     const empty = mock('');
     const u1 = 'https://f.video.weibocdn.com/o0/video123.mp4';

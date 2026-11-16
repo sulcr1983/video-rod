@@ -392,6 +392,123 @@
         }
     }
 
+    /**
+     * 按「文件身份」去重：同一个文件的多个档位标签只保留信息最全的一条（2026-11-16）。
+     *
+     * 为什么需要（苏哥真机实测）：微博 tv/show 页嗅探出 5 个档位，
+     * 实际只有 3 个唯一文件 ——
+     *   · m1 标 960p、m3 标 480p → 指向**同一个** mp4（文件名完全相同）；
+     *   · m2 标 720p、m4 标 720p → 也是同一文件，只差 http/https 协议。
+     * 面板把它们列成 5 条，用户以为能选 5 种清晰度，实际只有 3 种；
+     * 多出来的两条还会被分别下载，落成两个同名文件。
+     *
+     * 与 assetKey / collapseByAsset 的区别：
+     *   · assetKey 用 `origin + pathname`，而 origin 含协议 →
+     *     `http://x/a.mp4` 与 `https://x/a.mp4` 会被当成两个素材，合不掉；
+     *   · collapseByAsset 用的是同一套键，且只被单测调用，主链路从未接上。
+     * 这里改用 `hostname + pathname`（忽略协议），正好覆盖上面两种重复。
+     *
+     * 保留策略：组内按 sortCandidates 规则取最优（分辨率高 → 体积大 → 正在播放），
+     * 同时把同组里「更高的档位标签」带给它，避免出现「480p 活下来、960p 被丢」。
+     *
+     * @param {Array<{url,size,height,label}>} list
+     * @param {string} playing 当前播放地址（可空）
+     * @returns {Array} 去重后的新数组，顺序按各组首次出现的顺序
+     */
+    function dedupeByFile(list, playing) {
+        var arr = Array.isArray(list) ? list : [];
+        var groups = Object.create(null);
+        var order = [];
+        for (var i = 0; i < arr.length; i++) {
+            var m = arr[i];
+            if (!m || !m.url) { continue; }
+            var key = fileKey(m.url);
+            if (!groups[key]) {
+                groups[key] = [];
+                order.push(key);
+            }
+            groups[key].push(m);
+        }
+        var out = [];
+        for (var j = 0; j < order.length; j++) {
+            var rows = groups[order[j]];
+            if (rows.length === 1) { out.push(rows[0]); continue; }
+            /* 组内取最优；用 sortCandidates 保证与主排序同一口径 */
+            var best = sortCandidates(rows, playing)[0];
+            if (!best) { continue; }
+            /* 把组内最高的有效高度补给存活条目：有的档位标签写在 URL 的 label 上、
+             * 有的写在 height 字段上，直接丢可能把「960p」丢了只剩「480p」。 */
+            var maxH = 0;
+            for (var k = 0; k < rows.length; k++) {
+                var hk = Number(rows[k] && rows[k].height) || heightFromUrl(rows[k] && rows[k].url);
+                if (hk > maxH) { maxH = hk; }
+            }
+            if (maxH && !(Number(best.height) >= maxH)) {
+                best = Object.assign({}, best, { height: maxH });
+            }
+            out.push(best);
+        }
+        return out;
+    }
+
+    /**
+     * 文件身份键：hostname + pathname，**忽略协议**。
+     *
+     * 比 assetKey 少一个协议维度，专门用来识别
+     * 「http://x/a.mp4 与 https://x/a.mp4 是同一个文件」这种重复。
+     * 子域不同（wx1 vs wx2）仍视为不同文件 —— 那是不同 CDN 节点，
+     * 是否等同要由调用方按业务判断（微博靠 media_id），不能在这里一刀切。
+     */
+    function fileKey(url) {
+        var s = String(url || '');
+        try {
+            var u = new URL(s);
+            return u.hostname.toLowerCase() + u.pathname;
+        } catch (e) {
+            return s.replace(/^https?:\/\//i, '').split('#')[0].split('?')[0];
+        }
+    }
+
+    /**
+     * 从 DNR 规则池里挑一个要淘汰的域名（纯函数，2026-11-16）。
+     *
+     * 背景：扩展用 `updateSessionRules` 按域名设 Referer（微博 sinaimg 这类图床
+     * 在扩展页里按 Referer 放行，不设就整片 403、缩略图全裂）。规则池有上限，
+     * 满了就得淘汰一条。
+     *
+     * 旧实现是 **FIFO**（淘汰 Map 里最早插入的那条），但那是错的：
+     * 一个页面会命中很多域名 —— 图床域名（wx1~wx4.sinaimg.cn）随每张图
+     * **反复命中**，而导航/主站域名（weibo.com、kefu.weibo.com）可能只出现一两次。
+     * FIFO 会把先加入、其实一直在用的图床挤掉，留下一堆没用的导航域名。
+     * 2026-11-16 真机实测：微博面板 39 张图里 17 张加载失败，规则池 12 条占满，
+     * 里面还塞着 help.x.com、business.x.com 这种根本不出图片的域名。
+     *
+     * 改成 LRU：优先淘汰**最久没被用过**的；时间相同再淘汰命中次数最少的。
+     * 这样反复使用的图床自然留下，一次性域名自然被挤出去。
+     *
+     * @param {Array<{domain:string, at:number, hits:number}>} list
+     * @returns {string} 要淘汰的域名；列表为空或无效时返回 ''
+     */
+    function pickEvictByLru(list) {
+        var arr = Array.isArray(list) ? list : [];
+        var worst = null;
+        for (var i = 0; i < arr.length; i++) {
+            var e = arr[i];
+            if (!e || !e.domain) { continue; }
+            if (!worst) { worst = e; continue; }
+            var ea = Number(e.at) || 0;
+            var wa = Number(worst.at) || 0;
+            if (ea !== wa) {
+                if (ea < wa) { worst = e; }
+                continue;
+            }
+            var eh = Number(e.hits) || 0;
+            var wh = Number(worst.hits) || 0;
+            if (eh < wh) { worst = e; }
+        }
+        return worst ? String(worst.domain) : '';
+    }
+
     /** 候选的显示文案：能解析出分辨率就显示 "1080p · 45.6MB" */
     function labelOf(item) {
         var m = item || {};
@@ -694,6 +811,9 @@
         docKey: docKey,
         collapseByAsset: collapseByAsset,
         assetKey: assetKey,
+        dedupeByFile: dedupeByFile,
+        fileKey: fileKey,
+        pickEvictByLru: pickEvictByLru,
         labelOf: labelOf,
         weiboMidFromUrl: weiboMidFromUrl,
         weiboMidsFromUrls: weiboMidsFromUrls,

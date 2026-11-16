@@ -106,6 +106,68 @@ eq('B8 非数组安全', Q.sortCandidates(null, '').length, 0);
 eq('C3 空列表安全', Q.collapseByAsset([]).length, 0);
 eq('C4 无 url 的条目被跳过', Q.collapseByAsset([{ size: 1 }]).length, 0);
 
+/* ---------- C5. 按文件身份去重（2026-11-16，修「5 个档位实为 3 个文件」） ---------- */
+{
+    /* 苏哥真机实测的微博 tv/show 原始数据：
+     *   m0 1080p、m1 960p、m2 720p、m3 480p、m4 720p(http)
+     * 其中 m1 与 m3 指向同一个 mp4，m2 与 m4 也是同一个（只差协议）。 */
+    const list = [
+        { url: 'https://f.video.weibocdn.com/u0/A.mp4?label=mp4_1080p', height: 1080 },
+        { url: 'https://f.video.weibocdn.com/u0/B.mp4?label=mp4_hd', height: 960 },
+        { url: 'https://f.video.weibocdn.com/u0/C.mp4?label=mp4_720p', height: 720 },
+        { url: 'https://f.video.weibocdn.com/u0/B.mp4?label=mp4_hd&x=1', height: 480 },
+        { url: 'http://f.video.weibocdn.com/u0/C.mp4?label=mp4_720p', height: 720 }
+    ];
+    const out = Q.dedupeByFile(list, '');
+    eq('C5 五个档位去重成三个文件', out.length, 3);
+    eq('C6 http/https 同一文件被合并', Q.dedupeByFile([
+        { url: 'http://x.com/a.mp4' }, { url: 'https://x.com/a.mp4' }
+    ], '').length, 1);
+    eq('C7 不同文件名不合并', Q.dedupeByFile([
+        { url: 'https://x.com/a.mp4' }, { url: 'https://x.com/b.mp4' }
+    ], '').length, 2);
+    eq('C8 不同子域不合并（CDN 节点）', Q.dedupeByFile([
+        { url: 'https://wx1.sinaimg.cn/a.jpg' }, { url: 'https://wx2.sinaimg.cn/a.jpg' }
+    ], '').length, 2);
+    /* 关键：重复组里要保留高分辨率那条，不能留下 480p 丢掉 960p */
+    const bGroup = out.filter(function (x) { return x.url.indexOf('/B.mp4') >= 0; })[0];
+    ok('C9 重复组保留更高分辨率', !!bGroup && Number(bGroup.height) >= 960,
+        bGroup ? ('height=' + bGroup.height) : 'missing');
+    eq('C10 空列表安全', Q.dedupeByFile([], '').length, 0);
+    eq('C11 非数组安全', Q.dedupeByFile(null, '').length, 0);
+    eq('C12 无 url 条目跳过', Q.dedupeByFile([{ height: 720 }, null], '').length, 0);
+    /* fileKey 本身：忽略协议，保留 host+path */
+    eq('C13 fileKey 忽略协议', Q.fileKey('http://a.com/x.mp4?y=1'), 'a.com/x.mp4');
+    eq('C14 fileKey 与 https 同值', Q.fileKey('https://a.com/x.mp4'), Q.fileKey('http://a.com/x.mp4'));
+}
+
+/* ---------- C15. DNR 规则池的 LRU 淘汰（2026-11-16，修「缩略图 17/39 裂」） ---------- */
+{
+    /* 真机场景：图床域名随每张图反复命中，导航域名只出现一两次。
+     * FIFO 会把一直在用的图床挤掉，所以必须按「最久没用 + 命中少」淘汰。 */
+    const list = [
+        { domain: 'wx3.sinaimg.cn', at: 1000, hits: 20 },   // 老但常用
+        { domain: 'help.x.com', at: 5000, hits: 1 },        // 新但只用过一次
+        { domain: 'wx1.sinaimg.cn', at: 4000, hits: 15 },
+        { domain: 'business.x.com', at: 3000, hits: 1 }
+    ];
+    eq('C15 淘汰最久没用的域名', Q.pickEvictByLru(list), 'wx3.sinaimg.cn');
+    /* 时间相同时比命中次数 */
+    eq('C16 时间相同淘汰命中少的', Q.pickEvictByLru([
+        { domain: 'a.com', at: 100, hits: 10 },
+        { domain: 'b.com', at: 100, hits: 2 }
+    ]), 'b.com');
+    /* 关键回归：一次性导航域名必须比反复命中的图床更早出局 */
+    const evicted = Q.pickEvictByLru([
+        { domain: 'wx2.sinaimg.cn', at: 9000, hits: 30 },
+        { domain: 'kefu.weibo.com', at: 8000, hits: 1 }
+    ]);
+    eq('C17 一次性域名先出局', evicted, 'kefu.weibo.com');
+    eq('C18 空列表安全', Q.pickEvictByLru([]), '');
+    eq('C19 非数组安全', Q.pickEvictByLru(null), '');
+    eq('C20 缺字段条目被跳过', Q.pickEvictByLru([{ at: 1 }, null, { domain: 'x.com', at: 9, hits: 5 }]), 'x.com');
+}
+
 /* ---------- D. 标签文案 ---------- */
 eq('D1 有分辨率与体积', Q.labelOf({ url: 'https://x/a.mp4?label=mp4_1080p', size: 45.6 * 1048576 }), '1080p · 45.6MB');
 eq('D2 无分辨率只有体积', Q.labelOf({ url: 'https://x/a.mp4', size: 4 * 1048576 }), 'MP4 · 4.0MB');

@@ -102,6 +102,72 @@
         return { title, author, authorId: '', post, pageType: 'article' };
     }
 
+    /**
+     * 微博：视频页从 document.title 里反解作者与标题（2026-11-16）。
+     *
+     * 为什么必须单独一条规则（苏哥真机实测 tv/show 页）：
+     *   页面 title 是「寻花部落的微博视频 - @寻花部落 的视频 - 视频 - 微博」，
+     *   但 og:title / h1 / meta[name=author] / [rel=author] / .author **全部为空**，
+     *   DOM 里也没有作者节点。extractArticle 于是：
+     *     · author 取不到 → 空；
+     *     · title 走 doc.title 兜底 → 把整串站点模板词当作品名，
+     *       落盘成「寻花部落的微博视频 _@寻花部落 的视频 _视频 _微博.mp4」。
+     *   而 stripSiteTail 只剥尾段一次，剥掉「微博」就停了（「视频」还在中间）。
+     *
+     * 做法：把 title 按「 - 」分段，逐段识别——
+     *   · 纯站点模板段（视频 / 微博 / 网页版）→ 丢弃；
+     *   · 「X的微博视频」→ 抽出作者 X；
+     *   · 「@X 的视频」→ 抽出作者 X；
+     *   · 其余段 → 当内容标题保留。
+     * 抽不到作者（普通微博文章页）就原样返回 extractArticle 的结果，行为不变。
+     */
+    function extractWeibo(doc, host) {
+        const base = extractArticle(doc, host);
+        const docTitle = doc && doc.title ? String(doc.title).trim() : '';
+        if (!docTitle) { return base; }
+
+        /* 微博视频页的固定模板词：单独成段时整段丢弃 */
+        const TEMPLATE_SEG = /^(?:视频|微博|微博视频|网页版|客户端|网页)$/;
+        const segs = docTitle.split(/\s+[-–—]\s+/).map(function (s) { return s.trim(); })
+            .filter(Boolean);
+
+        let author = '';
+        const keep = [];
+        for (let i = 0; i < segs.length; i++) {
+            const seg = segs[i];
+            if (TEMPLATE_SEG.test(seg)) { continue; }
+            let m;
+            /* 「<作者>的微博视频」——tv/show 页最常见的首段 */
+            if ((m = seg.match(/^(.+?)的微博视频$/))) {
+                if (!author) { author = m[1].trim(); }
+                continue;
+            }
+            /* 「@<作者> 的视频」 */
+            if ((m = seg.match(/^@?(.+?)\s*的视频$/))) {
+                if (!author) { author = m[1].trim(); }
+                continue;
+            }
+            /* 「@<作者> 的视频 后面还有正文」这种混在一段的 */
+            if ((m = seg.match(/^@(.+?)\s*的视频\s*(.*)$/))) {
+                if (!author) { author = m[1].trim(); }
+                if (m[2]) { keep.push(m[2].trim()); }
+                continue;
+            }
+            keep.push(seg);
+        }
+
+        if (!author) { return base; }   // 不是视频页形态：保持原行为
+
+        const title = keep.join(' ').trim();
+        return {
+            title: title,
+            author: author.replace(/^@/, ''),
+            authorId: base.authorId || '',
+            post: title,
+            pageType: 'weibo'
+        };
+    }
+
     /** 推特/X：正文取 [data-testid="tweetText"]；作者取 User-Name 块 */
     function extractTwitter(doc, host) {
         const tweetEl = q(doc, '[data-testid="tweetText"]');
@@ -354,6 +420,9 @@
         { name: 'xiaohongshu', match: /(^|\.)(xiaohongshu\.com|xhslink\.com)$/, extract: extractXiaohongshu },
         { name: 'bilibili', match: /(^|\.)(bilibili\.com|b23\.tv)$/, extract: extractBilibili },
         { name: 'douyin', match: /(^|\.)(douyin\.com|iesdouyin\.com)$/, extract: extractDouyin },
+        /* 微博放最后（在 article 之前）：它的 extractWeibo 内部先调 extractArticle，
+         * 抽不到视频页形态的作者时原样返回，所以对信息流/主页等其它形态零影响。 */
+        { name: 'weibo', match: /(^|\.)(weibo\.com|weibo\.cn)$/, extract: extractWeibo },
         { name: 'article', match: /.*/, extract: extractArticle }
     ];
 
@@ -653,7 +722,7 @@
     return {
         // 页面识别
         extractPageInfo, extractArticle, extractTwitter, extractXiaohongshu, extractBilibili,
-        extractDouyin,
+        extractDouyin, extractWeibo,
         stripSiteTail, buildAuthorFull, SITE_RULES,
         // 模板与清洗
         fillTemplate, sanitizeName, dedupeNames, truncate,
