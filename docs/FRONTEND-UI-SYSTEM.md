@@ -399,3 +399,62 @@
 | 验收 | 当时 `tools/cdp-trash-test.py` **27/27**（该用例 2026-11-09 随页面重构删除）；资源库 30/30、查看器 27/27、其余 57/17/14/39/35 全绿 |
 | 截图 | `trash-menu.png`、`trash-confirm.png`、`trash-drawer.png` |
 | 未含 | 重命名、批量选择（S5b） |
+
+---
+
+## 14. 播放器现状：Plyr 铺满舞台 + 全屏沉浸 + 同作者判据（2026-11-18）
+
+> 本节记录 ADR-055 换用 Plyr **之后**的真实形态。§12.3 的交互表描述的是自绘控件时代（`Shift+←/→` = ±30s、`js/library/video.js`），已被本节取代，保留作历史。
+
+### 14.1 布局：外壳铺满舞台，画面 contain
+
+| 项 | 规则 | 为什么 |
+|---|---|---|
+| 外壳 | `.vr-player .plyr { flex:1 1 auto; width/height:100%; min-width:0 }` | 旧版 `fitPlayer()` 按 `videoWidth/videoHeight` 写死内联宽高，竖屏 1080×1920 只有 406px，控件条与进度条一起被压窄 |
+| 画面 | `video { object-fit:contain }` | 竖屏两侧留黑、不变形、不拉伸（YouTube / B 站同款） |
+| 进度条 | `.plyr__progress__container { flex:1 1 0% }`，其余 `.plyr__controls__item { flex:0 0 auto }` | Plyr 音量滑块固定 `min-width:60px` 且不收缩，进度条是唯一可压缩项 |
+| 窄舞台 | 舞台 <560px 时 `.plyr.is-narrow`：隐藏音量滑块、保留静音按钮 | 小窗预览时把宽度让给进度条 |
+| 倍速 | 模块级 `RATES = [0.1,0.2,0.25,0.5,0.75,1,1.25,1.5,2]` | 原先 4 处数组不一致（有的含 0.25×、有的含 3×）；现统一为 0.1×–2× |
+
+### 14.2 全屏：预览层是唯一宿主
+
+- `.preview` 进全屏；Plyr 配置 `fullscreen: { container: '.preview' }`，所以**控件条上的全屏按钮与头部 `F` 键语义一致**。
+- 全屏时 CSS 隐藏 `.pv-head` / `.pv-film` / `.pv-info`，`.pv-stage` 去 margin 与圆角铺满整屏（沉浸式，只留画面 + 悬浮控件）。
+- 帮助面板 (`#keysheet`) 不在全屏宿主里就看不见，因此 `syncFullscreenHosts()` 在进入全屏时把它临时挂到 `document.fullscreenElement`，退出后按原位还原。
+
+### 14.3 键盘与滚轮
+
+| 操作 | 行为 | 备注 |
+|---|---|---|
+| `↑` / `↓` | 上一个 / 下一个素材 | 全屏内同样生效 |
+| `←` / `→` | 进度 −5s / +5s | 全屏内同样生效 |
+| 滚轮上下 | 翻上一条 / 下一条 | 350ms 防抖，一次滚动只翻一页 |
+| 滚轮左右 / `Shift`+滚轮 | 进度 ±5s | 仅在视频有有效 `duration` 时 |
+| `Esc` | 一次只退一层：全屏 → 帮助面板 → 预览 | 全屏中按 Esc 由浏览器强制退出（UA 安全行为，页面拦不住），代码用 `lastFsExit` 时间戳避免同一次按键连带关预览 |
+| `I` | 信息栏开合 | `.preview.no-info .pv-info{display:none}`（此前样式缺失，按钮完全无效） |
+| `F` | 全屏 / 退出全屏 | 与 Plyr 按钮同一入口 `toggleFullscreen()` |
+| `?` | 快捷键面板 | 面板 HTML 初始带 `hidden`，必须同时摘 `hidden` 与加 `show`（此前只加 `show`，面板永远打不开） |
+
+**焦点口径**：`isTypingTarget()` 只对**文本型输入**（text/search/textarea/contenteditable/select）让出快捷键；`range/checkbox/radio/button` 不吞按键。旧实现见到任意 `INPUT` 就 `return`，全屏里点过进度条（`input[type=range]`）后整套快捷键失效。
+
+### 14.4 「只看此人」
+
+判据在纯函数模块 `js/library/peers.js`（`VRPeers.peersOf`），lightbox 优先调用它、保留本地兜底：
+
+1. **同平台 + 同 `authorId`** —— 有 id 时最精确，可覆盖改昵称；
+2. **同平台 + 同昵称** —— 抖音 `authorId` 有「抖音号 / 数字 UID / sec_uid」三条回退路径，同一博主会拿到不同形态；B 站还有有 id / 无 id 并存；
+3. **占位名不合并**：`待整理`/`未知`/`未知来源`/`未分类`/`其他`/`网页`/`本地素材`/`unknown`/`untracked`；
+4. **跨平台一律不算同一人**。
+
+> 「只看此人 · 循环播放」另外修了两处：排序不能用 `order[rel] || 0`（索引 0 是假值，会把第一条排到最后）；只有一条素材时不再静默 return。
+
+### 14.5 验收基线
+
+| 用例 | 结果 |
+|---|---|
+| `node --test tools/test-peers.js` | **9/9**（三种 id 形态归队、跨平台不合并、占位名不合并、无 id 按昵称归队、改昵称按 id 归队、不包含自己） |
+| 真机 CDP（Edge 157，只读） | 竖屏 720×1280 / 320×560 / 352×640 与横屏 768×576：`.plyr` 宽 = 舞台宽 1532px、进度条 1134px；全屏 1920×1080、进度条 1522px |
+| 全屏交互 | `↑↓` 切素材、`←→` ±5s、滚轮翻页（50ms 连发只翻一页）与调进度、`Esc` 只退全屏、Plyr 自带全屏按钮进预览层全屏 |
+| 同作者 | 「张见识」同作者 4 条、队列 1/5、连翻 6 次成员恒为 `douyin\|张见识`；「待整理」同作者 0 条 |
+
+> `tools/cdp-viewer-test.py` 会先 `VRDB.deleteFiles` 清空真实库数据、`library-keyboard-e2e.py` 断言写死 35 张卡片，两者**不能直接在真实库上重跑**；本轮验收改用只读探测脚本（临时目录，不入库）。

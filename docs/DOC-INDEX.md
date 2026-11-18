@@ -32,7 +32,7 @@
 | **`TEST-ASSETS.md`** | 实测素材登记 | 带真实 URL 与验证结果 |
 | **`TEST-BROWSER.md`** | 测试浏览器与登录态规则 | 操作步骤可复现 |
 | **`DESIGN-SYSTEM-STAGE.md`** | 设计 token 真源 | 改 UI 前必读 |
-| **`DECISIONS.md`** | 决策记录（85 条 ADR，截至 ADR-068） | 每个「为什么」都有出处 |
+| **`DECISIONS.md`** | 决策记录（107 条 ADR，截至 ADR-090） | 每个「为什么」都有出处 |
 | **`LIBRARY-PERSISTENCE-SPEC.md`** | **资源库持久化技术规格**：存储格式/接口/迁移/验收用例 | 字段与行号均对照代码核实（2026-11-07） |
 | **`LIBRARY-PERSISTENCE-REQUIREMENTS.md`** | **资源库持久化需求规格**：用户故事、范围、取舍 | 用户原话与实测数据为据 |
 | **`ARTIFACT-MANAGEMENT.md`** | **产出物与工作区管理规范**：源码/构建/测试/交付四类物理边界 | 2026-11-08 建立，配套 `tools/build-dist.js` |
@@ -169,7 +169,7 @@
 → `node tools/bump-type-scale.js <css> [--conservative]`（带幂等标记，重复执行会拒绝）
 
 **我要知道某个决定为什么这么做**
-→ `DECISIONS.md`（ADR-001 ~ ADR-055）
+→ `DECISIONS.md`（ADR-001 ~ ADR-090）
 
 **我要搞清文件该放哪 / 为什么扩展体积虚胖**
 → `ARTIFACT-MANAGEMENT.md`（四类边界：源码 / `dist/` / `../work/` / 交付物）
