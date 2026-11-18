@@ -743,22 +743,46 @@
      * 另给一个「只看此人 · 循环播放」按钮 —— 把预览队列收窄成该作者的全部素材并开连播。
      * 不跳站、不改筛选状态，纯本地行为。 */
     var peerUrls = [];
+    /* 「同一个博主」的判定（2026-11-18 修正）—— 判据已抽到 js/library/peers.js。
+     *
+     * 旧版优先严格比对 authorId，实测会被同一博主的多种 ID 形态拆散：
+     * 抖音的 authorId 有「抖音号 / 数字 UID / sec_uid」三条回退路径
+     * （js/naming.js:395-406），不同批次下载落到不同形态，于是
+     * 「张见识」在库里成了 @4091707616143916 / @56675926250 / @MS4w... 三个目录，
+     * 「只看此人」只能看到同目录那一队。B 站还有「有 id / 无 id」并存的情况。
+     *
+     * 现行口径：同平台内，① 同 authorId 或 ② 同昵称 都算同一人；
+     * 占位名（待整理/未知…）不参与昵称合并，跨平台一律不算同一人。
+     * 模块没加载时退回本地兜底实现，保证预览层不因缺文件而报错。 */
+    var PLACEHOLDER_AUTHORS = {
+        '待整理': 1, '未知': 1, '未知来源': 1, '未分类': 1, '其他': 1,
+        '网页': 1, '本地素材': 1, 'unknown': 1, 'untracked': 1
+    };
+    function authorKeyOf(f) {
+        var name = String(f && f.author || '').trim().toLowerCase();
+        if (!name) { return ''; }
+        if (Object.prototype.hasOwnProperty.call(PLACEHOLDER_AUTHORS, name)) { return ''; }
+        return String(f.plat || '') + '|' + name;
+    }
     function peersOf(f) {
         if (!f) { return []; }
-        var who = String(f.author || '').trim();
-        var uid = String(f.authorId || '').trim();
-        if (!who && !uid) { return []; }
         var all = [];
         if (root.VRApp && root.VRApp.getFiles) {
             try { all = root.VRApp.getFiles() || []; } catch (e) { all = []; }
         }
-        /* 「同一个博主」的判定：优先 authorId（X 的 handle / 微博的 uid，全局唯一），
-         * 没有 id 才退回昵称比对。只按昵称会把不同平台的同名博主混进来
-         * （苏哥要的正是「只看这一个博主」，混人就违背初衷）。 */
+        if (root.VRPeers && typeof root.VRPeers.peersOf === 'function') {
+            return root.VRPeers.peersOf(all, f);
+        }
+        var who = String(f.author || '').trim();
+        var uid = String(f.authorId || '').trim();
+        if (!who && !uid) { return []; }
+        var plat = String(f.plat || '');
+        var key = authorKeyOf(f);
         return all.filter(function (x) {
             if (x.relPath === f.relPath) { return false; }
-            if (uid) { return String(x.authorId || '').trim() === uid; }
-            return String(x.author || '').trim() === who;
+            if (String(x.plat || '') !== plat) { return false; }
+            if (uid && String(x.authorId || '').trim() === uid) { return true; }
+            return !!key && authorKeyOf(x) === key;
         });
     }
 
@@ -791,13 +815,19 @@
             b.addEventListener('click', function () {
                 var cur = S.list[S.idx];
                 var mine = peersOf(cur).concat([cur]);
-                /* 保持库内原顺序（按下载时间等既有排序），不要打乱 —— 用户认的是习惯顺序 */
+                /* 保持库内原顺序（按下载时间等既有排序），不要打乱 —— 用户认的是习惯顺序。
+                 * 注意不能写 `order[rel] || 0`：索引 0 是假值，会把第一条错排到最后。 */
                 var order = {};
                 var all = [];
                 try { all = root.VRApp.getFiles() || []; } catch (e) { all = []; }
                 all.forEach(function (x, i) { order[x.relPath] = i; });
-                mine.sort(function (a, b2) { return (order[a.relPath] || 0) - (order[b2.relPath] || 0); });
-                if (mine.length < 2) { return; }
+                mine.sort(function (a, b2) {
+                    var ia = order[a.relPath], ib = order[b2.relPath];
+                    if (ia == null) { ia = Infinity; }
+                    if (ib == null) { ib = Infinity; }
+                    return ia - ib;
+                });
+                if (!mine.length) { return; }
                 S.list = mine;
                 S.idx = 0;
                 for (var i = 0; i < mine.length; i++) {
@@ -806,6 +836,7 @@
                 S.auto = true;
                 var ab = document.getElementById('autoBtn');
                 if (ab) { ab.classList.add('on'); ab.setAttribute('aria-pressed', 'true'); }
+                /* 只有一条也允许进入（之前 `if (mine.length < 2) return;` 让按钮静默失效） */
                 render();
             });
             head.appendChild(b);
