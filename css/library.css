@@ -572,6 +572,16 @@ h1 .pill{
 .iconbtn.on{background:var(--accent-soft);color:var(--accent-ink)}
 
 .pv-body{flex:1;min-height:0;display:flex}
+/* 全屏沉浸（2026-11-18 苏哥）：全屏只留画面+悬浮控件。
+   头部、胶片条、信息栏全部让位，舞台去掉外边距与圆角铺满整屏。
+   这是 YouTube / B 站全屏的通用形态；Esc 只退全屏，由 lightbox.js 分流。 */
+.preview:fullscreen .pv-head,
+.preview:fullscreen .pv-film{display:none}
+.preview:fullscreen .pv-info{display:none}
+.preview:fullscreen .pv-body{flex:1;min-height:0}
+.preview:fullscreen .pv-stage{margin:0;border-radius:0}
+/* 信息栏开关（I）：JS 加的是 .no-info，此前 CSS 里根本没定义，按钮一直无效 */
+.preview.no-info .pv-info{display:none}
 .pv-stage{
   flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;
   overflow:hidden;margin:14px;border-radius:var(--r-lg);
@@ -1940,7 +1950,10 @@ h1 {
   display: flex; align-items: center; justify-content: center;
 }
 .vr-player .plyr {
-  flex: none; max-width: none;
+  /* 2026-11-18：外壳铺满舞台，不再按视频比例缩窄。
+     旧版由 fitPlayer() 把竖屏视频压到 406px 宽，进度条只剩几十像素；
+     铺满后控件条占满可用宽度，竖屏画面由 video{object-fit:contain} 居中留黑。 */
+  flex: 1 1 auto; width: 100%; height: 100%; max-width: none; min-width: 0;
   /* 2026-11-10：改 visible——倍速菜单要向上弹出播放器边界；
      圆角裁切下沉到 .plyr__video-wrapper，视频内容不受影响 */
   overflow: visible;
@@ -2317,9 +2330,18 @@ h1 {
   --plyr-font-size-time: 12.5px;
 }
 .vr-player .plyr__controls{padding:16px 14px 12px}
+/* 进度条优先吃宽度（2026-11-18）：Plyr 默认 flex:1（basis 0%），这里写明并
+   把其余控件锁成不伸缩——否则铺满外壳后仍可能被音量条等固定宽控件挤窄。 */
+.vr-player .plyr__progress__container{flex:1 1 0%;min-width:0}
+.vr-player .plyr__controls__item:not(.plyr__progress__container){flex:0 0 auto}
 .vr-player .plyr__progress input[type="range"]{cursor:pointer}
 .vr-player .plyr__progress__buffer{border-radius:4px}
 .vr-player .plyr__progress:hover input[type="range"]{transform:translateY(-1px)}
+/* 窄舞台（<560px，由 fitPlayer 打 is-narrow）：Plyr 的音量滑块固定
+   min-width:60px 且不收缩，会把进度条挤到几十像素。收起滑块、保留静音按钮，
+   宽度让给进度条——YouTube 窄屏也是只留静音图标。 */
+.vr-player .plyr.is-narrow .plyr__volume{min-width:0}
+.vr-player .plyr.is-narrow .plyr__volume input[type="range"]{display:none}
 
 /* 倍速直选（2026-11-10 苏哥）：Plyr 原生倍速藏在齿轮二级菜单——点两次还全英文。
    齿轮退役，控件条直接显示当前倍速（如 1×），点一下弹菜单，当前倍速金色高亮。 */

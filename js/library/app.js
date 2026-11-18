@@ -3806,11 +3806,22 @@
 
             if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !e.ctrlKey && !e.metaKey && !e.altKey) {
                 var ks = byId('keysheet');
-                if (ks) { ks.classList.toggle('show'); e.preventDefault(); }
+                if (ks) { showKeys(ks.classList.contains('hidden')); e.preventDefault(); }
                 return;
             }
             if (e.key === 'Escape') {
-                var k = byId('keysheet'); if (k) { k.classList.remove('show'); }
+                /* Esc 分层（2026-11-18）：全屏 → 帮助面板 → 预览，一次只退一层。
+                   注意：全屏中按 Esc 由浏览器强制退出全屏（UA 安全行为，页面拦不住），
+                   所以这里先把「全屏」交给浏览器；等待 browser 退出后，
+                   下一次 Esc 才轮到关面板、再下一次关预览。
+                   preventDefault 让 lightbox.js 的键盘处理器知道本层已消费。 */
+                if (document.fullscreenElement) { return; }
+                var ksNow = byId('keysheet');
+                if (ksNow && !ksNow.classList.contains('hidden')) {
+                    showKeys(false);
+                    e.preventDefault();
+                    return;
+                }
                 var cm = byId('confirmMask'); if (cm) { cm.classList.remove('show'); }
                 closeRename();
                 return;
@@ -3946,12 +3957,17 @@
             });
         }
 
-        on('pvHelpBtn', function () {
-            var k = byId('keysheet'); if (k) { k.classList.add('show'); }
-        });
-        on('ksClose', function () {
-            var k = byId('keysheet'); if (k) { k.classList.remove('show'); }
-        });
+        /* 快捷键面板显隐（2026-11-18）：HTML 初始是 class="keysheet hidden"，
+         * 旧代码只增删 .show、从不摘 .hidden —— 面板实际永远打不开。
+         * 统一走 showKeys()，两个类一起同步；全屏宿主的迁移由
+         * lightbox.js 的 syncFullscreenHosts() 负责。 */
+        function showKeys(on) {
+            var k = byId('keysheet'); if (!k) { return; }
+            k.classList.toggle('hidden', !on);
+            k.classList.toggle('show', !!on);
+        }
+        on('pvHelpBtn', function () { showKeys(true); });
+        on('ksClose', function () { showKeys(false); });
         on('pvMoreAll', function () {
             var f = curPreview(); if (!f) { return; }
             var who = String(f.author || '').replace(/\(@[^)]*\)\s*$/, '').trim();

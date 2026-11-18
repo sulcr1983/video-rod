@@ -2337,3 +2337,29 @@ Blob 本体不进 JS 堆 —— Chromium 存在磁盘 backing store。
 - **影响**：新增 `js/library/root-guard.js`、`tools/test-root-guard.js`；改 `js/library/{indexer,save,sw-library,app,settings,trash,dedup,db}.js`、`library.html`、`options.html`、`js/background.js`、`css/library.css`；测试注册进 `tools/health-check.py`、`tools/cdp-run.py`。
 - **验收**：`node --test tools/test-root-guard.js` **40/40**（含 4 条真实入库链路：日常下载不入库 / 库根内正常入库且带 subdir 首段 / 库根外标 `outOfRoot` / `ingestDirect` 拒收越界路径；6 条 `setRoot` 与 `mergeEntry` 语义回归）；冒烟清单 16 个 Node 单测全绿（path 100、save 55、persistence 81、naming 61、image-util 127…），`node --check` 覆盖全部改动文件。
 - **未覆盖**：真机交互（选目录后是否弹「范围放大」确认框）需在可加载扩展的浏览器上点一次；历史脏条目要等用户点一次「全量扫描」才会被标成 `outOfRoot`（不静默删除，符合 ADR-030）。
+
+## ADR-089 播放器外壳铺满舞台 + 全屏沉浸 + 焦点不再吞快捷键（2026-11-18）
+
+- **日期**：2026-11-18 ｜ **状态**：✅ 已实施 ｜ **触发**：苏哥报「进度条本来很长，现在变成超短一截」；并要求全屏下 ↑↓/←→ 与滚轮照常可用。
+- **诊断（三步叠加，不是一次改动造成的）**：
+  1. `fitPlayer()` 按 `videoWidth/videoHeight` 给 `.plyr` 写死内联宽高：竖屏 1080×1920 时外壳只有 406px 宽（ADR-055 的「占满可用高度」在竖屏上等于「宽度极窄」）。
+  2. 控件条后来加了「1×」倍速按钮，又把 `--plyr-control-spacing` 提到 13px、图标 20px、滑块 18px。
+  3. Plyr 的 `.plyr__volume input` 固定 `min-width:60px` 且不收缩，`flex:1;min-width:0` 的进度条成了唯一可被压缩的项 —— 外壳一窄就被挤到几十像素。旧的自绘控件条相对整个舞台绝对定位，宽度接近全舞台，所以「以前很长」。
+  4. 全屏键盘失效是另一处：预览层键盘处理器 `if (tag === 'INPUT') return`，全屏里点过进度条/音量条后焦点停在 `input[type=range]`，↑↓←→、空格、F 全被吞；`Esc` 同时退全屏并关预览；`?` 面板不在全屏元素里，看不见（且 HTML 初始 `hidden` 类一直没被摘掉，面板本身也打不开）。
+- **决策**：
+  1. **外壳铺满舞台**：`fitPlayer()` 不再写内联宽高，`.vr-player .plyr` 改为 `flex:1 1 auto; width/height:100%; min-width:0`；画面交给既有 `video{object-fit:contain}` 居中留黑。竖屏不变形、不拉伸，进度条永远拿全宽。控件条显式 `.plyr__progress__container{flex:1 1 0%}`，其余 `.plyr__controls__item` 锁 `flex:0 0 auto`；舞台 <560px 时加 `is-narrow` 收起音量滑块、保留静音按钮（YouTube 窄屏同款）。
+  2. **倍速单一真源**：模块级 `RATES = [0.1,0.2,0.25,0.5,0.75,1,1.25,1.5,2]`，替换原先 4 处互不一致的数组（有的含 0.25×、有的含 3×）；按苏哥要求收敛到 0.1×–2×。
+  3. **全屏沉浸**：`.preview` 作为唯一全屏宿主（Plyr 配置 `fullscreen:{container:'.preview'}`，头部 F 键与 Plyr 按钮同语义）。`:fullscreen` 下隐藏 `.pv-head`/`.pv-film`/`.pv-info`，`.pv-stage` 去 margin 与圆角铺满。
+  4. **Esc 分层**：全屏 → 帮助面板 → 预览，一次只退一层。全屏中按 Esc 由浏览器强制退出（UA 安全行为，页面拦不住），因此第一次 Esc 只退全屏；`lastFsExit` 时间戳避免同一次按键连带关预览。帮助面板经 `syncFullscreenHosts()` 在进入全屏时移入 `document.fullscreenElement`、退出后还原原位。
+  5. **焦点口径**：新增 `isTypingTarget()`，只有文本型输入（text/search/textarea/contenteditable/select）才让出快捷键；`range/checkbox/radio/button` 继续响应 ↑↓、空格、F、M。
+  6. 顺带修复 `.preview.no-info .pv-info{display:none}` 缺失（`I` 键此前完全无效）与 `showKeys()` 未摘 `hidden`（帮助面板此前打不开）。
+- **影响**：`js/library/lightbox.js`（fitPlayer / toggleFullscreen / syncFullscreenHosts / isTypingTarget / RATES / Esc 分层 / 滚轮 onPreviewWheel / Plyr fullscreen 配置）、`js/library/app.js`（showKeys、`?` 与 Esc 口径）、`css/library.css`（外壳铺满、控件收紧、`:fullscreen`、`.no-info`）、`library.html`（快捷键面板文案）。
+- **验收（Edge 157 + CDP，port 9480，真机只读）**：
+  - 4 个视频（720×1280、320×560、352×640 竖屏）实测 `.plyr` 宽度 = 舞台宽度 = 1524px（旧实现约 406px 量级），进度条 1138px；全屏下 stage/player 1920×1080，进度条 1534px。
+  - 全屏内 ↓ 切素材 `1 / 2 → 2 / 2`，→ 使 currentTime 15→20、← 回到 15。
+  - 滚轮：普通态 350ms 内连发两次只翻一页；deltaX 前进 5s；全屏内同样翻页与调进度。
+  - 焦点放在 `.plyr__progress input[type=range]` 时按 ↓ 仍能切素材（旧版此处全哑）。
+  - `?` 在全屏内可打开且宿主在全屏元素内；Esc 依次为「退全屏 → 关面板 → 关预览」。
+  - 非全屏 `I` 键信息栏 flex↔none 开合正常；520px 窗口 `is-narrow` 生效、音量滑块 `display:none`、静音按钮仍可见。
+  - 倍速键盘 <> 实测区间 `0.1 – 2`，控件面板档位 `0.1×…2×`（无 3×）。
+- **未覆盖**：Safari/iOS 的 `webkitEnterFullscreen` 分支只写了降级路径，未在真机验证；`tools/cdp-viewer-test.py` 会先清空真实库数据、`library-keyboard-e2e.py` 断言写死 35 张卡片，本次改用只读探测脚本验收，两者未重跑。

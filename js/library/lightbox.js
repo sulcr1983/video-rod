@@ -34,6 +34,11 @@
     var KIND_LABEL = { video: '视频', image: '图片', anim: '动图', live: '实况', audio: '音频', other: '其他' };
 
     var S = { list: [], idx: 0, info: true, auto: true, rate: 1 };
+    /* 倍速档位唯一真源（2026-11-18 苏哥：保持 0.1×–2×）。
+     * 之前 Plyr 菜单、自绘控件、键盘 < > 各有一份数组且互不一致
+     * （有的含 0.25×、有的含 3×）——统一收敛到这里，新增档位只改这一行。 */
+    var RATES = [0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+    var RATES_TEXT = RATES.join(' / ') + '×';
     var el = {};
     var videoEl = null;
     var animCtl = null;
@@ -54,6 +59,10 @@
     var spdBtn = null;
     var spdMenu = null;
     var spdDocClose = null;  /* 菜单开着时挂 document 的关闭监听 */
+    /* 浏览器替我们退全屏的时刻（2026-11-18）：Esc/系统键退出全屏时，
+     * 同一次按键会紧跟着冒泡到预览层键盘处理——靠时间戳判断，
+     * 避免「按 Esc 退全屏」被当成「关掉整个预览」。 */
+    var lastFsExit = 0;
 
     function spdCloseMenu() {
         if (spdWrap) { spdWrap.classList.remove('on'); }
@@ -100,7 +109,7 @@
         spdBtn.setAttribute('aria-label', '倍速');
         spdMenu = document.createElement('span');
         spdMenu.className = 'vr-spdm';
-        var opts = [0.1, 0.2, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+        var opts = RATES;
         for (var i = 0; i < opts.length; i++) {
             (function (r) {
                 var b = document.createElement('button');
@@ -136,20 +145,77 @@
         updSpdBtn();
     }
 
-    /** 按视频真实宽高比给播放器外壳定尺寸，不再一律塞进 16:9 的默认框 */
+    /** 播放器外壳铺满舞台（2026-11-18 苏哥反馈「进度条超短一截」）。
+     * 旧实现按视频比例给 .plyr 定宽高：竖屏 1080×1920 时外壳只有 406px 宽，
+     * 进度条被两侧固定宽度的控件挤成几十像素。现在外壳始终铺满舞台，
+     * 视频交给 video{object-fit:contain} 居中留黑——YouTube / B 站也是这个做法：
+     * 控件条和进度条永远占满可用宽度，画面不拉伸。
+     * playerRatio 仍记录源比例，供信息栏等使用，但不再参与外壳布局。 */
     function fitPlayer() {
-        if (!playerBox || !playerRatio) { return; }
+        if (!playerBox) { return; }
         var stage = $('#pvMedia');
         if (!stage) { return; }
         var r = stage.getBoundingClientRect();
         if (!r.width || !r.height) { return; }
-        var availW = Math.max(120, r.width);
-        var availH = Math.max(100, r.height);
-        var w = availW, h = w / playerRatio;
-        if (h > availH) { h = availH; w = h * playerRatio; }
         var shell = playerBox.querySelector('.plyr') || playerBox;
-        shell.style.width = Math.round(w) + 'px';
-        shell.style.height = Math.round(h) + 'px';
+        /* 清掉旧版本写下的内联尺寸，宽度/高度统一交给 CSS */
+        shell.style.width = '';
+        shell.style.height = '';
+        /* 舞台变窄（小窗预览）时收起音量滑块，把宽度让给进度条 */
+        shell.classList.toggle('is-narrow', r.width < 560);
+    }
+
+    /** 是否正在「键入文字」（2026-11-18）：只有这些控件才该让出快捷键。
+     * range / checkbox / radio / 按钮都不接收文字，方向键与空格应继续生效——
+     * 旧版一刀切 return，导致点过进度条后全屏键盘全哑。 */
+    function isTypingTarget(node) {
+        if (!node) { return false; }
+        var tag = (node.tagName || '').toUpperCase();
+        if (tag === 'TEXTAREA' || node.isContentEditable) { return true; }
+        if (tag !== 'INPUT') { return tag === 'SELECT'; }
+        var type = String(node.type || 'text').toLowerCase();
+        return type !== 'range' && type !== 'checkbox' && type !== 'radio'
+            && type !== 'button' && type !== 'submit' && type !== 'reset';
+    }
+
+    /** 全屏统一入口（2026-11-18）：头部 F 按钮与 Plyr 全屏走同一语义。
+     * 预览层是全屏宿主，画面、悬浮控件条一起进全屏；头部/胶片条/信息栏由 CSS 让位。 */
+    function toggleFullscreen() {
+        if (!el.preview) { return; }
+        if (document.fullscreenElement) {
+            if (document.exitFullscreen) {
+                try { document.exitFullscreen().catch(function () { }); } catch (e) { /* ignore */ }
+            }
+            return;
+        }
+        if (el.preview.requestFullscreen) {
+            try { el.preview.requestFullscreen().catch(function () { }); } catch (e) { /* ignore */ }
+        } else if (videoEl && videoEl.webkitEnterFullscreen) {
+            /* iOS Safari 不支持元素全屏，退回视频原生全屏 */
+            videoEl.webkitEnterFullscreen();
+        }
+    }
+
+    /** 快捷键面板不在全屏宿主里就看不见（2026-11-18）：
+     * 进入全屏时把它临时挂到 document.fullscreenElement 下，退出时还原原位。
+     * Plyr 自己的全屏（.plyr）也走同一条还原逻辑。 */
+    function syncFullscreenHosts() {
+        var ks = document.getElementById('keysheet');
+        var fsEl = document.fullscreenElement;
+        if (!ks) { return; }
+        if (fsEl) {
+            if (!fsEl.contains(ks)) {
+                if (!ks.__vrHome) { ks.__vrHome = { parent: ks.parentNode, next: ks.nextSibling }; }
+                fsEl.appendChild(ks);
+            }
+        } else if (ks.__vrHome) {
+            var home = ks.__vrHome;
+            ks.__vrHome = null;
+            if (home.parent) {
+                var ref = (home.next && home.next.parentNode === home.parent) ? home.next : null;
+                home.parent.insertBefore(ks, ref);
+            }
+        }
     }
 
     /** 预览图：复用资源库的视频抽帧缓存（WebP blob），作为播放器 poster */
@@ -333,12 +399,16 @@
                         /* 2026-11-10：去掉 settings 齿轮——倍速改由控件条上的 1× 直选按钮负责（见 buildSpeedCtl） */
                         controls: ['play-large', 'play', 'progress', 'current-time',
                                    'mute', 'volume', 'pip', 'fullscreen'],
-                        speed: { selected: S.rate, options: [0.1, 0.2, 0.5, 0.75, 1, 1.25, 1.5, 2, 3] },
+                        speed: { selected: S.rate, options: RATES },
                         iconUrl: iconUrl,
                         /* 键盘语义由本模块统一定义（↑↓ 切素材、←→ 调进度），
                            不让播放器自带的 ↑↓ 调音量抢走按键 */
                         keyboard: { focused: false, global: false },
                         hideControls: true,
+                        /* 全屏宿主统一到预览层（2026-11-18）：Plyr 自带的全屏按钮
+                           不再只把播放器本身拉全屏，而是和头部 F 键一致——
+                           整个预览层进全屏，画面与悬浮控件条都在里面。 */
+                        fullscreen: { container: '.preview' },
                         tooltips: { controls: true, seek: true }
                     });
                     plyr.on('ratechange', function () {
@@ -872,8 +942,7 @@
         }
         function buildRates() {
             if (!el.rpGrid) { return; }
-            var rates = [0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
-            el.rpGrid.innerHTML = rates.map(function (r) {
+            el.rpGrid.innerHTML = RATES.map(function (r) {
                 return '<button data-r="' + r + '" class="' + (Math.abs(r - S.rate) < 0.001 ? 'on' : '') + '">' + r + '×</button>';
             }).join('');
         }
@@ -911,11 +980,11 @@
         }
         var gRate = document.getElementById('gRate');
         if (gRate) {
-            var RATES = [1, 0.5, 0.25, 2];
+            var GIF_RATES = [1, 0.5, 0.25, 2];
             var rateIdx = 0;
             gRate.addEventListener('click', function () {
-                rateIdx = (rateIdx + 1) % RATES.length;
-                var r = RATES[rateIdx];
+                rateIdx = (rateIdx + 1) % GIF_RATES.length;
+                var r = GIF_RATES[rateIdx];
                 S.rate = r;
                 if (animCtl) { animCtl.setRate(r); }
                 gRate.textContent = r + '×';
@@ -946,11 +1015,15 @@
             });
         }
         if (el.pvFullBtn) {
-            el.pvFullBtn.addEventListener('click', function () {
-                if (!document.fullscreenElement) { if (el.preview.requestFullscreen) { el.preview.requestFullscreen(); } }
-                else if (document.exitFullscreen) { document.exitFullscreen(); }
-            });
+            el.pvFullBtn.addEventListener('click', toggleFullscreen);
         }
+        /* 全屏状态变化后刷新布局与快捷键面板宿主；Esc 刚退全屏的时间戳
+         * 用于区分「浏览器替我们退全屏」与「用户想关预览」两种情况。 */
+        document.addEventListener('fullscreenchange', function () {
+            if (!document.fullscreenElement) { lastFsExit = Date.now(); }
+            syncFullscreenHosts();
+            fitPlayer();
+        });
         if (el.pvFilm) {
             el.pvFilm.addEventListener('click', function (e) {
                 var b = e.target.closest('.film'); if (!b) { return; }
@@ -1202,9 +1275,46 @@
 
         document.addEventListener('keydown', function (e) {
             if (!el.preview || el.preview.classList.contains('hidden')) { return; }
-            var tag = (document.activeElement && document.activeElement.tagName) || '';
-            if (tag === 'INPUT' || tag === 'TEXTAREA') { return; }
-            if (e.key === 'Escape') { close(); }
+            /* 只有「正在键入文字」的控件才让位（2026-11-18）：
+               旧版见到 INPUT 就 return，全屏里点过进度条/音量条后焦点停在
+               input[type=range] 上，↑↓←→、空格、F 全部失效。
+               range / checkbox / button 这类控件不接收文字，快捷键应当继续生效。 */
+            if (isTypingTarget(document.activeElement)) { return; }
+            if (e.key === 'Escape') {
+                /* 库页（app.js，capture 阶段）已经消费掉的 Esc 不再重复处理，
+                   例如它刚关掉帮助面板——一次按键只退一层。 */
+                if (e.defaultPrevented) { return; }
+                /* Esc 分层（2026-11-18）：全屏 → 帮助面板 → 预览，一次只退一层。
+                   全屏中浏览器会强制退全屏（UA 安全行为，preventDefault 无效），
+                   所以这里有 fullscreenElement 时只做「已经退了」的记账；
+                   下一次 Esc 才轮到关面板，再下一次关预览。
+                   lastFsExit 时间戳避免同一次按键把预览一起关掉。 */
+                if (document.fullscreenElement) {
+                    e.preventDefault();
+                    if (document.exitFullscreen) {
+                        try { document.exitFullscreen().catch(function () { }); } catch (err) { /* ignore */ }
+                    }
+                    lastFsExit = Date.now();
+                    return;
+                }
+                var ksEl = document.getElementById('keysheet');
+                if (ksEl && !ksEl.classList.contains('hidden')) {
+                    e.preventDefault();
+                    ksEl.classList.add('hidden');
+                    ksEl.classList.remove('show');
+                    return;
+                }
+                if (document.fullscreenElement) {
+                    e.preventDefault();
+                    if (document.exitFullscreen) {
+                        try { document.exitFullscreen().catch(function () { }); } catch (err) { /* ignore */ }
+                    }
+                    lastFsExit = Date.now();
+                    return;
+                }
+                if (Date.now() - lastFsExit < 350) { return; }
+                close();
+            }
             /* 上下 = 上一个/下一个素材；左右 = 进度 ±5 秒（用户 2026-11-05 拍板） */
             else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
             else if (e.key === 'ArrowDown') { e.preventDefault(); step(1); }
@@ -1249,7 +1359,7 @@
             }
             else if ((e.key === '>' || e.key === '<') && videoEl) {
                 e.preventDefault();
-                var rates = [0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+                var rates = RATES;
                 var ri = 5;
                 for (var ri2 = 0; ri2 < rates.length; ri2++) { if (Math.abs(rates[ri2] - S.rate) < 0.001) { ri = ri2; break; } }
                 ri = Math.max(0, Math.min(rates.length - 1, ri + (e.key === '>' ? 1 : -1)));
@@ -1276,33 +1386,47 @@
 
         /* 滚轮：上下切上一个/下一个，左右（或 Shift+滚轮）调进度。
          * 原实现根本没绑预览层的 wheel，autoBtn 却写着「滚轮可切换」；
-         * 这里与原型 3371 行的 deltaY→goNext/goPrev 语义一致并补齐横向。 */
+         * 这里与原型 3371 行的 deltaY→goNext/goPrev 语义一致并补齐横向。
+         * 全屏（2026-11-18）：宿主仍是 .preview 本身，:fullscreen 后监听照常生效；
+         * 另在 document 上补一条兜底，并放行帮助面板/信息栏内部的滚动。 */
         var wheelLock = 0;
-        if (el.preview) {
-            el.preview.addEventListener('wheel', function (e) {
-                if (el.preview.classList.contains('hidden')) { return; }
-                /* 图片：普通滚轮和视频/GIF 一样切上一张/下一张；
-                 * Ctrl/⌘ + 滚轮才缩放（避免用户想翻图却误放大）。 */
-                if (imgEl && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    zoomImg(e.deltaY < 0 ? 1.12 : 0.89);
-                    return;
-                }
-                var horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey;
-                if (horizontal) {
-                    if (!videoEl || !isFinite(videoEl.duration)) { return; }
-                    e.preventDefault();
-                    seekBy((e.deltaX || e.deltaY) > 0 ? 5 : -5);
-                    return;
-                }
-                if (!e.deltaY) { return; }
+        function onPreviewWheel(e) {
+            if (!el.preview || el.preview.classList.contains('hidden')) { return; }
+            /* 帮助面板、信息栏自身可滚动时，滚轮归它们，不翻素材 */
+            var scrollable = e.target && e.target.closest
+                ? e.target.closest('.keysheet, .pv-info') : null;
+            if (scrollable && scrollable.scrollHeight > scrollable.clientHeight) { return; }
+            /* 图片：普通滚轮和视频/GIF 一样切上一张/下一张；
+             * Ctrl/⌘ + 滚轮才缩放（避免用户想翻图却误放大）。 */
+            if (imgEl && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
-                var now = Date.now();
-                if (now < wheelLock) { return; }
-                wheelLock = now + 350;
-                step(e.deltaY > 0 ? 1 : -1);
-            }, { passive: false });
+                zoomImg(e.deltaY < 0 ? 1.12 : 0.89);
+                return;
+            }
+            var horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey;
+            if (horizontal) {
+                if (!videoEl || !isFinite(videoEl.duration)) { return; }
+                e.preventDefault();
+                seekBy((e.deltaX || e.deltaY) > 0 ? 5 : -5);
+                return;
+            }
+            if (!e.deltaY) { return; }
+            e.preventDefault();
+            var now = Date.now();
+            if (now < wheelLock) { return; }
+            wheelLock = now + 350;
+            step(e.deltaY > 0 ? 1 : -1);
         }
+        if (el.preview) {
+            el.preview.addEventListener('wheel', onPreviewWheel, { passive: false });
+        }
+        /* 兜底：全屏元素若因浏览器实现差异不是 .preview（例如 Plyr 自管全屏），
+           滚轮事件仍会冒泡到 document——同一函数只处理一次，靠 wheelLock 防重复翻页。 */
+        document.addEventListener('wheel', function (e) {
+            if (!document.fullscreenElement) { return; }
+            if (el.preview && el.preview.contains(e.target)) { return; } /* 上面已处理 */
+            onPreviewWheel(e);
+        }, { passive: false });
         /* 图片拖拽平移 / 双击切换适应↔实际像素 */
         var imgStage = el.pvMedia || document.getElementById('pvMedia');
         if (imgStage) {
