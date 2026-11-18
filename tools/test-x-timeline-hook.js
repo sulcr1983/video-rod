@@ -54,7 +54,15 @@ function makeEnv() {
     FakeXHR.prototype.addEventListener = function (t, fn) {
         (this.listeners[t] = this.listeners[t] || []).push(fn);
     };
+    /* 真实 XHR 完成时 **两种事件都会触发**：
+     *   · readystatechange（readyState 变 4）
+     *   · load
+     * 实现的监听装在哪个上都应当能工作，所以桩必须两个都派发 ——
+     * 否则「换个监听方式」会被误判成功能坏了（2026-11-18 照抄 Plucker
+     * 把监听从 load 改成 readystatechange 时就踩到这个坑）。 */
     FakeXHR.prototype._load = function () {
+        this.readyState = 4;
+        (this.listeners.readystatechange || []).forEach(fn => fn());
         (this.listeners.load || []).forEach(fn => fn());
     };
 

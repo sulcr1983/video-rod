@@ -37,6 +37,35 @@
 
     /* ---------------- 基础工具 ---------------- */
 
+    /**
+     * 驼峰/蛇形双读（2026-11-18，照抄 Plucker XBD 的字段容错）。
+     *
+     * 为什么必须有：X 的 GraphQL 响应在不同版本/不同端点下，
+     * 同一个字段会以两种命名出现 —— `cursorType` 与 `cursor_type`、
+     * `moduleItems` 与 `module_items`、`sortIndex` 与 `sort_index`。
+     * Plucker（`injected.js`）对每一处都写成 `a || b` 双读：
+     *     "Bottom"===(e?.cursorType || e?.cursor_type)
+     *     e.moduleItems || e.module_items
+     *     y.sortIndex || y.sort_index
+     *     "TimelineTimelineItem"===(e?.entryType || e?.__typename)
+     *
+     * 我们原来只认驼峰。一旦 X 换成蛇形，解析会**静默返回空**（不报错、
+     * 只是「什么都抓不到」），这类失败最难查。照抄它的双读即可免疫。
+     *
+     * @param {object} o  目标对象
+     * @param {string} camel 驼峰名
+     * @param {string} snake 蛇形名
+     * @returns {*} 先取驼峰，为空再取蛇形
+     */
+    function pick2(o, camel, snake) {
+        if (!o || typeof o !== 'object') { return undefined; }
+        var v = o[camel];
+        if (v !== undefined && v !== null && v !== '') { return v; }
+        var w = o[snake];
+        if (w !== undefined && w !== null && w !== '') { return w; }
+        return v;
+    }
+
     /** 深度优先收集所有名为 prop 的值（只走对象/数组，限制深度防环） */
     function collect(obj, prop, out, depth) {
         out = out || [];
@@ -256,6 +285,83 @@
         };
     }
 
+    /**
+     * 合并同一条推文的两次出现（2026-11-18，照抄 Plucker XBD 的 entityId 合并）。
+     *
+     * 为什么必须合并而不是「先到先得」：
+     *   X 的分页响应里同一条推文可能出现在多批数据中，且**两批的媒体字段并不等价** ——
+     *   一次只带 `media_url_https`（封面），另一次才带 `video_info.variants`（真流）。
+     *   Plucker 的做法是建 `Map(medias by id)`，逐字段取「谁有值用谁」：
+     *       i.set(e.id, t ? {...t, video: t.video || e.video,
+     *                          photoDownloadUrl: t.photoDownloadUrl || e.photoDownloadUrl} : e)
+     *       is_pinned: Boolean(n.is_pinned || t.is_pinned)
+     *       is_quote:  Boolean(n.is_quote  || t.is_quote)
+     *   我们原来 `if (seen[tid]) continue` 直接丢弃后到的数据，
+     *   后果是「明明有视频却只下到一张封面」——这类静默降级很难被用户察觉。
+     *
+     * 注意类型升级：图片→视频时 URL 必须跟着换，否则会拿 jpg 地址当 mp4 下。
+     *
+     * @param {object} prev 已收录的条目
+     * @param {object} raw  新出现的原始推文
+     * @param {object} opts 与 normalizeTweet 相同
+     * @returns {object} 合并后的条目
+     */
+    function mergeTweet(prev, raw, opts) {
+        var next = normalizeTweet(raw, opts);
+        if (!prev) { return next; }
+        if (!next) { return prev; }
+
+        var byId = Object.create(null);
+        var order = [];
+        (prev.media || []).forEach(function (m) {
+            if (!m || !m.id) { return; }
+            if (!byId[m.id]) { order.push(m.id); }
+            byId[m.id] = m;
+        });
+        (next.media || []).forEach(function (m) {
+            if (!m || !m.id) { return; }
+            var old = byId[m.id];
+            if (!old) {
+                order.push(m.id);
+                byId[m.id] = m;
+                return;
+            }
+            /* 字段级补全，不整条覆盖 */
+            var kind = old.kind;
+            var url = old.url;
+            var ext = old.ext;
+            var br = Number(old.bitrate) || 0;
+            var mBr = Number(m.bitrate) || 0;
+            if (m.kind === 'video' && (kind !== 'video' || mBr > br)) {
+                kind = 'video';
+                url = m.url || url;
+                ext = m.ext || ext;
+                br = mBr;
+            }
+            byId[m.id] = {
+                id: old.id,
+                mediaId: old.mediaId || m.mediaId,
+                kind: kind,
+                url: url,
+                thumb: old.thumb || m.thumb,
+                ext: ext,
+                bitrate: br
+            };
+        });
+
+        var merged = {};
+        Object.keys(prev).forEach(function (k) { merged[k] = prev[k]; });
+        merged.media = order.map(function (id) { return byId[id]; });
+        merged.isPinned = !!(prev.isPinned || next.isPinned);
+        merged.isQuote = !!(prev.isQuote || next.isQuote);
+        if (!merged.text && next.text) { merged.text = next.text; }
+        if (!merged.post && next.post) { merged.post = next.post; }
+        if (!merged.author && next.author) { merged.author = next.author; }
+        if (!merged.authorId && next.authorId) { merged.authorId = next.authorId; }
+        if (!merged.sortKey && next.sortKey) { merged.sortKey = next.sortKey; }
+        return merged;
+    }
+
     function isTweetResult(r) {
         if (!r || typeof r !== 'object') { return false; }
         return r.__typename === 'Tweet' || r.__typename === 'TweetWithVisibilityResults';
@@ -295,10 +401,12 @@
                     entries.push(ins.entry);
                 } else if (ins.type === 'TimelineAddEntries' && Array.isArray(ins.entries)) {
                     entries = entries.concat(ins.entries);
-                } else if (ins.type === 'TimelineAddToModule' && Array.isArray(ins.moduleItems)) {
-                    /* 模块内的推文（会话线程） */
-                    for (var k = 0; k < ins.moduleItems.length; k++) {
-                        var mi = ins.moduleItems[k];
+                } else if (ins.type === 'TimelineAddToModule' &&
+                    Array.isArray(pick2(ins, 'moduleItems', 'module_items'))) {
+                    /* 模块内的推文（会话线程）—— 字段名双读，照抄 Plucker */
+                    var mItems = pick2(ins, 'moduleItems', 'module_items');
+                    for (var k = 0; k < mItems.length; k++) {
+                        var mi = mItems[k];
                         if (mi && mi.item && mi.item.itemContent) {
                             entries.push({
                                 content: {
@@ -313,16 +421,18 @@
         }
 
         var tweets = [];
-        var seen = Object.create(null);
+        var seen = Object.create(null);   // statusId → tweets 数组下标（用于合并）
 
         for (var e = 0; e < entries.length; e++) {
             var entry = entries[e];
             var content = entry && entry.content;
             if (!content) { continue; }
 
-            /* 底部 cursor：`TimelineTimelineCursor` + cursorType=Bottom */
-            if (content.entryType === 'TimelineTimelineCursor' &&
-                content.cursorType === 'Bottom' && content.value) {
+            /* 底部 cursor：`TimelineTimelineCursor` + cursorType=Bottom
+             * 字段名双读（照抄 Plucker）：X 不同版本的响应里
+             * entryType/__typename、cursorType/cursor_type 两种命名都出现过。 */
+            if (pick2(content, 'entryType', '__typename') === 'TimelineTimelineCursor' &&
+                pick2(content, 'cursorType', 'cursor_type') === 'Bottom' && content.value) {
                 nextCursor = String(content.value);
                 continue;
             }
@@ -348,13 +458,25 @@
                 var raw = results[r];
                 if (!isTweetResult(raw)) { continue; }
                 var tid = String(raw.rest_id || (unwrapTweet(raw) || {}).rest_id || '');
-                if (!tid || seen[tid]) { continue; }
-                seen[tid] = true;
-                var item = normalizeTweet(raw, {
-                    sortKey: entry.sortIndex,
+                if (!tid) { continue; }
+                var opts = {
+                    /* 字段名双读（照抄 Plucker 的 sortIndex || sort_index） */
+                    sortKey: pick2(entry, 'sortIndex', 'sort_index'),
                     pinned: !!pinnedIds[tid]
-                });
-                if (item) { tweets.push(item); }
+                };
+                /* 同一条推文重复出现 → **合并补全**（照抄 Plucker 的 entityId 合并），
+                 * 不丢弃后到的那份：后到的那份往往才带 video_info.variants，
+                 * 丢弃会导致「有视频却只下到封面」。 */
+                if (seen[tid] !== undefined) {
+                    var at = seen[tid];
+                    tweets[at] = mergeTweet(tweets[at], raw, opts);
+                    continue;
+                }
+                var item = normalizeTweet(raw, opts);
+                if (item) {
+                    seen[tid] = tweets.length;
+                    tweets.push(item);
+                }
             }
         }
 
@@ -472,6 +594,7 @@
         /* 以下导出仅便于单测 */
         _internal: {
             collect: collect,
+            pick2: pick2,
             unwrapTweet: unwrapTweet,
             normalizeTweet: normalizeTweet,
             normalizeMedia: normalizeMedia,

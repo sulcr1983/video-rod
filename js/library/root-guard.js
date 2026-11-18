@@ -307,6 +307,137 @@
         return { handle: child, layer: 'drilled', reason: '', detail: '' };
     }
 
+    /* ==========================================================
+     * 二之二、库根内容校验（2026-11-18，审计 D1）
+     *
+     * 背景：resolveDir 只回答「这是不是库根」，不回答「这个目录对不对」。
+     *   用户在设置里选错目录（比如选到 Downloads 根、或另一台机器的库）时，
+     *   现有流程照样授权成功，等到扫描时才发现「库里全是别人的东西」。
+     *
+     * 借鉴抖珍藏的目录状态机（docs/research/extensions/DouZhenCang-媒体库与目录状态机.md §3），
+     * 但只挑**我们语义成立**的几态，不照搬它 10 态里与抖音账号绑定的部分：
+     *   · unexpectedly_empty   目录是空的（多半选错了）
+     *   · content_seems_wrong  目录非空，但不像媒体库（有 _library 之外的杂内容）
+     *   · corrupted            有 _library 却没有可解析的 index.json
+     *   · success              校验通过
+     *   · awaiting_permission  有句柄但没读权限
+     *   · not_provided         还没选目录
+     *
+     * 「属于另一个账号」我们不做：抖珍藏是拿抖音 uid 比对，
+     *   我们没有跨账号的数据隔离概念；等价场景是「拷了另一台机器的库」，
+     *   那属于正常用法（用户明确要过「拷文件夹到移动硬盘」），不能报错。
+     * ========================================================== */
+
+    /** 目录状态取值（与抖珍藏同名，便于对照） */
+    var FOLDER_STATUS = {
+        NOT_PROVIDED: 'not_provided',
+        AWAITING_PERMISSION: 'awaiting_permission',
+        UNEXPECTEDLY_EMPTY: 'unexpectedly_empty',
+        CONTENT_SEEMS_WRONG: 'content_seems_wrong',
+        CORRUPTED: 'corrupted',
+        SUCCESS: 'success'
+    };
+
+    /** 列出目录下一层条目名（失败返回 null） */
+    async function listEntryNames(dir) {
+        if (!dir || typeof dir.values !== 'function') { return null; }
+        var names = [];
+        try {
+            var it = dir.values();
+            for await (var cur of it) {
+                names.push(String(cur.name || ''));
+                if (names.length >= 200) { break; }   // 目录异常庞大时够用了
+            }
+        } catch (e) {
+            return null;
+        }
+        return names;
+    }
+
+    /**
+     * 校验一个目录「像不像我们的媒体库根」。
+     *
+     * 纯读，不写任何东西。
+     *
+     * @param {FileSystemDirectoryHandle} dir
+     * @returns {Promise<{status:string, detail:string, meta:object}>}
+     */
+    async function inspectRoot(dir) {
+        var out = { status: FOLDER_STATUS.NOT_PROVIDED, detail: '', meta: {} };
+        if (!dir || typeof dir.getDirectoryHandle !== 'function') {
+            out.detail = '还没有选择目录';
+            return out;
+        }
+
+        /* 读权限 */
+        if (typeof dir.queryPermission === 'function') {
+            try {
+                var p = await dir.queryPermission({ mode: 'read' });
+                if (p === 'denied') {
+                    out.status = FOLDER_STATUS.AWAITING_PERMISSION;
+                    out.detail = '没有读取权限';
+                    return out;
+                }
+            } catch (e) { /* 权限查询失败不拦，后面自然会暴露 */ }
+        }
+
+        var names = await listEntryNames(dir);
+        if (names === null) {
+            out.status = FOLDER_STATUS.AWAITING_PERMISSION;
+            out.detail = '无法读取目录内容';
+            return out;
+        }
+        if (!names.length) {
+            out.status = FOLDER_STATUS.UNEXPECTEDLY_EMPTY;
+            out.detail = '目录是空的';
+            return out;
+        }
+
+        var hasLib = names.indexOf(SNAP_DIR) >= 0;
+        if (!hasLib) {
+            /* 没有 _library：不是本库的根。
+             * 注意别误伤「刚创建、还没扫描过」的库 —— 那种情况
+             * _library 会由 setRoot/首次扫描建出来，所以这里判为不像库是对的。 */
+            out.status = FOLDER_STATUS.CONTENT_SEEMS_WRONG;
+            out.detail = '目录里没有「' + SNAP_DIR + '」，不像素材库文件夹';
+            out.meta.entries = names.slice(0, 20);
+            return out;
+        }
+
+        /* 有 _library：看 index.json 能不能解析 */
+        var snap = null;
+        try {
+            var libDir = await dir.getDirectoryHandle(SNAP_DIR, { create: false });
+            var fh = await libDir.getFileHandle(SNAP_FILE, { create: false });
+            var file = await fh.getFile();
+            var text = await file.text();
+            snap = JSON.parse(text);
+        } catch (e) {
+            out.status = FOLDER_STATUS.CORRUPTED;
+            out.detail = '「' + SNAP_DIR + '/' + SNAP_FILE + '」无法读取或已损坏';
+            return out;
+        }
+        if (!snap || typeof snap !== 'object') {
+            out.status = FOLDER_STATUS.CORRUPTED;
+            out.detail = '索引文件内容不是有效对象';
+            return out;
+        }
+
+        out.status = FOLDER_STATUS.SUCCESS;
+        out.detail = '';
+        out.meta = {
+            schema: snap.schema,
+            version: snap.version,
+            count: Number(snap.count) || 0,
+            at: Number(snap.at) || 0,
+            /* 索引里记的库根绝对路径。仅作**提示**用 ——
+             * 换电脑/换硬盘后路径必然不同，那不是错误。 */
+            recordedRoot: String(snap.root || ''),
+            subdir: String(snap.subdir || '')
+        };
+        return out;
+    }
+
     /** 读 vrLibSettings（页面/SW 都可用） */
     function readSettings() {
         return new Promise(function (resolve) {
@@ -365,6 +496,10 @@
         relFromRoot: relFromRoot,
         inRoot: inRoot,
         contextFromSettings: contextFromSettings,
+        /* 库根内容校验（审计 D1） */
+        FOLDER_STATUS: FOLDER_STATUS,
+        inspectRoot: inspectRoot,
+        listEntryNames: listEntryNames,
         /* FSA */
         resolveDir: resolveDir,
         resolveHandle: resolveHandle

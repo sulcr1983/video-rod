@@ -17,7 +17,37 @@ if (typeof G === 'undefined') {
         /* indexer 必须在 sw-library 之后：它依赖 VRDB + VRPath；
          * sw-library 的 ingest 回调会调 VRIndex.scheduleSnapshot()。 */
         "/js/library/indexer.js",
-        "/js/lib-image-util.js", "/js/album-sites.js", "/js/video-quality.js", "/js/xhs-media.js", "/js/xhs-ssr.js", "/js/yt/yt-queue.js");
+        "/js/lib-image-util.js", "/js/album-sites.js", "/js/site-original-rules.js", "/js/video-quality.js", "/js/xhs-media.js", "/js/xhs-ssr.js", "/js/yt/yt-queue.js",
+        /* SW 公共工具（2026-11-18）：拆 background.js 的第 0 步。
+         * vrWithTimeout 被 9 个函数组依赖，先独立成模块，避免后续搬迁时散落。
+         * 放在最后加载不影响使用：它是运行时调用，不是加载时求值。 */
+        "/js/sw-util.js",
+        /* SW 下载出口（第 0.2 步）：vrWaitDownload / vrDropDownload 被 5 组依赖。
+         * 只搬自包含部分；命名记账组（vrPendingNameByUrl）与 onDeterminingFilename
+         * 深度绑定，暂留 background.js，避免断掉命名保护。 */
+        "/js/sw-download.js",
+        /* 博主枚举层（2026-11-18）：targets → pager → adapter → runner。
+         * 顺序要求：adapters/index 必须在各 adapter 之前（注册表要先在）；
+         * pager 在 runner 之前（runner 依赖它建分页器）。 */
+        "/js/enumerate/targets.js",
+        "/js/enumerate/store.js",
+        "/js/enumerate/bili-wbi.js",
+        "/js/enumerate/adapters/index.js",
+        "/js/enumerate/adapters/bilibili.js",
+        "/js/enumerate/adapters/douyin.js",
+        "/js/enumerate/adapters/x.js",
+        "/js/enumerate/adapters/xiaohongshu.js",
+        "/js/enumerate/adapters/weibo.js",
+        "/js/enumerate/pager.js",
+        "/js/enumerate/normalize.js",
+        "/js/enumerate/runner.js",
+        /* 离线库导出（2026-11-18）：纯函数，SW 与库页都能用。
+         * 放最后：它只依赖 VREnumNormalize 之类的工具，不依赖 SW 状态。 */
+        "/js/library/zip.js",
+        "/js/library/offline-export.js",
+        /* 离线库自动维护（2026-11-18）：索引变化后防抖重写 data.js。
+         * 必须在 indexer 之后加载 —— indexer.scheduleSnapshot 会在运行时找它。 */
+        "/js/library/offline-sync.js");
 }
 // 已加载过 G 的场景（Firefox）单独补资源库脚本，保证 VRPath/VRLib 可用
 if (typeof self.VRVideoQuality === 'undefined') {
@@ -534,13 +564,37 @@ function vrMarkDownloaded(path) {
  * 手动兜底页 m3u8-multi.html 走同一条管线，不再有第二套实现。
  */
 const vrMergeTasks = {};    // taskId -> {urls, state, bytes, ext}
-/* ===== YouTube 下载串行队列（2026-11-08）=====
- * 同一时间只允许一个 YouTube 任务在跑：多个 4K 并发会互相抢带宽，
- * 同时对 googlevideo 开多条大流量连接更容易触发限流。
- * 队列语义（去重 / 一次一个 / 结束放行 / 启动失败不卡死）在
- * js/yt/yt-queue.js 里，配 tools/test-yt-queue.js 26 条单测。 */
+/* ===== YouTube 下载队列（A 方案：无限入队 + 串行接力 + 可排序）=====
+ * 队列语义（去重 / 状态 / 串行接力 / 排序 / 启动失败不卡死）在
+ * js/yt/yt-queue.js 里，配 tools/test-yt-queue.js 70 项单测。
+ *
+ * 产品语义固定串行：同一时刻只有 1 个下载页；完成/失败/取消自动接力下一个。
+ * （底层队列仍保留并发 API 作兼容，但产品不再暴露并发设置。）
+ *
+ * 多页路由：videoIdToTab[videoId] = tabId、tabToVideoId[tabId] = videoId，
+ * 取消 / 选档 / 进度消息按 videoId 路由到对应页，避免串台。 */
 
-/** 开一个下载页；由队列模块回调 */
+/* videoId → 下载页 tabId；tabId → videoId（双向映射，供消息路由 / 关页清理） */
+var vrYtVideoToTab = Object.create(null);
+var vrYtTabToVideo = Object.create(null);
+/* 取任一正在跑的下载页 tabId（串行时即唯一那个） */
+function vrYtAnyTabId() {
+    for (var k in vrYtTabToVideo) { if (Object.prototype.hasOwnProperty.call(vrYtTabToVideo, k)) { return parseInt(k, 10); } }
+    return null;
+}
+
+/** 任务列表变化或进度变化 → 广播给所有打开的 queue.html / YouTube 页浮层 */
+function vrYtNotifyQueue(reason) {
+    try {
+        var st = vrYtQ.status();
+        chrome.runtime.sendMessage({
+            Message: 'vrYtQueueChanged', reason: reason || '',
+            jobs: st.jobs, running: st.active, queued: st.queued
+        }, function () { void chrome.runtime.lastError; });
+    } catch (e) { /* 没有监听方就算了 */ }
+}
+
+/** 开一个下载页；由队列模块回调（startFn） */
 function vrYtLaunch(job) {
     var ytUrl = chrome.runtime.getURL('js/yt/yt-download.html') +
         '?videoId=' + encodeURIComponent(job.videoId) +
@@ -553,28 +607,54 @@ function vrYtLaunch(job) {
     chrome.tabs.create({ url: ytUrl, active: false }, function (t) {
         if (chrome.runtime.lastError || !t) {
             /* 开页失败：丢弃这个任务，继续下一个，别把队列堵死 */
-            vrYtQ.release();
+            vrYtQ.release(job.videoId, 'error');
             return;
         }
-        vrYtQueueTabId = t.id;
+        job.tabId = t.id;
+        vrYtVideoToTab[job.videoId] = t.id;
+        vrYtTabToVideo[t.id] = job.videoId;
+        vrYtNotifyQueue('started');
     });
 }
 
-var vrYtQueueTabId = null;       // 正在执行的下载页标签 id
+var vrYtSettings = { segments: 4 };   // 并发固定 1；只保留线程数设置
 var vrYtQ = self.VRYtQueue
-    ? self.VRYtQueue.create({ startFn: vrYtLaunch, delayMs: 600 })
+    ? self.VRYtQueue.create({
+        startFn: vrYtLaunch, delayMs: 600, concurrency: 1,
+        finishFn: function (job, finalStatus) {
+            /* 任务终态：清映射 + 广播列表变化（接力由队列内部 pump 完成） */
+            delete vrYtVideoToTab[job.videoId];
+            if (job.tabId != null) { delete vrYtTabToVideo[job.tabId]; }
+            vrYtNotifyQueue('finished');
+        }
+    })
     : { push: function () { return { ok: false, reason: 'queue-unavailable' }; },
         release: function () { return false; },
-        status: function () { return { active: '', queued: 0, list: [] }; } };
+        status: function () { return { active: '', queued: 0, list: [], jobs: [], historyCount: 0 }; },
+        update: function () { return false; }, findJob: function () { return null; },
+        moveToTop: function () { return false; }, moveUp: function () { return false; },
+        moveDown: function () { return false; }, remove: function () { return false; },
+        clearQueued: function () { return 0; }, clearHistory: function () { return 0; } };
 
-/** 任务结束（成功/失败/页面被关）后释放队列位 */
-function vrYtRelease(tabId) {
-    /* 只认「正在跑的那一页」的结束信号；别的页关掉不该影响队列 */
-    if (vrYtQueueTabId != null && tabId != null && vrYtQueueTabId !== tabId) {
-        return;
+/** 任务结束（成功/失败/页面被关/取消）后释放队列位并接力
+ *  @param {number} tabId 结束的下载页；@param {string} [videoId] 显式指定（优先级高）
+ *  @param {string} [finalStatus] done|error|cancelled */
+function vrYtRelease(tabId, videoId, finalStatus) {
+    var vid = videoId || vrYtTabToVideo[tabId] || '';
+    if (vid) {
+        delete vrYtVideoToTab[vid];
+        if (tabId != null) { delete vrYtTabToVideo[tabId]; }
+        vrYtQ.release(vid, finalStatus || 'done');
+        return true;
     }
-    vrYtQueueTabId = null;
-    vrYtQ.release();
+    return false;
+}
+
+/** 按 videoId 找下载页 tabId；串行时通常只有一个 active */
+function vrYtResolveTab(videoId, senderTabId) {
+    if (videoId && vrYtVideoToTab[videoId] != null) { return vrYtVideoToTab[videoId]; }
+    if (senderTabId != null && vrYtTabToVideo[senderTabId] != null) { return senderTabId; }
+    return vrYtAnyTabId();
 }
 
 function vrMergeNotify(msg) {
@@ -1852,6 +1932,391 @@ function vrImgBatchCancel(msg) {
 }
 
 /* ==========================================================
+ * 博主 / 合集枚举入口（2026-11-18，审计 E3 —— 真正接线）
+ *
+ * 为什么需要这一层：
+ *   js/enumerate/* 是纯逻辑模块（不碰 chrome.*），被 importScripts 加载后
+ *   **全仓没有任何调用点** —— 等于设施空转。这里把它接到既有出口上：
+ *     · 枚举结果 → VREnumRunner.toBatchItems() → 统一 batch 契约
+ *     · download=true → 直接喂 vrImgBatch（封面 / 图片通道）
+ *
+ * 视频本体**不走**这里：枚举产出的是「作品条目」（pageUrl 指视频页），
+ * 真正的视频流要由既有 vrVideoDownload 从 pageUrl 再解析。
+ * 混在一起会让视频下载绕开既有的格式选择与合并链路。
+ * 调用方拿 batchItems 后，视频型条目逐个走视频链路即可。
+ * ========================================================== */
+
+/** SW 侧取 JSON（带登录态；SW 有 host_permissions，不受页面 CORS 限制） */
+/* 需要在**页面上下文**取数的站点（2026-11-18 真机实测确认）。
+ *
+ * 抖音的接口要求 `a_bogus` 签名，签名算法在页面的 webmssdk 里，
+ * 它 hook 了 window.fetch 自动补参数。实测对照：
+ *   · 从 SW 直接 `fetch(aweme/post)`        → **HTTP 403**
+ *   · 在抖音标签页里 `fetch` 同一 URL        → **200，返回 1.26MB 正常 JSON**
+ *
+ * 这不是测试环境问题，是产品缺陷：任何从 SW 走这条路的调用都会 403。
+ * 所以按 host 分流 —— 抖音必须走页面，其它站点仍走 SW（快且不依赖标签页）。
+ */
+const VR_PAGE_FETCH_RE = /^https?:\/\/(?:[^/]*\.)?douyin\.com\//i;
+
+/**
+ * 在目标站点自己的页面里发请求（借用页面的签名环境）。
+ *
+ * 为什么用 world:'MAIN'：webmssdk 挂在**主世界**的 window.fetch 上，
+ * 隔离世界的 fetch 是另一个对象，不会被它的 hook 覆盖。
+ */
+async function vrEnumFetchInPage(url) {
+    let tabs = [];
+    try {
+        tabs = await chrome.tabs.query({ url: ['*://*.douyin.com/*'] });
+    } catch (e) {
+        throw new Error('tab-query-failed');
+    }
+    if (!tabs.length) {
+        /* 明确报错而不是静默 403：用户需要知道「先打开抖音页面」 */
+        throw new Error('no-host-tab');
+    }
+    const tab = tabs.filter(function (t) { return t && t.active; })[0] || tabs[0];
+    const res = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        args: [String(url)],
+        func: async function (u) {
+            try {
+                const r = await fetch(u, { credentials: 'include' });
+                if (!r.ok) { return { __err: 'HTTP ' + r.status }; }
+                return { __json: await r.json() };
+            } catch (e) {
+                return { __err: String((e && e.message) || e) };
+            }
+        }
+    });
+    const got = res && res[0] && res[0].result;
+    if (!got) { throw new Error('page-fetch-empty'); }
+    if (got.__err) { throw new Error(got.__err); }
+    return got.__json;
+}
+
+async function vrEnumFetchJson(url) {
+    /* 抖音：页面上下文（带签名） */
+    if (VR_PAGE_FETCH_RE.test(String(url || ''))) {
+        return await vrEnumFetchInPage(url);
+    }
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) { throw new Error('HTTP ' + res.status); }
+    return await res.json();
+}
+
+/**
+ * 枚举任务存储（SW 单例）。
+ *
+ * 2026-11-18 修（接线缺口）：`vrEnumOwner` 原来**没传 store** —— 于是
+ * `runner` 里所有 `if (store && ...)` 分支全部跳过，结果是：
+ *   · D2 增量同步从不生效（每次都全量重翻）
+ *   · D3 的 masterIds / disappeared 从不写入（功能等于不存在）
+ *   · 断点续跑也没有落点
+ * 这类失败是**完全静默**的（不报错、不抛异常），只能靠读代码发现。
+ *
+ * 只在首次需要时建实例：SW 冷启动不需要付出这份成本。
+ * 建完顺手调一次 markInterrupted()（fire-and-forget）：
+ * 上次跑到一半被 SW 回收的任务，标成 interrupted 用户才看得见。
+ */
+var VR_ENUM_STORE = null;
+function vrEnumStore() {
+    if (VR_ENUM_STORE) { return VR_ENUM_STORE; }
+    try {
+        if (!self.VREnumStore || typeof self.VREnumStore.create !== 'function') { return null; }
+        VR_ENUM_STORE = self.VREnumStore.create({});
+        /* 不 await：这是善后工作，不该挡住用户的枚举请求 */
+        try { VR_ENUM_STORE.markInterrupted(); } catch (e) { /* 忽略 */ }
+    } catch (e) {
+        VR_ENUM_STORE = null;
+    }
+    return VR_ENUM_STORE;
+}
+
+/**
+ * 取 B站 wbi mixinKey。
+ * 整博主枚举**必需**（不带 → code -352 风控）；合集端点不需要（实测免登录可用）。
+ * 拿不到就返回空串，让 adapter 产出未签名 URL —— 调用方会看到 -352，便于诊断，
+ * 而不是静默返回 0 条。
+ */
+async function vrBiliMixinKey() {
+    if (typeof VRBiliWbi === 'undefined' || !VRBiliWbi.mixinKeyFromNav) { return ''; }
+    try {
+        const nav = await vrEnumFetchJson('https://api.bilibili.com/x/web-interface/nav');
+        return String(VRBiliWbi.mixinKeyFromNav(nav) || '');
+    } catch (e) {
+        return '';
+    }
+}
+
+/**
+ * 枚举一个博主 / 合集。
+ *
+ * @param {object} msg { target? | url, ownerName?, count?, limit?, maxPages?, download? }
+ * @param {object} sender
+ * @returns {Promise<{ok, items, batchItems, total, pages, error, download?}>}
+ */
+async function vrEnumOwner(msg, sender) {
+    const out = { ok: false, items: [], batchItems: [], total: 0, pages: 0, error: '' };
+    try {
+        const T = self.VREnumTargets;
+        const R = self.VREnumRunner;
+        if (!T || !R) { out.error = 'enum-module-missing'; return out; }
+
+        /* 目标：优先用显式 target，其次从 URL 解析 */
+        let target = (msg && msg.target) || null;
+        if (!target && msg && msg.url) { target = T.detectOwnerTarget(String(msg.url)); }
+        if (!target) { out.error = 'not-an-owner-url'; return out; }
+
+        /* 2026-11-18（渲染验收发现的 UI 欺骗）：枚举页有个「识别为」下拉框，
+         * 标注是「由地址自动判断，可手动改」—— 但那个值原来**从未传下来**，
+         * 用户手选「合集/番剧」完全无效。现在真正尊重它：
+         *   · 用户选的与自动判定一致 → 直接用
+         *   · 不一致 → **明确报错**，不静默按整博主跑
+         *     （选了合集但地址不是合集页时，按整博主跑会给出完全不同的结果集，
+         *      用户会以为「合集里就这些」，比报错危险得多） */
+        const wantKind = String((msg && msg.targetKind) || '').trim();
+        if (wantKind && wantKind !== 'owner') {
+            const autoKind = String(target.targetKind || 'owner');
+            if (autoKind !== wantKind) {
+                out.error = (wantKind === 'collection') ? 'not-a-collection-url'
+                    : (wantKind === 'bangumi' ? 'not-a-bangumi-url' : 'kind-mismatch');
+                return out;
+            }
+        }
+
+        const state = Object.assign({}, (msg && msg.state) || {});
+        if (msg && msg.count) { state.count = Number(msg.count) || state.count; }
+
+        const kind = String(target.targetKind || 'owner');
+        if (String(target.platform) === 'bilibili' && kind !== 'collection' && !state.mixinKey) {
+            state.mixinKey = await vrBiliMixinKey();
+        }
+
+        const res = await R.run({
+            target: Object.assign({}, target, {
+                ownerName: String((msg && msg.ownerName) || target.ownerName || '')
+            }),
+            state: state,
+            limit: Number(msg && msg.limit) || undefined,
+            maxPages: Number(msg && msg.maxPages) || undefined,
+            /* 2026-11-18 修（接线缺口）：store 与 incremental 原来都没传，
+             * D2/D3 在真实链路上从未生效（见 vrEnumStore 注释）。 */
+            store: vrEnumStore(),
+            incremental: !!(msg && msg.incremental),
+            fetchJson: vrEnumFetchJson
+        });
+
+        out.ok = !!res.ok;
+        out.items = res.items || [];
+        out.batchItems = R.toBatchItems(out.items);
+        out.total = res.total || out.batchItems.length;
+        out.pages = res.pages || 0;
+        out.error = res.error || '';
+        out.platform = String(target.platform || '');
+        out.targetKind = kind;
+
+        /* 可选：直接把封面 / 图片喂给既有批量通道。
+         * 视频型条目（kind='video'）不在这里下 —— 见上方说明。 */
+        if (out.ok && msg && msg.download && out.batchItems.length) {
+            const imgs = out.batchItems.filter(function (b) {
+                return b && /^https?:/i.test(b.url) && String(b.kind || 'image') !== 'video';
+            });
+            if (imgs.length) {
+                const r = await vrImgBatch({
+                    batchId: (msg && msg.batchId) || ('e-' + Date.now()),
+                    items: imgs,
+                    pageUrl: String(target.pageUrl || ''),
+                    pageTitle: String((msg && msg.ownerName) || target.ownerId || ''),
+                    authorFull: String((msg && msg.ownerName) || ''),
+                    creatorId: String(target.ownerId || ''),
+                    concurrency: Number(msg && msg.concurrency) || 4
+                }, sender);
+                out.download = {
+                    ok: !!r.ok, succeeded: r.succeeded || 0,
+                    fail: r.fail || 0, skipped: r.skipped || 0, count: imgs.length
+                };
+            } else {
+                out.download = { ok: true, succeeded: 0, fail: 0, skipped: 0, count: 0 };
+            }
+        }
+    } catch (e) {
+        out.ok = false;
+        out.error = 'enum-failed:' + String((e && e.message) || e);
+    }
+    return out;
+}
+
+/* ==========================================================
+ * 枚举结果 → 真实媒体文件（2026-11-18）
+ *
+ * 为什么必须有这一层：
+ *   adapters 产出的条目里，**B站只有封面**（kind='image'，url 是 pic 字段），
+ *   真正的视频流要另外解析。如果直接把条目丢给图片批量通道，
+ *   用户拿到的会是一叠缩略图 —— 这是最坏的一种「静默错误」：
+ *   下载显示成功、文件夹里有东西、但内容全错。
+ *
+ *   X / 抖音 / 微博 / 小红书的 adapter 已经产出 kind='video' 且 url 是真实媒体，
+ *   所以它们直接走既有批量通道，不需要这里解析。
+ *
+ * B站解析路径（2026-11-18 实测，**不需要打开标签页**）：
+ *   GET x/player/pagelist?bvid=  → data[0].cid
+ *   GET x/player/playurl?...&fnval=1  → data.durl[0].url（整段 mp4，含音轨）
+ *   实测 8MB / 720P / code 0。fnval=1 要 durl 是因为它**自带音视频**，
+ *   不用走 DASH 合成，省掉一整条 FFmpeg 链路。
+ * ========================================================== */
+
+/** bvid → 可直下的整段 mp4 地址。失败返回 null（调用方按失败计，不落垃圾）。 */
+async function vrBiliVideoStream(bvid) {
+    const bv = String(bvid || '').trim();
+    if (!/^BV[0-9A-Za-z]+$/.test(bv)) { return null; }
+    try {
+        const pl = await vrEnumFetchJson(
+            'https://api.bilibili.com/x/player/pagelist?bvid=' + encodeURIComponent(bv));
+        const pages = (pl && pl.data) || [];
+        const cid = Number(pages.length ? pages[0].cid : 0);
+        if (!cid) { return null; }
+
+        const u = 'https://api.bilibili.com/x/player/playurl?bvid=' + encodeURIComponent(bv)
+            + '&cid=' + cid + '&fnval=1&fnver=0&fourk=1&qn=80'
+            + '&platform=html5&high_quality=1';
+        const j = await vrEnumFetchJson(u);
+        const d = (j && j.data) || {};
+        const durl = d.durl || [];
+        if (!durl.length || !durl[0].url) { return null; }
+        return {
+            url: String(durl[0].url),
+            cid: cid,
+            quality: Number(d.quality) || 0,
+            /* 多段 durl 是少数情况（超长视频）：只取第一段会缺后半，
+             * 这里如实报出来，让调用方把这条记成失败而不是当成功。 */
+            segments: durl.length
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * 下载枚举结果。
+ *
+ * @param {object} msg { items:Array, pageUrl?, platform? }
+ * @returns {Promise<{ok,total,succeeded,fail,skipped,failures}>}
+ */
+async function vrEnumDownload(msg, sender) {
+    const items = Array.isArray(msg && msg.items) ? msg.items : [];
+    const fallbackPage = String((msg && msg.pageUrl) || '');
+    const out = { ok: true, total: items.length, succeeded: 0, fail: 0, skipped: 0, failures: [] };
+    if (!items.length) { out.ok = false; out.error = 'no-items'; return out; }
+
+    const seen = await vrDedupLoad();
+    const batchSeen = new Set();
+
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i] || {};
+        const title = String(it.title || '');
+        try {
+            const plat = String(it.platform || '');
+            const isBili = plat === 'bilibili' || !!it.bvid;
+            const direct = Array.isArray(it.candidates) && it.candidates.length
+                ? String(it.candidates[0] || '') : '';
+
+            let mediaUrl = '';
+            let kind = String(it.kind || 'image');
+            let site = String(it.site || '');
+            let pageUrl = String(it.pageUrl || fallbackPage || '');
+
+            if (isBili) {
+                const bvid = String(it.bvid || it.mediaId || '');
+                const vs = await vrBiliVideoStream(bvid);
+                if (!vs) {
+                    /* 拿不到流（付费/已删/风控/多段）→ 记失败，**不**下封面冒充视频 */
+                    out.fail++;
+                    out.failures.push({ title: title.slice(0, 40), reason: 'no-playurl' });
+                    continue;
+                }
+                if (vs.segments > 1) {
+                    /* 多段 durl 只下第一段 = 残缺文件，宁可判失败也不给用户半集 */
+                    out.fail++;
+                    out.failures.push({ title: title.slice(0, 40), reason: 'multi-segment-unsupported' });
+                    continue;
+                }
+                mediaUrl = vs.url;
+                kind = 'video';
+                site = 'bilibili';
+                if (!pageUrl) { pageUrl = 'https://www.bilibili.com/video/' + bvid; }
+            } else {
+                mediaUrl = direct || String(it.url || '');
+                if (!/^https?:/i.test(mediaUrl)) {
+                    out.fail++;
+                    out.failures.push({ title: title.slice(0, 40), reason: 'bad-url' });
+                    continue;
+                }
+            }
+
+            /* 去重：与既有批量通道同一口径（平台 + 作品 + 媒体 + 类型 + 路径） */
+            let key = '';
+            try {
+                key = vrMediaIdentity({
+                    site: site, url: mediaUrl, kind: kind,
+                    mediaId: String(it.mediaId || ''), pageUrl: pageUrl
+                });
+            } catch (e) { key = ''; }
+            if (key && (seen.has(key) || batchSeen.has(key))) {
+                out.skipped++;
+                continue;
+            }
+            if (key) { batchSeen.add(key); }
+
+            /* B站 CDN 校验 Referer：不设规则会 403（既有链路同款做法） */
+            try { if (pageUrl) { await vrSetMediaHeadersFor(mediaUrl, pageUrl); } } catch (e) { /* 继续试 */ }
+
+            const item = {
+                site: site, kind: kind, title: title,
+                author: String(it.author || ''), authorId: String(it.authorId || ''),
+                authorFull: String(it.authorFull || ''),
+                pageUrl: pageUrl, ext: kind === 'video' ? 'mp4' : ''
+            };
+            const name = vrBulkName(item, i);
+            const rel = vrMediaPath(item, name);
+
+            const id = await vrDownloadWithName(mediaUrl, rel, { meta: vrBulkMeta(item, rel) });
+            if (id === null || id === undefined) {
+                out.fail++;
+                out.failures.push({ title: title.slice(0, 40), reason: 'download-start-failed' });
+                continue;
+            }
+            /* 等本次落定再下一条：串行既能控并发，也让成败计数真实
+             * （不等就永远报「成功」，用户事后才发现一半是坏文件）。 */
+            if (typeof id === 'number') {
+                const outcome = await vrWaitDownload(id, 30000);
+                if (outcome && outcome.state === 'interrupted') {
+                    try { vrDropDownload(id); } catch (e) { /* 忽略 */ }
+                    out.fail++;
+                    out.failures.push({ title: title.slice(0, 40), reason: String(outcome.error || 'interrupted') });
+                    continue;
+                }
+            }
+            out.succeeded++;
+            if (key) { seen.add(key); }
+
+            /* 温和限速：整博主动辄几百条，不给间隔容易触发风控 */
+            if (i < items.length - 1) { await vrBulkSleep(400 + Math.floor(Math.random() * 300)); }
+        } catch (e) {
+            out.fail++;
+            out.failures.push({ title: title.slice(0, 40), reason: String((e && e.message) || e).slice(0, 80) });
+        }
+    }
+
+    try { vrDedupSave(seen); } catch (e) { /* 记账失败不影响已下载的文件 */ }
+    if (out.failures.length > 50) { out.failures = out.failures.slice(0, 50); }
+    out.ok = out.succeeded > 0 || out.fail === 0;
+    return out;
+}
+
+/* ==========================================================
  * 图集扫描（I6 模式 A：自动滚动）
  * 协议见 docs/IMAGE-DOWNLOAD-PLAN.md §2.6
  *
@@ -2813,8 +3278,22 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         sendResponse({ tasks: list });
         return true;
     }
-    // YouTube 后台合并进度：工作页 → 原 YouTube 标签右下角浮层
+    // YouTube 后台合并进度：工作页 → 原 YouTube 标签右下角浮层 + 队列任务状态
     if (Message && Message.Message === 'vrYtProgress') {
+        /* 按 videoId（没有则按 sender.tab 反查）把进度写进队列任务，
+         * 任务列表面板读同一份数据，不再只发给单个浮层。 */
+        try {
+            const pVid = Message.videoId || vrYtTabToVideo[(sender && sender.tab && sender.tab.id) || ''] || '';
+            if (pVid) {
+                const patch = { note: Message.text || '' };
+                if (Message.pct != null) { patch.progress = Message.pct; }
+                vrYtQ.update(pVid, patch);
+                /* 阶段提示即时刷新队列列表（进度频繁变化不每次全量广播，避免刷屏） */
+                if (Message.done || Message.kind === 'err' || Message.kind === 'warn') {
+                    vrYtNotifyQueue('progress');
+                }
+            }
+        } catch (e) { /* ignore */ }
         const tid = Number(Message.tabId || 0);
         if (tid) {
             try {
@@ -2830,12 +3309,15 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
         }
         /* 自动下载页广播 done 后关闭它自己（页面发来的 vrYtClose 在部分 Chrome
          * 版本会被忽略；这里按 sender.tab 关闭，保证“无感”）。
-         * 同时释放串行队列：YouTube 同一时间只跑一个任务。 */
+         * 同时释放该任务占的队列槽位并按 videoId 精确补位。 */
         try {
             const st = sender && sender.tab;
             if (Message.done && st && /yt-download\.html/.test(st.url || '') && /auto=1/.test(st.url || '')) {
                 setTimeout(function () { try { chrome.tabs.remove(st.id); } catch (e) { /* ignore */ } }, 1200);
-                vrYtRelease(st.id);
+                /* 终态分类：err→失败；文案「已取消」→取消；其余→完成 */
+                var finalStatus = (Message.kind === 'err') ? 'error'
+                    : (/已取消/.test(Message.text || '') ? 'cancelled' : 'done');
+                vrYtRelease(st.id, Message.videoId || '', finalStatus);
             }
         } catch (e) { /* ignore */ }
         sendResponse({ ok: true });
@@ -2851,16 +3333,17 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     // YouTube：取消正在跑的下载（来源：YouTube 页面右下角浮层的「取消」）
     //
     // 2026-11-08 苏哥反馈「下载没有终止按钮」，一个 15GB 的任务点下去只能等。
-    // 这里把取消指令转给正在跑的下载页（vrYtQueueTabId），由页面 abort 所有 fetch。
+    // 这里把取消指令转给对应的下载页，由页面 abort 所有 fetch。
     //
     // 顺序很重要：**先通知下载页、再释放队列位**。
     // 反过来的话，下一个排队任务会在当前连接还没断开时就启动，两条大流量并存。
     if (Message && Message.Message === 'vrYtCancel') {
-        const target = vrYtQueueTabId;
+        const senderTabId = sender && sender.tab && sender.tab.id;
+        const target = vrYtResolveTab(Message.videoId, senderTabId);
         const done = function (cancelled) {
             /* 无论页面有没有回执，都要释放队列，否则下一个任务永远排队。
              * vrYtRelease 内部有 600ms 延迟，给 abort 收尾留出时间。 */
-            vrYtRelease(target);
+            vrYtRelease(target, Message.videoId, 'cancelled');
             try {
                 sendResponse({
                     ok: true,
@@ -2875,14 +3358,11 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             done(false);
             return true;
         }
-        try {
-            chrome.tabs.sendMessage(target, { Message: 'vrYtCancel' }, function (res) {
-                void chrome.runtime.lastError;
-                done(!!(res && res.ok));
-            });
-        } catch (e) {
-            done(false);
-        }
+        /* 2026-11-18（D5）：走 vrSendToTab —— 内容脚本不在时自动补注入并重试，
+         * 仍然失败才回 false，让前端能给出「请刷新页面」而不是静默无反应。 */
+        vrSendToTab(target, { Message: 'vrYtCancel' }).then(function (r) {
+            done(!!(r && r.ok));
+        }).catch(function () { done(false); });
         return true;
     }
     // YouTube：用户在页面浮层选定了某个清晰度（来源：vrYtOptions 渲染出的按钮）
@@ -2890,77 +3370,66 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     // 2026-11-08：不再由下载页擅自挑最高档（曾经在 91vZf7QNTpE 上直接拉 15.66GB），
     // 改为把档位交给用户，选完再转给下载页点选 + 开始。
     if (Message && Message.Message === 'vrYtChoose') {
-        const target = vrYtQueueTabId;
+        const target = vrYtResolveTab(Message.videoId, sender && sender.tab && sender.tab.id);
         const key = String(Message.key || '');
         if (target == null || !key) {
             sendResponse({ ok: false, reason: target == null ? 'no-active-download' : 'no-key' });
             return true;
         }
-        try {
-            chrome.tabs.sendMessage(target, {
-                Message: 'vrYtChoose',
+        /* 2026-11-18（D5）：走 vrSendToTab，内容脚本缺失时自动补注入重试 */
+        vrSendToTab(target, {
+            Message: 'vrYtChoose',
+            key: key,
+            start: Message.start !== false
+        }).then(function (r) {
+            sendResponse({
+                ok: !!(r && r.res && r.res.ok),
                 key: key,
-                start: Message.start !== false
-            }, function (res) {
-                void chrome.runtime.lastError;
-                sendResponse({
-                    ok: !!(res && res.ok),
-                    key: key,
-                    reason: (res && res.ok) ? '' : 'download-page-rejected'
-                });
+                reason: (r && r.res && r.res.ok) ? '' : 'download-page-rejected'
             });
-        } catch (e) {
+        }).catch(function () {
             sendResponse({ ok: false, reason: 'send-failed' });
-        }
+        });
         return true;
     }
     // YouTube：页面浮层要档位列表（打开浮层/切视频后主动拉一次）
     if (Message && Message.Message === 'vrYtRequestOptions') {
-        const target = vrYtQueueTabId;
+        const target = vrYtResolveTab(Message.videoId, sender && sender.tab && sender.tab.id);
         if (target == null) {
             sendResponse({ ok: false, reason: 'no-active-download', options: [] });
             return true;
         }
-        try {
-            chrome.tabs.sendMessage(target, { Message: 'vrYtRequestOptions' }, function (res) {
-                void chrome.runtime.lastError;
-                sendResponse(res || { ok: false, options: [] });
-            });
-        } catch (e) {
+        /* 2026-11-18（D5）：走 vrSendToTab，内容脚本缺失时自动补注入重试 */
+        vrSendToTab(target, { Message: 'vrYtRequestOptions' }).then(function (r) {
+            sendResponse((r && r.res) || { ok: false, options: [] });
+        }).catch(function () {
             sendResponse({ ok: false, reason: 'send-failed', options: [] });
-        }
+        });
         return true;
     }
     // YouTube：下载页把档位列表（含体积）广播给原页面
     if (Message && Message.Message === 'vrYtOptions') {
         const tid = Number(Message.tabId || 0);
         if (tid) {
-            try {
-                chrome.tabs.sendMessage(tid, {
-                    Message: 'vrYtOptions',
-                    title: Message.title || '',
-                    author: Message.author || '',
-                    duration: Message.duration || 0,
-                    options: Array.isArray(Message.options) ? Message.options : []
-                }, function () { void chrome.runtime.lastError; });
-            } catch (e) { /* 原标签已关就算了 */ }
+            /* 2026-11-18（D5）：走 vrSendToTab（内容脚本缺失时补注入重试）。
+             * 这条是「下载页把档位列表广播回原页面」——广播不到，
+             * 用户看到的就是浮层不弹档位、点了没反应。 */
+            vrSendToTab(tid, {
+                Message: 'vrYtOptions',
+                title: Message.title || '',
+                author: Message.author || '',
+                duration: Message.duration || 0,
+                options: Array.isArray(Message.options) ? Message.options : []
+            }).catch(function () { /* 原标签已关就算了 */ });
         }
         sendResponse({ ok: true });
         return true;
     }
-    // YouTube：页面按钮点击 → 开下载窗口（单开小窗的理由见 js/yt/yt-download.js 抬头注释）
+    // YouTube：页面按钮点击 → 入队（A 方案：入队不限量，串行接力）
     if (Message && Message.Message === 'ytOpen') {
-        /* 串行队列：同一时间只跑一个 YouTube 下载。
-         *
-         * 2026-11-08 苏哥要求：YouTube 不允许同时下多个，要排队。
-         * 原因有两层：
-         *   ① 多个 4K 任务并发会互相抢带宽，每个都变得极慢；
-         *   ② 同时对 googlevideo 发起多条大流量连接更容易触发限流。
-         *
-         * 实现：SW 内一个内存队列 + 当前任务 id。前一个任务结束（收到
-         * vrYtClose 或标签页关闭）后自动启动下一个。
-         * SW 被回收时队列会丢 —— 这是可接受的：用户重开页面会重新入队，
-         * 而持久化队列会让「幽灵任务」永久卡住队列，得不偿失。 */
+        /* 无限入队 + 同一时刻只跑 1 个；前一个完成/失败/取消后自动接力下一个。
+         * 任务列表读同一份队列状态（vrYtQueueStatus / vrYtQueueChanged）。
+         * SW 被回收时队列会丢 —— 与既有内存策略一致，避免幽灵任务。 */
         const job = {
             videoId: Message.videoId || '',
             tabId: (sender.tab && sender.tab.id) || 0,
@@ -2973,21 +3442,81 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
             sendResponse({ ok: false, error: 'no-video-id' });
             return true;
         }
-        /* 入队：去重、串行、结束放行的语义都在 js/yt/yt-queue.js 里 */
         const r = vrYtQ.push(job);
+        const st = vrYtQ.status();
+        vrYtNotifyQueue('enqueued');
         sendResponse({
             ok: r.ok !== false,
             reason: r.reason,
             queued: r.queued,
             position: r.position,
-            active: vrYtQ.status().active
+            active: st.active
         });
         return true;
     }
     if (Message && Message.Message === 'ytQueueStatus') {
         const st = vrYtQ.status();
-        sendResponse({ ok: true, active: st.active, queued: st.queued, list: st.list });
+        sendResponse({ ok: true, active: st.active, jobs: st.jobs,
+            queued: st.queued, historyCount: st.historyCount });
         return true;
+    }
+    /* 打开任务列表页：已打开则激活，不重复开标签 */
+    if (Message && Message.Message === 'ytOpenQueue') {
+        const url = chrome.runtime.getURL('queue.html');
+        try {
+            chrome.tabs.query({}, function (tabs) {
+                var found = (tabs || []).filter(function (t) { return t.url === url; })[0];
+                if (found) {
+                    try { chrome.tabs.update(found.id, { active: true }); } catch (e) { /* ignore */ }
+                    if (found.windowId != null) {
+                        try { chrome.windows.update(found.windowId, { focused: true }); } catch (e2) { /* ignore */ }
+                    }
+                    sendResponse({ ok: true, tabId: found.id });
+                } else {
+                    chrome.tabs.create({ url: url }, function (t) {
+                        sendResponse({ ok: true, tabId: t && t.id });
+                    });
+                }
+            });
+        } catch (e) {
+            sendResponse({ ok: false, error: String((e && e.message) || e) });
+        }
+        return true;
+    }
+    /* A 方案：任务列表操作（排序 / 删除 / 清空），只作用于 queued 任务 */
+    function ytQueueOp(fn) {
+        try {
+            var ok = fn();
+            vrYtNotifyQueue('op');
+            sendResponse({ ok: ok !== false, queue: vrYtQ.status() });
+        } catch (e) {
+            sendResponse({ ok: false, error: String((e && e.message) || e) });
+        }
+        return true;
+    }
+    if (Message && Message.Message === 'ytQueueMove') {
+        const vid = String(Message.videoId || '');
+        const op = String(Message.op || '');
+        return ytQueueOp(function () {
+            if (op === 'top') { return vrYtQ.moveToTop(vid); }
+            if (op === 'up') { return vrYtQ.moveUp(vid); }
+            if (op === 'down') { return vrYtQ.moveDown(vid); }
+            if (op === 'bottom') { return vrYtQ.moveToBottom(vid); }
+            if (op === 'index') { return vrYtQ.move(vid, Message.index); }
+            return false;
+        });
+    }
+    if (Message && Message.Message === 'ytQueueRemove') {
+        return ytQueueOp(function () { return vrYtQ.remove(String(Message.videoId || '')); });
+    }
+    if (Message && Message.Message === 'ytQueueClear') {
+        return ytQueueOp(function () {
+            var n = vrYtQ.clearQueued();
+            return n >= 0;
+        });
+    }
+    if (Message && Message.Message === 'ytQueueClearHistory') {
+        return ytQueueOp(function () { vrYtQ.clearHistory(); return true; });
     }
     if (Message && Message.Message === 'ytOpenOld') {
         var ytUrl = chrome.runtime.getURL('js/yt/yt-download.html') +
@@ -3194,6 +3723,34 @@ chrome.runtime.onMessage.addListener(function (Message, sender, sendResponse) {
     if (Message && (Message.Message === 'vrImg.batchCancel' || Message.action === 'vrImg.batchCancel')) {
         vrImgBatchCancel(Message);
         sendResponse({ ok: true, canceled: true });
+        return true;
+    }
+    /* 博主 / 合集枚举（2026-11-18，审计 E3）。
+     * 消息名带点号，与既有 vrImg.batch 系列保持一致。 */
+    if (Message && (Message.Message === 'vrEnum.owner' || Message.action === 'vrEnum.owner')) {
+        vrEnumOwner(Message, sender)
+            .then(function (r) { sendResponse(r); })
+            .catch(function (e) {
+                sendResponse({
+                    ok: false, items: [], batchItems: [], total: 0, pages: 0,
+                    error: String((e && e.message) || e)
+                });
+            });
+        return true;
+    }
+    /* 枚举结果 → 真实文件（2026-11-18）。
+     * 独立一条消息而不是复用 vrImg.batch：枚举条目里 B站只有封面，
+     * 必须先解析 playurl 拿真视频流（见 vrEnumDownload 注释）。
+     * 混进图片通道会让「下载成功但内容全是缩略图」这种静默错误重现。 */
+    if (Message && (Message.Message === 'vrEnum.download' || Message.action === 'vrEnum.download')) {
+        vrEnumDownload(Message, sender)
+            .then(function (r) { sendResponse(r); })
+            .catch(function (e) {
+                sendResponse({
+                    ok: false, total: 0, succeeded: 0, fail: 0, skipped: 0,
+                    failures: [], error: String((e && e.message) || e)
+                });
+            });
         return true;
     }
     /* 站点名探测：输入域名 → 后台抓网页 → 解析站名。
@@ -3931,9 +4488,11 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
         G.blockUrlSet.has(tabId) && G.blockUrlSet.delete(tabId);
         G.damnUrlSet.has(tabId) && G.damnUrlSet.delete(tabId);
     }
-    /* YouTube 下载页被关（用户手动关 / 浏览器回收）也要释放串行队列，
-     * 否则下一个任务会永远排队等一个不存在的页面。 */
-    try { vrYtRelease(tabId); } catch (e) { /* ignore */ }
+    /* YouTube 下载页被关（用户手动关 / 浏览器回收）也要按 videoId 释放队列槽位，
+     * 否则下一个任务会永远排队等一个不存在的页面。
+     * 走到这里的都是非正常完成（正常完成会先由 vrYtProgress done 释放并清映射），
+     * 故记 cancelled。 */
+    try { vrYtRelease(tabId, '', 'cancelled'); } catch (e) { /* ignore */ }
 });
 
 // 苏哥的钓鱼竿：X(推特) 推文内联按钮下载（M8）
@@ -4378,6 +4937,11 @@ async function vrSetMediaHeadersFor(url, referer) {
 /** 等 downloads 任务落定（识别 CDN 403 这类快速失败，再决定是否走页面 fetch）。
  *  返回 complete/interrupted 的 item；还在下载则返回 null（视为已开始，不打断）。 */
 function vrWaitDownload(id, ms) {
+    /* 2026-11-18：实现已抽到 js/sw-download.js（VRSwDownload.vrWaitDownload）。
+     * 这里保留同名包装，保证 5 个组的调用点零改动。 */
+    if (typeof VRSwDownload !== 'undefined' && VRSwDownload.vrWaitDownload) {
+        return VRSwDownload.vrWaitDownload(id, ms);
+    }
     return new Promise(function (resolve) {
         /* 防御：id 必须是数字。FSA 直写会返回 {__fsa:true,path} 这种对象，
          * 一旦传进来，downloads.search({id}) 会抛 TypeError 并把整个调用链搞崩
@@ -4686,6 +5250,10 @@ async function vrLinkDownload(tabId, url, pageUrl) {
 
 /** 清掉快速失败的下载记录和残留文件（微博 403 会落一个 .htm） */
 function vrDropDownload(id) {
+    /* 2026-11-18：实现已抽到 js/sw-download.js（VRSwDownload.vrDropDownload）。 */
+    if (typeof VRSwDownload !== 'undefined' && VRSwDownload.vrDropDownload) {
+        return VRSwDownload.vrDropDownload(id);
+    }
     try {
         chrome.downloads.removeFile(id, function () {
             try { chrome.downloads.erase({ id: id }); } catch (e) { /* ignore */ }
@@ -5174,7 +5742,7 @@ function vrBulkName(item, index) {
     const author = String(i.author || '').trim();
     const id = String(i.authorId || '').trim();
     const who = author ? (id ? author + '(@' + id + ')' : author)
-        : (i.site === 'xhs' ? '小红书' : (i.site === 'x' ? 'x' : 'weibo'));
+        : (vrSiteName(i.site) || '媒体');
     let title = String(i.title || '').replace(/\s+/g, ' ').trim();
     if (title === '视频') { title = ''; }
     let name = who + (title ? '_' + title : '') + '_' +
@@ -5197,12 +5765,42 @@ function vrBulkDelay() {
     return 1400 + Math.floor(Math.random() * 1200);
 }
 
+/** 平台短码 → VRPath 的平台键（2026-11-18 补全）
+ *
+ * 原来三处都写成 `site === 'x' ? 'x' : site === 'weibo' ? 'weibo'
+ *   : site === 'xhs' ? 'xiaohongshu' : 'other'` —— 只认三家。
+ * B站/抖音走枚举通道后，条目 site 是 'bilibili'/'douyin'，
+ * 于是全部落进 'other' → platform='web' → siteOf 认不出平台 →
+ * **用域名当作者目录**，实测落成：
+ *   bilibili.com\www.bilibili.com\weibo_矛盾从来不是靠沟通解决的_01.mp4
+ * 正确应为：
+ *   B站\天涯神贴清念(@3494366599449160)\矛盾从来不是靠沟通解决的.mp4
+ *
+ * 表与 js/library/path.js 的 PLATFORM_DIR 保持一致，避免两套口径。
+ */
+var VR_SITE_KEY = {
+    x: 'x', weibo: 'weibo', xhs: 'xiaohongshu',
+    bilibili: 'bilibili', douyin: 'douyin', youtube: 'youtube',
+    instagram: 'instagram', tiktok: 'tiktok'
+};
+/** 平台短码 → 中文名（同样补全，否则 platformName 为空，库页筛不出来） */
+var VR_SITE_NAME = {
+    x: 'X', weibo: '微博', xhs: '小红书',
+    bilibili: 'B站', douyin: '抖音', youtube: 'YouTube',
+    instagram: 'Instagram', tiktok: 'TikTok'
+};
+function vrSiteKey(site) {
+    var s = String(site || '');
+    return VR_SITE_KEY[s] || (s || 'web');
+}
+function vrSiteName(site) {
+    return VR_SITE_NAME[String(site || '')] || '';
+}
+
 /** 媒体库路径：video-rod/<平台>/<作者(@ID)>/images|videos/<文件名> */
 function vrMediaPath(item, name) {
     const i = item || {};
-    const site = i.site === 'x' ? 'x'
-        : i.site === 'weibo' ? 'weibo'
-            : i.site === 'xhs' ? 'xiaohongshu' : 'other';
+    const site = vrSiteKey(i.site);
     /* 统一走 VRPath 三段式（平台/作者/类型 + 中文目录名）：
      * 以前这里硬编码 'xiaohongshu/…/videos/'，和资源库的 '小红书/…/视频/'
      * 不是一套 —— 同一批素材散在两个目录，索引反解拿不到 platform/type。
@@ -5246,12 +5844,8 @@ function vrBulkMeta(item, relPath) {
     const id = String(i.authorId || '').trim();
     const creatorFull = author ? (id ? author + '(@' + id + ')' : author) : '';
     const site = String(i.site || '');
-    const platform = site === 'x' ? 'x'
-        : site === 'weibo' ? 'weibo'
-            : site === 'xhs' ? 'xiaohongshu' : (site || 'other');
-    const platformName = site === 'x' ? 'X'
-        : site === 'weibo' ? '微博'
-            : site === 'xhs' ? '小红书' : '';
+    const platform = vrSiteKey(site);
+    const platformName = vrSiteName(site);
     return {
         relPath: relPath,
         platform: platform,
@@ -5846,8 +6440,15 @@ try {
 /** 给可能卡死的异步步骤加硬超时。
  *  2026-11-05 实测：抖音详情接口偶发不返回，executeScript 会一直 pending，
  *  面板就永远停在「正在问这个网站能下哪些清晰度…」，用户只能看着转圈。
- *  超时后抛错 → 上层 catch 落到下一个分支（最差也有嗅探缓存可用）。 */
+ *  超时后抛错 → 上层 catch 落到下一个分支（最差也有嗅探缓存可用）。
+ *
+ *  2026-11-18：实现已抽到 js/sw-util.js（VRSwUtil.vrWithTimeout）。
+ *  这里保留同名包装，保证 138 个函数的调用点一处都不用改。 */
 function vrWithTimeout(promise, ms, label) {
+    if (typeof VRSwUtil !== 'undefined' && VRSwUtil.vrWithTimeout) {
+        return VRSwUtil.vrWithTimeout(promise, ms, label);
+    }
+    /* 兜底：sw-util 未加载时用原实现（行为一致） */
     return Promise.race([
         promise,
         new Promise(function (_, reject) {
@@ -7547,6 +8148,206 @@ async function vrVideoDownload(tabId, optionId, wantBest, frameId, metaFromCalle
 }
 
 /* ==========================================================
+ * 向标签页发消息（带补注入降级）（2026-11-18，审计 D5）
+ * ----------------------------------------------------------
+ * 问题：内容脚本不在时 chrome.tabs.sendMessage 直接失败，
+ *   用户侧表现是「按钮点了没反应」——没有任何提示，也不知道该刷新页面。
+ *
+ * 为什么不用 getContexts 判据：
+ *   实测（Edge 157，真实页面）chrome.runtime.getContexts({contextTypes:['TAB']})
+ *   返回 **0 个 context**，即使页面里内容脚本确实在跑。
+ *   拿它当判据会把「正常」误判成「没注入」，然后无谓地重复注入。
+ *
+ * 实际做法（三级）：
+ *   ① 直接发；成功即返回
+ *   ② 失败且错误是「没有接收端」类 → 补注入 content-script.js
+ *   ③ 补完重发一次；仍失败就返回明确原因（调用方据此提示用户）
+ *
+ * 只补 content-script.js：它是隔离世界里的消息端，net-sniff 在 MAIN world
+ * 不参与消息接收；且 D6 的 onInstalled 已经覆盖「扩展更新」那次。
+ *
+ * 不重试的失败（如 tab 已关闭、chrome:// 页面）直接返回，不做无谓注入。
+ * ========================================================== */
+/* ==========================================================
+ * 冻结页解冻（2026-11-18 确证的根因，此前一直挂在「待查」）
+ * ----------------------------------------------------------
+ * 现象（X 批量下载连续超时）：
+ *   从 SW 里 chrome.scripting.executeScript({tabId: x.com 页面})
+ *   **连续三次超时**（两次撞 2 分钟上限、一次 WebSocket 读取超时）。
+ *
+ * 实测证据（Edge 157，同一标签页，逐条对照）：
+ *   chrome.tabs.get → frozen:true, discarded:false, autoDiscardable:true
+ *   frozen:true  → executeScript  **8019ms 不回调**
+ *   frozen:true  → tabs.sendMessage → "Receiving end does not exist"
+ *   tabs.update({active:true}) 后 → frozen:false
+ *   frozen:false → executeScript  **786ms 成功**
+ *
+ * 所以这不是「测试通道问题」，而是**产品缺陷**：后台标签页被浏览器
+ * 冻结（省内存的正常行为）后，扩展对它的注入与消息**全部失效**。
+ * 任何把标签页放后台一段时间的用户都会遇到，与是否登录态无关。
+ *
+ * 做法（只在**已经失败**之后调用，正常路径零打扰）：
+ *   ① 查 frozen；不冻结就直接返回
+ *   ② 记下当前前台标签 → 把自己切到前台 → 轮询确认解冻
+ *   ③ 无论解冻与否，**立刻把前台还给原标签**（不能因为下张图把用户切走）
+ *
+ * 为什么不用 chrome.debugger：权限太重（会弹「正在调试此浏览器」），
+ * 为解冻一个省内存状态不值得。
+ * ========================================================== */
+async function vrThawTab(tabId) {
+    const id = Number(tabId) || 0;
+    if (!id) { return { ok: false, reason: 'no-tab' }; }
+
+    let tab = null;
+    try { tab = await chrome.tabs.get(id); } catch (e) {
+        return { ok: false, reason: 'tab-gone' };
+    }
+    if (!tab) { return { ok: false, reason: 'tab-gone' }; }
+    /* 已丢弃（discarded）的页必须 reload 才能用，切前台只能解冻 */
+    if (tab.discarded) { return { ok: false, reason: 'discarded', needsReload: true }; }
+    if (!tab.frozen) { return { ok: true, already: true }; }
+
+    let prevActive = 0;
+    try {
+        const act = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        prevActive = (act && act[0] && act[0].id) || 0;
+    } catch (e) { /* 拿不到就不恢复 */ }
+
+    try {
+        await chrome.tabs.update(id, { active: true });
+    } catch (e) {
+        return { ok: false, reason: 'thaw-failed:' + String((e && e.message) || e) };
+    }
+
+    /* 轮询确认解冻，不拿固定 sleep 赌（机器快慢差别大） */
+    const deadline = Date.now() + 4000;
+    let thawed = false;
+    while (Date.now() < deadline) {
+        await new Promise(function (r) { setTimeout(r, 250); });
+        try {
+            const t = await chrome.tabs.get(id);
+            if (t && !t.frozen) { thawed = true; break; }
+        } catch (e) { break; }
+    }
+
+    /* 立刻还回前台 —— 即使没解冻也要还，不能把用户卡在这 */
+    if (prevActive && prevActive !== id) {
+        try { await chrome.tabs.update(prevActive, { active: true }); } catch (e) { /* 忽略 */ }
+    }
+    return { ok: thawed, thawed: thawed, prevActive: prevActive };
+}
+
+/**
+ * 给 executeScript 加「超时 → 解冻 → 重试一次」。
+ *
+ * 为什么必须包超时：冻结页上 executeScript 的 Promise **永不 settle**（实测 8 秒+），
+ * 光靠 await 会把整个任务挂死，用户侧就是「一直转圈」。
+ *
+ * @param {object} opts {tabId, timeoutMs}
+ * @param {function} run  (tabId) → Promise<executeScript 结果>
+ */
+async function vrExecWithThaw(opts, run) {
+    const o = opts || {};
+    const id = Number(o.tabId) || 0;
+    const budget = Math.max(1000, Number(o.timeoutMs) || 8000);
+
+    async function attempt() {
+        return await Promise.race([
+            run(id),
+            new Promise(function (_, reject) {
+                setTimeout(function () { reject(new Error('exec-timeout:' + budget)); }, budget);
+            })
+        ]);
+    }
+
+    try {
+        return { ok: true, res: await attempt() };
+    } catch (e1) {
+        /* 只有超时/接收端缺失才值得解冻；页面已关等错误直接返回 */
+        const msg1 = String((e1 && e1.message) || e1);
+        if (!/exec-timeout|receiving end|could not establish|no receiver|frame/i.test(msg1)) {
+            return { ok: false, error: msg1, thawed: false };
+        }
+        const th = await vrThawTab(id);
+        if (!th.ok) {
+            return {
+                ok: false,
+                error: msg1,
+                thawed: false,
+                frozen: th.reason === 'discarded' ? false : true,
+                reason: th.reason
+            };
+        }
+        try {
+            return { ok: true, res: await attempt(), thawed: true };
+        } catch (e2) {
+            return { ok: false, error: String((e2 && e2.message) || e2), thawed: true };
+        }
+    }
+}
+
+async function vrSendToTab(tabId, msg, opt) {
+    const o = opt || {};
+    const id = Number(tabId) || 0;
+    if (!id) { return { ok: false, delivered: false, reason: 'no-tab' }; }
+
+    function rawSend() {
+        return new Promise(function (resolve) {
+            try {
+                chrome.tabs.sendMessage(id, msg, function (res) {
+                    const err = chrome.runtime.lastError;
+                    if (err) {
+                        resolve({ ok: false, delivered: false, reason: String(err.message || 'send-failed') });
+                        return;
+                    }
+                    resolve({ ok: true, delivered: true, res: res });
+                });
+            } catch (e) {
+                resolve({ ok: false, delivered: false, reason: String((e && e.message) || e) });
+            }
+        });
+    }
+
+    /* ① 直接发 */
+    const first = await rawSend();
+    if (first.ok || o.noRetry) { return first; }
+
+    /* ② 只有「没有接收端」才值得补注入。
+     *   "Could not establish connection. Receiving end does not exist." 是主文案，
+     *    不同版本/语言可能有差异，所以用几个关键片段宽松匹配。 */
+    const reason = String(first.reason || '');
+    const recoverable = /receiving end does not exist|could not establish connection|no receiver|收不到|接收端/i.test(reason);
+    if (!recoverable) { return first; }
+
+    /* ③ 补注入后重发（只试一次，避免死循环）
+     *
+     * ⚠️ 冻结页上 executeScript **永不回调**（实测 8019ms 不 settle），
+     * 所以这里必须包超时；超时就判定为「页面被冻结」，先解冻再重试。
+     * 不处理的话，用户侧表现是「点了没反应」，而且 SW 一直挂着这个 await。 */
+    let injected = false;
+    try {
+        if (chrome.scripting && typeof chrome.scripting.executeScript === 'function') {
+            const r = await vrExecWithThaw({ tabId: id, timeoutMs: 6000 }, function (tid) {
+                return chrome.scripting.executeScript({
+                    target: { tabId: tid },
+                    files: ['js/content-script.js']
+                });
+            });
+            injected = !!r.ok;
+            if (!r.ok && r.reason === 'discarded') {
+                return { ok: false, delivered: false, reason: 'tab-discarded', needsReload: true };
+            }
+        }
+    } catch (e) { /* chrome:// 等不可注入页面：保持原失败 */ }
+
+    if (!injected) { return first; }
+
+    const second = await rawSend();
+    if (second.ok) { second.recovered = true; }
+    return second;
+}
+
+/* ==========================================================
  * 统一下载进度上报（B-52｜苏哥 2026-11-09「所有网站的进度统一一下」）
  * ----------------------------------------------------------
  * 现状问题：进度是**每个站点各写一套**，所以覆盖必然不全。
@@ -7956,9 +8757,11 @@ function vrImgHotkey(command, tab) {
                 }
             } catch (e) { /* 无侧边栏 API：退回页面浮标面板 */ }
         }
-        chrome.tabs.sendMessage(tab.id, { Message: 'vrImg.hotkey', action: action }, function () {
-            void chrome.runtime.lastError;   // 页面上没有内容脚本（如 chrome://）属正常
-        });
+                /* 2026-11-18（D5）：走 vrSendToTab —— 快捷键是**指令下发**，
+         * 内容脚本不在时原来直接静默失败，用户看到「快捷键按了没反应」。
+         * 现在自动补注入重试；仍失败则说明页面不可注入（如 chrome://），属正常。 */
+        vrSendToTab(tab.id, { Message: 'vrImg.hotkey', action: action })
+            .catch(function () { /* 页面上没有内容脚本（如 chrome://）属正常 */ });
     });
 }
 
@@ -8291,6 +9094,50 @@ function clearRedundant() {
 }
 
 // 扩展升级，清空本地储存
+/* ==========================================================
+ * 扩展安装/更新后补注入内容脚本（2026-11-18，审计 D6）
+ *
+ * 问题：Chrome 只在**页面加载时**注入 content_scripts。扩展更新/重载后，
+ *   已经打开的页面里旧脚本会因 "Extension context invalidated" 自毁
+ *   （content-script.js 的 bury()，见该文件 §上下文存活判定），
+ *   而 Chrome 不会补注入 —— 用户看到的就是「装完扩展必须手动刷新页面」。
+ *
+ * 修法：onInstalled 时对现有 http(s) 标签补注入两个**核心**脚本：
+ *   · net-sniff.js      （MAIN world，hook fetch/XHR 挖媒体地址）
+ *   · content-script.js （隔离世界，转发/保活/接收指令）
+ * 其余 11 组站点专用脚本不补：它们只在特定域名下工作，
+ * 用户真正会用到的那些页面几乎一定会重新加载，补注入的收益远低于复杂度。
+ *
+ * 两个文件都已加幂等保护（window.__vrNetSniffHooked / __vrContentLoaded），
+ * 重复注入不会造成双重 hook 或双份监听 —— 这是补注入能安全存在的前提。
+ * ========================================================== */
+function vrReinjectCoreScripts() {
+    try {
+        if (!chrome.scripting || typeof chrome.scripting.executeScript !== 'function') { return; }
+        chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] }, function (tabs) {
+            void chrome.runtime.lastError;
+            var list = Array.isArray(tabs) ? tabs : [];
+            for (var i = 0; i < list.length; i++) {
+                var tid = list[i] && list[i].id;
+                if (!tid) { continue; }
+                try {
+                    chrome.scripting.executeScript({
+                        target: { tabId: tid, allFrames: true },
+                        files: ['js/net-sniff.js'],
+                        world: 'MAIN'
+                    }, function () { void chrome.runtime.lastError; });
+                } catch (e1) { /* 单 tab 失败不影响其它 */ }
+                try {
+                    chrome.scripting.executeScript({
+                        target: { tabId: tid, allFrames: true },
+                        files: ['js/content-script.js']
+                    }, function () { void chrome.runtime.lastError; });
+                } catch (e2) { /* 同上 */ }
+            }
+        });
+    } catch (e) { /* 补注入整体失败静默：宁可让用户刷新，也不要弹错误 */ }
+}
+
 chrome.runtime.onInstalled.addListener(function (details) {
     if (details.reason == "update") {
         chrome.storage.local.clear(function () {
@@ -8301,6 +9148,8 @@ chrome.runtime.onInstalled.addListener(function (details) {
             }
         });
         chrome.alarms.create("nowClear", { when: Date.now() + 3000 });
+        /* 更新后补注入：让用户不用手动刷新已打开的页面 */
+        vrReinjectCoreScripts();
     }
     if (details.reason == "install") {
         chrome.tabs.create({ url: "install.html" });

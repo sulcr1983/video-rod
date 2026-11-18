@@ -140,7 +140,18 @@
         }
     } catch (e) { /* 忽略 */ }
 
-    /* ---------------- XMLHttpRequest ---------------- */
+    /* ---------------- XMLHttpRequest（照抄 Plucker 的 send + cleanup 模板） ----------------
+     * Plucker 的写法（`injected.js`）：
+     *   · 包装 `send` 而不是 `open` —— open 时还没有 body，send 才是请求真正发出的点
+     *   · 只处理 `readyState === DONE`
+     *   · **`cleanup()` 显式解绑**，防监听器累积
+     *   · `try/catch` 兜底：原 send 抛错时也要清理
+     *
+     * 为什么 cleanup 不是洁癖：XHR 对象是**可以被复用**的（open 重新初始化后再次 send）。
+     * 我们原来每次 send 都 addEventListener('load') 且从不移除，一旦某站点复用同一个
+     * XHR 实例，监听器就会一层层叠加 —— 同一个响应被解析 N 次，表现为条目重复。
+     * 虽然下游还有 seenStatus 去重兜底，但那是补偿，不是正确性。
+     */
     try {
         var XP = XMLHttpRequest.prototype;
         var origOpen = XP.open;
@@ -152,8 +163,14 @@
         XP.send = function () {
             var self = this;
             try {
-                self.addEventListener('load', function () {
+                /* 同一个 XHR 被复用：先解掉上一次的监听，再挂新的 */
+                if (typeof self.__vrTimelineCleanup === 'function') {
+                    try { self.__vrTimelineCleanup(); } catch (e) { /* 忽略 */ }
+                    self.__vrTimelineCleanup = null;
+                }
+                var onDone = function () {
                     try {
+                        if (self.readyState !== 4) { return; }   /* 只处理 DONE */
                         var url = self.__vrTimelineUrl || '';
                         if (!TL_RE.test(url)) { return; }
                         var rt = self.responseType;
@@ -161,9 +178,21 @@
                         var txt = rt === 'json' ? JSON.stringify(self.response) : self.responseText;
                         if (txt) { handle(url, String(txt)); }
                     } catch (e) { /* 忽略 */ }
-                });
+                };
+                self.addEventListener('readystatechange', onDone);
+                self.__vrTimelineCleanup = function () {
+                    try { self.removeEventListener('readystatechange', onDone); } catch (e) { /* 忽略 */ }
+                };
             } catch (e) { /* 忽略 */ }
-            return origSend.apply(this, arguments);
+            try {
+                return origSend.apply(this, arguments);
+            } catch (e) {
+                /* 原 send 抛错 → 清理解绑，否则监听器会挂在失败的 XHR 上 */
+                try {
+                    if (typeof this.__vrTimelineCleanup === 'function') { this.__vrTimelineCleanup(); }
+                } catch (e2) { /* 忽略 */ }
+                throw e;
+            }
         };
     } catch (e) { /* 忽略 */ }
 

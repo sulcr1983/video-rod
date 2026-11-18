@@ -47,6 +47,40 @@
     var MAX_UNIQUE = 99;                   // 同名 _01…_99，再撞就用时间戳
 
     /* ==========================================================
+     * 同目录串行锁（2026-11-18 实测修复）
+     *
+     * 真 bug（不是理论风险，已用实验复现）：
+     *   `writeFsa` 的流程是「freeName 探测哪个名字空闲 → 再 getFileHandle 写」。
+     *   这两步之间**没有任何互斥**，而图片批量默认并发 3。
+     *   于是 N 个条目算出**同一个** relPath（文件名 = 日期_页面标题，天然同构）时：
+     *     三个 worker 同时 probe('a.webp') → 都被告知「不存在」→ 都判定可用
+     *     → 都写同一个文件 → 后写覆盖先写。
+     *
+     *   实测证据（并发 8 次同一 relPath，内容长度 11..88 递增）：
+     *     返回 ok: 8/8；磁盘上实际文件数: 1；唯一文件 size=55（第 5 次的内容）。
+     *   小红书发现页批量 8 张 → 报 succeeded:8、磁盘只落 4 个，同一条根因。
+     *
+     * 修法（复用项目里已有的模式，不造新轮子）：
+     *   `sw-library.js` 的入库队列就是 `writeQueue = writeQueue.then(...)` 串行。
+     *   这里做**按目录**串行：同目录才排队（重名竞态只发生在同目录），
+     *   不同目录仍可并发 —— 批量写多平台/多作者时不会退化成单线程。
+     *
+     * 为什么不是全局串行：一个 50 张的批量如果全串行，写盘虽快但会拖住整批；
+     * 按目录锁既解决竞态，又保住原有并发度。
+     * ========================================================== */
+    var dirLocks = Object.create(null);
+
+    function withDirLock(key, fn) {
+        var k = String(key || '');
+        var prev = dirLocks[k] || Promise.resolve();
+        var run = prev.then(function () { return fn(); });
+        /* 队列本身不能因为一次失败就断掉：catch 吞掉后再挂回去，
+         * 真实错误由 run 自己抛给调用方（这里只负责「下一个能继续」）。 */
+        dirLocks[k] = run.then(function () { }, function () { });
+        return run;
+    }
+
+    /* ==========================================================
      * 纯逻辑（Node 可测）
      * ========================================================== */
 
@@ -729,7 +763,13 @@
             return resolvePrefix().then(function (pfx) {
                 var prefix = (o.prefix != null && o.prefix !== '') ? o.prefix : pfx;
                 var dirs = stripPrefix(parts.dirs, prefix);
-                return writeFsa(env.root, dirs, parts.fileName, src, onProgress, o.referrer)
+                /* 2026-11-18（实测修复）：整段「探测空闲名 → 写入完成」必须同目录串行。
+                 * 否则并发 worker 会同时 probe 到同一个空闲名、再互相覆盖
+                 * （实测：并发 8 次同一 relPath → 8 次全报成功、磁盘只剩 1 个文件）。
+                 * 锁的 key 用目录，不同目录仍并发，批量写多平台时性能不变。 */
+                return withDirLock(dirs.join('/'), function () {
+                    return writeFsa(env.root, dirs, parts.fileName, src, onProgress, o.referrer);
+                })
                     .then(function (w) {
                         var relOut = dirs.concat([w.name]).join('/');
                         /* 优先用写盘后读回的真实大小；拿不到才退回源对象大小 */

@@ -193,6 +193,56 @@
         return fb || String(fallback || '');
     }
 
+    /* ---------------- 图床跳转页剥壳 ---------------- */
+
+    /**
+     * 剥掉图床「跳转页/包装页」的外壳，取出真正的图片地址（2026-11-18）。
+     *
+     * 现象（t66y 真机实测）：一篇帖子的 25 条结果里有 **7 条**是这种地址，
+     * 缩略图全是 0×0、点开打不开：
+     *     https://23img.com/l/?i=/i/2026/11/15/aphrl4.jpg   ← 包装页
+     *     https://23img.com/i/2026/11/15/aphrl4.jpg          ← 真正的图
+     *
+     * **为什么会被当图收**：扩展名判定看的是**整条 URL**，
+     * query 里那个 `.jpg` 骗过了「有图片扩展名」的检查。
+     * 于是包装页被当成一张图收进来，真图反而因为 key 不同而重复。
+     * 这不是某个站的问题：任何「跳转页 + query 带图片路径」的图床
+     * （图床自建短链、防盗链中转、外链统计跳转）都会命中。
+     *
+     * 做法（保守，只做参数级提取，不猜路径结构）：
+     *   · pathname 自己就是图片 → 不是包装页，返回 ''
+     *   · 否则在 query 里找「值是图片路径」的参数，返回它的绝对地址
+     *   · 找不到就返回 ''（调用方保持原地址不变）
+     *
+     * 为什么安全：剥出来的地址如果本身已在结果里，会被现有的
+     * keyOf + have 去重挡住 —— 正是我们想要的（包装页消失、真图保留）。
+     *
+     * @param {string} url
+     * @returns {string} 真实图片地址；不是包装页时返回 ''
+     */
+    function unwrapImageWrapper(url) {
+        var s = String(url || '');
+        if (!/^https?:/i.test(s)) { return ''; }
+        var u;
+        try { u = new URL(s); } catch (e) { return ''; }
+        var path = String(u.pathname || '');
+        if (/[.](?:jpe?g|png|gif|webp|avif|bmp|ico)(?:$)/i.test(path)) { return ''; }
+
+        var keys = [];
+        try { u.searchParams.forEach(function (_v, k) { keys.push(k); }); } catch (e) { return ''; }
+        for (var i = 0; i < keys.length; i++) {
+            var v = '';
+            try { v = u.searchParams.get(keys[i]) || ''; } catch (e) { v = ''; }
+            if (!v || v.length > 512) { continue; }
+            if (!/[.](?:jpe?g|png|gif|webp|avif|bmp|ico)(?:[?#]|$)/i.test(v)) { continue; }
+            var abs = '';
+            try { abs = new URL(v, u.origin).href; } catch (e) { abs = ''; }
+            if (!abs || !/^https?:/i.test(abs)) { continue; }
+            return abs;
+        }
+        return '';
+    }
+
     /* ---------------- srcset ---------------- */
 
     /**
@@ -944,6 +994,43 @@
                     minShort: o.minShort == null ? LIST_MIN_SHORT : o.minShort,
                     maxAspect: o.maxAspect
                 })) { continue; }
+                /* 未解码时也要按**显示尺寸**过滤（2026-11-18 修「首扫偏多」）。
+                 *
+                 * 问题：原来只有 sized（已解码）才走上面的过滤。而页面刚打开时
+                 * 一部分图还没解码 —— 尤其站点图标、装饰图，它们**不会被懒加载**，
+                 * 只是还没轮到解码。于是首扫把它们全收进来，后续扫描解码完成又把
+                 * 它们过滤掉，表现为「第一次 15 条，之后 12 条」的不确定结果。
+                 * 真机实测（t66y）：首次 15 / 后续 12，差的就是 3 个站点图标。
+                 *
+                 * 为什么用显示尺寸而不是继续等解码：
+                 *   getBoundingClientRect 反映的是 **CSS 布局**，DOM 一就绪就是确定的，
+                 *   与图片有没有下载完**无关**。用它判小图标是确定性判据。
+                 *
+                 * 为什么必须先排除懒加载：懒加载占位图的显示尺寸可能很小（1×1），
+                 * 真地址在 data-src/srcset 里 —— 对这类不能按显示尺寸判死，
+                 * 否则会把真图整批误杀。有懒加载兜底的照旧放行（留给上层回填尺寸）。
+                 */
+                if (!sized && o.checkShow !== false) {
+                    try {
+                        var lazyHole = !!(el.getAttribute('data-src') ||
+                            el.getAttribute('data-original') ||
+                            el.getAttribute('data-lazy-src') ||
+                            el.getAttribute('data-original-src') ||
+                            (el.srcset && String(el.srcset).trim()));
+                        if (!lazyHole) {
+                            var sh0 = shownSize(el);
+                            if (sh0.w > 0 && sh0.h > 0) {
+                                var minShort0 = o.minShort == null ? LIST_MIN_SHORT : Number(o.minShort);
+                                var minShow0 = o.minShow == null ? MIN_SHOW : Number(o.minShow);
+                                var maxAspect0 = o.maxAspect == null ? MAX_ASPECT : Number(o.maxAspect);
+                                if (Math.min(sh0.w, sh0.h) < minShort0) { continue; }
+                                if (Math.max(sh0.w, sh0.h) < minShow0) { continue; }
+                                var ratio0 = Math.max(sh0.w, sh0.h) / Math.min(sh0.w, sh0.h);
+                                if (ratio0 > maxAspect0) { continue; }
+                            }
+                        }
+                    } catch (eShow) { /* 测不到就放行，不因异常丢图 */ }
+                }
                 if (dedupe && seen[url]) { continue; }
                 seen[url] = 1;
                 out.push({
@@ -1269,6 +1356,7 @@
         isProbablyImage: isProbablyImage,
         bestCandidate: bestCandidate,
         looksLikePage: looksLikePage,
+        unwrapImageWrapper: unwrapImageWrapper,
         extFromUrl: extFromUrl,
         extFromContentType: extFromContentType,
         pickLargestSrcset: pickLargestSrcset,

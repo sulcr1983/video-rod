@@ -582,6 +582,26 @@
 
                 /* ③ 搬文件：refOnly 不搬（原件还被活跃条目用着） */
                 if (!refOnly) {
+                    /* 2026-11-18 修复（审计 P0-2「引用卡悬空」）：
+                     * 搬走实体前，先找有没有别的条目 refOf 指向它。
+                     * 有的话把它们重指到回收站里的新位置 —— 否则那些引用卡会永久打不开，
+                     * 且因为 indexer 对 isRef 豁免 missing，界面上还不会显示「缺失」。
+                     *
+                     * 为什么在搬**之前**查：搬完后原 relPath 已无实体，
+                     * 万一后续重指失败，至少索引还指向一个「刚被搬走」的位置，
+                     * 用户能从回收站恢复；反过来先搬后查则更难自愈。 */
+                    var danglingRefs = [];
+                    try {
+                        if (root.VRDB && typeof root.VRDB.findBy === 'function' && entry) {
+                            danglingRefs = await root.VRDB.findBy('refOf', rel, {
+                                limit: 5000,
+                                excludeRelPath: rel      // 排除自己
+                            });
+                        }
+                    } catch (eRef) {
+                        console.warn('[trash] 查引用失败，继续搬移：', rel, eRef && eRef.message);
+                    }
+
                     try {
                         await moveFile(rr.handle, fsRel, batchRel + '/' + fsRel,
                             { resolveRoot: resolveRoot });
@@ -595,6 +615,25 @@
                         }
                         failed.push(failInfo(rel, e));
                         continue;
+                    }
+
+                    /* 搬成功 → 把悬空引用重指到回收站里的新位置。
+                     * 只改 refOf，不动其它字段：这些条目仍然是「引用」，
+                     * 只是原件换了地方。恢复时 restore() 会按清单把文件搬回原路径，
+                     * 那时 refOf 会随清单一起被还原（见 restore 的清单处理）。 */
+                    if (danglingRefs.length) {
+                        var newRel = batchRel + '/' + fsRel;
+                        var redirected = 0;
+                        for (var dr = 0; dr < danglingRefs.length; dr++) {
+                            var refRow = danglingRefs[dr];
+                            if (!refRow || !refRow.relPath) { continue; }
+                            try {
+                                var okRef = await patchRow(refRow.relPath, { refOf: newRel });
+                                if (okRef) { redirected++; }
+                            } catch (eDr) { /* 单条失败不影响其余 */ }
+                        }
+                        console.info('[trash] 引用重指：' + redirected + '/' + danglingRefs.length
+                            + ' 条 → ' + newRel);
                     }
                 }
                 /* 搬完了，撤掉「正在搬」标记 */
@@ -855,6 +894,22 @@
                 }
                 restored.push(next);
                 touchedRel.push(rel);
+
+                /* 2026-11-18 与删除侧对称：文件搬回原位了，之前被重指到回收站的
+                 * 引用条目要**指回原路径**。否则引用卡虽然能打开（指向回收站副本），
+                 * 但一旦回收站被清空，它又会悬空。 */
+                if (!noFile && dbReady() && movedRel) {
+                    try {
+                        var trashPath = TRASH + '/' + t.batch + '/' + fsRel;
+                        var refsBack = await root.VRDB.findBy('refOf', trashPath, { limit: 5000 });
+                        for (var rb = 0; rb < refsBack.length; rb++) {
+                            var rr0 = refsBack[rb];
+                            if (!rr0 || !rr0.relPath) { continue; }
+                            try { await patchRow(rr0.relPath, { refOf: movedRel }); }
+                            catch (eRb) { /* 单条失败不影响其余 */ }
+                        }
+                    } catch (eRb2) { /* 查引用失败不影响恢复 */ }
+                }
             } catch (e) {
                 failed.push(failInfo(rel, e));
             }

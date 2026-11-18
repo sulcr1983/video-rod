@@ -15,8 +15,13 @@
 const fs = require('fs');
 const path = require('path');
 
-const SRC = fs.readFileSync(
-    path.join(__dirname, '..', 'js', 'image-panel.js'), 'utf8');
+const SRC = [
+    /* 2026-11-18（D11 拆分）：CSS 已移到 image-panel-style.js。
+     * 本测试是**文本契约**（某选择器必须带某声明），与「代码在哪个文件」无关，
+     * 所以把两个文件的文本拼起来查 —— 这样无论以后 CSS 怎么挪，契约都还在。 */
+    fs.readFileSync(path.join(__dirname, '..', 'js', 'image-panel-style.js'), 'utf8'),
+    fs.readFileSync(path.join(__dirname, '..', 'js', 'image-panel.js'), 'utf8')
+].join('\n');
 
 let pass = 0, fail = 0;
 const fails = [];

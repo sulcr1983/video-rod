@@ -13,10 +13,10 @@
  * ========================================================== */
 (function (root, factory) {
     'use strict';
-    var api = factory();
+    var api = factory(root);
     if (typeof module === 'object' && module.exports) { module.exports = api; }
     if (root) { root.VRAlbumSites = api; }
-})(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this), function () {
+})(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this), function (root) {
     'use strict';
 
     /* ---------------- 站点表 -----------------------------
@@ -258,6 +258,25 @@
         return true;
     }
 
+    /* 2026-11-18（审计 C1）：合并扩展规则包（site-original-rules.js）。
+     * 加载顺序无关：
+     *   · 规则包先加载 → 这里主动拉一次（下面的循环）
+     *   · 本文件先加载 → 规则包加载时调 registerOriginalRules 推进来
+     * 两边都做，避免顺序踩坑（Node require 缓存让顺序测试很容易漏）。 */
+    function registerOriginalRules(rules) {
+        if (!rules || typeof rules !== 'object') { return 0; }
+        var n = 0;
+        for (var k in rules) {
+            if (!Object.prototype.hasOwnProperty.call(rules, k)) { continue; }
+            if (typeof rules[k] !== 'function') { continue; }
+            if (!ORIGINAL_RULES[k]) { ORIGINAL_RULES[k] = rules[k]; n++; }
+        }
+        return n;
+    }
+    if (root && root.VRSiteOriginalRules) {
+        registerOriginalRules(root.VRSiteOriginalRules);
+    }
+
     return {
         SITES: SITES,
         matchSite: matchSite,
@@ -266,6 +285,8 @@
         nextPageUrl: nextPageUrl,
         pickNext: pickNext,
         looksLikeAlbumPage: looksLikeAlbumPage,
-        ORIGINAL_RULES: ORIGINAL_RULES
+        ORIGINAL_RULES: ORIGINAL_RULES,
+        /* 2026-11-18（C1）：供 site-original-rules.js 反向注册（加载顺序兜底） */
+        registerOriginalRules: registerOriginalRules
     };
 });

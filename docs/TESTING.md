@@ -1148,8 +1148,27 @@ D:\Users\liq21\Downloads\video-rod\其他网页\127.0.0.1\视频\test.mp4
 ### 11.3 本轮踩到并解决的坑
 
 1. **SW 脚本缓存**：旧 profile（`.work/profiles/ext-test`）上运行的仍是缓存版 background —— `VRDB`/`VRLib` undefined、`vrQueueFilename.length=3`（旧签名）。
-   `chrome://serviceworker-internals` 重注册、扩展重载均无效；**换全新 profile** 后立刻正常（`length=4`、`VRDB`/`VRLib` = object）。
-   → **改 SW 引入的 importScripts 列表后，测试必须用新 profile**。
+   `chrome://serviceworker-internals` 重注册、**在 `edge://extensions` 里点「重新加载」**均无效；换全新 profile 后立刻正常（`length=4`、`VRDB`/`VRLib` = object）。
+   → 改 SW 引入的 importScripts 列表后，测试必须让 SW **重新求值**。
+
+   > **⚠️ 2026-11-18 修正（CDP 实测）**：上面「必须换新 profile」的结论**过于绝对**。
+   > 实测 **`chrome.runtime.reload()`** 能让 SW 重新求值，且**不丢登录态**：
+   >
+   > ```python
+   > # CDP 里对 SW 目标执行（三步都在同一浏览器会话内，不重启）
+   > cdp.eval("chrome.runtime.reload()", sw_session)
+   > # 等 6 秒，SW 以新 targetId 回来
+   > # 结果：hasAdapters: false → true，platforms 从 [] 变成 5 个
+   > ```
+   >
+   > **为什么它和「扩展重载」不同**：`edge://extensions` 的重新加载按钮走的是
+   > 扩展管理器的安装流程，可能复用旧的 SW 注册；`runtime.reload()` 是扩展**自己**
+   > 触发的重载，会真正重新求值 `background.js`。
+   >
+   > **实操建议**：
+   > - 有登录态、不想重新登录 → **优先用 `runtime.reload()`**
+   > - 隔离测试环境（无登录态）→ 换新 profile 更快更彻底
+   > - 两者都失败时，才考虑重启浏览器
 2. **运行期 `importScripts` 不可补救**：SW 已安装后再调 `importScripts()` 直接抛 `importScripts() of new scripts after service worker installation is not allowed`。
    所以 `background.js` 顶部那些 try 补载只对「首次求值已包含」的场景兜底，不能指望热补。
 3. **`uniquify` 改名让相对路径算不出来**：`test2.mp4` 已存在 → 实际落盘 `test2 (1).mp4`，而预登记 meta 里的文件名是 `test2.mp4`。
@@ -1983,3 +2002,104 @@ python tools/media-panel-cover-e2e.py --url https://x.com/<user>/media
    排障先读 `chrome.storage.local.vrLibSettings.imgPanel`。
 4. 内容脚本是否注入要用**隔离世界**判断（`chrome.scripting.executeScript`），
    在 MAIN world 里读 `self.VRImgPanel` 永远是 undefined。
+
+---
+
+## 附 · 架构修复轮验收（2026-11-18 新增）
+
+> 本轮对应 `docs/MAIN-TRACK.md` §一之二。**全量回归 54/54 套件全绿。**
+> 新增 11 个测试套件 / 215 条断言，全部为 Node 单测（不联网、不碰真实库）。
+
+### 新增套件清单
+
+| 套件 | 断言 | 覆盖 |
+|---|---|---|
+| `test-enum-targets.js` | 33 | URL → 博主身份（6 平台，含保留字/作品页/近似域名排除） |
+| `test-enum-pager.js` | 22 | 分页纯构造器（5 平台 + 断点 cursor/restore） |
+| `test-enum-normalize.js` | 20 | item 归一（两条批量链路字段并集 + 批内去重） |
+| `test-enum-store.js` | 20 | 断点持久化（`markInterrupted` / TTL 清理 / 错误上限） |
+| `test-enum-adapters.js` | 15 | 注册表 + B站 adapter（含 wbi 签名） |
+| `test-enum-adapters2.js` | 21 | 抖音 / X / 小红书 / 微博 adapter |
+| `test-enum-pager-adapter.js` | 11 | pager 双路径路由（有 adapter 走 adapter，无则内置策略） |
+| `test-enum-runner.js` | 16 | 枚举执行器（翻页/去重/上限/断点/错误/取消/格式转换） |
+| `test-offline-export.js` | 28 | 离线库生成（数据裁剪/外部 data.js/相对路径/安全约束） |
+| `test-offline-sync.js` | 15 | 自动维护（防抖/幂等/forceHtml/status） |
+| `test-trash-refguard.js` | 14 | 引用删除双向保护 + **前提核实**（refCount 语义） |
+| `test-site-original-rules.js` | 6（57 用例） | 原图派生 47 组 CDN 规则：逐条真实 URL 验证 + 3 条安全约束（非目标域名不改写 / 原始 URL 返回空 / 非法输入不抛错） |
+| `test-sw-download.js` | 11 | 下载清理三态（C2）：`cleanup: ok/failed/unknown`；含「removeFile 没报错但文件仍在」 |
+| `test-enum-store-dual.js` | 13 | `session`+`local` 双写（C3）：SW 重启后从 backup 恢复、回填 primary、`markInterrupted` |
+| `test-m3u8-byterange.js` | 16 | `EXT-X-BYTERANGE`/`EXT-X-MAP` 解析 + fMP4 init 去重（C4）；含 `stripRepeatedInit` 丢 `moov` 的回归 |
+| `test-enum-collection.js` | 18 | B站合集枚举（E2）：合集 URL 识别（不被误判成整博主）、`seasons_archives_list` 端点构造、archives 解析、端到端 pager 与断点恢复 |
+| `test-vr-send-to-tab.js` | 10 | 消息下发三级降级（D5）：首次成功不补注入 / 无接收端→补注入→重发成功 / 其它原因不补注入 / 补注入抛错不崩 / 无 tabId / `noRetry` / 5 处接线核对 |
+| `test-root-guard-inspect.js` | 16 | 库根内容校验（D1）：6 态判定（未选/无权限/空目录/不像库/索引损坏/正常）+ 换盘路径不同不误判 + **纯读不写盘** |
+| `test-enum-disappeared.js` | 9 | `masterIds`/`disappeared`（D3）：首次枚举 / 少几条 → 精确列出消失 ID / **中断与出错都不更新快照** / 上限截断 2000 / 跨页去重 |
+| `test-enum-incremental.js` | 9 | 增量同步（D2）：整页已知即停翻页 / masterIds **合并**不覆盖 / **不更新 disappeared**（提前停≠被删）/ 全量模式回归 / 任务不被 start 重建 |
+| `test-enum-bangumi.js` | 22 | B站番剧（D10）：`ss`/`ep` 两类 URL 识别、`pgc/view/web/season` 端点、**duration 毫秒→秒**、整季不分页、`code≠0` 报错；**三态任务键互不相同** + `store.buildKey` 与 `targets.targetKey` 规则一致 |
+
+> **D11 拆分说明**：`test-panel-css.js` 已改为同时读 `image-panel-style.js` 与 `image-panel.js` 的文本。
+> 它是**文本契约测试**（断言某选择器必须带某声明），与代码在哪个文件无关；
+> CSS 外移后只读原文件会让 5 条断言假失败（2026-11-18 实测）。
+
+### 真机验证（Edge 157 + 登录态，端口 9480）
+
+| 项 | 结果 |
+|---|---|
+| B站整博主枚举 | **18/18**：登录态 → 拿 wbi key → 签名 → 请求 `code:0` → adapter 解析 20 条/页（总 43）→ 转 batch 格式 |
+| 离线库全链路 | 双击 `离线库.html` → 自动跳转 → **264 条渲染 / 32 张缩略图加载**（`naturalWidth > 0`） |
+| 库页「离线库」按钮 | 点击 → 同步 264 条 → toast 提示位置 |
+| 引用重指 | 构造 `B.refOf=A` → 删 A → 日志显示走 `refOnly` 分支（见下「关键发现」） |
+| 越界条目管理（B3） | 造 2 条 `outOfRoot` → 提示条显示「另有 2 条」→ 点「查看并处理」→ 弹窗 2 行（文件名/路径/仅删索引）→ 确认后 2→1 行、索引实际删除、提示条同步为 1 条 |
+| 原图派生（C1） | `originalOf()` 端到端 7/7：1688 / Twitter / Pinterest / 微博 / 京东 / 豆瓣（原有规则未回归）/ B站 均正确派生 |
+| B站合集枚举（E2） | **24/24**：合集页 URL → `collectionId=1950143` → `seasons_archives_list` → 枚举 11 条（短视频合集共 11）→ 翻页 2 页 → `authorFull=何同学(@163637592)` |
+| 枚举页三态（E3） | **17/17**（从扩展页 `enumerate.html` 发消息）：①合集 11 条、条目带 `bvid`/`platform=bilibili`、`batchItems.site=bilibili`（**决定归档目录不落「其他网页」**）②番剧 18 集、`duration=421`（**毫秒→秒换算正确**，原值 421000ms）③整博主 20 条且**无 -352 风控**（wbi 生效）④普通视频页被拒 `not-an-owner-url` |
+| 枚举接下载链路（E3） | **9/9**（**从扩展页** `chrome.runtime.sendMessage` 发 `vrEnum.owner`）：路由可达 → 合集 11 条 / 整博主 20 条 → `batchItems` 带 `candidates` 数组与 `authorFull` → 普通视频页被拒 `not-an-owner-url` |
+| 更新后补注入（D6） | **8/8**：`vrReinjectCoreScripts()` 存在 → 现有 tab 上 `__vrContentLoaded`(隔离世界) 与 `__vrNetSniffHooked`(MAIN world) 均置位 → **重复注入一次后标记仍为真** → 再发一个请求 `__vrNetSniff.scans` 只 +1（**证明没有双重 hook**） |
+| 消息下发降级（D5） | 真机确认 `chrome.runtime.getContexts({contextTypes:['TAB']})` 在 Edge 157 **返回 0 个 context**（即使内容脚本在跑）→ 故改用「失败→补注入→重试」；降级逻辑本身由 `test-vr-send-to-tab.js` 10 条覆盖 |
+| SPA 导航感知（D7） | `net-sniff.js`(MAIN world) 包 `history.pushState/replaceState` → `postMessage({action:'vrSpaNav'})` → `video-overlay.js`(隔离世界) 重置 `linkDone` 并重扫。**只认同源 + `source===window`**；`popstate` 原本已有 |
+| CSS 外移后样式完好（D11） | **8/8**：`VRImgPanelStyle` 已注入 → CSS **10282 字符**（含 `.vr-float` 规则）→ `imgPanel=true` 时面板宿主创建 → shadow 内 style **10282 字符** → 浮标 `position=fixed`（**样式真的生效**） |
+| **实站·抖音单视频（A6）** | **通过**：`vrVideoOptions` 拿 4 档（1080P/720P/576P/1440P，workId=`7620733931394059562`）→ `vrVideoDownload` 下 1080P → **22.53MB** 落 `抖音/张见识(@4091707616143916)/`，box 链 `ftyp→moov→free→mdat` 完整，已入库 |
+| **实站·小红书批量（A2）** | **通过（并修掉丢文件 bug）**：`vrImg.scan` 扫 34→37 张 → `vrImg.batch` 送 8 张 → `succeeded:8/fail:0`，磁盘新增 **8** 个（544KB）。修复前同一操作是 `succeeded:8` 但磁盘只落 **4** 个 |
+| **实测·批量并发覆盖（新增单测）** | 并发 8 次写同一 relPath（内容 11..88 递增）：修复前 8 报成功 / 磁盘 **1** 个（55B，第 5 次内容）；修复后 8 报成功 / 磁盘 **8** 个（`same.webp` + `same_01..same_07`，逐一对应） |
+| **实站·X 批量（A4）** | **通过**：3 张图片走 `vrBulkDownload` → `{ok:true,total:3,done:3,failed:0}`，耗时 18.9s（符合每条 3–5s 风控延迟），磁盘新增 **3** 个（727.3/181.0/43.4 KB）落 `X/NASA(@NASA)/` |
+| **实站·B站视频（A8）** | **通过**：`vrVideoOptions` 返回 `durl` 720P + `dash` 1080P，下 durl → **104.55MB**，box 链 `ftyp(32)→moov(580318)→free(8)→mdat(109045084)` 完整 |
+| **X 字段双读（照抄 Plucker）** | **11/11**：同一响应切成驼峰/蛇形两种命名，`parseTimeline` 结果必须一致 —— `cursorType\|\|cursor_type`、`moduleItems\|\|module_items`、`sortIndex\|\|sort_index`、`entryType\|\|__typename` 四处全绿。Plucker 源码对这些字段都写 `a \|\| b`，我们原来只认驼峰 → X 换命名会**静默返回空** |
+| **X 同推文合并补全（照抄 Plucker）** | **8/8**：同一条推文出现两次时按 `media id` 合并，不是「先到先得」。钉住四种情形：①只带封面 + 只带 variants → 合并后拿到**真视频流** ②先全后残 → 残缺数据**不覆盖**已有真流 ③两次各带一张不同图 → 合并后**两张都在** ④置顶标记是「或」关系，不被后到的 false 冲掉 |
+| **抖音整博主枚举（403 修复）** | **修复前 `fetch-failed:HTTP 403`，修复后 144 条**：抖音接口要 `a_bogus` 签名，签名在页面 `webmssdk` 里（hook 了 `window.fetch`）。对照实验：SW 里 `fetch` → **403**；抖音标签页里 `fetch` 同一 URL → **200 / 1.26MB 正常 JSON**。已按 host 分流：抖音走 `executeScript` 到页面 MAIN world 取数，其它站点仍走 SW |
+| **B站 UP 主空间批量面板** | **通过**：`space.bilibili.com/<mid>` 注入 `.vr-bulk-btn` → 点「抓取全部」→ **36 条**（= 站点 `page.count` 36，不是漏拉）→ 面板渲染 36 行、**全部按视频显示**（有 bvid 的条目按 video 展示，避免把封面当成图片） |
+| **抖音用户页批量面板** | **通过**：`douyin.com/user/<sec_uid>` 注入面板 → 抓取 **144 条** → 渲染 144 行、全部 `video`、默认全选、`typeFilter=all` |
+| **面板「保存选中」真落盘（B站）** | **通过**：抓 36 条 → 全不选 → 勾 2 条 → 保存选中 → **完成 2/2**，磁盘新增 2 个（0.68 / 0.67 MB，合计 1.35 MB），落在 `B站/天涯神贴清念(@3494366599449160)/` |
+| **面板「保存选中」真落盘（抖音）** | **通过**：抓 144 条 → 勾 2 条 → 保存 → **完成 2/2**，磁盘新增 2 个（19.09 / 18.17 MB，合计 **37.26 MB**），落在 `抖音/张见识(@MS4w…)` |
+| **平台键断裂 → 落错目录（真 bug）** | **修复前**：界面报「完成：2/2」，文件也真落盘了，但落成 `bilibili.com\www.bilibili.com\weibo_矛盾从来不是靠沟通解决的_01.mp4`；**修复后**：`B站\天涯神贴清念(@3494366599449160)\矛盾从来不是靠沟通解决的.mp4`。三处根因：①`toBatchItem` 不透传 `author`/`authorId` ②三处平台映射只认 x/weibo/xhs（bilibili/douyin 全落 `other`）③`siteOf` 认不出平台 → 拿域名当作者目录。**属「成功得不对」**：不报错、有文件、界面显示成功 |
+| **断点误恢复（真 bug）** | **修复前只拿到 3 条，修复后 144 条**：`runner` 原来无条件 `pager.restore(saved.cursor)`，上一轮跑完后 cursor 停在队尾 → 下次点「抓取全部」变成「从队尾续」，只返回最后一页那几条，且**每次都会把队尾断点再写回去，自锁**。现在只在 `status` 为 `running`/`interrupted` 时恢复；`done`/`failed`/增量 一律从头 |
+| **截断误判为完整（真 bug）** | **3 条新断言**：撞 `maxPages`/`limit` 时必须标 `truncated`、**不写 `status:'done'`**、**不覆盖 `masterIds`**、**不算 `disappeared`**。否则会把「没翻到」误标成「博主已删」——备份工具最不能犯的错 |
+
+### 关键发现（与预期不符，必须记录）
+
+**B2「引用删除顺序保护」在正常数据流下不可达。**
+
+- `dedup.refCount(hash)` **计入活跃引用**（只排除 `trashed`/`outOfRoot`）
+- 所以「A 有活跃引用 B」时 `refCount = 2` → `refOnly = true` → **文件不搬**
+- 文件不搬 → `refOf` 仍正确 → **不会悬空**
+
+真机日志实证：`[trash] 只减引用：同内容仍有活跃条目，物理文件保留在原位`。
+
+**因此这条修复是防御性的**，只在三种异常场景生效：
+① `entry.sha256` 缺失 → `refCount=0` → 会搬；
+② 引用条目处于 `trashed`/`outOfRoot` → 被排除 → 会搬；
+③ 查询与搬移之间的竞态。
+
+`test-trash-refguard.js` 里有两条约束断言（「refCount 计入活跃引用」「refOnly 用 refCount>1」），
+**若将来改了 `refCount` 语义，它们会立刻变红**，提醒重新评估该修复是否变成主路径。
+
+### SW 重载方式（修正旧结论）
+
+`TESTING.md §11.3` 曾写「改 `importScripts` 后必须换新 profile」。**2026-11-18 实测修正**：
+`chrome.runtime.reload()` 能让 SW 重新求值且**不丢登录态**（`hasAdapters: false → true`）。
+详见 §11.3 的修正说明。
+
+### 未覆盖（如实登记，不记为「通过」）
+
+| 项 | 原因 |
+|---|---|
+| 抖音 / X / 小红书 / 微博 真机枚举 | 只有 fixture 单测；需各站登录态 |
+| 迁移 / 完整性脚本 | 仍不在 `e2e-all.py` 的 SUITES 内 |

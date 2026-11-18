@@ -45,6 +45,11 @@
         var map = null;
         var seq = 0;
         var isMaster = false;
+        /* 2026-11-18（审计 C4）：byteRange 状态。
+         * prevEnd 记「同一个 URI 上一次下载到哪」，因为 HLS 允许省略 offset
+         * 表示「接着上一个同 URI 的段继续」（fMP4 单文件流的常见写法）。 */
+        var prevEnd = Object.create(null);
+        var pendingRange = null;
 
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
@@ -70,12 +75,31 @@
                 }
             } else if (line.indexOf('#EXT-X-MAP:') === 0) {
                 var mUri = /URI="([^"]+)"/.exec(line);
-                if (mUri) { map = { url: absUrl(mUri[1], baseUrl) }; }
+                if (mUri) {
+                    var mUrl = absUrl(mUri[1], baseUrl);
+                    /* MAP 也可能带 BYTERANGE（init 与媒体段同文件时） */
+                    var mBr = /BYTERANGE="([^"]+)"/.exec(line);
+                    map = { url: mUrl };
+                    if (mBr) {
+                        var parsed = parseByteRange(mBr[1], prevEnd, mUrl);
+                        if (parsed) { map.byteRange = parsed; }
+                    }
+                }
+            } else if (line.indexOf('#EXT-X-BYTERANGE:') === 0) {
+                /* 该标签作用于**下一行**的 URI；先存起来，遇到 URI 时消费 */
+                pendingRange = line.slice('#EXT-X-BYTERANGE:'.length);
             } else if (line.indexOf('#EXT-X-MEDIA-SEQUENCE:') === 0) {
                 var s = parseInt(line.split(':')[1], 10);
                 seq = isNaN(s) ? 0 : s;
             } else if (line.charAt(0) !== '#') {
-                fragments.push({ url: absUrl(line, baseUrl), seq: seq });
+                var fUrl = absUrl(line, baseUrl);
+                var frag = { url: fUrl, seq: seq };
+                if (pendingRange) {
+                    var br = parseByteRange(pendingRange, prevEnd, fUrl);
+                    if (br) { frag.byteRange = br; }
+                    pendingRange = null;
+                }
+                fragments.push(frag);
                 seq++;
             }
         }
@@ -99,16 +123,70 @@
         throw new Error('拉清单失败 ' + String(lastErr && lastErr.message || lastErr) + ' ' + url.slice(0, 80));
     }
 
-    async function fetchBytes(url) {
+    /**
+     * 拉分片字节。可选 byteRange 走 HTTP Range（fMP4 单文件流的常态）。
+     *
+     * 2026-11-18（审计 C4）：原来不带 Range —— 遇到 #EXT-X-BYTERANGE 的清单
+     * （B站/腾讯的 fMP4 常常 init 与媒体段同文件、靠 byteRange 切分），
+     * 每个分片都会把**整个文件**拉一遍：流量爆炸，且拼出来的 mp4 是坏的。
+     *
+     * @param {string} url
+     * @param {{start:number,end:number}|null} byteRange  end 为**开区间**
+     */
+    async function fetchBytes(url, byteRange) {
         var lastErr = null;
+        var useRange = byteRange && isFinite(byteRange.start) && isFinite(byteRange.end)
+            && byteRange.end > byteRange.start;
         for (var attempt = 0; attempt < 3; attempt++) {
             try {
-                var r = await fetch(url, { credentials: 'include' });
+                var opt = { credentials: 'include' };
+                if (useRange) {
+                    opt.headers = { 'Range': 'bytes=' + byteRange.start + '-' + (byteRange.end - 1) };
+                }
+                var r = await fetch(url, opt);
                 if (!r.ok) { throw new Error('HTTP ' + r.status); }
-                return new Uint8Array(await r.arrayBuffer());
+                var buf = new Uint8Array(await r.arrayBuffer());
+                /* 坑：服务器可能忽略 Range 直接回 200 + 整个文件。
+                 * 这时必须自己切，否则「每个分片都拿到整文件」，拼出来是坏的。
+                 * 只有 206（Partial Content）才能信任响应体就是那一段。 */
+                if (useRange && r.status !== 206 && buf.byteLength > (byteRange.end - byteRange.start)) {
+                    buf = buf.subarray(byteRange.start, byteRange.end);
+                }
+                return buf;
             } catch (e) { lastErr = e; await sleep(400 * (attempt + 1)); }
         }
         throw new Error('拉分片失败 ' + String(lastErr && lastErr.message || lastErr) + ' ' + url.slice(0, 80));
+    }
+
+    /**
+     * 解析 EXT-X-BYTERANGE / EXT-X-MAP 的 BYTERANGE 值。
+     *
+     * 语法：`<length>[@<offset>]`
+     * 省略 offset 时，按 HLS 规范接续「**同一个 URI** 的上一次下载结束位置」。
+     *
+     * @param {string} raw              如 "1234@0" / "1234"
+     * @param {object} prevEndByUrl     同 URI 的上一个 end（开区间），会被本函数更新
+     * @param {string} url              当前 URI（用于查/写接续位置）
+     * @returns {{start:number,end:number}|null}  end 为开区间；解析失败返回 null
+     */
+    function parseByteRange(raw, prevEndByUrl, url) {
+        var s = String(raw == null ? '' : raw).trim();
+        if (!s) { return null; }
+        var m = /^(\d+)(?:@(\d+))?$/.exec(s);
+        if (!m) { return null; }
+        var len = parseInt(m[1], 10);
+        if (!isFinite(len) || len <= 0) { return null; }
+        var start;
+        if (m[2] !== undefined) {
+            start = parseInt(m[2], 10);
+        } else {
+            var prev = prevEndByUrl && prevEndByUrl[url];
+            start = (prev != null && isFinite(prev)) ? prev : 0;
+        }
+        if (!isFinite(start) || start < 0) { start = 0; }
+        var br = { start: start, end: start + len };
+        if (prevEndByUrl && url) { prevEndByUrl[url] = br.end; }
+        return br;
     }
 
     function hexToBytes(hex) {
@@ -169,7 +247,8 @@
                 throw new Error('第 ' + (u + 1) + ' 段播放列表没有分片');
             }
             if (pl.map) {
-                parts.push(await fetchBytes(pl.map.url));
+                /* init 段也可能带 byteRange（init 与媒体段同文件） */
+                parts.push(await fetchBytes(pl.map.url, pl.map.byteRange || null));
             }
             var keyInfo = null;
             if (pl.key && pl.key.method === 'AES-128' && pl.key.uri) {
@@ -177,7 +256,7 @@
             }
             var done = 0;
             var chunks = await poolMap(pl.fragments, 4, async function (f) {
-                var data = await fetchBytes(f.url);
+                var data = await fetchBytes(f.url, f.byteRange || null);
                 if (keyInfo) { data = await decryptAes128(data, keyInfo, f.seq); }
                 done++;
                 if (done % 5 === 0 || done === pl.fragments.length) {
@@ -213,19 +292,55 @@
      * fMP4 拼接：每段 m3u8 的 init（ftyp+moov）会重复出现，
      * 播放器只认开头一个。按 MP4 box 走一遍，跳过重复的 init 类 box。
      */
+    /**
+     * fMP4 拼接：每段 m3u8 的 init（ftyp+moov）会重复出现，
+     * 播放器只认开头一个。按 MP4 box 走一遍，跳过重复的 init 类 box。
+     *
+     * ⚠️ 2026-11-18 修复（审计 C4，真 bug）：
+     *   原实现用**单个** `seenInit` 布尔值判断「是不是重复 init」：
+     *     见到 ftyp → seenInit=true；
+     *     紧跟着的 moov 被当成「重复 init」→ **被丢弃**。
+     *   结果：单段 ftyp+moov+moof+mdat 输出成 ftyp+moof+mdat，
+     *   MP4 没有文件头（moov 含全部轨道信息），播放器直接打不开。
+     *   单测 `test-m3u8-byterange.js` 抓到（48 → 36 bytes）。
+     *
+     * 正确做法：以 **ftyp/styp 作为「一组 init 的开头」**，
+     *   第一组整组保留；从**第二组的开头**起才开始跳过，直到遇到非 init box
+     *   （moof/mdat）为止。这样第一组里的 moov 不会被误删。
+     */
     function stripRepeatedInit(buf) {
         var parts = [];
         var p = 0;
-        var seenInit = false;
+        var seenGroup = false;   // 是否已经完整收过第一组 init
+        var skipping = false;    // 当前是否处于「跳过重复 init 组」中
+
+        function isInitBox(t) {
+            return t === 'ftyp' || t === 'styp' || t === 'moov' ||
+                t === 'free' || t === 'sidx';
+        }
+        function isGroupStart(t) {
+            return t === 'ftyp' || t === 'styp';
+        }
+
         while (p + 8 <= buf.length) {
             var size = ((buf[p] << 24) | (buf[p + 1] << 16) | (buf[p + 2] << 8) | buf[p + 3]) >>> 0;
             var type = String.fromCharCode(buf[p + 4], buf[p + 5], buf[p + 6], buf[p + 7]);
             if (size < 8 || p + size > buf.length) { parts.push(buf.subarray(p)); break; }
-            var isInit = type === 'ftyp' || type === 'moov' || type === 'free' || type === 'sidx' || type === 'styp';
-            if (isInit && seenInit) {
-                // 重复 init，跳过
+
+            if (isGroupStart(type) && seenGroup) {
+                /* 遇到第二组（及以后）的 init 开头 → 整组跳过 */
+                skipping = true;
+            }
+
+            if (skipping) {
+                if (!isInitBox(type)) {
+                    /* init 组结束，正常内容从这里开始 */
+                    skipping = false;
+                    parts.push(buf.subarray(p, p + size));
+                }
+                /* 否则：属于重复 init，丢弃 */
             } else {
-                if (isInit) { seenInit = true; }
+                if (isInitBox(type)) { seenGroup = true; }
                 parts.push(buf.subarray(p, p + size));
             }
             p += size;
@@ -313,4 +428,19 @@
             return;
         }
     });
+
+    /* 2026-11-18（审计 C4）：测试钩子。
+     * 本文件是封闭 IIFE（离屏页专用，依赖 chrome.runtime），Node 里没法直接跑。
+     * 但 parsePlaylist / parseByteRange / isFmp4 / stripRepeatedInit 都是纯函数，
+     * 必须能单独验证 —— 否则「支持 EXT-X-BYTERANGE」只是一句没有证据的话。
+     * 只在 CommonJS 环境导出，离屏页里 module 不存在，行为完全不变。 */
+    if (typeof module === 'object' && module && module.exports) {
+        module.exports = {
+            parsePlaylist: parsePlaylist,
+            parseByteRange: parseByteRange,
+            isFmp4: isFmp4,
+            stripRepeatedInit: stripRepeatedInit,
+            concatParts: concatParts
+        };
+    }
 })();

@@ -2736,6 +2736,29 @@
         if (b) { b.addEventListener('click', openMediaLibrary); }
     });
 
+    /* 2026-11-18：枚举页入口。
+     * 为什么单独一页而不是塞进 popup：整博主动辄几百条，popup 那 320px 宽
+     * 装不下网格，且 popup 一失焦就关 —— 枚举要翻几十页，必须能持续停留。
+     * 用普通标签页（不是 popup window）：用户可能要边看边切回来对比。 */
+    function openEnumeratePage() {
+        try {
+            var url = chrome.runtime.getURL('enumerate.html');
+            if (chrome.tabs && chrome.tabs.create) {
+                chrome.tabs.create({ url: url });
+            } else {
+                location.href = url;
+            }
+        } catch (e) {
+            tip('打开枚举页失败：' + e);
+        }
+    }
+    /* 先判存在再取：popup 里可能没有这个按钮（旧缓存/hide 开关），
+     * 直接 addEventListener 会抛 TypeError 打断后面所有绑定。 */
+    (function () {
+        var b = document.getElementById('vrOpenEnum');
+        if (b) { b.addEventListener('click', openEnumeratePage); }
+    })();
+
     /* ==========================================================
      * 媒体库首次引导（ADR-078）
      *

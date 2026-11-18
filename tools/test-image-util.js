@@ -397,6 +397,40 @@ eq('picture 非 picture 父级返回空',
    U.pickLargestPictureSource({ tagName: 'IMG', parentNode: { tagName: 'DIV' } }, 'https://x.com/'), '');
 eq('picture 无父级返回空', U.pickLargestPictureSource({ tagName: 'IMG' }, 'https://x.com/'), '');
 
+/* ---------------- 图床跳转页剥壳（2026-11-18 t66y 实测） ----------------
+ * 现象：一篇帖子 25 条结果里 7 条是 `/l/?i=/i/xxx.jpg` 这种包装页，
+ * 缩略图 0×0、点开打不开。根因是扩展名判定看整条 URL，
+ * query 里的 `.jpg` 骗过了「有图片扩展名」的检查。
+ */
+{
+    eq('剥壳：包装页还原成真图',
+        U.unwrapImageWrapper('https://23img.com/l/?i=/i/2026/11/15/aphrl4.jpg'),
+        'https://23img.com/i/2026/11/15/aphrl4.jpg');
+
+    eq('剥壳：已经是图片地址的不动',
+        U.unwrapImageWrapper('https://23img.com/i/2026/11/15/aphrl4.jpg'), '');
+
+    eq('剥壳：普通图片（带 resize 参数）不是包装页',
+        U.unwrapImageWrapper('https://pbs.twimg.com/media/X.jpg?name=orig'), '');
+
+    eq('剥壳：query 值不是图片的不管',
+        U.unwrapImageWrapper('https://example.com/view?page=2&q=abc'), '');
+
+    eq('剥壳：非 http(s) 返回空',
+        U.unwrapImageWrapper('data:image/png;base64,AAAA'), '');
+
+    eq('剥壳：空输入返回空', U.unwrapImageWrapper(''), '');
+
+    eq('剥壳：完整 URL 作为 query 值也能还原',
+        U.unwrapImageWrapper('https://jump.example.com/go?url=https%3A%2F%2Fcdn.x.com%2Fa.jpg'),
+        'https://cdn.x.com/a.jpg');
+
+    /* 关键安全性：剥壳后的地址不能是包装页自己（防止无限套娃） */
+    ok('剥壳：结果不等于原地址',
+        U.unwrapImageWrapper('https://23img.com/l/?i=/i/a.jpg') !==
+        'https://23img.com/l/?i=/i/a.jpg');
+}
+
 /* ---------------- 汇总 ---------------- */
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail) {

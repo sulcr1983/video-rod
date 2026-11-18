@@ -124,6 +124,43 @@ const first = imgs.find(x => x.url.indexOf('/mw690/a.jpg') >= 0);
 ok('原图候选排第一', first && first.candidates[0] === 'https://wx1.sinaimg.cn/large/a.jpg');
 eq('候选里同时保留显示地址', first && first.candidates[1], 'https://wx1.sinaimg.cn/mw690/a.jpg');
 
+/* ---------------- 未解码图也要按显示尺寸过滤（2026-11-18） ----------------
+ * 真机证据（t66y，同一页面连扫 6 次）：
+ *   修复前：15 → 17 → 16 → 19 → 18 → 17 条（并集 20，每次都出现的只有 12）
+ *   修复后：11 → 12 → 12 → 12 → 12 条
+ * 差异来自「站点图标这类**不懒加载**的图」：首扫时还没解码（naturalWidth=0），
+ * 原来直接跳过尺寸门槛 → 收进清单；后续扫描解码完成 → 又被挡掉。
+ * 用户看到的就是「第一次 15 张，之后 12 张」，以为嗅探不准。
+ *
+ * 判据改用 **CSS 显示尺寸**（getBoundingClientRect）：DOM 一就绪就确定，
+ * 与图片是否下载完无关。
+ */
+{
+    const lazyDoc = makeDoc([
+        /* 未解码 + 显示 32×32 的站点图标 → 必须挡（原来会混进来） */
+        new Img('https://cdn.example.com/icon-32.png', 0, 0, 32, 32),
+        /* 未解码 + 显示 980×620 的正文大图 → 必须留 */
+        new Img('https://cdn.example.com/body-big.jpg', 0, 0, 980, 620),
+        /* 未解码 + 显示很小，但有 data-src 懒加载兜底 → 必须留（真图在后面） */
+        new Img('https://cdn.example.com/1x1.gif', 0, 0, 24, 24,
+            { 'data-src': 'https://cdn.example.com/real-large.jpg' }),
+        /* 未解码 + 显示 1200×120 的细长横幅 → 长宽比 10 > 6，必须挡 */
+        new Img('https://cdn.example.com/banner-thin.png', 0, 0, 1200, 120)
+    ]);
+    const got = U.scanImages(lazyDoc, {
+        minWidth: 100, minHeight: 100, minShow: U.PANEL_MIN_SHOW, dedupe: true
+    }).map(x => x.url);
+
+    ok('未解码的小图标被挡（尺寸未解码不等于放行）',
+        !got.some(u => u.indexOf('icon-32') >= 0));
+    ok('未解码的正文大图保留',
+        got.some(u => u.indexOf('body-big') >= 0));
+    ok('未解码但有 data-src 的懒加载图保留',
+        got.some(u => u.indexOf('real-large') >= 0));
+    ok('未解码的细长横幅被挡（长宽比超限）',
+        !got.some(u => u.indexOf('banner-thin') >= 0));
+}
+
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 if (fail) {
     console.log('\n失败明细：');

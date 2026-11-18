@@ -1,9 +1,14 @@
 # 文档索引与可信度分级
 
-> 更新：2026-11-15 ｜ 共 **89 份**文档（2026-11-13 新增 `IMAGE-PIPELINE-REDESIGN.md`、
-> `TEST-PLAN-IMAGE-PIPELINE.md`；2026-11-15 新增 `RESEARCH-TRASH-RESCAN-AND-REVEAL.md`；
-> 审计报告在 `deliverables/reviews/2026-11-13-图片批量失败审计.md`）
+> 更新：**2026-11-17（文档收敛）** ｜ 现行 **37 份** + 领域汇编 **6 份** + 归档 **64 份**
 > 用途：接手时先看这份，知道**哪份能信、哪份只能当历史看**。
+>
+> **🚨 先读 `docs/DOC-MAP.md`**：它给出三条阅读路径（现在是什么样 / 为什么这么设计 / 还有什么没做），
+> 不必从头读 87 份。本文是它的详细版。
+>
+> **🔗 路径约定（2026-11-17 起）**：本索引与各文档中若提到已被归档的文件名
+> （如 `IMAGE-I3-IMPL.md`、`YT-FEASIBILITY.md`），其物理位置一律为 **`docs/archive/<原名>`**。
+> 归档全部走 `git mv`，`git log --follow` 可追溯。**为减少改动面，未对 60+ 处历史引用逐条改写路径。**
 
 ---
 
@@ -101,6 +106,7 @@
 | `COMPETITOR-EXTENSIONS.md` | **竞品扩展拆解总账**：Tubly/DownXVideo/Chrono/Video Downloader Plus/Pro/笃笃 + **ImageAssistant 1.70.7**（网络缓存/全 frame/规则表），逐条标注「抄/不抄」与落点 |
 | `COMPETITOR-PLUCKER.md` | **Plucker XBD 5.9 逐层拆解**：`XBD__*` 消息协议表、GraphQL 拦截点与时间线解析（四级媒体回退/最高码率）、右侧面板、命名模板与目录、下载队列；含复用矩阵、≈4 天工作量与真机定性结论（ADR-084） |
 | `HLS-SITE-DIAGNOSIS.md` | **HLS 站点下载诊断**：xx.knit.bid 实测（嗅探/取流/悬浮键三段分别验证），定位真实断点 |
+| `IMAGE-SNIFF-GENERIC-DEFECTS.md` | **图片嗅探「为什么会漏」通用缺陷分析**（2026-11-18 实测+竞品源码对照：结果不确定性/未解码不过滤/包装页混入；含修复前后数据） | **S**（可复现） |
 | `IMAGE-PIPELINE-REDESIGN.md` | **图片管线 v2 设计**：发现层/执行层各一份、统一 item/消息/失败码、FSA 强制、灰度与验收（ADR-080/081/082） |
 | `TEST-PLAN-IMAGE-PIPELINE.md` | **图片管线 v2 测试方案**：隔离实例批量、登录态只读、夹具/断言/反证/门禁接入 |
 | `VIDEO-XHS-ENHANCEMENT.md` | **视频清晰度 + 小红书增强技术实现**：排序规则、HLS/DASH 解析、SSR 快路径、Range 分段、实测数据 |
@@ -111,20 +117,50 @@
 
 ---
 
-## 五、H 级 · 历史（交接与审计留痕）
+## 五、H 级 · 历史（交接与审计留痕，**已移入 `docs/archive/`**）
+
+> **2026-11-17 归档**：以下 13 份纯历史文档已 `git mv` 到 `docs/archive/`。
+> 物理保留、可追溯（`git log --follow` 仍可见）；主目录只留现行文档。
+> 判定依据：DOC-INDEX 原本就标为 H 级 + 内容为交接/快照/阶段汇报，不含可复现结论。
 
 | 文档 | 时间 | 说明 |
 |---|---|---|
-| `HANDOFF-2026-11-06-ROUND2.md` | 2026-11-06 | **最新交接**，含本轮全部修复记录（21 节） |
-| `HANDOFF-2026-11-06.md` | 2026-11-06 上午 | 诊断交接，§6 根因档案仍有价值 |
-| `HANDOFF-I5-WIP.md` | 2026-11-04 | I5 进行中快照 |
-| `HANDOFF-20261019.md` | 2026-10-19 | 旧交接 |
-| `HANDOFF.md` | 2026-10 | 最早交接 |
-| `E2E-AUDIT-2026-11-06.md` | 2026-11-06 | E2E 审计记录 |
-| `FIRST-RUN-AUDIT-2026-11-06.md` | 2026-11-06 | 首轮黑盒验收 |
-| `TODO-VERIFIED.md` | 2026-10-25 | 已被 BACKLOG 取代 |
+| `archive/HANDOFF-2026-11-06-ROUND2.md` | 2026-11-06 | 含本轮全部修复记录（21 节） |
+| `archive/HANDOFF-2026-11-06.md` | 2026-11-06 上午 | 诊断交接，§6 根因档案仍有价值 |
+| `archive/HANDOFF-I5-WIP.md` | 2026-11-04 | I5 进行中快照 |
+| `archive/HANDOFF-20261019.md` | 2026-10-19 | 旧交接 |
+| `archive/HANDOFF.md` | 2026-10 | 最早交接 |
+| `archive/E2E-AUDIT-2026-11-06.md` | 2026-11-06 | E2E 审计记录 |
+| `archive/E2E-BUTTON-AUDIT-2026-11-06.md` | 2026-11-06 | 全量按钮审计（99 按钮实点 91） |
+| `archive/FIRST-RUN-AUDIT-2026-11-06.md` | 2026-11-06 | 首轮黑盒验收 |
+| `archive/TODO-VERIFIED.md` | 2026-10-25 | 已被 BACKLOG 取代 |
+| `archive/INVENTORY-2026-11-06.md` | 2026-11-06 | 全面盘点快照 |
+| `archive/STATUS-20261104.md` | 2026-11-04 | 阶段性汇报 |
+| `archive/MERGE-20261104.md` | 2026-11-04 | 两线合并记录 |
+| `archive/READINESS-20261104.md` | 2026-11-04 | 就绪度评估 |
 
-> ⚠️ `TODO-VERIFIED.md` 里的「未完成清单」**已过期**，状态以 `BACKLOG.md` 为准。
+> ⚠️ `archive/TODO-VERIFIED.md` 里的「未完成清单」**已过期**，状态以 `BACKLOG.md` 为准。
+
+---
+
+## 五之二、未纳入本索引的现行文档（**2026-11-17 发现，需补**）
+
+以下 17 份文档在 `docs/` 里但**从未被本索引收录**，其中多份是现行权威：
+
+| 文档 | 实际地位 |
+|---|---|
+| `ARCHITECTURE-HEALTH-AUDIT.md` | **本次审计报告**，含架构判断与 P0–P3 |
+| `COMPETITOR-BATCH-ENUM.md` | **竞品整博主批量协议实证** |
+| `ENUMERATE-LAYER-DESIGN.md` | **枚举层架构设计** |
+| `DOWNLOAD-PIPELINE.md` | 下载主链路真源（三条主干 + 13 入口盘点） |
+| `SNIFF-RULES.md` | 嗅探规则 |
+| `TEST-PLAN.md` | 测试方案 |
+| `COMPETITOR-GENERIC-GAP.md` | 竞品通用差距 |
+| `EXTENSION-RESEARCH-AIX-CHRONO-TUBLY.md` | 竞品技术研究 |
+| `YT-COMPETITOR-BENCHMARK.md` / `YT-FINAL-RECOMMENDATION.md` / `YT-DELIVERY-REPORT.md` / `YT-CONCURRENCY-SPEED-ASSESSMENT.md` | YouTube 线研究 |
+| `YOUTUBE-QUEUE-REQUIREMENT-REVIEW.md` / `YOUTUBE-QUEUE-A-DELIVERY.md` / `YOUTUBE-E2E-REPORT.md` | YouTube 队列线 |
+
+**这是本索引自身的缺陷**：一个号称「接手先看这份」的索引，漏了最核心的下载链路文档。建议补录时按 S/A/P/H 重新定级。
 
 ---
 

@@ -142,6 +142,21 @@
         return function push(url, w, h, cands, bg, srcOnly, source, el) {
             var u = U.absolutize(url, location.href);
             if (!u || /^data:/i.test(u)) { return; }
+            /* 图床跳转页剥壳（2026-11-18）。
+             *
+             * 为什么要在这里做：`IMG_EXT_RE` 下面的判定看的是**整条 URL**，
+             * 而 `https://23img.com/l/?i=/i/2026/11/15/aphrl4.jpg` 这种包装页
+             * query 里带着 `.jpg`，于是被当成「有图片扩展名」放行 ——
+             * 结果清单里多出一条 0×0、点开打不开的条目
+             * （t66y 真机实测：25 条里 7 条是这种，占 28%）。
+             * 剥成真图后，若真图本来就在结果里，会被 keyOf+have 去重挡住，
+             * 正好实现「包装页消失、真图保留」。 */
+            try {
+                if (typeof U.unwrapImageWrapper === 'function') {
+                    var realU = U.unwrapImageWrapper(u);
+                    if (realU) { u = realU; }
+                }
+            } catch (eUnwrap) { /* 剥壳失败就用原地址，不影响采集 */ }
             if (AV_RE.test(u)) { return; }
             if (U.isSvgUrl(u) || U.isPlaceholderUrl(u)) { return; }
             if (u === location.href || u === document.URL) { return; }
@@ -168,6 +183,42 @@
             var k = keyOf(U, u);
             if (!k || have[k]) { return; }
             if (out.length >= cap) { return; }
+            /* ==========================================================
+             * 确定性判死（2026-11-18，修「同一页面每次扫描结果都不一样」）
+             * ----------------------------------------------------------
+             * 真机证据：同一页面、同一份代码，连扫 6 次 → 条数
+             *   15 → 17 → 16 → 19 → 18 → 17
+             *   并集 20 条，但**每次都出现的只有 12 条**。
+             * 用户点两次看到不同数量，自然会觉得「嗅探不准 / 漏图」。
+             *
+             * 根因不在这一层，而在 finishSizes：它用「网络预载 + 2500ms 超时」
+             * 判死 —— 网络快就把死链判掉，网络慢就当超时保留，
+             * 于是**结果随网络抖动**。
+             *
+             * DOM 本身就带确定性信号：
+             *   el.complete === true && naturalWidth === 0
+             *   → 这个 <img> 已经「加载完毕但没有任何像素」，即页面自己都没取到。
+             *     这是浏览器已经做过的判定，不需要我们再发一次请求去猜。
+             * 反过来 complete === false 表示**还在加载**，绝不能判死。
+             *
+             * 只对 DOM 通道生效（bg / srcOnly / network 没有 el）：
+             * 那些本来就没有元素可问，保持原有逻辑。
+             *
+             * 必须排除「懒加载占位」：占位图本身就是 complete + 0 像素，
+             * 但真地址在 data-src/srcset 里 —— 判死会把真图整批误杀。
+             * ========================================================== */
+            if (el && !bg && !srcOnly) {
+                try {
+                    var lazyish = !!(el.getAttribute('data-src') ||
+                        el.getAttribute('data-original') ||
+                        el.getAttribute('data-lazy-src') ||
+                        el.getAttribute('data-original-src') ||
+                        (el.srcset && String(el.srcset).trim()));
+                    if (el.complete === true && (Number(el.naturalWidth) || 0) === 0 && !lazyish) {
+                        return;   /* 页面自己都没加载出来，且没有懒加载兜底 → 确定死图 */
+                    }
+                } catch (eDead) { /* 判死失败就照常收，不因异常丢图 */ }
+            }
             have[k] = 1;
             var item = {
                 url: u,

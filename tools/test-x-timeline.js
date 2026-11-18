@@ -231,6 +231,95 @@ const GIF = {
     eq('G1 同 statusId 只保留一条', r.tweets.length, 1);
 }
 
+/* ---------------- M. 同一推文重复出现 → 合并补全（照抄 Plucker） ----------------
+ * 场景（真实会发生）：X 分页里同一条推文出现两次，第一次只带 media_url_https
+ * （封面），第二次才带 video_info.variants（真流）。
+ * 我们原来 `if (seen[tid]) continue` 直接丢后到的 → 「有视频却只下到封面」。
+ * Plucker 是建 Map(by id) 逐字段补全，这里把行为钉死。
+ */
+{
+    /* 第一次：video 类型但**没有** variants（拿不到可播地址） */
+    const noVariants = {
+        type: 'video', id_str: 'M7001',
+        media_url_https: 'https://pbs.twimg.com/media/THUMB_7.jpg'
+    };
+    const withVariants = {
+        type: 'video', id_str: 'M7001',
+        media_url_https: 'https://pbs.twimg.com/media/THUMB_7.jpg',
+        video_info: {
+            variants: [
+                { content_type: 'video/mp4', bitrate: 200000, url: 'https://video.twimg.com/a.mp4' },
+                { content_type: 'video/mp4', bitrate: 2000000, url: 'https://video.twimg.com/b.mp4' }
+            ]
+        }
+    };
+    const r = T.parseTimeline(payload([{
+        type: 'TimelineAddEntries',
+        entries: [
+            entry(171717, 2, tweet(171717, { media: [noVariants], text: '一条视频' })),
+            entry(171717, 2, tweet(171717, { media: [withVariants], text: '一条视频' }))
+        ]
+    }]));
+    eq('M1 仍只有一条', r.tweets.length, 1);
+    eq('M2 合并后拿到真视频流（不是封面）',
+        r.tweets[0].media[0].url, 'https://video.twimg.com/b.mp4');
+    eq('M3 合并后 kind 是 video', r.tweets[0].media[0].kind, 'video');
+}
+{
+    /* 反向顺序：先有真流，后到的那份只有封面 —— 不能把已有真流冲掉 */
+    const r = T.parseTimeline(payload([{
+        type: 'TimelineAddEntries',
+        entries: [
+            entry(181818, 3, tweet(181818, {
+                text: '先全后残',
+                media: [{
+                    type: 'video', id_str: 'M7002',
+                    media_url_https: 'https://pbs.twimg.com/media/T8.jpg',
+                    video_info: {
+                        variants: [{ content_type: 'video/mp4', bitrate: 500000, url: 'https://video.twimg.com/keep.mp4' }]
+                    }
+                }]
+            })),
+            entry(181818, 3, tweet(181818, {
+                text: '先全后残',
+                media: [{ type: 'video', id_str: 'M7002', media_url_https: 'https://pbs.twimg.com/media/T8.jpg' }]
+            }))
+        ]
+    }]));
+    eq('M4 后到的残缺数据不覆盖已有真流',
+        r.tweets[0].media[0].url, 'https://video.twimg.com/keep.mp4');
+}
+{
+    /* 两次各带一张**不同**的图 → 合并后应有两张（不是只留第一张） */
+    const r = T.parseTimeline(payload([{
+        type: 'TimelineAddEntries',
+        entries: [
+            entry(191919, 4, tweet(191919, { text: '多图分批', media: [PHOTO] })),
+            entry(191919, 4, tweet(191919, {
+                text: '多图分批',
+                media: [{ type: 'photo', id_str: '9009', media_url_https: 'https://pbs.twimg.com/media/P9.jpg' }]
+            }))
+        ]
+    }]));
+    eq('M5 分批出现的两张图合并后都在', r.tweets[0].media.length, 2);
+    eq('M6 第一张保留', r.tweets[0].media[0].id, '9001');
+    eq('M7 第二张也保留', r.tweets[0].media[1].id, '9009');
+}
+{
+    /* 置顶/引用标记是「或」关系，合并后不能被后到的 false 冲掉 */
+    const r = T.parseTimeline(payload([
+        {
+            type: 'TimelinePinEntry',
+            entry: entry(202020, 5, tweet(202020, { text: '置顶' }))
+        },
+        {
+            type: 'TimelineAddEntries',
+            entries: [entry(202020, 5, tweet(202020, { text: '置顶' }))]
+        }
+    ]));
+    eq('M8 合并后仍标记为置顶', r.tweets[0].isPinned, true);
+}
+
 /* ---------------- H. 非时间线响应 ---------------- */
 {
     eq('H1 空对象不抛错', T.parseTimeline({}).tweets.length, 0);
@@ -334,6 +423,126 @@ const GIF = {
         eq('L5 可见性包装的纯文字推文也保留', r.tweets[1].media.length, 0);
         eq('L6 Bottom cursor 取到', r.nextCursor, 'FIXTURE_CURSOR_NEXT');
     }
+}
+
+/* ---------------- N. 驼峰/蛇形双读（照抄 Plucker XBD） ----------------
+ * 背景：X 的 GraphQL 响应在不同版本/端点下混用两种命名，实测 Plucker 每处都写
+ * `a || b`（cursorType||cursor_type、moduleItems||module_items、
+ * sortIndex||sort_index、entryType||__typename）。我们原来只认驼峰，
+ * 一旦 X 换命名，解析会**静默返回空** —— 不报错、只是「什么都抓不到」。
+ * 这里把两种命名的解析结果钉成一致。
+ */
+{
+    /* 同一条响应，只切换字段命名风格 */
+    function mk(naming) {
+        const n = (camel, snake) => (naming === 'camel' ? camel : snake);
+        const media = {
+            id_str: 'M1',
+            type: 'photo',
+            media_url_https: 'https://pbs.twimg.com/media/N1.jpg'
+        };
+        return {
+            data: {
+                user: {
+                    mediaTimeline: {
+                        timeline: {
+                            instructions: [{
+                                type: 'TimelineAddEntries',
+                                entries: [
+                                    {
+                                        content: {
+                                            [n('entryType', '__typename')]: 'TimelineTimelineItem',
+                                            itemContent: {
+                                                tweet_results: {
+                                                    result: {
+                                                        __typename: 'Tweet',
+                                                        rest_id: 'N9001',
+                                                        legacy: {
+                                                            full_text: '蛇形字段测试',
+                                                            created_at: 'Wed Nov 18 10:00:00 +0000 2026',
+                                                            extended_entities: { media: [media] }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        [n('sortIndex', 'sort_index')]: '100'
+                                    },
+                                    {
+                                        content: {
+                                            [n('entryType', '__typename')]: 'TimelineTimelineCursor',
+                                            [n('cursorType', 'cursor_type')]: 'Bottom',
+                                            value: 'CURSOR_BOTTOM'
+                                        }
+                                    }
+                                ]
+                            }]
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    const camelR = T.parseTimeline(mk('camel'));
+    const snakeR = T.parseTimeline(mk('snake'));
+
+    eq('N1 蛇形 cursor_type 也能取到底部游标', snakeR.nextCursor, 'CURSOR_BOTTOM');
+    eq('N2 驼峰与蛇形解析出同样条数',
+        snakeR.tweets.length, camelR.tweets.length);
+    eq('N3 驼峰与蛇形都解析出 1 条', snakeR.tweets.length, 1);
+    eq('N4 驼峰与蛇形取到同一媒体 URL',
+        (snakeR.tweets[0] && snakeR.tweets[0].media[0] && snakeR.tweets[0].media[0].url),
+        (camelR.tweets[0] && camelR.tweets[0].media[0] && camelR.tweets[0].media[0].url));
+}
+{
+    /* 模块内推文（会话线程）：Plucker 写 ins.moduleItems || ins.module_items */
+    function mkModule(naming) {
+        const key = naming === 'camel' ? 'moduleItems' : 'module_items';
+        return {
+            data: {
+                instructions: [{
+                    type: 'TimelineAddToModule',
+                    [key]: [{
+                        item: {
+                            itemContent: {
+                                tweet_results: {
+                                    result: {
+                                        __typename: 'Tweet',
+                                        rest_id: 'N9002',
+                                        legacy: {
+                                            full_text: '模块内推文',
+                                            created_at: 'Wed Nov 18 11:00:00 +0000 2026',
+                                            extended_entities: {
+                                                media: [{
+                                                    id_str: 'M2',
+                                                    type: 'photo',
+                                                    media_url_https: 'https://pbs.twimg.com/media/N2.jpg'
+                                                }]
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }]
+                }]
+            }
+        };
+    }
+    eq('N5 驼峰 moduleItems 能解析模块内推文',
+        T.parseTimeline(mkModule('camel')).tweets.length, 1);
+    eq('N6 蛇形 module_items 同样能解析',
+        T.parseTimeline(mkModule('snake')).tweets.length, 1);
+}
+{
+    /* pick2 自身语义：驼峰为空串时要让位给蛇形（X 会用 '' 表示「没有」） */
+    const I = T._internal;
+    eq('N7 pick2 驼峰优先', I.pick2({ a: 1, b: 2 }, 'a', 'b'), 1);
+    eq('N8 pick2 驼峰缺失回退蛇形', I.pick2({ a: undefined, b: 2 }, 'a', 'b'), 2);
+    eq('N9 pick2 驼峰空串回退蛇形', I.pick2({ a: '', b: 2 }, 'a', 'b'), 2);
+    eq('N10 pick2 都缺失返回 undefined', I.pick2({}, 'a', 'b'), undefined);
+    eq('N11 pick2 非对象不抛错', I.pick2(null, 'a', 'b'), undefined);
 }
 
 console.log('\n' + pass + '/' + (pass + fail) + ' PASS');

@@ -35,6 +35,11 @@
   <script src="js/library/move-picker.js" defer></script>
   <script src="js/library/ctx-menu.js" defer></script>
   <script src="js/library/export-kit.js" defer></script>
+  <!-- 离线库导出（2026-11-18）：zip 打包 + 「索引 → 可双击打开的 HTML」。
+       只读查看器，零 chrome.* 依赖，内联索引避免 file:// 的 CORS 拦截。 -->
+  <script src="js/library/zip.js" defer></script>
+  <script src="js/library/offline-export.js" defer></script>
+  <script src="js/library/offline-sync.js" defer></script>
   <script src="js/library/app.js" defer></script>
   <!-- 下载文件名保护：本页 js/library/settings.js 会直调 chrome.downloads.download，
        与 popup/options 同口径，需经 SW 预记账才能让 onDeterminingFilename 的 suggest 命中。 -->
@@ -168,6 +173,13 @@
              换目录只保留顶部路径卡一个入口，空出的位置给「设置」——左栏底部放库级工具，
              页头右上就只剩「扫描」这一组动作。 -->
         <button class="btn small" id="settingsBtn" title="设置"><svg class="i" style="width:12px;height:12px"><use href="#i-settings"/></svg>设置</button>
+        <!-- 2026-11-18：离线库入口。
+             用途：电脑坏了 / 拷移动硬盘时，直接双击库根的「离线库.html」就能看。
+             这里给一个扩展内的快捷方式，不用去文件管理器找。
+             行为：① 立即同步一次（保证最新）② 用 downloads.show 在文件管理器里定位 -->
+        <button class="btn small" id="offlineBtn" title="生成并在文件管理器中显示离线库（可拷到别的电脑直接打开）">
+          <svg class="i" style="width:12px;height:12px"><use href="#i-external-link"/></svg>离线库
+        </button>
       </div>
     </div>
   </aside>

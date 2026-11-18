@@ -17,6 +17,23 @@
 (function () {
     'use strict';
 
+    /* ---------- 幂等保护（2026-11-18，审计 D6） ----------
+     * 扩展更新/重载后，已打开页面里的旧 MAIN world 脚本虽然还活着，
+     * 但它内部所有 chrome.* 调用都会失效；更麻烦的是 Chrome 不会给
+     * 已开页面重新注入 content script，于是「必须刷新才生效」。
+     *
+     * onInstalled 会补注入本文件 —— 而本文件 hook 的是 window.fetch 与
+     * XMLHttpRequest.prototype。无脑重跑 = **双重包装**：同一个请求被扫两次、
+     * 上报两次，后台看到重复媒体，去重账本被无谓消耗。
+     *
+     * 所以先判：已经包装过就直接退出。
+     * 标记放在 window 上（MAIN world 与页面共享），用带命名空间的名字避免冲突。
+     */
+    try {
+        if (window.__vrNetSniffHooked) { return; }
+        window.__vrNetSniffHooked = 1;
+    } catch (e0) { /* 标记失败也要继续，不能挡住主功能 */ }
+
     var MAX_BODY = 1.5 * 1024 * 1024;   // 单个响应最多扫 1.5MB
     var PER_SCAN = 8;                   // 单次响应最多上报几条（防止一锅端）
     var MAX_REPORT = 200;               // 每页累计上限
@@ -369,5 +386,36 @@
             };
             window.Image.prototype = OrigImage.prototype;
         }
+    } catch (e) { /* 忽略 */ }
+/* ---------------- History API（SPA 路由，2026-11-18 审计 D7） ----------------
+     * 问题：很多站点换页只调 pushState/replaceState，**不触发 popstate**。
+     *   video-overlay 只监听了 popstate，于是换到「没视频的页面」后按钮还挂着，
+     *   换到「有视频的页面」后按钮又不出现 —— 用户得手动刷新才对。
+     *
+     * 做法：在 MAIN world 包一层 history API，路由变化时 postMessage 出去。
+     *   浮层（隔离世界）收到后重置扫描状态。
+     *
+     * 为什么用自定义 action 名而不是塞进 content-script 的白名单：
+     *   content-script 的 _pageListener 对白名单 action 会 stopImmediatePropagation，
+     *   那会把消息吞掉，浮层就收不到了。用一个它不认识的名字，两边都能各取所需。
+     */
+    try {
+        var NAV_ACTION = 'vrSpaNav';
+        function notifyNav() {
+            try {
+                window.postMessage({ action: NAV_ACTION, href: location.href }, location.origin);
+            } catch (e) { /* 忽略 */ }
+        }
+        ['pushState', 'replaceState'].forEach(function (m) {
+            var orig = history[m];
+            if (typeof orig !== 'function') { return; }
+            history[m] = function () {
+                var ret = orig.apply(this, arguments);
+                /* 原样返回，绝不改页面行为；通知放在后面，失败也不影响 */
+                try { notifyNav(); } catch (e) { /* 忽略 */ }
+                return ret;
+            };
+        });
+        window.addEventListener('popstate', notifyNav);
     } catch (e) { /* 忽略 */ }
 })();

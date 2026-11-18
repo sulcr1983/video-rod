@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>博主 / 合集枚举 — 苏哥的钓鱼竿</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  /* 复用 public.css 的设计 token（深色 + 琥珀强调色） */
+  :root{
+    --bg:#100F0E; --bg2:#191715; --card:#191715; --fg:#EFEAE0;
+    --muted:#A8A093; --faint:#988F81; --line:#2B2620; --line2:#3A332A;
+    --pri:#E8B04B; --pri2:#F0C066; --ok:#5CB85C; --err:#E86466;
+    --chip:#2B2620; --chipfg:#E8B04B;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:13px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:18px 20px 90px}
+
+  /* ---------- 顶部 ---------- */
+  .hd{position:sticky;top:0;z-index:9;background:var(--bg);border-bottom:1px solid var(--line);
+      padding:14px 20px 12px;margin:-18px -20px 14px}
+  .hd h1{margin:0 0 3px;font-size:16px;font-weight:600;letter-spacing:.02em}
+  .hd .sub{margin:0;color:var(--muted);font-size:12px}
+  .hd .sub b{color:var(--pri)}
+
+  /* ---------- 输入区 ---------- */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:13px 15px;margin-bottom:14px}
+  .row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+  .row + .row{margin-top:10px}
+  .lb{color:var(--muted);font-size:12px;flex:none;min-width:52px}
+  input[type=text]{
+    flex:1;min-width:260px;font:inherit;color:var(--fg);background:#0D0C0B;
+    border:1px solid var(--line2);border-radius:7px;padding:7px 10px;
+  }
+  input[type=text]:focus{outline:none;border-color:var(--pri)}
+  select{
+    font:inherit;color:var(--fg);background:#0D0C0B;border:1px solid var(--line2);
+    border-radius:7px;padding:7px 9px;
+  }
+  button{
+    font:inherit;cursor:pointer;color:var(--fg);background:var(--bg2);
+    border:1px solid var(--line2);border-radius:7px;padding:7px 13px;
+  }
+  button:hover:not(:disabled){border-color:var(--pri);color:var(--pri)}
+  button:disabled{opacity:.42;cursor:not-allowed}
+  button.primary{background:var(--pri);color:#17130D;border-color:var(--pri);font-weight:600}
+  button.primary:hover:not(:disabled){background:var(--pri2);border-color:var(--pri2);color:#17130D}
+  button.ghost{background:transparent}
+
+  .tip{font-size:12px;color:var(--muted);margin-top:8px}
+  .tip.err{color:var(--err)}
+  .tip.ok{color:var(--ok)}
+
+  /* ---------- 状态条 ---------- */
+  .stat{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+        font-size:12px;color:var(--muted);margin-bottom:10px}
+  .stat b{color:var(--fg)}
+  .badge{font-size:11px;padding:1px 7px;border-radius:5px;background:var(--chip);color:var(--chipfg)}
+  .bar{flex:1;min-width:120px;height:4px;background:var(--line2);border-radius:2px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--pri);transition:width .25s ease}
+
+  /* ---------- 列表 ---------- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(184px,1fr));gap:11px}
+  .cell{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+        cursor:pointer;position:relative;transition:border-color .15s ease}
+  .cell:hover{border-color:var(--line2)}
+  .cell.on{border-color:var(--pri);box-shadow:0 0 0 1px var(--pri) inset}
+  .cell .th{position:relative;aspect-ratio:16/10;background:#0D0C0B;overflow:hidden}
+  .cell .th img{width:100%;height:100%;object-fit:cover;display:block}
+  .cell .dur{position:absolute;right:5px;bottom:5px;font-size:10.5px;padding:0 4px;
+             border-radius:3px;background:rgba(0,0,0,.72);color:#EFEAE0}
+  .cell .ck{position:absolute;left:6px;top:6px;width:17px;height:17px;border-radius:4px;
+            border:1.5px solid #EFEAE0;background:rgba(0,0,0,.45);display:flex;
+            align-items:center;justify-content:center;font-size:11px;color:transparent}
+  .cell.on .ck{background:var(--pri);border-color:var(--pri);color:#17130D}
+  .cell .bd{padding:8px 9px 9px}
+  .cell .ttl{font-size:12px;line-height:1.4;height:2.8em;overflow:hidden;
+             display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .cell .mt{font-size:11px;color:var(--faint);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}
+
+  .empty{text-align:center;color:var(--muted);padding:52px 20px;font-size:13px}
+  .empty .s{font-size:12px;color:var(--faint);margin-top:6px}
+
+  /* ---------- 底部操作条 ---------- */
+  .foot{position:fixed;left:0;right:0;bottom:0;z-index:8;
+        background:rgba(16,15,14,.96);border-top:1px solid var(--line);
+        padding:10px 20px;display:flex;gap:11px;align-items:center;flex-wrap:wrap}
+  .foot .sp{flex:1}
+  .foot .sum{font-size:12px;color:var(--muted)}
+  .foot .sum b{color:var(--fg)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hd">
+    <h1>博主 / 合集枚举</h1>
+    <p class="sub">把一个 UP 主、一个合集、一整季番剧的<b>全部作品</b>列出来，再一起下载。</p>
+  </div>
+
+  <!-- ============ 输入 ============ -->
+  <div class="panel">
+    <div class="row">
+      <span class="lb">页面地址</span>
+      <input type="text" id="url" spellcheck="false" placeholder="粘一个博主主页 / 合集页 / 番剧页地址，或点右边从当前标签页取">
+      <button id="btnFromTab" class="ghost" title="把当前标签页的地址填进来">取当前页</button>
+    </div>
+    <div class="row">
+      <span class="lb">识别为</span>
+      <select id="kind" title="由地址自动判断，可手动改">
+        <option value="owner">整博主（该 UP 的全部作品）</option>
+        <option value="collection">合集（这一个合集里的作品）</option>
+        <option value="bangumi">番剧（整季剧集）</option>
+      </select>
+      <span class="lb">每页</span>
+      <select id="count">
+        <option value="20">20 条</option>
+        <option value="30">30 条</option>
+        <option value="50">50 条</option>
+      </select>
+      <label class="lb" style="min-width:auto;display:flex;align-items:center;gap:5px">
+        <input type="checkbox" id="incr">
+        <span title="只翻到「整页都见过」就停，适合日常追更；但这样算不出「博主删了哪些」">增量</span>
+      </label>
+      <button id="btnStart" class="primary">开始枚举</button>
+      <button id="btnStop" disabled>停止</button>
+    </div>
+    <div class="tip" id="tip"></div>
+  </div>
+
+  <!-- ============ 状态 ============ -->
+  <div class="stat" id="stat" hidden>
+    <span>已枚举 <b id="sumTotal">0</b> 条</span>
+    <span>翻了 <b id="sumPages">0</b> 页</span>
+    <span class="badge" id="sumKind">—</span>
+    <span class="bar"><i id="sumBar"></i></span>
+  </div>
+
+  <!-- ============ 列表 ============ -->
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty">
+    <div>还没有枚举结果</div>
+    <div class="s">填一个地址，点「开始枚举」</div>
+  </div>
+
+</div>
+
+<!-- ============ 底部操作条 ============ -->
+<div class="foot">
+  <button id="btnAll" class="ghost">全选</button>
+  <button id="btnNone" class="ghost">全不选</button>
+  <span class="sum">已选 <b id="selCount">0</b> / <b id="selTotal">0</b></span>
+  <span class="sp"></span>
+  <button id="btnDl" class="primary" disabled>下载选中</button>
+</div>
+
+<script src="js/enumerate-page.js"></script>
+</body>
+</html>

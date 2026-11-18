@@ -231,6 +231,7 @@
         "js/lib/floating-ui.core.umd.min.js",
         "js/lib/floating-ui.dom.umd.min.js",
         "js/image-hover.js",
+        "js/image-panel-style.js",
         "js/image-panel.js",
         "js/image-album.js",
         "js/image-drag.js"
@@ -243,7 +244,22 @@
         "*://www.douyin.com/*"
       ],
       "js": [
-        "js/douyin-note.js"
+        "js/naming.js",
+        "js/library/path.js",
+        "js/douyin-note.js",
+        "js/bulk-profile.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://space.bilibili.com/*"
+      ],
+      "js": [
+        "js/naming.js",
+        "js/library/path.js",
+        "js/bulk-profile.js"
       ],
       "run_at": "document_idle",
       "all_frames": false

@@ -245,13 +245,45 @@
 
     /* ---------------- 物理文件操作 ---------------- */
 
-    /** 删物理文件（引用命中时删重复件）；失败返回 false，绝不影响主流程 */
-    async function removePhysical(absPath) {
+    /**
+     * 删物理文件（引用命中时删重复件）；失败返回 false，绝不影响主流程。
+     *
+     * ⚠️ 2026-11-18 修正（审计发现）：
+     *   原实现用 `fetch(file://, {method:'DELETE'})`，而同仓库 save.js:794 已白纸黑字
+     *   写明「它会返回 ok 但**根本不删文件**」。结果是：库改成引用条目、磁盘副本还在，
+     *   比不去重更糟（每次命中都多留一份）。
+     *
+     * 正确做法（与 save.js 的指纹去重一致）：走 FSA 句柄 removeEntry + 复核。
+     * 判据是「文件确实不存在了」——removeEntry 偶发静默失败时不能谎报成功。
+     *
+     * @param {string} absPath 绝对路径（用于日志/兜底）
+     * @param {string} relPath 库内相对路径（FSA 删除必需；没有就删不了）
+     * @returns {Promise<boolean>} true=确认已不存在
+     */
+    async function removePhysical(absPath, relPath) {
         try {
-            if (!absPath || !root.VRPath || !root.VRPath.toFileUrl) { return false; }
-            var url = root.VRPath.toFileUrl(absPath);
-            var res = await fetch(url, { method: 'DELETE' });
-            return !!(res && res.ok);
+            /* 优先走 VRSave.removeFile（FSA 句柄 + 复核），它才真会删 */
+            if (relPath && root.VRSave && typeof root.VRSave.removeFile === 'function') {
+                var ok = await root.VRSave.removeFile(relPath);
+                if (ok) { return true; }
+            }
+            /* 退化：用 absPath 对应的 relPath 再试一次
+             * （调用方有时只给 absPath；能反解就反解，反解不出就不删） */
+            if (absPath) {
+                var rel = '';
+                try {
+                    if (root.VRIndex && typeof root.VRIndex.relFromAbs === 'function') {
+                        rel = root.VRIndex.relFromAbs(absPath) || '';
+                    }
+                } catch (e) { rel = ''; }
+                if (rel) {
+                    var ok2 = await root.VRSave.removeFile(rel);
+                    if (ok2) { return true; }
+                }
+            }
+            /* 到这里说明删不掉 —— 明确返回 false，由调用方决定怎么处理
+             * （绝不假装成功：假成功比不删更糟，会让库与磁盘不一致且无人知晓） */
+            return false;
         } catch (e) {
             return false;
         }
@@ -294,8 +326,18 @@
             rememberHash(hash, origin.relPath, origin.absPath);
 
             // 删重复物理件：失败也不阻断（库里两条会指向同一文件，属于可接受降级）
+            // 2026-11-18：必须传 relPath —— removePhysical 走 FSA 句柄，没有相对路径删不了
             if (opt.absPath && opt.absPath !== origin.absPath) {
-                await removePhysical(opt.absPath);
+                var dupRel = opt.relPath || '';
+                var deleted = await removePhysical(opt.absPath, dupRel);
+                if (!deleted) {
+                    /* 删不掉就留痕：让调用方/日志知道「盘上多了一份」
+                     * （绝不谎报成功 —— 假成功会让库与磁盘长期不一致） */
+                    res.physicalDeleted = false;
+                    res.message = '内容已存在，已建立引用（但重复文件未能删除）';
+                } else {
+                    res.physicalDeleted = true;
+                }
             }
             return res;
         } catch (e) {
@@ -333,6 +375,7 @@
                    注意：引用条目自己的 absPath 指向的是「已被删掉的那份重复件」，
                    真正要删的是原件 → 必须先按 refOf 找原件的 absPath。 */
                 var physical = '';
+                var physicalRel = '';
                 if (entry.refOf) {
                     var origin = null;
                     try {
@@ -344,10 +387,13 @@
                         origin = hits0 && hits0[0];
                     }
                     physical = origin ? (origin.absPath || '') : '';
+                    /* 2026-11-18：FSA 删除需要相对路径（原件的 relPath，不是引用条目的） */
+                    physicalRel = origin ? (origin.relPath || entry.refOf || '') : (entry.refOf || '');
                 }
                 if (!physical) { physical = entry.absPath || ''; }
-                if (physical) {
-                    out.physicalDeleted = await removePhysical(physical);
+                if (!physicalRel) { physicalRel = entry.relPath || ''; }
+                if (physical || physicalRel) {
+                    out.physicalDeleted = await removePhysical(physical, physicalRel);
                 }
             }
             return out;

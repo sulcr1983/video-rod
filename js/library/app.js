@@ -1033,9 +1033,136 @@
             warn.textContent = '';
             return;
         }
-        warn.textContent = '另有 ' + n + ' 条素材在素材库文件夹之外，未计入资源库。' +
-            '把文件移进素材库文件夹后再点「全量扫描」，它们就会收进来。';
+        /* 2026-11-18（审计 B3）：原来只显示条数，用户知道「有几条」但不知道「是哪几条」，
+         * 只能去文件管理器里翻找。改成可点击 → 弹列表 → 可逐条「仅删索引」。
+         * 注意：**不删物理文件**——它们本来就在库根外，可能是用户自己的文件。 */
+        warn.innerHTML = '';
+        var txt = document.createElement('span');
+        txt.textContent = '另有 ' + n + ' 条素材在素材库文件夹之外，未计入资源库。';
+        warn.appendChild(txt);
+        var more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'linkbtn';
+        more.textContent = '查看并处理';
+        more.addEventListener('click', function () { showOutOfRoot(); });
+        warn.appendChild(more);
         warn.classList.remove('hidden');
+    }
+
+    /* ---------- 越界条目管理（审计 B3） ----------
+     * 目标：让「占盘但看不见、清不掉」的条目可查看、可处理。
+     * 两个动作（都不删物理文件）：
+     *   · 仅删索引：把这条从库里移除；文件留在原处，用户自己决定
+     *   · 移入库根：暂不提供（需要逐文件搬移 + 目标路径推断，风险高于收益）
+     */
+    function showOutOfRoot() {
+        var old = document.getElementById('outRootModal');
+        if (old && old.parentNode) { old.parentNode.removeChild(old); }
+
+        var mask = document.createElement('div');
+        mask.id = 'outRootModal';
+        mask.className = 'outroot-mask';
+
+        var box = document.createElement('div');
+        box.className = 'outroot-box';
+
+        var head = document.createElement('div');
+        head.className = 'outroot-head';
+        var h = document.createElement('h3');
+        h.textContent = '库外素材';
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'outroot-x';
+        close.textContent = '×';
+        close.setAttribute('aria-label', '关闭');
+        close.addEventListener('click', function () {
+            if (mask.parentNode) { mask.parentNode.removeChild(mask); }
+        });
+        head.appendChild(h);
+        head.appendChild(close);
+
+        var tip = document.createElement('p');
+        tip.className = 'outroot-tip';
+        /* 注意：这里用 textContent，不能带 Markdown 星号 —— 纯文本会原样显示 */
+        tip.textContent = '这些条目记录的文件不在素材库文件夹内（可能是上级目录或别处）。'
+            + '删除索引不会删掉磁盘上的文件，只把它们从库里移除。';
+
+        var list = document.createElement('div');
+        list.className = 'outroot-list';
+        list.textContent = '正在读取…';
+
+        box.appendChild(head);
+        box.appendChild(tip);
+        box.appendChild(list);
+        mask.appendChild(box);
+        document.body.appendChild(mask);
+
+        /* 异步读列表（避免阻塞主线程） */
+        (async function () {
+            try {
+                if (!root.VRDB || typeof root.VRDB.getAllFiles !== 'function') {
+                    list.textContent = '数据层未加载';
+                    return;
+                }
+                var all = await root.VRDB.getAllFiles();
+                var rows = (all || []).filter(function (f) {
+                    return f && (f.state === 'outOfRoot' || f.outOfRoot);
+                });
+                if (!rows.length) {
+                    list.textContent = '没有库外条目（可能已被扫描清理）';
+                    return;
+                }
+                list.innerHTML = '';
+                rows.forEach(function (f) {
+                    var row = document.createElement('div');
+                    row.className = 'outroot-row';
+
+                    var info = document.createElement('div');
+                    info.className = 'outroot-info';
+                    var nameEl = document.createElement('div');
+                    nameEl.className = 'outroot-name';
+                    nameEl.textContent = String(f.displayName || f.fileName || f.relPath || '');
+                    var pathEl = document.createElement('div');
+                    pathEl.className = 'outroot-path';
+                    pathEl.textContent = String(f.absPath || f.relPath || '');
+                    info.appendChild(nameEl);
+                    info.appendChild(pathEl);
+
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn small';
+                    btn.textContent = '仅删索引';
+                    btn.addEventListener('click', function () {
+                        ask('从库里移除这条记录？（磁盘文件不会被删除）\n\n'
+                            + String(f.displayName || f.fileName || f.relPath || ''), function () {
+                            (async function () {
+                                try {
+                                    await root.VRDB.deleteFiles([f.relPath]);
+                                    if (root.VRThumbs && typeof root.VRThumbs.deleteFor === 'function') {
+                                        try { await root.VRThumbs.deleteFor([f.relPath]); } catch (eT) { /* 忽略 */ }
+                                    }
+                                    row.parentNode && row.parentNode.removeChild(row);
+                                    ROOT_SCOPE_OUT = Math.max(0, (Number(ROOT_SCOPE_OUT) || 0) - 1);
+                                    renderRootScopeWarn();
+                                    toast('已从库里移除索引（文件仍在原处）');
+                                    if (!list.children.length) {
+                                        list.textContent = '已全部处理';
+                                    }
+                                } catch (e) {
+                                    toast('移除失败：' + ((e && e.message) || e));
+                                }
+                            })();
+                        });
+                    });
+
+                    row.appendChild(info);
+                    row.appendChild(btn);
+                    list.appendChild(row);
+                });
+            } catch (e) {
+                list.textContent = '读取失败：' + ((e && e.message) || e);
+            }
+        })();
     }
 
     /** 刷新越界条数（低频，只在 load() 收尾时调用一次）。
@@ -2370,6 +2497,49 @@
             } catch (e) { toast('保存失败：' + ((e && e.message) || e)); }
         }
         on('settingsBtn', function () { showSet(true); fillSetForm(); });
+
+        /* 2026-11-18：离线库入口。
+         * 行为：① 立即同步一次（保证最新）② 提示去哪找
+         * 为什么不直接 window.open('file://…')：
+         *   库页上下文里拿不到库根绝对路径（VRSettings.get() 返回 null，实测），
+         *   硬拼 URL 会失败。而文件管理器打开更可靠、也符合「拷走」的使用场景。
+         *   所以这里只负责「生成 + 告诉用户在哪」，不假装能替他打开。 */
+        on('offlineBtn', function () {
+            var btn = $('#offlineBtn');
+            if (btn && btn.disabled) { return; }
+            if (btn) { btn.disabled = true; }
+            toast('正在生成离线库…');
+            (async function () {
+                try {
+                    if (!root.VROfflineSync || typeof root.VROfflineSync.syncNow !== 'function') {
+                        toast('离线同步模块未加载');
+                        return;
+                    }
+                    var r = await root.VROfflineSync.syncNow({});
+                    if (!r || !r.ok) {
+                        toast('生成失败：' + ((r && r.error) || '未知错误'));
+                        return;
+                    }
+                    /* 拿到库根绝对路径就显示完整位置；拿不到就说明相对位置 */
+                    var abs = '';
+                    try {
+                        var st = (root.VRSettings && typeof root.VRSettings.get === 'function')
+                            ? root.VRSettings.get() : null;
+                        abs = String((st && (st.detectedRoot || st.rootAbs)) || '');
+                    } catch (e0) { abs = ''; }
+
+                    var where = abs
+                        ? (abs.replace(/\\/g, '/').replace(/\/+$/, '') + '/离线库.html')
+                        : '库根第一层的「离线库.html」';
+                    toast('已生成 ' + r.count + ' 条 → ' + where);
+                } catch (e) {
+                    toast('生成失败：' + ((e && e.message) || e));
+                } finally {
+                    if (btn) { btn.disabled = false; }
+                }
+            })();
+        });
+
         on('setClose', function () { showSet(false); });
         on('setCancel', function () { showSet(false); });
         on('setmask', function () { showSet(false); });

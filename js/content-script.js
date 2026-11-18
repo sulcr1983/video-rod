@@ -1,4 +1,27 @@
 (function () {
+    /* ---------- 幂等保护（2026-11-18，审计 D6） ----------
+     * 背景：扩展更新/重载后，**已经打开**的页面里旧 content script 会失效
+     * （_dead 自毁，见下方 bury），但 Chrome 不会给已开页面重新注入。
+     * 用户看到的症状就是「装完扩展要手动刷新页面才生效」。
+     *
+     * 修法：onInstalled 里对现有 tab 调 executeScript 补注入。
+     * 但补注入会**再跑一遍本文件**，若无脑重复注册：
+     *   · window.addEventListener('message') 多一份 → 每条消息被处理两次
+     *   · chrome.runtime.onMessage 多一份 → 后台收到重复回执
+     * 所以这里先判一次：
+     *   · 上一份仍活着（chrome.runtime.id 可用）→ 直接退出，保留旧监听器
+     *   · 上一份已死（context invalidated）→ 允许重新初始化
+     * 标记挂在 window 上：同一 frame 的 isolated world 共享，跨 world 不受影响。
+     */
+    try {
+        if (window.__vrContentLoaded) {
+            var _stillAlive = false;
+            try { _stillAlive = !!(chrome.runtime && chrome.runtime.id); } catch (e0) { _stillAlive = false; }
+            if (_stillAlive) { return; }
+        }
+        window.__vrContentLoaded = true;
+    } catch (e1) { /* 极端情况下标记失败也要继续跑，不能因为幂等判断挡住主功能 */ }
+
     var _videoObj = [];
     var _videoSrc = [];
     var _key = new Set();

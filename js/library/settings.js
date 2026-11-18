@@ -531,13 +531,39 @@
             }
         }
         try {
+            /* 2026-11-18（D1）：授权前先校验「这目录像不像素材库」。
+             * 只提示、不阻断：
+             *   · unexpectedly_empty  —— 空目录是**新建库**的正常状态，不能拦
+             *   · content_seems_wrong —— 非空但没有 _library：可能是选错目录，
+             *     也可能是历史库（没 _library）—— 警告但允许继续
+             *   · corrupted           —— 有 _library 但索引坏了：要提示，
+             *     否则扫描时会以更含糊的方式失败
+             * 阻断只会把用户卡在设置页里出不来，得不偿失。 */
+            var chk = null;
+            try {
+                if (root.VRRootGuard && typeof root.VRRootGuard.inspectRoot === 'function') {
+                    chk = await root.VRRootGuard.inspectRoot(picked);
+                }
+            } catch (eChk) { chk = null; }
+
             await root.VRIndex.setRoot(picked, base, sub);
             await idbPut('root', picked);
             savedRootHandle = picked;
             handleName = picked.name || handleName;
             render();
-            text('vrLibAuthMsg', '已授权写入' +
-                (base ? ('：' + base.replace(/\//g, '\\')) : ('：' + picked.name)), '#2e7d32');
+            if (chk && chk.status === 'corrupted') {
+                text('vrLibAuthMsg', '已授权写入，但索引文件无法读取（可能已损坏）：'
+                    + (chk.detail || '') + '。建议做一次「全量扫描」重建索引。', '#c0392b');
+            } else if (chk && chk.status === 'content_seems_wrong') {
+                text('vrLibAuthMsg', '已授权写入，但这个目录看起来不像素材库（没有 _library 文件夹）。'
+                    + '如果选错了目录，可以到设置里重新授权。', '#c0392b');
+            } else if (chk && chk.status === 'unexpectedly_empty') {
+                text('vrLibAuthMsg', '已授权写入：' + (base ? base.replace(/\//g, '\\') : picked.name)
+                    + '（目录为空，将作为新库使用）', '#2e7d32');
+            } else {
+                text('vrLibAuthMsg', '已授权写入' +
+                    (base ? ('：' + base.replace(/\//g, '\\')) : ('：' + picked.name)), '#2e7d32');
+            }
             refreshAuthState();
             offerKitBackup(picked);
         } catch (e) {

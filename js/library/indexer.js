@@ -1363,6 +1363,17 @@
     function scheduleSnapshot(delayMs) {
         var ms = Number(delayMs);
         if (!isFinite(ms) || ms <= 0) { ms = 30000; }
+
+        /* 2026-11-18：索引有变化 → 顺带调度离线库同步（防抖同窗口）。
+         * 为什么挂在这里：scheduleSnapshot 是「索引变了」的汇点，
+         * 挂在它内部能让所有调用方（入库 / 直写 / 批量）自动受益，
+         * 不必在 7 处调用点各加一遍。 */
+        try {
+            if (root.VROfflineSync && typeof root.VROfflineSync.schedule === 'function') {
+                root.VROfflineSync.schedule(ms);
+            }
+        } catch (eOff) { /* 离线同步不可用不影响索引快照 */ }
+
         autoPending = true;
         if (autoTimer) { return { scheduled: true, merged: true }; }
         autoTimer = setTimeout(function () {

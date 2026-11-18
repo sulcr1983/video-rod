@@ -16,7 +16,13 @@
     const isWeibo = /(^|\.)(weibo\.com|weibo\.cn)$/i.test(host);
     const isX = /(^|\.)(x\.com|twitter\.com)$/i.test(host);
     const isXhs = /(^|\.)xiaohongshu\.com$/i.test(host);
-    if (!isWeibo && !isX && !isXhs) { return; }
+    /* B站/抖音（2026-11-18 补）：走**接口分页**取数（见下方 eStart），
+     * 不做 DOM 扫描 —— 页面上的封面没有 bvid/sec_uid，拿不到真视频流，
+     * 扫描只会把「封面图」记成可下载内容，点下载得到一堆 jpg。
+     * B站只在 UP 主空间（space.bilibili.com）出面板，单稿页不出。 */
+    const isBili = /(^|\.)space\.bilibili\.com$/i.test(host);
+    const isDy = /(^|\.)douyin\.com$/i.test(host);
+    if (!isWeibo && !isX && !isXhs && !isBili && !isDy) { return; }
 
     let noteId = '';
     if (isXhs) {
@@ -25,7 +31,10 @@
         if (!m) { return; }
         noteId = m[1];
     }
-    const SITE = isWeibo ? 'weibo' : (isX ? 'x' : 'xhs');
+    const SITE = isWeibo ? 'weibo'
+        : (isX ? 'x'
+            : (isXhs ? 'xhs'
+                : (isBili ? 'bili' : 'dy')));
 
     let profileUser = '';
     if (isX) {
@@ -38,6 +47,19 @@
     } else if (isWeibo) {
         const m = location.pathname.match(/\/(?:profile|u)\/(\d+)/);
         profileUser = m ? m[1] : '';
+    } else if (isBili) {
+        /* UP 主空间：space.bilibili.com/<mid>[/video|/dynamic|...]
+         * 合集页也在这个域下，但 pathname 带 /channel/collectiondetail，
+         * 那种页面属于「某个合集」，不该出「整博主」面板 —— 直接不出。 */
+        if (/\/channel\//.test(location.pathname)) { return; }
+        const m = location.pathname.match(/^\/(\d{1,20})(?:\/|$)/);
+        if (!m) { return; }
+        profileUser = m[1];
+    } else if (isDy) {
+        /* 抖音只有 /user/<sec_uid> 是博主主页；/video/<id> 等单稿页不出面板。 */
+        const m = location.pathname.match(/^\/user\/([A-Za-z0-9_\-]{10,})/);
+        if (!m) { return; }
+        profileUser = m[1];
     } else {
         profileUser = noteId;
     }
@@ -138,6 +160,10 @@
     }
 
     function scan() {
+        /* B站/抖音不扫 DOM：页面上的封面图没有 bvid/sec_uid，
+         * 扫进来也拿不到真视频流，只会让用户下到一堆 jpg。
+         * 它们的条目全部来自接口分页（eFetch）。 */
+        if (SITE === 'bili' || SITE === 'dy') { return; }
         if (SITE === 'x') { scanX(); }
         else if (SITE === 'xhs') { scanXhs(); }
         else { scanWeibo(); }
@@ -607,6 +633,166 @@
         if (open) { renderList(); }
     }
 
+    /* ================= B站/抖音：接口分页全量抓取（2026-11-18） =================
+     * 为什么不在这里自己发请求：
+     *   B站要 WBI 签名、抖音要 a_bogus 签名，两套签名器都已在扩展里
+     *   （js/enumerate/adapters/*），再写一份必然走样 —— 这正是「统一走 adapter」
+     *   要避免的事。所以这里只发一条 `vrEnum.owner`，取数/翻页/签名都在 SW 里的
+     *   adapter 完成，本文件只负责「显示 + 勾选 + 发下载」。
+     *
+     * 为什么不复用 wFetch（微博那套）：
+     *   微博是同源 fetch（`/ajax/statuses/...`），内容脚本能直接发。
+     *   B站/抖音是跨域 + 要签名，内容脚本发不了，必须回 SW。
+     */
+    const eFetch = {
+        on: false,
+        timer: 0,
+        pages: 0,          // 已请求的页数（累加，用于「再抓一页」）
+        maxPagesPerRun: 10,  // 单次最多翻几页，避免 SW 长任务被回收
+        gotAny: false
+    };
+
+    function eStatus(txt) {
+        if (statusEl) { statusEl.textContent = txt; }
+    }
+
+    /** 平台键 → adapter 的 platform（与 VRPath.detectPlatform 一致） */
+    function ePlatform() {
+        return SITE === 'bili' ? 'bilibili' : 'douyin';
+    }
+
+    /**
+     * B站条目修正：adapter 给的是「封面图 + bvid」。
+     *
+     * 为什么必须改 kind：
+     *   `archiveToItem` 的 url 是 `i1.hdslb.com/bfs/archive/...`（封面），
+     *   但真正能下的是 playurl 解析出的视频流（下载侧 `vrEnumDownload` 按
+     *   platform==='bilibili' 走 playurl，确实能拿到真流）。
+     *   如果面板照 `kind:'image'` 显示，用户会以为自己在存一堆截图 ——
+     *   显示与事实不符，属于 UI 欺骗。
+     *   → 有 bvid 的条目一律按 video 展示，下载仍由 SW 按平台分流。
+     */
+    function eNormalize(it) {
+        const o = Object.assign({}, it || {});
+        if (SITE === 'bili' && (o.bvid || o.mediaId)) { o.kind = 'video'; }
+        if (SITE === 'dy') { o.kind = o.kind || 'video'; }
+        return o;
+    }
+
+    function eAddItems(list) {
+        if (!Array.isArray(list) || !list.length) { return 0; }
+        const before = items.length;
+        list.forEach(function (it) {
+            const o = eNormalize(it);
+            if (!o || !o.url) { return; }
+            add(Object.assign({}, o, {
+                site: ePlatform(),
+                /* key 用 bvid/awemeId，避免同一条目因封面 URL 变化而重复 */
+                key: o.mediaId ? (ePlatform() + ':' + o.mediaId)
+                    : (o.key || o.url)
+            }));
+        });
+        if (items.length > before) { eFetch.gotAny = true; }
+        return items.length - before;
+    }
+
+    function eStop(reason) {
+        if (!eFetch.on) { return; }
+        eFetch.on = false;
+        if (eFetch.timer) { clearTimeout(eFetch.timer); eFetch.timer = 0; }
+        const why = reason === 'limit' ? '达到 ' + MAX_ITEMS + ' 条上限'
+            : reason === 'stopped' ? '已手动停止'
+            : reason === 'nopage' ? '没有更多了'
+            : reason === 'fails' ? '请求失败（可能触发风控，稍后再试）'
+            : '已停止';
+        eStatus('抓取结束：' + items.length + ' 项（' + why + '）');
+        renderCount();
+        if (open) { renderList(); }
+    }
+
+    /**
+     * 抓一批（一次消息）。
+     *
+     * 用「分批」而不是一次翻到底：SW 在长任务中有被回收的风险，
+     * 而且用户点一次就等 1 分钟没有任何反馈，体验很差。
+     */
+    function eStep() {
+        eFetch.timer = 0;
+        if (!eFetch.on) { return; }
+        if (items.length >= MAX_ITEMS) { eStop('limit'); return; }
+
+        const url = location.href;
+        eStatus('抓取中… 第 ' + (eFetch.pages + 1) + ' 批（已 ' + items.length + ' 项）');
+
+        let done = false;
+        const finish = function (res) {
+            if (done) { return; }
+            done = true;
+            if (!eFetch.on) { return; }
+
+            if (!res || res.ok === false || res.error) {
+                const err = String((res && (res.error || res.message)) || 'unknown');
+                /* 明确把「要打开对应页面」这类可操作原因透给用户 */
+                eFetch.failStreak = (eFetch.failStreak || 0) + 1;
+                if (eFetch.failStreak >= 2) { eStop('fails'); return; }
+                eStatus('第 ' + (eFetch.pages + 1) + ' 批失败（' + err + '），稍后重试');
+                eFetch.timer = setTimeout(eStep, 3000 + Math.floor(Math.random() * 1500));
+                return;
+            }
+
+            eFetch.failStreak = 0;
+            /* 用 res.pages（runner 本次实际翻了几页）判断进度，而不是「一条一条算」。
+             * 关键：**必须让 runner 在一次调用内翻多页** ——
+             * 早先每批只传 maxPages:1 且不带 state，游标无法跨消息回传，
+             * 于是第二批拿到的还是第一页 → added=0 → 被误判成「没有更多了」。
+             * 实测后果：B站 43 个作品只拿到 20 条就报「抓取结束」。 */
+            const pagesThisRun = Number(res.pages) || 0;
+            eFetch.pages += pagesThisRun;
+            const list = res.batchItems || [];
+            const added = eAddItems(list);
+            renderCount();
+            if (open) { renderList(); }
+
+            if (!list.length || !added) { eStop('nopage'); return; }
+            /* runner 已翻到上限（说明后面可能还有）→ 继续下一批；
+             * 没翻满说明它自己停了（到底 / 达到 limit）→ 收工。 */
+            if (pagesThisRun < eFetch.maxPagesPerRun) { eStop('nopage'); return; }
+            if (eFetch.pages >= eFetch.maxPagesPerRun * 20) { eStop('limit'); return; }
+            /* 每批之间随机间隔，与其它站点的风控口径一致 */
+            eFetch.timer = setTimeout(eStep, 1200 + Math.floor(Math.random() * 900));
+        };
+
+        try {
+            chrome.runtime.sendMessage({
+                Message: 'vrEnum.owner',
+                url: url,
+                limit: MAX_ITEMS,
+                /* 让 runner 在一次调用内翻多页：它内部管游标、限速、断点，
+                 * 我们不再自己跨消息接力（那正是「只拿到 20 条」的根因）。 */
+                maxPages: eFetch.maxPagesPerRun,
+                state: eFetch.state || {}
+            }, function (res) {
+                void chrome.runtime.lastError;
+                finish(res);
+            });
+        } catch (e) {
+            finish({ ok: false, error: String((e && e.message) || e) });
+        }
+        /* 兜底：消息可能因 SW 重建而永不回调 */
+        setTimeout(function () { finish({ ok: false, error: 'timeout' }); }, 45000);
+    }
+
+    function eStart() {
+        if (eFetch.on) { return; }
+        eFetch.on = true;
+        eFetch.pages = 0;
+        eFetch.failStreak = 0;
+        eFetch.state = {};
+        eStatus('开始抓取：走接口分页，可随时停止');
+        renderCount();
+        eFetch.timer = setTimeout(eStep, 400);
+    }
+
     /* ---------- 面板 ---------- */
     function ensureUI() {
         if (btn) { return; }
@@ -726,7 +912,7 @@
             '<button type="button" data-act="none">全不选</button>' +
             '<button type="button" data-act="invert">反选</button>' +
             '<button type="button" data-act="resetDone">清除已下载</button>' +
-            (SITE === 'x' || SITE === 'weibo'
+            (SITE === 'x' || SITE === 'weibo' || SITE === 'bili' || SITE === 'dy'
                 ? '<button type="button" class="vr-primary" data-act="xFetchAll">抓取全部</button>'
                 : '') +
             '<button type="button" class="vr-primary" data-act="saveall">一键保存本页</button>' +
@@ -795,7 +981,14 @@
             } else if (act === 'xFetchAll') {
                 /* 抓取全部（ADR-084）：X 走自动滚动 + 旁读，微博走接口分页。
                  * 抓取中再点一次 = 停止，避免用户找不到出口。 */
-                if (SITE === 'weibo') {
+                if (SITE === 'bili' || SITE === 'dy') {
+                    /* B站/抖音：接口分页（签名在 SW 的 adapter 里，见 eStart 注释） */
+                    if (eFetch.on) {
+                        eStop('stopped');
+                    } else {
+                        eStart();
+                    }
+                } else if (SITE === 'weibo') {
                     if (wFetch.on) {
                         wStop('stopped');
                     } else {
@@ -839,6 +1032,10 @@
             btn.textContent = '抓取中… (' + visibleItems().length + ') 点击停止';
             return;
         }
+        if ((SITE === 'bili' || SITE === 'dy') && eFetch.on) {
+            btn.textContent = '抓取中… (' + visibleItems().length + ') 点击停止';
+            return;
+        }
         btn.textContent = '批量下载 (' + visibleItems().length + ')';
     }
 
@@ -858,11 +1055,16 @@
         const keepTop = listEl.scrollTop;
         const vis = visibleItems();
         if (!vis.length) {
-            listEl.innerHTML = '<div class="vr-bulk-empty">' +
-                (items.length
+            /* B站/抖音的数据来自接口分页，跟「往下滚动」无关 ——
+             * 给错提示会让用户一直滚却什么都没有。 */
+            const emptyHint = (SITE === 'bili' || SITE === 'dy')
+                ? (items.length
+                    ? '没有新的媒体（可能被“忽略已下载”过滤了）。'
+                    : '点下方「抓取全部」按接口拉取该作者的作品。')
+                : (items.length
                     ? '没有新的媒体（可能被“忽略已下载/忽略转载”过滤了）。'
-                    : '往下滚动，自动记录图片；视频点开播放后自动记录。不会自动翻页/滚动。') +
-                '</div>';
+                    : '往下滚动，自动记录图片；视频点开播放后自动记录。不会自动翻页/滚动。');
+            listEl.innerHTML = '<div class="vr-bulk-empty">' + emptyHint + '</div>';
             return;
         }
         const frag = document.createDocumentFragment();
@@ -1009,6 +1211,43 @@
             if (k && !offKeys.has(k)) { chosen.push(x.it); }
         });
         if (!chosen.length) { statusEl.textContent = '没有选中媒体'; return; }
+
+        /* B站/抖音（2026-11-18）：**必须**走 vrEnum.download，不能走 vrBulkDownload。
+         *
+         * 原因：adapter 给出的 url 是**封面**（B站 i1.hdslb.com/bfs/archive/…，
+         * 抖音的 play 地址也需要按平台解析）。vrBulkDownload 是「拿到 url 就下」，
+         * 结果会是「下载成功、但文件全是一堆 jpg」—— 典型的静默错误。
+         * vrEnum.download 按 platform 分流：B站走 playurl 取真流，
+         * 拿不到就**明确判失败**，绝不拿封面冒充视频。 */
+        if (SITE === 'bili' || SITE === 'dy') {
+            statusEl.textContent = '开始解析并下载 ' + chosen.length + ' 条…';
+            chrome.runtime.sendMessage(
+                { Message: 'vrEnum.download', items: chosen, pageUrl: location.href },
+                function (res) {
+                    if (chrome.runtime.lastError || !res) {
+                        statusEl.textContent = '下载请求失败';
+                        return;
+                    }
+                    if (!res.ok && !res.total) {
+                        statusEl.textContent = '下载失败：' + (res.error || '未知原因');
+                        return;
+                    }
+                    const skip = res.skipped || 0;
+                    const fl = res.fail || 0;
+                    let txt = '完成：' + res.succeeded + '/' + res.total;
+                    if (skip) { txt += '，跳过 ' + skip; }
+                    if (fl) { txt += '，失败 ' + fl; }
+                    if (fl && res.failures && res.failures.length) {
+                        txt += '（' + res.failures[0].reason + '）';
+                    }
+                    statusEl.textContent = txt;
+                    if (res.succeeded + skip >= res.total) {
+                        chosen.forEach(function (it) { markDone(it.key); });
+                    }
+                }
+            );
+            return;
+        }
 
         // 小红书：页面 fetch 被 CORS 拒绝，走 downloads + 作者目录；
         // 不设条数上限，后台 3–5 秒/条，遇风控失败自动暂停。

@@ -823,6 +823,20 @@
     setTimeout(maybeScanLinks, 3500);
     // SPA 换页后可能从「有视频」变成「没视频」，再补一次
     window.addEventListener('popstate', function () { linkDone = false; setTimeout(maybeScanLinks, 1500); });
+    /* 2026-11-18（审计 D7）：多数站点换页只调 pushState/replaceState，**不触发 popstate**。
+     * 本文件跑在隔离世界，收不到页面自己的 history 事件 —— 所以由 MAIN world 的
+     * net-sniff.js 包一层 history API，用 postMessage 通知过来。
+     * 只认同源消息，避免被页面上的其它脚本伪造成「换页」把按钮刷掉。 */
+    window.addEventListener('message', function (ev) {
+        try {
+            if (!ev || ev.source !== window) { return; }
+            var d = ev.data;
+            if (!d || d.action !== 'vrSpaNav') { return; }
+            if (ev.origin && location.origin && ev.origin !== location.origin) { return; }
+            linkDone = false;
+            setTimeout(maybeScanLinks, 1200);
+        } catch (e) { /* 忽略 */ }
+    }, false);
     document.addEventListener('click', function (ev) {
         if (linkPanel && linkPanel.style.display === 'block' &&
             !linkPanel.contains(ev.target) && ev.target !== linkBtn) {

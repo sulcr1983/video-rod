@@ -52,6 +52,13 @@ python tools/vr-session.py close      # 只在收工时用
 4. **优先优雅关闭**（`Browser.close` / 正常关窗），让 Cookie 落盘；`Stop-Process -Force` 可能丢未落盘的会话 Cookie。
 5. **headless 自动化可以用同一 profile，但必须先关掉有头实例**（锁冲突）。
 6. 临时 profile（`.edge-r*`）只用于**不需要登录**的界面回归；不要用它跑真实站点。
+7. **改了 `background.js` 的 `importScripts` 列表后**：不要换 profile（会丢登录态）。用 CDP 让 SW 重新求值：
+   ```python
+   cdp.eval("chrome.runtime.reload()", sw_session)   # SW 自己触发的重载
+   # 等 6 秒，SW 以新 targetId 回来；再探一次模块是否加载
+   ```
+   **实测有效**（2026-11-18，B站枚举验证）：`hasAdapters` 从 false → true，登录态保留。
+   详见 `docs/TESTING.md` §11.3 的修正说明。
 
 ## 三、工具
 
